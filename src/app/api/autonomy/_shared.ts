@@ -117,6 +117,7 @@ export async function evaluateAutonomy(
 
   const syncSnapshot = plan.runtime.campaignId
     ? await getMetaCampaignSyncSnapshotForCampaign({
+        campaignId: plan.id ?? null,
         campaignName: plan.businessName,
         metaCampaignId: plan.runtime.campaignId,
       }).catch(() => null)

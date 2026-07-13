@@ -232,7 +232,9 @@ export function getSelectedAdIdsFromPlan(value: unknown) {
       : []),
   ].filter((item, index, list) => list.indexOf(item) === index);
 
-  return ids.slice(0, 6);
+  // The launch/receipt/activation contract currently creates exactly one ad.
+  // Legacy multi-value arrays are read as their explicit primary only.
+  return ids.slice(0, 1);
 }
 
 export function getLeadLoopVerifiedFromPlan(value: unknown) {
@@ -303,7 +305,7 @@ export function withSelectedAdId(current: unknown, selectedAdId: string) {
 }
 
 export function withSelectedAdIds(current: unknown, selectedAdIds: string[]) {
-  const normalizedIds = normalizeSelectedAdIds(selectedAdIds);
+  const normalizedIds = normalizeSelectedAdIds(selectedAdIds).slice(0, 1);
   const primarySelectedAdId = normalizedIds[0] ?? "";
 
   return mergeCampaignPlanDocument(current, {

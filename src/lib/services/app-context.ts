@@ -1,10 +1,21 @@
 import { subDays } from "date-fns";
+import { cookies, headers } from "next/headers";
 import { slugify } from "@/lib/utils";
 import { logError, logWarn } from "@/lib/logging";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 import type { AppContext } from "@/types/app";
+import { isExplicitNonProductionDeployment } from "@/lib/deployment-target";
+import {
+  GHL_EMBED_CAPABILITY_COOKIE,
+  verifyGhlEmbedCapability,
+} from "@/lib/white-label/ghl-embed-capability";
+import {
+  PARTNER_ATTRIBUTION_COOKIE,
+  resolveVerifiedPartnerAttribution,
+  type VerifiedPartnerDomainContext,
+} from "@/lib/white-label/verified-partner-domain";
 import {
   buildDefaultAppointmentSeeds,
   buildDefaultCampaignSnapshots,
@@ -71,6 +82,198 @@ function isDemoWorkspaceSeedingEnabled() {
   }
 
   return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_WORKSPACE_SEEDING !== "false";
+}
+
+function readPartnerAttributionMetadataToken(user: AppContext["user"]) {
+  const value = user.user_metadata?.partner_attribution_token;
+  return typeof value === "string" && value.length <= 4_096 ? value : null;
+}
+
+async function resolveRequestPartnerAttribution(user: AppContext["user"]) {
+  const metadataAttribution = await resolveVerifiedPartnerAttribution(
+    readPartnerAttributionMetadataToken(user),
+  );
+  if (metadataAttribution) return metadataAttribution;
+
+  try {
+    const cookieStore = await cookies();
+    return resolveVerifiedPartnerAttribution(
+      cookieStore.get(PARTNER_ATTRIBUTION_COOKIE)?.value ?? null,
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function resolveVerifiedEmbeddedWorkspace(params: {
+  admin: SupabaseClient;
+  user: AppContext["user"];
+  profile: Row<"users">;
+}) {
+  const requestHeaders = await headers();
+  const assertedOrganizationId = requestHeaders.get(
+    "x-dealflow-ghl-embed-organization",
+  );
+  if (!assertedOrganizationId) return null;
+
+  const partnerHost = requestHeaders.get("x-dealflow-verified-partner-domain");
+  const cookieStore = await cookies();
+  const capability = partnerHost
+    ? await verifyGhlEmbedCapability(
+        cookieStore.get(GHL_EMBED_CAPABILITY_COOKIE)?.value ?? null,
+        {
+          expectedHost: partnerHost,
+          expectedDealflowUserId: params.user.id,
+          requiredStage: "authenticated",
+        },
+      )
+    : null;
+  if (
+    !capability ||
+    capability.organizationId !== assertedOrganizationId ||
+    params.user.email?.trim().toLowerCase() !== capability.ghlEmail ||
+    params.profile.partner_id !== capability.partnerId
+  ) {
+    throw new Error("Verified GHL embed workspace context is invalid.");
+  }
+
+  const allowedEnvironments = isExplicitNonProductionDeployment()
+    ? ["sandbox", "test"]
+    : ["production"];
+  const [organizationResult, membershipResult, tenantResult, mappingResult, ghlUserResult] =
+    await Promise.all([
+      (params.admin as any)
+        .from("organizations")
+        .select("*")
+        .eq("id", capability.organizationId)
+        .eq("partner_id", capability.partnerId)
+        .limit(2),
+      (params.admin as any)
+        .from("organization_memberships")
+        .select("*")
+        .eq("organization_id", capability.organizationId)
+        .eq("user_id", params.user.id)
+        .limit(2),
+      (params.admin as any)
+        .from("ghl_workspace_tenants")
+        .select("organization_id,partner_id,tenant_kind,status")
+        .eq("organization_id", capability.organizationId)
+        .eq("partner_id", capability.partnerId)
+        .eq("tenant_kind", "partner_child")
+        .eq("status", "active")
+        .limit(2),
+      (params.admin as any)
+        .from("ghl_location_mappings")
+        .select("id,organization_id,partner_id,installation_id,environment,provider_location_id,status")
+        .eq("organization_id", capability.organizationId)
+        .eq("partner_id", capability.partnerId)
+        .eq("provider_location_id", capability.locationId)
+        .eq("status", "active")
+        .in("environment", allowedEnvironments)
+        .limit(2),
+      (params.admin as any)
+        .from("workspace_ghl_users")
+        .select("workspace_id,partner_id,ghl_location_id,ghl_user_id,email,invite_status")
+        .eq("workspace_id", capability.organizationId)
+        .eq("partner_id", capability.partnerId)
+        .eq("ghl_location_id", capability.locationId)
+        .eq("ghl_user_id", capability.ghlUserId)
+        .ilike("email", capability.ghlEmail)
+        .eq("invite_status", "active")
+        .limit(2),
+    ]);
+  const exactOne = (result: { data?: unknown; error?: unknown }) =>
+    !result.error && Array.isArray(result.data) && result.data.length === 1;
+  if (
+    !exactOne(organizationResult) ||
+    !exactOne(membershipResult) ||
+    !exactOne(tenantResult) ||
+    !exactOne(mappingResult) ||
+    !exactOne(ghlUserResult)
+  ) {
+    throw new Error("Verified GHL embed tenant binding is no longer active.");
+  }
+
+  const mapping = mappingResult.data[0] as Record<string, unknown>;
+  const installationResult = await (params.admin as any)
+    .from("ghl_installations")
+    .select("id,environment,partner_id,provider_agency_id,status")
+    .eq("id", mapping.installation_id)
+    .eq("environment", mapping.environment)
+    .eq("partner_id", capability.partnerId)
+    .eq("provider_agency_id", capability.companyId)
+    .eq("status", "active")
+    .limit(2);
+  if (!exactOne(installationResult)) {
+    throw new Error("Verified GHL embed installation binding is no longer active.");
+  }
+
+  return {
+    capability,
+    organization: organizationResult.data[0] as Row<"organizations">,
+    membership: membershipResult.data[0] as Row<"organization_memberships">,
+  };
+}
+
+async function applyVerifiedPartnerAttribution(params: {
+  admin: SupabaseClient;
+  profile: Row<"users">;
+  organization: Row<"organizations">;
+  attribution: VerifiedPartnerDomainContext;
+}) {
+  const { admin, profile, organization, attribution } = params;
+  const { data, error } = await (admin as any).rpc(
+    "bind_verified_partner_attribution_v1",
+    {
+      p_user_id: profile.id,
+      p_organization_id: organization.id,
+      p_partner_id: attribution.partnerId,
+      p_verified_domain: attribution.domain,
+    },
+  );
+  if (error) throw error;
+  const binding = (Array.isArray(data) ? data[0] : data) as {
+    binding_status?: string;
+    resolved_partner_id?: string | null;
+    resolved_user_partner_id?: string | null;
+    resolved_organization_partner_id?: string | null;
+    attribution_active?: boolean;
+  } | null;
+  const accepted =
+    (binding?.binding_status === "bound" ||
+      binding?.binding_status === "already_bound") &&
+    binding.resolved_partner_id === attribution.partnerId &&
+    binding.resolved_user_partner_id === attribution.partnerId &&
+    binding.resolved_organization_partner_id === attribution.partnerId &&
+    binding.attribution_active === true;
+  if (!accepted) {
+    logWarn("Verified partner attribution preserved existing workspace authority", {
+      userId: profile.id,
+      organizationId: organization.id,
+      bindingStatus: binding?.binding_status ?? "missing_receipt",
+    });
+    return null;
+  }
+
+  const [profileResult, organizationResult] = await Promise.all([
+    admin.from("users").select("*").eq("id", profile.id).single(),
+    admin.from("organizations").select("*").eq("id", organization.id).single(),
+  ]);
+  if (profileResult.error || organizationResult.error) {
+    throw profileResult.error ?? organizationResult.error;
+  }
+  const refreshedProfile = profileResult.data as Row<"users">;
+  const refreshedOrganization = organizationResult.data as Row<"organizations">;
+  if (
+    refreshedProfile.partner_id !== attribution.partnerId ||
+    refreshedOrganization.partner_id !== attribution.partnerId
+  ) {
+    throw new Error("Verified partner attribution refresh did not match its atomic receipt.");
+  }
+  return {
+    profile: refreshedProfile,
+    organization: refreshedOrganization,
+  };
 }
 
 export async function ensureUserProfile(supabase: SupabaseClient, user: AppContext["user"]) {
@@ -183,7 +386,7 @@ export async function ensureWorkspace(
           name: organizationName,
           slug: organizationSlug,
           owner_user_id: profile.id,
-          plan_tier: "starter",
+          plan_tier: "pro",
         } as never)
         .select("*")
         .single();
@@ -204,7 +407,7 @@ export async function ensureWorkspace(
           name: organizationName,
           slug: fallbackOrganizationSlug,
           owner_user_id: profile.id,
-          plan_tier: "starter",
+          plan_tier: "pro",
         } as never)
         .select("*")
         .single();
@@ -453,10 +656,38 @@ export async function ensureAppContext() {
   }
 
   try {
-    const bootstrapSupabase = (createAdminClient() as SupabaseClient | null) ?? supabase;
-    const profile = await ensureUserProfile(bootstrapSupabase, user);
-    const organization = await ensureWorkspace(bootstrapSupabase, profile);
-    const membership = await ensureMembership(bootstrapSupabase, profile, organization);
+    const adminClient = createAdminClient() as SupabaseClient | null;
+    const bootstrapSupabase = adminClient ?? supabase;
+    let profile = await ensureUserProfile(bootstrapSupabase, user);
+    const embeddedWorkspace = adminClient
+      ? await resolveVerifiedEmbeddedWorkspace({
+          admin: adminClient,
+          user,
+          profile,
+        })
+      : null;
+    let organization = embeddedWorkspace?.organization ??
+      await ensureWorkspace(bootstrapSupabase, profile);
+    const partnerAttribution = embeddedWorkspace
+      ? null
+      : await resolveRequestPartnerAttribution(user);
+    if (partnerAttribution) {
+      if (!adminClient) {
+        throw new Error("Verified partner attribution requires server-side workspace authority.");
+      }
+      const refreshed = await applyVerifiedPartnerAttribution({
+        admin: adminClient,
+        profile,
+        organization,
+        attribution: partnerAttribution,
+      });
+      if (refreshed) {
+        profile = refreshed.profile;
+        organization = refreshed.organization;
+      }
+    }
+    const membership = embeddedWorkspace?.membership ??
+      await ensureMembership(bootstrapSupabase, profile, organization);
     const businessProfile = await ensureBusinessProfile(bootstrapSupabase, organization, profile);
 
     const context: AppContext = {
@@ -467,25 +698,31 @@ export async function ensureAppContext() {
       businessProfile,
     };
 
-    try {
-      const { claimPendingAccessKeyForCurrentUser } = await import("@/lib/services/access-key-service");
-      await claimPendingAccessKeyForCurrentUser(context);
-    } catch (claimError) {
-      logWarn("Access-key claim bootstrap skipped", {
-        userId: user.id,
-        organizationId: organization.id,
-        message: claimError instanceof Error ? claimError.message : "Unknown access-key claim error",
-      });
+    if (!embeddedWorkspace) {
+      try {
+        const { claimPendingAccessKeyForCurrentUser } = await import("@/lib/services/access-key-service");
+        await claimPendingAccessKeyForCurrentUser(context);
+      } catch (claimError) {
+        logWarn("Access-key claim bootstrap skipped", {
+          userId: user.id,
+          organizationId: organization.id,
+          message: claimError instanceof Error ? claimError.message : "Unknown access-key claim error",
+        });
+      }
     }
 
-    try {
-      await ensureOrganizationSeedData(bootstrapSupabase, context);
-    } catch (seedError) {
-      logWarn("Organization seed data bootstrap skipped", {
-        userId: user.id,
-        organizationId: organization.id,
-        message: seedError instanceof Error ? seedError.message : "Unknown seed bootstrap error",
-      });
+    // Capability-bound GHL workspaces are pre-provisioned. Never claim a
+    // top-level checkout or create demo/default data in a member iframe.
+    if (!embeddedWorkspace) {
+      try {
+        await ensureOrganizationSeedData(bootstrapSupabase, context);
+      } catch (seedError) {
+        logWarn("Organization seed data bootstrap skipped", {
+          userId: user.id,
+          organizationId: organization.id,
+          message: seedError instanceof Error ? seedError.message : "Unknown seed bootstrap error",
+        });
+      }
     }
 
     return context;

@@ -24,11 +24,183 @@ function loadTs(file, mocks = {}) {
 
 const safety = loadTs("src/lib/optimization-engine/safety-policy.ts");
 const kpi = loadTs("src/lib/optimization-engine/kpi.ts");
+const reportingContract = loadTs("src/lib/integrations/meta/reporting-contract.ts");
 const policy = loadTs("src/lib/optimization-engine/realtor-policy.ts", {
   "@/lib/optimization-engine/safety-policy": safety,
   "@/lib/optimization-engine/kpi": kpi,
 });
 const executor = loadTs("src/lib/optimization-engine/meta-sandbox-executor.ts");
+
+const statusSyncSource = fs.readFileSync("src/lib/integrations/meta/status-sync.ts", "utf8");
+const reportingWorkerSource = fs.readFileSync("src/lib/services/meta-reporting-worker-service.ts", "utf8");
+const dashboardSource = fs.readFileSync("src/components/dashboard/campaign-dashboard-view.tsx", "utf8");
+assert.match(statusSyncSource, /fields: "spend,impressions,clicks,ctr,frequency,reach,actions,conversions"/);
+assert.match(statusSyncSource, /time_range: metaReportingTimeRange\(reportingWindow\)/);
+assert.doesNotMatch(statusSyncSource, /date_preset:\s*"maximum"/);
+assert.match(reportingWorkerSource, /metaCtrRatioToPolicyPercent\(raw\.ctr \?\? 0\)/);
+assert.doesNotMatch(reportingWorkerSource, /raw\.ctr[^\n]*<=\s*1/);
+assert.match(dashboardSource, /rankedTopCreative\.ctr \* 100/);
+
+class TestApiError extends Error {
+  constructor(status, message, code) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+const statusSync = loadTs("src/lib/integrations/meta/status-sync.ts", {
+  "@/lib/api/route": { ApiError: TestApiError },
+  "@/lib/integrations/meta/contract": {
+    buildMetaGraphUrl: () => "https://graph.example.test",
+    withMetaBearerToken: () => ({}),
+  },
+  "@/lib/integrations/meta/request": { fetchMetaResponse: async () => null },
+  "@/lib/integrations/meta/reporting-contract": reportingContract,
+});
+assert.equal(
+  statusSync.extractLeadsFromActions([
+    { action_type: "lead", value: "5" },
+    { action_type: "onsite_conversion.lead_grouped", value: "5" },
+    { action_type: "offsite_conversion.fb_pixel_lead", value: "2" },
+  ]),
+  5,
+  "the authoritative lead aggregate must not be added to overlapping component rows",
+);
+assert.equal(
+  statusSync.extractLeadsFromActions([
+    { action_type: "omni_lead", value: "4" },
+    { action_type: "onsite_conversion.lead_grouped", value: "3" },
+  ]),
+  4,
+  "omni_lead is the aggregate fallback when lead is absent",
+);
+assert.equal(
+  statusSync.extractLeadsFromActions([
+    { action_type: "onsite_conversion.lead_grouped", value: "3" },
+    { action_type: "offsite_conversion.fb_pixel_lead", value: "2" },
+  ]),
+  5,
+  "mutually exclusive onsite and pixel rows may be combined when aggregates are absent",
+);
+assert.equal(
+  statusSync.extractLeadsFromActions([
+    { action_type: "lead", value: "5" },
+    { action_type: "lead", value: "5" },
+    { action_type: "offsite_conversion.custom.123", value: "99" },
+  ]),
+  5,
+  "duplicate aggregate rows and arbitrary custom conversions must not inflate leads",
+);
+assert.match(statusSyncSource, /raw_actions: insight\?\.actions \?\? \[\]/);
+
+const exactWindow = reportingContract.buildMetaReportingWindow(
+  new Date("2026-07-13T23:59:59.000Z"),
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(exactWindow)),
+  { since: "2026-07-07", until: "2026-07-13", days: 7 },
+);
+assert.equal(
+  reportingContract.readMetaReportingWindow(exactWindow).since,
+  "2026-07-07",
+);
+
+const providerCtrCases = [0.2, 0.5, 0.8, 1.0, 1.2, 2];
+for (const providerCtrPercent of providerCtrCases) {
+  const persisted = reportingContract.normalizeMetaDeliveryInsight({
+    impressions: "2000",
+    clicks: String(Math.round(2000 * providerCtrPercent / 100)),
+    ctr: String(providerCtrPercent),
+    frequency: "4.25",
+    reach: "470",
+  });
+  assert.equal(persisted.ctr, providerCtrPercent / 100);
+  assert.equal(persisted.frequency, 4.25);
+  assert.equal(persisted.reach, 470);
+  const reportingCtr = reportingContract.metaCtrRatioToPolicyPercent(persisted.ctr);
+  assert.equal(reportingCtr, providerCtrPercent);
+  const evaluated = policy.evaluateRealtorOptimizationPolicy({
+    sourceStatus: "confirmed",
+    syncedAt: "2026-07-12T15:30:00.000Z",
+    metrics: {
+      ctr: reportingCtr,
+      cpc: 0.8,
+      cpl: 25,
+      frequency: 2,
+      spend: 120,
+      leads: 4,
+      lp_cvr: 7,
+      impressions: 2000,
+      clicks: 40,
+    },
+    dailyBudget: 50,
+    customerDailyBudgetCeiling: 100,
+    campaignAgeHours: 48,
+    switches: { global: false, account: false, campaign: false, emergencyStop: false },
+    now: new Date("2026-07-12T16:00:00.000Z"),
+  });
+  assert.equal(evaluated.action.type, providerCtrPercent < 0.5 ? "pause" : "budget");
+}
+
+for (const scenario of [
+  { lifetimeCtr: 2.5, recentCtr: 0.2, expected: "pause" },
+  { lifetimeCtr: 0.2, recentCtr: 2, expected: "budget" },
+]) {
+  const recentRatio = reportingContract.metaCtrPercentToRatio(scenario.recentCtr);
+  assert.notEqual(recentRatio, reportingContract.metaCtrPercentToRatio(scenario.lifetimeCtr));
+  const evaluated = policy.evaluateRealtorOptimizationPolicy({
+    sourceStatus: "confirmed",
+    syncedAt: "2026-07-12T15:30:00.000Z",
+    metrics: {
+      ctr: reportingContract.metaCtrRatioToPolicyPercent(recentRatio),
+      cpc: 0.8,
+      cpl: 25,
+      frequency: 2,
+      spend: 120,
+      leads: 4,
+      lp_cvr: 7,
+      impressions: 2000,
+      clicks: 40,
+    },
+    dailyBudget: 50,
+    customerDailyBudgetCeiling: 100,
+    campaignAgeHours: 48,
+    switches: { global: false, account: false, campaign: false, emergencyStop: false },
+    now: new Date("2026-07-12T16:00:00.000Z"),
+  });
+  assert.equal(evaluated.action.type, scenario.expected);
+}
+
+const providerFatigue = reportingContract.normalizeMetaDeliveryInsight({
+  impressions: "5000",
+  clicks: "100",
+  ctr: "2",
+  frequency: "4.01",
+  reach: "1247",
+});
+assert.equal(
+  policy.evaluateRealtorOptimizationPolicy({
+    sourceStatus: "confirmed",
+    syncedAt: "2026-07-12T15:30:00.000Z",
+    metrics: {
+      ctr: reportingContract.metaCtrRatioToPolicyPercent(providerFatigue.ctr),
+      cpc: 0.8,
+      cpl: 25,
+      frequency: providerFatigue.frequency,
+      spend: 120,
+      leads: 4,
+      lp_cvr: 7,
+      impressions: providerFatigue.impressions,
+      clicks: providerFatigue.clicks,
+    },
+    dailyBudget: 50,
+    customerDailyBudgetCeiling: 100,
+    campaignAgeHours: 48,
+    switches: { global: false, account: false, campaign: false, emergencyStop: false },
+    now: new Date("2026-07-12T16:00:00.000Z"),
+  }).action.reason,
+  "frequency_above_maximum",
+);
 
 const now = new Date("2026-07-12T16:00:00.000Z");
 const baseMetrics = {

@@ -5,170 +5,457 @@ import fs from "node:fs";
 import ts from "typescript";
 
 const proxySource = fs.readFileSync("src/proxy.ts", "utf8");
+const capabilitySource = fs.readFileSync(
+  "src/lib/white-label/ghl-embed-capability.ts",
+  "utf8",
+);
+const requestOriginSource = fs.readFileSync(
+  "src/lib/white-label/ghl-embed-request-origin.ts",
+  "utf8",
+);
+const exchangeSource = fs.readFileSync(
+  "src/app/api/integrations/ghl/embed-context/route.ts",
+  "utf8",
+);
+const bootstrapSource = fs.readFileSync(
+  "src/app/ghl/embed/ghl-embed-bootstrap.tsx",
+  "utf8",
+);
+const refresherSource = fs.readFileSync(
+  "src/components/ghl/ghl-embed-capability-refresher.tsx",
+  "utf8",
+);
+const appLayoutSource = fs.readFileSync("src/app/(app)/layout.tsx", "utf8");
 const nextConfigSource = fs.readFileSync("next.config.mjs", "utf8");
 const loginFormSource = fs.readFileSync("src/components/auth/login-form.tsx", "utf8");
+const loginPageSource = fs.readFileSync("src/app/(auth)/login/page.tsx", "utf8");
+const partnerDomainSource = fs.readFileSync(
+  "src/lib/white-label/verified-partner-domain.ts",
+  "utf8",
+);
+const appContextSource = fs.readFileSync("src/lib/services/app-context.ts", "utf8");
 const supportPageSource = fs.readFileSync("src/app/(app)/support/page.tsx", "utf8");
-const supportFormSource = fs.readFileSync("src/components/support/support-ticket-form.tsx", "utf8");
-
-const requiredProxyMarkers = [
-  "CLICK_TO_SCALE_IFRAME_HOSTS",
-  "\"clicktoscale.io\"",
-  "\"www.clicktoscale.io\"",
-  "GHL_EMBEDDABLE_PATHS",
-  '"/onboarding"',
-  '"/campaign-built"',
-  '"/paywall"',
-  '"/build/funnel"',
-  '"/build/creatives"',
-  '"/preview"',
-  '"/launch"',
-  '"/launching"',
-  '"/launch-success"',
-  '"/unlock"',
-  '"/results"',
-  '"/dashboard"',
-  '"/settings"',
-  '"/support"',
-  "GHL_IFRAME_EMBED_ENABLED",
-  "GHL_IFRAME_ALLOWED_FRAME_ANCESTORS",
-  "SHARED_VENDOR_FRAME_HOSTS",
-  "normalizeExactFrameAncestor",
-  "frame-ancestors ${frameAncestors}",
-  "response.headers.delete(\"X-Frame-Options\")",
-  "response.headers.set(\"X-Frame-Options\", \"DENY\")",
-];
+const supportFormSource = fs.readFileSync(
+  "src/components/support/support-ticket-form.tsx",
+  "utf8",
+);
 
 const failures = [];
+const runtimeProcess = { env: {} };
 
-function loadProxySecurityHelpers() {
-  const testSource = proxySource
-    .replace(
-      "function normalizeExactFrameAncestor(source: string)",
-      "export function normalizeExactFrameAncestor(source: string)",
-    )
-    .replace(
-      "function getFrameAncestors(request: NextRequest)",
-      "export function getFrameAncestors(request: NextRequest)",
-    )
-    .replace(
-      "function hasEmbeddedAppReturn(request: NextRequest)",
-      "export function hasEmbeddedAppReturn(request: NextRequest)",
-    )
-    .replace(
-      "function addEmbeddedAuthRedirectState(request: NextRequest, loginUrl: URL)",
-      "export function addEmbeddedAuthRedirectState(request: NextRequest, loginUrl: URL)",
-    );
-  const output = ts.transpileModule(testSource, {
+function normalizePartnerDomainHost(value) {
+  const candidate = value?.trim().toLowerCase().replace(/\.$/, "") ?? "";
+  if (!candidate || candidate.length > 253 || candidate.includes(":") || candidate.includes("/")) {
+    return null;
+  }
+  const labels = candidate.split(".");
+  return labels.length >= 2 && labels.every(
+    (label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
+  ) ? candidate : null;
+}
+
+function transpile(source) {
+  return ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022,
       esModuleInterop: true,
+      jsx: ts.JsxEmit.ReactJSX,
     },
   }).outputText;
-  const loadedModule = { exports: {} };
-  const emptyModule = new Proxy({}, { get: () => () => undefined });
-  const runtimeProcess = { env: {} };
-  const evaluate = new Function("require", "module", "exports", "process", output);
-  evaluate(() => emptyModule, loadedModule, loadedModule.exports, runtimeProcess);
-  return { helpers: loadedModule.exports, runtimeProcess };
 }
 
-for (const marker of requiredProxyMarkers) {
-  if (!proxySource.includes(marker)) {
-    failures.push(`src/proxy.ts is missing required marker: ${marker}`);
-  }
+function loadCapabilityHelpers() {
+  const cjsModule = { exports: {} };
+  const evaluate = new Function(
+    "require",
+    "module",
+    "exports",
+    "process",
+    transpile(capabilitySource),
+  );
+  evaluate(
+    (specifier) => {
+      if (specifier.endsWith("verified-partner-domain")) {
+        return { normalizePartnerDomainHost };
+      }
+      throw new Error(`Unexpected capability import: ${specifier}`);
+    },
+    cjsModule,
+    cjsModule.exports,
+    runtimeProcess,
+  );
+  return cjsModule.exports;
+}
+
+function loadProxySecurityHelpers(capabilityHelpers) {
+  const testSource = proxySource
+    .replace(
+      "function getFrameAncestors(\n  request: NextRequest,",
+      "export function getFrameAncestors(\n  request: NextRequest,",
+    )
+    .replace(
+      "function addEmbeddedAuthRedirectState(\n  request: NextRequest,",
+      "export function addEmbeddedAuthRedirectState(\n  request: NextRequest,",
+    )
+    .replace(
+      "function shouldResolvePartnerDomainContext(request: NextRequest)",
+      "export function shouldResolvePartnerDomainContext(request: NextRequest)",
+    );
+  const cjsModule = { exports: {} };
+  const emptyModule = new Proxy({}, { get: () => () => undefined });
+  const evaluate = new Function(
+    "require",
+    "module",
+    "exports",
+    "process",
+    transpile(testSource),
+  );
+  evaluate(
+    (specifier) => specifier.endsWith("ghl-embed-capability")
+      ? capabilityHelpers
+      : emptyModule,
+    cjsModule,
+    cjsModule.exports,
+    runtimeProcess,
+  );
+  return cjsModule.exports;
+}
+
+function loadRequestOriginHelper() {
+  const cjsModule = { exports: {} };
+  const evaluate = new Function(
+    "require",
+    "module",
+    "exports",
+    transpile(requestOriginSource),
+  );
+  evaluate(
+    (specifier) => specifier.endsWith("verified-partner-domain")
+      ? { normalizePartnerDomainHost }
+      : {},
+    cjsModule,
+    cjsModule.exports,
+  );
+  return cjsModule.exports;
+}
+
+for (const marker of [
+  "loadVerifiedPartnerDomainContext",
+  "GHL_EMBED_CAPABILITY_COOKIE",
+  "GHL_EMBED_SESSION_COOKIE",
+  "verifyGhlEmbedSessionMarker",
+  "verifyGhlEmbedCapability",
+  "x-dealflow-ghl-embed-organization",
+  '"/ghl/embed"',
+  "shouldResolvePartnerDomainContext(request)",
+  '"/builder"',
+  "frame-ancestors ${frameAncestors}",
+  'response.headers.delete("X-Frame-Options")',
+  'response.headers.set("X-Frame-Options", "DENY")',
+]) {
+  if (!proxySource.includes(marker)) failures.push(`src/proxy.ts is missing: ${marker}`);
 }
 
 if (nextConfigSource.includes("X-Frame-Options")) {
-  failures.push("next.config.mjs must not set X-Frame-Options globally; it blocks GoHighLevel iframes.");
+  failures.push("next.config.mjs must not globally block the capability-bound iframe surface.");
 }
-
-if (proxySource.includes("DEFAULT_GHL_FRAME_ANCESTORS") || proxySource.includes("https://*.gohighlevel.com")) {
-  failures.push("src/proxy.ts must not trust shared/wildcard GHL origins by default.");
+if (/https:\/\/\*\.gohighlevel\.com|DEFAULT_GHL_FRAME_ANCESTORS/.test(proxySource)) {
+  failures.push("Proxy must not trust wildcard or default HighLevel ancestors.");
 }
-
-if (!proxySource.includes('process.env.GHL_IFRAME_EMBED_ENABLED !== "true"')) {
-  failures.push("src/proxy.ts must keep iframe embedding behind an explicit closed-by-default gate.");
+if (proxySource.includes("GHL_IFRAME_ALLOWED_FRAME_ANCESTORS")) {
+  failures.push("Proxy must not retain the global many-to-many partner ancestor model.");
 }
-
-if (!proxySource.includes("!isGhlEmbeddableSurface(request)")) {
-  failures.push("src/proxy.ts must restrict framing to the fixed embedded surface.");
+if (!capabilitySource.includes('GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS === "true"') ||
+    !capabilitySource.includes("GHL_IFRAME_PARTNER_PARENT_ORIGINS_JSON")) {
+  failures.push("Embed parents must use explicit shared-origin and per-partner gates.");
 }
-
-if (!loginFormSource.includes("requestEmbeddedAuthStorageAccess")) {
-  failures.push("src/components/auth/login-form.tsx must request storage access before iframe auth submission.");
+if (!partnerDomainSource.includes('verification_status: "eq.verified"') ||
+    !partnerDomainSource.includes('ssl_status: "eq.active"') ||
+    !partnerDomainSource.includes('status: "eq.active"') ||
+    !partnerDomainSource.includes('deleted_at: "is.null"')) {
+  failures.push("Partner host resolution must remain verified, SSL-active, active, and non-deleted.");
 }
-
-if (!loginFormSource.includes("document.requestStorageAccess")) {
-  failures.push("src/components/auth/login-form.tsx must support strict browser third-party storage handling.");
+if (!proxySource.includes('requestHeaders.delete("x-dealflow-ghl-embed-organization")')) {
+  failures.push("Proxy must overwrite untrusted inbound embed organization context.");
 }
-
-if (!loginFormSource.includes("window.self !== window.top")) {
-  failures.push("src/components/auth/login-form.tsx must detect embedded auth surfaces.");
+if (!loginPageSource.includes("loadVerifiedPartnerDomainContext") ||
+    !loginPageSource.includes("verifyPartnerAttributionToken") ||
+    !loginPageSource.includes("branding={partnerContext?.branding}")) {
+  failures.push("Login branding must remain server-bound to the verified partner host.");
 }
-
-if (!supportPageSource.includes("SupportTicketForm")) {
-  failures.push("The exact /support embed surface must render the tenant-scoped support form.");
+if (!loginFormSource.includes("partner_attribution_token") ||
+    !loginFormSource.includes("requestEmbeddedAuthStorageAccess") ||
+    !loginFormSource.includes("document.requestStorageAccess") ||
+    !loginFormSource.includes("window.self !== window.top")) {
+  failures.push("Embedded login must retain signed attribution and Storage Access handling.");
 }
-if (!supportFormSource.includes('fetchWithRetry("/api/feedback"')) {
-  failures.push("The embedded support surface must use the authenticated durable support API.");
+if (!appContextSource.includes("resolveVerifiedPartnerAttribution") ||
+    !appContextSource.includes("applyVerifiedPartnerAttribution") ||
+    !appContextSource.includes("bind_verified_partner_attribution_v1") ||
+    !appContextSource.includes("resolveVerifiedEmbeddedWorkspace") ||
+    !appContextSource.includes("GHL_EMBED_CAPABILITY_COOKIE") ||
+    !appContextSource.includes("embeddedWorkspace?.organization") ||
+    !appContextSource.includes("embeddedWorkspace?.membership") ||
+    !appContextSource.includes('from("organization_memberships")') ||
+    !appContextSource.includes('from("ghl_location_mappings")') ||
+    !appContextSource.includes('from("workspace_ghl_users")')) {
+  failures.push("Workspace bootstrap must use the atomic verified partner-binding receipt.");
+}
+for (const marker of [
+  "decryptGhlSignedUserContext",
+  'from("ghl_location_mappings")',
+  'from("ghl_installations")',
+  'from("ghl_workspace_tenants")',
+  'from("workspace_ghl_users")',
+  'from("organization_memberships")',
+  '.eq("invite_status", "active")',
+  "createGhlEmbedCapability",
+  "isExactVerifiedPartnerRequestOrigin",
+  "dealflowUser.email?.trim().toLowerCase() !== signedContext.email",
+]) {
+  if (!exchangeSource.includes(marker)) failures.push(`Embed exchange is missing: ${marker}`);
+}
+for (const marker of [
+  "GhlEmbedCapabilityRefresher",
+  'headerStore.get("x-dealflow-ghl-embed-parent-origin")',
+]) {
+  if (!appLayoutSource.includes(marker)) failures.push(`App layout is missing: ${marker}`);
+}
+for (const marker of [
+  "REFRESH_INTERVAL_MS",
+  'event.source !== window.parent',
+  "event.origin !== parentOrigin",
+  'window.parent.postMessage(',
+  'parentOrigin,',
+  'window.location.assign("/ghl/embed")',
+  'document.addEventListener("visibilitychange"',
+]) {
+  if (!refresherSource.includes(marker)) failures.push(`Embed refresher is missing: ${marker}`);
+}
+for (const marker of [
+  'event.source !== window.parent',
+  "props.allowedParentOrigins.includes(event.origin)",
+  'event.data.message !== "REQUEST_USER_DATA_RESPONSE"',
+  'window.parent.postMessage({ message: "REQUEST_USER_DATA" }, "*")',
+  'fetch("/api/integrations/ghl/embed-context"',
+  "Enable embedded access",
+  "document.requestStorageAccess",
+  "cookieProbe",
+  'target="_blank"',
+]) {
+  if (!bootstrapSource.includes(marker)) failures.push(`Embed bootstrap is missing: ${marker}`);
+}
+if (!supportPageSource.includes("SupportTicketForm") ||
+    !supportFormSource.includes('fetchWithRetry("/api/feedback",')) {
+  failures.push("Embedded support must keep the authenticated durable support path.");
 }
 const publicPathBlock = proxySource.match(/const PUBLIC_PATHS = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
 if (publicPathBlock.includes('"/support"')) {
-  failures.push("The embedded support surface must remain authenticated, not public.");
+  failures.push("Support must remain authenticated, not public.");
 }
 
-const { helpers, runtimeProcess } = loadProxySecurityHelpers();
-assert.equal(helpers.normalizeExactFrameAncestor("https://partner.example"), "https://partner.example");
-assert.equal(helpers.normalizeExactFrameAncestor("https://partner.example:8443"), "https://partner.example:8443");
-for (const rejectedAncestor of [
-  "http://partner.example",
-  "https://app.gohighlevel.com",
-  "https://app.leadconnectorhq.com",
-  "https://*.gohighlevel.com",
-  "https://partner.example/path",
-  "https://user@partner.example",
-]) {
-  assert.equal(
-    helpers.normalizeExactFrameAncestor(rejectedAncestor),
-    null,
-    `${rejectedAncestor} must not be accepted as an exact partner frame ancestor`,
-  );
+runtimeProcess.env = {
+  GHL_IFRAME_EMBED_ENABLED: "true",
+  GHL_APP_SHARED_SECRET: "sentinel-secure-ghl-app-shared-secret-2026-alpha",
+  GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS: "true",
+  GHL_IFRAME_PARTNER_PARENT_ORIGINS_JSON: JSON.stringify({
+    "partner.example": "https://crm.partner.example",
+    "second-partner.example": "https://crm.second-partner.example",
+  }),
+};
+const capabilityHelpers = loadCapabilityHelpers();
+const proxyHelpers = loadProxySecurityHelpers(capabilityHelpers);
+const requestOriginHelpers = loadRequestOriginHelper();
+
+for (const source of [capabilitySource, fs.readFileSync("src/lib/supabase/cookie-options.ts", "utf8")]) {
+  assert.match(source, /partitioned:/, "embedded capability and auth cookies must use a secure partitioned strategy");
 }
+
+assert.deepEqual(
+  capabilityHelpers.getAllowedGhlParentOrigins("partner.example"),
+  [
+    "https://app.gohighlevel.com",
+    "https://app.leadconnectorhq.com",
+    "https://crm.partner.example",
+  ],
+);
+assert.ok(
+  !capabilityHelpers.getAllowedGhlParentOrigins("partner.example")
+    .includes("https://crm.second-partner.example"),
+  "one partner's exact desktop origin must never frame another partner host",
+);
+assert.equal(
+  capabilityHelpers.resolveAllowedGhlParentOrigin({
+    candidate: "https://evil.example",
+    partnerHost: "partner.example",
+  }),
+  null,
+);
+
+const now = 1_800_000_000;
+const baseCapability = {
+  partnerId: "10000000-0000-4000-8000-000000000026",
+  domain: "partner.example",
+  organizationId: "20000000-0000-4000-8000-000000000026",
+  locationId: "location_partner_026",
+  companyId: "company_partner_026",
+  ghlUserId: "ghl_user_partner_026",
+  ghlEmail: "realtor@partner.example",
+  parentOrigin: "https://app.gohighlevel.com",
+};
+const preauthToken = await capabilityHelpers.createGhlEmbedCapability({
+  ...baseCapability,
+  stage: "preauth",
+  dealflowUserId: null,
+}, now);
+const authUserId = "30000000-0000-4000-8000-000000000026";
+const authToken = await capabilityHelpers.createGhlEmbedCapability({
+  ...baseCapability,
+  stage: "authenticated",
+  dealflowUserId: authUserId,
+}, now);
+assert.ok(preauthToken && authToken);
+const sessionToken = await capabilityHelpers.createGhlEmbedSessionMarker({
+  domain: baseCapability.domain,
+  partnerId: baseCapability.partnerId,
+  parentOrigin: baseCapability.parentOrigin,
+  dealflowUserId: authUserId,
+}, now);
+assert.ok(sessionToken);
+const preauthCapability = await capabilityHelpers.verifyGhlEmbedCapability(preauthToken, {
+  expectedHost: "partner.example",
+  requiredStage: "preauth",
+  nowSeconds: now + 10,
+});
+const authCapability = await capabilityHelpers.verifyGhlEmbedCapability(authToken, {
+  expectedHost: "partner.example",
+  expectedDealflowUserId: authUserId,
+  requiredStage: "authenticated",
+  nowSeconds: now + 10,
+});
+assert.ok(preauthCapability && authCapability);
+assert.ok(await capabilityHelpers.verifyGhlEmbedSessionMarker(sessionToken, {
+  expectedHost: "partner.example",
+  nowSeconds: now + 301,
+}), "the inert renewal marker must survive capability expiry");
+assert.equal(
+  await capabilityHelpers.verifyGhlEmbedSessionMarker(sessionToken, {
+    expectedHost: "partner.example",
+    nowSeconds: now + (12 * 60 * 60) + 1,
+  }),
+  null,
+  "the renewal marker must expire",
+);
+assert.equal(
+  await capabilityHelpers.verifyGhlEmbedCapability(`${authToken.slice(0, -1)}x`, {
+    expectedHost: "partner.example",
+    nowSeconds: now + 10,
+  }),
+  null,
+  "tampered capabilities must fail",
+);
+assert.equal(
+  await capabilityHelpers.verifyGhlEmbedCapability(authToken, {
+    expectedHost: "second-partner.example",
+    nowSeconds: now + 10,
+  }),
+  null,
+  "capabilities must be host-bound",
+);
+assert.equal(
+  await capabilityHelpers.verifyGhlEmbedCapability(authToken, {
+    expectedHost: "partner.example",
+    nowSeconds: now + 301,
+  }),
+  null,
+  "expired capabilities must fail",
+);
 
 const request = (hostname, pathname, search = "") => {
   const url = new URL(`https://${hostname}${pathname}${search}`);
   return {
     url: url.toString(),
-    nextUrl: {
-      hostname,
-      pathname,
-      searchParams: url.searchParams,
-    },
+    nextUrl: { hostname, pathname, searchParams: url.searchParams },
   };
 };
-runtimeProcess.env = {
-  GHL_IFRAME_EMBED_ENABLED: "false",
-  GHL_IFRAME_ALLOWED_FRAME_ANCESTORS: "https://partner.example",
-};
-assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/onboarding")), "'none'");
-runtimeProcess.env.GHL_IFRAME_EMBED_ENABLED = "true";
-assert.equal(helpers.getFrameAncestors(request("app.agentdealflow.io", "/onboarding")), "'none'");
-assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/admin/issues")), "'none'");
-runtimeProcess.env.GHL_IFRAME_ALLOWED_FRAME_ANCESTORS = "";
-assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/onboarding")), "'none'");
-runtimeProcess.env.GHL_IFRAME_ALLOWED_FRAME_ANCESTORS =
-  "https://partner.example, https://partner.example https://second-partner.example";
+
 assert.equal(
-  helpers.getFrameAncestors(request("clicktoscale.io", "/onboarding")),
-  "https://partner.example https://second-partner.example",
+  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/ghl/embed")),
+  true,
+  "the inert bootstrap must resolve verified partner context before CSP and header injection",
 );
+assert.equal(
+  requestOriginHelpers.isExactVerifiedPartnerRequestOrigin({
+    requestUrl: "https://partner.example/api/integrations/ghl/embed-context",
+    origin: "https://partner.example",
+    referer: "https://partner.example/ghl/embed",
+    fetchSite: "same-origin",
+    partnerDomain: "partner.example",
+    requireHttps: true,
+  }),
+  true,
+  "an exact verified partner same-origin exchange must pass",
+);
+for (const invalid of [
+  { origin: "https://app.agentdealflow.io" },
+  { origin: "https://evil.example" },
+  { referer: "https://evil.example/embed" },
+  { fetchSite: "cross-site" },
+  { partnerDomain: "second-partner.example" },
+  { requestUrl: "http://partner.example/api/integrations/ghl/embed-context" },
+]) {
+  assert.equal(
+    requestOriginHelpers.isExactVerifiedPartnerRequestOrigin({
+      requestUrl: "https://partner.example/api/integrations/ghl/embed-context",
+      origin: "https://partner.example",
+      referer: "https://partner.example/ghl/embed",
+      fetchSite: "same-origin",
+      partnerDomain: "partner.example",
+      requireHttps: true,
+      ...invalid,
+    }),
+    false,
+    `verified partner origin negative must fail: ${JSON.stringify(invalid)}`,
+  );
+}
+
+assert.equal(
+  proxyHelpers.getFrameAncestors(request("partner.example", "/ghl/embed"), "partner.example", null),
+  "https://app.gohighlevel.com https://app.leadconnectorhq.com https://crm.partner.example",
+  "only the inert bootstrap may be framed before signed context exchange",
+);
+assert.equal(
+  proxyHelpers.getFrameAncestors(request("partner.example", "/dashboard"), "partner.example", null),
+  "'none'",
+  "sensitive surfaces must deny shared-parent framing without a capability",
+);
+assert.equal(
+  proxyHelpers.getFrameAncestors(
+    request("partner.example", "/login", "?embed=ghl&redirectedFrom=%2Fghl%2Fembed"),
+    "partner.example",
+    preauthCapability,
+  ),
+  "https://app.gohighlevel.com",
+  "signed preauth context may frame only the bootstrap login continuation",
+);
+assert.equal(
+  proxyHelpers.getFrameAncestors(
+    request("partner.example", "/login", "?embed=ghl&redirectedFrom=%2Fdashboard"),
+    "partner.example",
+    preauthCapability,
+  ),
+  "'none'",
+  "preauth context must not frame an authenticated app continuation",
+);
+
 for (const embeddedPath of [
   "/onboarding",
   "/campaign-built",
   "/paywall",
   "/build/funnel",
   "/build/creatives",
+  "/builder",
   "/preview",
   "/launch",
   "/launching",
@@ -180,71 +467,66 @@ for (const embeddedPath of [
   "/support",
 ]) {
   assert.equal(
-    helpers.getFrameAncestors(request("clicktoscale.io", embeddedPath)),
-    "https://partner.example https://second-partner.example",
-    `${embeddedPath} must use only the exact configured partner origins`,
-  );
-  assert.equal(
-    helpers.getFrameAncestors(
-      request(
-        "clicktoscale.io",
-        "/login",
-        `?embed=1&redirectedFrom=${encodeURIComponent(embeddedPath)}`,
-      ),
+    proxyHelpers.getFrameAncestors(
+      request("partner.example", embeddedPath),
+      "partner.example",
+      authCapability,
     ),
-    "https://partner.example https://second-partner.example",
-    `${embeddedPath} must retain exact frame policy through authentication`,
+    "https://app.gohighlevel.com",
+    `${embeddedPath} must use only its signed capability parent`,
   );
 }
 assert.equal(
-  helpers.getFrameAncestors(
-    request(
-      "clicktoscale.io",
-      "/login",
-      "?embed=1&redirectedFrom=%2Fonboarding%3FcampaignId%3Dsafe",
-    ),
-  ),
-  "https://partner.example https://second-partner.example",
-  "the exact embedded auth continuation must retain the exact partner frame ancestors",
-);
-for (const unsafeLoginSearch of [
-  "",
-  "?embed=1",
-  "?embed=1&redirectedFrom=%2Fadmin%2Fissues",
-  "?embed=1&redirectedFrom=%2F%2Fevil.example%2Fonboarding",
-]) {
-  assert.equal(
-    helpers.getFrameAncestors(request("clicktoscale.io", "/login", unsafeLoginSearch)),
-    "'none'",
-    `login framing must remain denied for ${unsafeLoginSearch || "a normal login"}`,
-  );
-}
-assert.equal(
-  helpers.getFrameAncestors(
-    request("app.agentdealflow.io", "/login", "?embed=1&redirectedFrom=%2Fonboarding"),
+  proxyHelpers.getFrameAncestors(
+    request("second-partner.example", "/dashboard"),
+    "second-partner.example",
+    authCapability,
   ),
   "'none'",
-  "embedded login framing must remain denied on non-partner hosts",
+  "a capability must not cross partner hosts",
 );
-const embeddedLoginUrl = new URL("https://clicktoscale.io/login?redirectedFrom=%2Fonboarding");
-helpers.addEmbeddedAuthRedirectState(
-  request("clicktoscale.io", "/onboarding"),
+assert.equal(
+  proxyHelpers.getFrameAncestors(
+    request("partner.example", "/admin/issues"),
+    "partner.example",
+    authCapability,
+  ),
+  "'none'",
+  "operator surfaces must never be embedded",
+);
+
+const embeddedLoginUrl = new URL("https://partner.example/login?redirectedFrom=%2Fdashboard");
+proxyHelpers.addEmbeddedAuthRedirectState(
+  request("partner.example", "/dashboard"),
   embeddedLoginUrl,
+  "partner.example",
+  authCapability,
 );
-assert.equal(embeddedLoginUrl.searchParams.get("embed"), "1");
-const normalLoginUrl = new URL("https://clicktoscale.io/login?redirectedFrom=%2Fadmin%2Fissues");
-helpers.addEmbeddedAuthRedirectState(
-  request("clicktoscale.io", "/admin/issues"),
-  normalLoginUrl,
+assert.equal(embeddedLoginUrl.searchParams.get("embed"), "ghl");
+const topLevelLoginUrl = new URL("https://partner.example/login?redirectedFrom=%2Fadmin%2Fissues");
+proxyHelpers.addEmbeddedAuthRedirectState(
+  request("partner.example", "/admin/issues"),
+  topLevelLoginUrl,
+  "partner.example",
+  authCapability,
 );
-assert.equal(normalLoginUrl.searchParams.get("embed"), null);
+assert.equal(topLevelLoginUrl.searchParams.get("embed"), null);
+
+runtimeProcess.env.GHL_IFRAME_EMBED_ENABLED = "false";
+assert.equal(
+  proxyHelpers.getFrameAncestors(
+    request("partner.example", "/dashboard"),
+    "partner.example",
+    authCapability,
+  ),
+  "'none'",
+  "the central kill switch must close every embed surface",
+);
 
 if (failures.length > 0) {
   console.error("GHL iframe embed security regression failed:");
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
-  }
+  for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("GHL iframe embed security regression passed.");
+console.log("GHL iframe capability, tenant binding, CSP, login, and support security regression passed.");

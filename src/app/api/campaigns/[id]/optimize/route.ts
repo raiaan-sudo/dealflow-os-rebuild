@@ -11,6 +11,7 @@ import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getMetaCampaignSyncSnapshotForCampaign } from "@/lib/services/meta-campaign-sync-service";
 import { evaluateOptimizationEvidence } from "@/lib/optimization-engine/safety-policy";
 import { recordOptimizationDecision } from "@/lib/services/optimization-decision-service";
+import { getActiveMetaOptimizationPolicyForCampaign } from "@/lib/services/meta-optimization-policy-service";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -54,7 +55,7 @@ function buildRecommendations(params: {
     });
   }
 
-  if (params.adCount > 1 && params.creativeCount > 0 && params.ctr >= 1 && params.leads > 0) {
+  if (params.adCount === 1 && params.creativeCount > 0 && params.ctr >= 1 && params.leads > 0) {
     recommendations.push({
       rule: "scale_budget",
       message: "scale budget",
@@ -85,7 +86,10 @@ export async function POST(
 ) {
   try {
     assertSameOriginRequest(request);
-    const { id } = await parseRouteParams(context.params, paramsSchema);
+    const [{ id }, actor] = await Promise.all([
+      parseRouteParams(context.params, paramsSchema),
+      getAuthenticatedContext(),
+    ]);
     const record = await getCampaignById(id);
 
     if (!record) {
@@ -93,6 +97,7 @@ export async function POST(
     }
 
     const syncSnapshot = await getMetaCampaignSyncSnapshotForCampaign({
+      campaignId: record.campaign.id,
       campaignName: record.campaign.name,
       metaCampaignId: record.launch.runtime.campaignId ?? null,
     }).catch(() => null);
@@ -139,16 +144,24 @@ export async function POST(
           clicks,
         }
       : null;
+    const activePolicy = await getActiveMetaOptimizationPolicyForCampaign({
+      organizationId: actor.organizationId,
+      userId: actor.userId,
+      campaignId: id,
+    });
     const evidenceDecision = evaluateOptimizationEvidence({
       sourceStatus,
       syncedAt: syncSnapshot?.syncedAt ?? null,
       metrics,
-      approvedPolicy: null,
+      approvedPolicy: activePolicy?.approvedPolicy ?? null,
+      lastProviderMutationAt: activePolicy?.lastProviderMutationAt ?? null,
     });
     const blockedReason =
       evidenceDecision.decisionState === "HOLD_NO_ACTION"
         ? `HOLD_NO_ACTION: ${evidenceDecision.blockers.join(", ")}.`
-        : "Shadow proposal only; provider execution requires a separate explicit authorization.";
+        : activePolicy
+          ? "Shadow decision recorded. The fenced scheduled executor separately applies only an eligible pause or 20% budget increase."
+          : "Shadow proposal only; provider execution requires a separate explicit authorization.";
     const recommendations = evidenceDecision.canGenerateShadowProposal
       ? buildRecommendations({
           ctr,
@@ -173,7 +186,8 @@ export async function POST(
       sourceTimestamp: syncSnapshot?.syncedAt ?? null,
       metrics,
       evidence: evidenceDecision,
-      approvedPolicy: null,
+      approvedPolicy: activePolicy?.approvedPolicy ?? null,
+      lastProviderMutationAt: activePolicy?.lastProviderMutationAt ?? null,
       proposedActions: recommendations.map((recommendation) => recommendation.message),
     });
 

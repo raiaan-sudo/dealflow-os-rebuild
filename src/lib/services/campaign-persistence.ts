@@ -24,6 +24,10 @@ import {
   consumeSessionCostBudget,
   markSessionCostBudgetEvent,
 } from "@/lib/services/session-cost-guard";
+import {
+  beginPaidCreativeDispatch,
+  recordPaidCreativeProviderOutcome,
+} from "@/lib/services/paid-creative-dispatch-service";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
@@ -744,7 +748,12 @@ export async function regenerateStaticCreativeAssetsForUser(
   });
   const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
 
+  const resumesDurableInFlightAttempt =
+    Boolean(options?.providerUsageRunId?.trim()) &&
+    generationState.staticAds?.status === "generating";
+
   if (
+    !resumesDurableInFlightAttempt &&
     shouldReuseStaticGeneration({
       force: options?.force,
       lifecycle: generationState.staticAds,
@@ -789,6 +798,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       provider_usage_context: {
         createForAsset: (asset) => {
           const idempotencyKey = `openai_image_generation:${row.organization_id}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${providerUsageRunId}`;
+          const attemptKey = `provider_usage_attempt:${idempotencyKey}`;
 
           return {
             reserve: () =>
@@ -798,9 +808,47 @@ export async function regenerateStaticCreativeAssetsForUser(
                 organizationId: row.organization_id,
                 campaignId,
                 idempotencyKey,
-                attemptKey: `provider_usage_attempt:${idempotencyKey}`,
+                attemptKey,
               }),
             mark: markSessionCostBudgetEvent,
+            beginDispatch: ({ reservation, requestFingerprint, requestPayload }) => {
+              if (!reservation.eventId) {
+                throw new ApiError(
+                  503,
+                  "Paid image generation requires a durable provider usage event.",
+                  "provider_usage_guard_unavailable",
+                );
+              }
+              return beginPaidCreativeDispatch({
+                supabase: supabase as any,
+                providerUsageEventId: reservation.eventId,
+                organizationId: row.organization_id,
+                userId,
+                campaignId,
+                provider: "openai",
+                operation: "openai_image_generation",
+                attemptKey,
+                requestFingerprint,
+                requestPayload,
+              });
+            },
+            recordDispatchOutcome: ({
+              handle,
+              outcome,
+              providerRequestId,
+              providerOutput,
+              errorCode,
+            }) =>
+              recordPaidCreativeProviderOutcome({
+                supabase: supabase as any,
+                handle,
+                organizationId: row.organization_id,
+                userId,
+                outcome,
+                providerRequestId,
+                providerOutput,
+                errorCode,
+              }),
           };
         },
       },
@@ -809,6 +857,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     await persistStaticCreativeAssets({
       supabase,
       userId,
+      organizationId: row.organization_id,
       campaignId,
       staticAds,
     });

@@ -142,7 +142,7 @@ export default async function PreviewPage({
     },
   };
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
-  const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const selectedAds = previewPlan.creatives.staticAds.filter((ad) => ad.id === selectedAdIds[0]);
   const visibleStaticAds =
     selectedAds.length > 0
       ? selectedAds
@@ -156,7 +156,7 @@ export default async function PreviewPage({
       <PageHeader
         eyebrow="Preview"
         title="Final preview"
-        description="Review the creative test set and funnel promise before launch."
+        description="Review the exact primary creative and funnel promise before launch."
       />
 
       <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
@@ -164,7 +164,7 @@ export default async function PreviewPage({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Creative preview</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-foreground">
-              Selected creative test set
+              Primary launch creative
             </h2>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -196,7 +196,7 @@ export default async function PreviewPage({
           </div>
         ) : (
           <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-6 text-sm text-muted-foreground">
-            No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
+            No primary launch creative is saved yet. Go back to creatives and choose one exact ad first.
           </div>
         )}
         {visibleUgcAds.length > 0 ? (

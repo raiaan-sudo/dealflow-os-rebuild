@@ -4,9 +4,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const formSource = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "utf8");
+const funnelPageSource = fs.readFileSync("src/app/f/[slug]/page.tsx", "utf8");
 const thankYouPageSource = fs.readFileSync("src/app/f/[slug]/thank-you/page.tsx", "utf8");
 const trackerSource = fs.readFileSync("src/app/f/[slug]/thank-you/thank-you-conversion-tracker.tsx", "utf8");
 const thankYouModelSource = fs.readFileSync("src/lib/public-funnel-thank-you.ts", "utf8");
+const languageSource = fs.readFileSync("src/lib/public-funnel-language.ts", "utf8");
+const documentLanguageSource = fs.readFileSync("src/app/f/[slug]/public-funnel-document-language.tsx", "utf8");
+const pixelConsentSource = fs.readFileSync("src/components/privacy/meta-pixel-consent-control.tsx", "utf8");
 const leadRouteSource = fs.readFileSync("src/app/api/lead-capture/route.ts", "utf8");
 const leadHandlerSource = fs.readFileSync("src/lib/services/lead-handler-service.ts", "utf8");
 
@@ -33,16 +37,44 @@ assertOrdered(
   "legacy thank-you redirect must run before campaign lookup",
 );
 
-assert.match(thankYouPageSource, /Your request was received|view\.headline/, "thank-you route must confirm receipt");
-assert.match(thankYouPageSource, /Keep an eye on your phone and email/, "thank-you route must set follow-up expectations");
-assert.match(thankYouPageSource, /Consent is not a condition of purchase/, "thank-you route must keep compliance-safe copy");
+assert.match(thankYouPageSource, /view\.headline/, "thank-you route must confirm receipt with localized copy");
+assert.match(thankYouPageSource, /view\.watchForUsBody/, "thank-you route must set localized follow-up expectations");
+assert.match(thankYouPageSource, /view\.privacyBody/, "thank-you route must keep localized compliance-safe copy");
 assert.match(thankYouPageSource, /view\.primaryLink/, "thank-you route must render booking CTA only when configured");
 assert.match(thankYouPageSource, /view\.secondaryLink/, "thank-you route must render return fallback");
+assert.match(thankYouPageSource, /lang=\{view\.language\}/, "thank-you content must declare its stored language");
+assert.match(thankYouPageSource, /PublicFunnelDocumentLanguage language=\{view\.language\}/, "thank-you route must synchronize the document language");
+assert.match(thankYouPageSource, /language=\{view\.language\}/, "thank-you privacy controls must use the same language");
+assert.match(thankYouPageSource, /export async function generateMetadata/, "thank-you route must generate localized metadata");
+assert.match(thankYouPageSource, /"content-language": view\.language/, "thank-you metadata must carry the normalized language");
+assert.match(thankYouPageSource, /robots: \{ index: false, follow: true \}/, "thank-you confirmation pages must not be indexed");
 
 assert.match(thankYouModelSource, /booking_url|bookingUrl|calendar_url|calendarUrl|calendly/, "thank-you model must support configurable booking links");
 assert.match(thankYouModelSource, /url\.protocol === "https:" \|\| url\.protocol === "http:"/, "thank-you model must allow only public http(s) links");
 assert.match(thankYouModelSource, /primaryLink: bookingUrl \?/, "booking CTA must appear only when configured");
 assert.match(thankYouModelSource, /secondaryLink:/, "return fallback must always exist");
+assert.match(thankYouModelSource, /getPublicFunnelLanguage\(record\)/, "thank-you model must derive language from the persisted funnel");
+assert.match(thankYouModelSource, /getPublicFunnelThankYouExpectation/, "thank-you expectations must be localized");
+assert.match(thankYouModelSource, /getPublicFunnelThankYouHeadline/, "thank-you headline must use the canonical localized funnel copy");
+
+assert.match(funnelPageSource, /getPublicFunnelLanguage\(record\)/, "public funnel must normalize the persisted language");
+assert.match(funnelPageSource, /lang=\{language\}/, "public funnel content must declare its stored language");
+assert.match(funnelPageSource, /PublicFunnelDocumentLanguage language=\{language\}/, "public funnel must synchronize the document language");
+assert.match(funnelPageSource, /language=\{language\}/, "public funnel must pass language to its form and privacy control");
+assert.match(funnelPageSource, /cta=\{record\.funnel\.cta \|\| copy\.defaultCta\}/, "empty CTA must use a localized safe fallback");
+assert.match(funnelPageSource, /export async function generateMetadata/, "public funnel must generate localized metadata");
+assert.match(funnelPageSource, /"content-language": language/, "public funnel metadata must carry the normalized language");
+assert.match(funnelPageSource, /getPublicFunnelOpenGraphLocale\(language\)/, "public funnel Open Graph metadata must use the matching locale");
+
+assert.match(languageSource, /normalizeWinningFunnelLanguage\(value\)/, "unsupported public languages must fall back through the canonical EN\/FR\/ES normalizer");
+assert.match(languageSource, /fr_CA/, "French metadata must declare a French locale");
+assert.match(languageSource, /es_ES/, "Spanish metadata must declare a Spanish locale");
+assert.match(languageSource, /privacyBody/, "localized thank-you copy must include privacy\/consent language");
+assert.match(documentLanguageSource, /document\.documentElement\.lang = normalizedLanguage/, "hydrated public journeys must synchronize the root document language");
+assert.match(documentLanguageSource, /document\.documentElement\.lang = previousLanguage/, "document language must restore after leaving the public funnel");
+assert.match(pixelConsentSource, /normalizePublicFunnelLanguage\(language\)/, "pixel consent must share the safe language fallback");
+assert.match(pixelConsentSource, /Choix de suivi marketing/, "pixel consent must include French copy");
+assert.match(pixelConsentSource, /Opciones de seguimiento de marketing/, "pixel consent must include Spanish copy");
 
 assert.match(formSource, /submitInFlightRef/, "lead form must synchronously block duplicate submits");
 assert.match(
@@ -85,10 +117,15 @@ assert.match(formSource, /sms_consent: Boolean\(showPhone && normalizedPhone && 
 assert.match(formSource, /turnstile_token: turnstileToken \|\| undefined/, "lead form must submit the verified Turnstile token");
 assert.match(formSource, /data-action="lead_capture"/, "lead form Turnstile action must match the server contract");
 assert.match(formSource, /data-sitekey=\{TURNSTILE_SITE_KEY\}/, "lead form must use the configured public Turnstile site key");
+assert.match(formSource, /normalizePublicFunnelLanguage\(language\)/, "lead form must safely normalize unsupported language values");
+assert.match(formSource, /copy\.validationQuestions/, "qualification validation must use localized copy");
+assert.match(formSource, /aria-label=\{copy\.humanVerification\}/, "human verification must have a localized accessible name");
+assert.match(formSource, /lang=\{normalizedLanguage\}/, "lead form must explicitly declare its language");
 assert.match(leadRouteSource, /parseLandingPageAttribution/, "lead capture route must backfill attribution from the landing URL");
 assert.match(leadRouteSource, /url\.searchParams\.get\("utm_content"\)/, "lead capture route must treat Meta utm_content as ad id attribution");
 assert.match(leadRouteSource, /utm_source: utmSource \?\? undefined/, "lead capture route must persist normalized UTM source");
-assert.match(leadRouteSource, /eventSourceUrl: landingPageUrl/, "Meta CAPI event source URL must use the resolved landing page URL");
+assert.match(leadRouteSource, /landing_page_url: landingPageUrl/, "lead capture route must pass the resolved landing page URL into atomic persistence");
+assert.match(leadHandlerSource, /eventSourceUrl: input\.landing_page_url\?\.trim\(\) \|\| null/, "atomic side-effect payload must use the persisted landing page URL for Meta CAPI");
 assert.match(leadHandlerSource, /utm_source|utm_medium|utm_campaign|ad_id|landing_page_url/, "lead handler must support attribution fields");
 
 assert.match(trackerSource, /CompleteRegistration/, "thank-you route should prepare a conversion event");

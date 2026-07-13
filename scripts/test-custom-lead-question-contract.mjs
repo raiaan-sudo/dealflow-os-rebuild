@@ -87,6 +87,16 @@ assert.match(metaLaunchSource, /provisionCompletedMetaInstantFormRoute/);
 
 const onboardingSource = await readFile("src/app/(app)/onboarding/page.tsx", "utf8");
 assert.match(onboardingSource, /Fast website form/);
-assert.doesNotMatch(onboardingSource, /keep friction low with Meta instant forms/i);
+assert.match(onboardingSource, /Meta Instant Form questions/);
+assert.match(onboardingSource, /effectiveMetaQuestions/);
+assert.doesNotMatch(onboardingSource, /unimplemented provider form/i);
+
+const previewSource = await readFile(
+  "src/components/onboarding/prepaywall-campaign-preview.tsx",
+  "utf8",
+);
+assert.match(previewSource, /Meta Instant Form setup/);
+assert.match(previewSource, /resolveMetaInstantFormQualificationQuestions/);
+assert.doesNotMatch(previewSource, /Operator-assisted Meta note|reviewed by operator/i);
 
 console.log("custom lead question contract: PASS");

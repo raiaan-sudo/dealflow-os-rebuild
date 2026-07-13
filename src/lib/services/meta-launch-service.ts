@@ -12,6 +12,10 @@ import type {
   BuiltMetaAdSetPayload,
   BuiltMetaCampaignPayload,
 } from "@/lib/types/campaign-execution";
+import {
+  assertCustomerApprovedMetaBudgetCents,
+  assertCustomerApprovedMetaLifetimeBudgetCents,
+} from "@/lib/integrations/meta/budget-safety";
 
 function getSelectedPageId(connection: MetaConnectionRecord) {
   const metadata = connection.connection_metadata;
@@ -284,19 +288,28 @@ function forcePausedPayload<T extends Record<string, unknown>>(payload: T): T & 
 }
 
 function assertBudgetSafety(payload: BuiltMetaAdSetPayload) {
-  const configuredCap = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
-  const capCents = Number.isFinite(configuredCap) && configuredCap > 0
-    ? Math.min(configuredCap, 100)
-    : 100;
-  const dailyBudget = Number(payload.daily_budget ?? 0);
-  const lifetimeBudget = Number(payload.lifetime_budget ?? 0);
+  const hasDailyBudget = payload.daily_budget !== null && payload.daily_budget !== undefined;
+  const hasLifetimeBudget =
+    payload.lifetime_budget !== null && payload.lifetime_budget !== undefined;
 
-  if (dailyBudget > capCents || lifetimeBudget > capCents) {
+  if (hasDailyBudget === hasLifetimeBudget) {
     throw new ApiError(
       400,
-      `Meta launch budget exceeds the ${capCents} cent safety cap.`,
-      "meta_budget_cap_exceeded",
+      "A Meta ad set must provide exactly one of daily_budget or lifetime_budget.",
+      "meta_budget_invalid",
     );
+  }
+
+  if (hasDailyBudget) {
+    if (typeof payload.daily_budget !== "number") {
+      throw new ApiError(400, "Meta daily budget must be numeric.", "meta_budget_invalid");
+    }
+    assertCustomerApprovedMetaBudgetCents(payload.daily_budget);
+  } else {
+    if (typeof payload.lifetime_budget !== "number") {
+      throw new ApiError(400, "Meta lifetime budget must be numeric.", "meta_budget_invalid");
+    }
+    assertCustomerApprovedMetaLifetimeBudgetCents(payload.lifetime_budget);
   }
 }
 

@@ -18,6 +18,8 @@ const RECONCILIATION_DIR = join(ROOT, "supabase", "reconciliation");
 const NODE = process.execPath;
 const MIGRATION_PATTERN = /^\d{14}_.+\.sql$/;
 const GATE_FILE = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
+const FROZEN_FOUNDATION_LAST_FILE =
+  "20260710235994_create_execution_and_creative_app_contracts.sql";
 const MAY2_SQL = join(RECONCILIATION_DIR, "may2-project-bound-schema.sql");
 const FINAL_GOLDEN_PATH = join(RECONCILIATION_DIR, "final-local-catalog-and-acl-golden.v1.json");
 const FINAL_GOLDEN_ROWSET_PATH = join(RECONCILIATION_DIR, "final-local-catalog-and-acl-rowset.v1.json");
@@ -67,7 +69,24 @@ const config = Object.freeze({
   user: process.env.DEALFLOW_NATIVE_PGUSER,
 });
 
-const migrationFiles = readdirSync(MIGRATIONS_DIR).filter((file) => MIGRATION_PATTERN.test(file)).sort();
+const allMigrationFiles = readdirSync(MIGRATIONS_DIR)
+  .filter((file) => MIGRATION_PATTERN.test(file))
+  .sort();
+const frozenFoundationLastIndex = allMigrationFiles.indexOf(
+  FROZEN_FOUNDATION_LAST_FILE,
+);
+if (frozenFoundationLastIndex === -1) {
+  throw new Error(
+    `Frozen foundation boundary is missing: ${FROZEN_FOUNDATION_LAST_FILE}`,
+  );
+}
+// The 14-gate catalog oracle is intentionally frozen to the independently
+// reviewed 80-migration foundation. Later product migrations receive focused
+// and complete-chain proofs; they must not silently redefine this authority.
+const migrationFiles = allMigrationFiles.slice(0, frozenFoundationLastIndex + 1);
+const extensionMigrationFiles = allMigrationFiles.slice(
+  frozenFoundationLastIndex + 1,
+);
 const finalGolden = JSON.parse(readFileSync(FINAL_GOLDEN_PATH, "utf8"));
 const finalGoldenRowsetText = existsSync(FINAL_GOLDEN_ROWSET_PATH)
   ? readFileSync(FINAL_GOLDEN_ROWSET_PATH, "utf8")
@@ -587,6 +606,17 @@ try {
     );
   }
   prepareRemoteEquivalentOwner(adapter);
+  assert.ok(
+    extensionMigrationFiles.every(
+      (file) => file.localeCompare(FROZEN_FOUNDATION_LAST_FILE) > 0,
+    ),
+    "All product extensions must remain after the frozen foundation boundary",
+  );
+  assert.equal(
+    new Set(allMigrationFiles.map((file) => file.slice(0, 14))).size,
+    allMigrationFiles.length,
+    "Migration versions must remain globally unique",
+  );
   assert.equal(migrationFiles.length, EXPECTED_MIGRATION_COUNT);
   assert.ok(firstReconstructionIndex > 0, "first reconstructed migration is missing");
   assert.equal(finalGolden.schemaVersion, "dealflow.final-local-catalog-and-acl-golden.v1");

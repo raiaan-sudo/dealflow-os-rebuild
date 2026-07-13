@@ -5,6 +5,7 @@ export const ONBOARDING_DRAFT_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 export const campaignModeSchema = z.enum(["buyer", "seller", "investor", "commercial"]);
 export const funnelLanguageSchema = z.enum(["en", "fr", "es"]);
+export const campaignAdDestinationSchema = z.enum(["website", "meta_instant_form"]);
 export const leadCaptureModeSchema = z.enum([
   "quality_funnel",
   "volume_lead_form",
@@ -42,6 +43,7 @@ export const onboardingDraftSchema = z
     dailyBudget: z.string().trim().max(20),
     offer: z.string().trim().max(500),
     funnelLanguage: funnelLanguageSchema,
+    adDestination: campaignAdDestinationSchema.default("website"),
     leadCaptureMode: leadCaptureModeSchema,
     leadFormQuestions: z.array(requiredText("Lead-form question", 240)).max(3),
     leadFormQuestionDraft: z.string().max(240),
@@ -156,6 +158,7 @@ export const activationJourneyEventSchema = z.discriminatedUnion("eventName", [
 
 export type CampaignMode = z.infer<typeof campaignModeSchema>;
 export type FunnelLanguage = z.infer<typeof funnelLanguageSchema>;
+export type CampaignAdDestination = z.infer<typeof campaignAdDestinationSchema>;
 export type LeadCaptureMode = z.infer<typeof leadCaptureModeSchema>;
 export type OnboardingStepKey = z.infer<typeof onboardingStepKeySchema>;
 export type OnboardingDraft = z.infer<typeof onboardingDraftSchema>;

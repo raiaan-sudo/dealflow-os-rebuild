@@ -120,6 +120,7 @@ function runOfflineChecks() {
   const creativeEngine = "src/lib/services/creative-engine.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
+  const campaignExecutionService = "src/lib/services/campaign-execution-service.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
   const apiRouteHelpers = "src/lib/api/route.ts";
   const rateLimitHelpers = "src/lib/api/rate-limit.ts";
@@ -258,7 +259,7 @@ function runOfflineChecks() {
   assertIncludes(apiRouteHelpers, "if (!candidate)", "Same-origin missing-header rejection", "same-origin guard rejects unsafe requests that omit Origin and Referer");
   assertIncludes(middleware, "script-src-attr 'none'", "CSP inline attribute hardening", "production CSP blocks inline event-handler attributes");
   assertIncludes(middleware, "upgrade-insecure-requests", "CSP production upgrade directive", "production CSP upgrades insecure subresource requests");
-  assertIncludes(middleware, "isProduction ? [] : [\"'unsafe-eval'\"]", "CSP production unsafe-eval removal", "unsafe-eval is only permitted outside production");
+  assertIncludes(middleware, "isProductionBuild ? [] : [\"'unsafe-eval'\"]", "CSP production unsafe-eval removal", "unsafe-eval is only permitted outside production");
   assertIncludes(onboardingRoute, "assertSameOriginRequest", "Onboarding same-origin guard", "onboarding POST rejects cross-site requests");
   assertIncludes("src/app/api/campaigns/[id]/select-ad/route.ts", "assertSameOriginRequest", "Selected creative same-origin guard", "selected creative writes reject cross-site requests");
   assertIncludes("src/app/api/campaigns/[id]/select-ad/route.ts", "organization_id", "Selected creative ownership guard", "selected creative writes verify campaign ownership");
@@ -288,10 +289,11 @@ function runOfflineChecks() {
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");
   assertIncludes(imageProvider, "ALLOW_OPENAI_IMAGE_GENERATION !== \"true\"", "OpenAI image generation kill switch", "paid image provider returns unsupported unless explicitly enabled");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
-  assertIncludes(launchRoute, "Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS)", "Reachable Meta budget hard cap", "direct Meta launch route cannot raise budget above the owner-approved $2/day cap through env");
+  assertIncludes(campaignExecutionService, "customerApprovedMetaBudgetCentsFromDollars", "Exact customer-approved Meta budget", "campaign execution converts and preserves the customer-approved budget instead of silently truncating it");
   assertIncludes(sessionCostGuard, "reserve_provider_usage_attempt_v2", "Atomic provider usage reservation", "paid-generation guard atomically reserves provider budget and workspace credits through a fenced DB attempt");
   assertIncludes(sessionCostGuard, "OPENAI_IMAGE_DAILY_LIMIT", "Configurable image cap", "OpenAI image generation can be capped below the default for production tests");
-  assertIncludes(sessionCostGuard, "provider_usage_idempotency_consumed", "Paid generation duplicate-spend guard", "consumed provider usage reservations fail closed instead of calling the provider again");
+  assertIncludes(sessionCostGuard, 'blockReason === "attempt_consumed"', "Paid generation duplicate-spend guard", "consumed logical attempts are routed into durable output recovery instead of authorizing another provider call");
+  assertIncludes("src/lib/services/paid-creative-dispatch-service.ts", 'handle.decision === "recover"', "Paid generation output recovery", "accepted or projected provider output is recovered durably without a second provider POST");
   assertIncludes(sessionCostGuard, "p_credit_amount: creditAmount", "Provider usage credit coupling", "provider reservations debit exact workspace credits in the same database transaction before paid calls execute");
   assertIncludes(sessionCostGuard, "settle_provider_usage_attempt_v2", "Fenced provider settlement", "only the owning attempt can consume or explicitly compensate a paid provider reservation");
   assertIncludes(legacyAiProviders, "providerUsage.mark", "Provider usage ledger transitions", "paid-generation reservations are fenced as consumed, explicitly rejected/released, or operator-action-required after the provider call");

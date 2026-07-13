@@ -10,6 +10,8 @@ const maxP95Ms = Number.parseInt(
   10,
 );
 const maxWriteRequests = Number.parseInt(process.env.LOAD_MAX_WRITE_REQUESTS ?? "50", 10);
+const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
+  "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
 
 function fail(message) {
   console.error(message);
@@ -51,6 +53,41 @@ if (
 }
 
 const baseUrl = parsedBaseUrl.origin;
+
+async function assertZeroExternalEffects() {
+  if (process.env.LOAD_ZERO_EXTERNAL_EFFECTS_ATTESTATION !== ZERO_EXTERNAL_EFFECTS_ATTESTATION) {
+    fail("The exact zero-external-effects load attestation is required.");
+  }
+
+  const internalSecret = process.env.LOAD_TEST_INTERNAL_SECRET?.trim() ?? "";
+  if (internalSecret.length < 32) {
+    fail("LOAD_TEST_INTERNAL_SECRET must be configured with at least 32 characters.");
+  }
+
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/api/internal/zero-external-effects`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${internalSecret}`,
+        Accept: "application/json",
+      },
+    });
+  } catch {
+    fail("The server-side zero-external-effects proof endpoint was unreachable.");
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (
+    response.status !== 200 ||
+    payload?.ok !== true ||
+    payload?.attestation !== ZERO_EXTERNAL_EFFECTS_ATTESTATION ||
+    !Array.isArray(payload?.failedControls) ||
+    payload.failedControls.length !== 0
+  ) {
+    fail("The server did not prove the centralized zero-external-effects contract.");
+  }
+}
 
 async function timedRequest(path, init, expectations = {}) {
   const started = performance.now();
@@ -141,6 +178,7 @@ function printSummary(results) {
 }
 
 async function runRoutesScenario() {
+  await assertZeroExternalEffects();
   const slug = process.env.LOAD_TEST_FUNNEL_SLUG;
   const paths = ["/privacy", "/terms"];
 
@@ -176,6 +214,8 @@ async function runLeadCaptureScenario() {
   if (isolatedProjectRef.length < 4) {
     fail("LOAD_TEST_ISOLATED_SUPABASE_PROJECT_REF is required for server-side database isolation attestation.");
   }
+
+  await assertZeroExternalEffects();
 
   const items = Array.from({ length: requests }, (_, idx) => idx);
   const results = await runPool(items, (idx) =>

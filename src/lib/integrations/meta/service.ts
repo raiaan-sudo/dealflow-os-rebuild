@@ -27,6 +27,7 @@ export type MetaWorkspaceCredentials = {
   workspaceId: string;
   connectionId: string;
   adAccountId: string;
+  currency: string;
   pageId: string;
   pixelId: string;
   accessToken: string;
@@ -43,6 +44,20 @@ export type MetaLaunchPreflightState = {
   errors: string[];
   ready: boolean;
 };
+
+function isSupportedMetaBudgetCurrency(value: string | null | undefined) {
+  return value === "USD" || value === "CAD";
+}
+
+function assertSupportedMetaBudgetCurrency(value: string | null | undefined) {
+  if (!isSupportedMetaBudgetCurrency(value)) {
+    throw new ApiError(
+      400,
+      "DealFlow currently supports Meta launch budgets only for USD or CAD ad accounts. Select a supported account before launch.",
+      "meta_ad_account_currency_unsupported",
+    );
+  }
+}
 
 function formatMetaSelectionInvalidMessage(detail?: string | null) {
   const normalizedDetail = detail?.trim();
@@ -405,8 +420,16 @@ function getAvailableAccounts(metadata: MetaConnectionRecord["connection_metadat
         "name" in account && typeof account.name === "string" && account.name.trim()
           ? account.name
           : null;
+      const currency =
+        "currency" in account && typeof account.currency === "string" && /^[A-Za-z]{3}$/.test(account.currency.trim())
+          ? account.currency.trim().toUpperCase()
+          : null;
+      const timezoneName =
+        "timezone_name" in account && typeof account.timezone_name === "string" && account.timezone_name.trim()
+          ? account.timezone_name.trim()
+          : null;
 
-      if (!id || !externalAccountId || !name) {
+      if (!id || !externalAccountId || !name || !currency) {
         return null;
       }
 
@@ -414,6 +437,8 @@ function getAvailableAccounts(metadata: MetaConnectionRecord["connection_metadat
         id,
         externalAccountId,
         name,
+        currency,
+        timezoneName,
       } satisfies MetaAvailableAdAccount;
     })
     .filter(Boolean) as MetaAvailableAdAccount[];
@@ -631,6 +656,14 @@ function resolveMetaWorkspaceCredentials(
       "meta_ad_account_invalid",
     );
   }
+  if (!selectedAccount.currency || !/^[A-Z]{3}$/.test(selectedAccount.currency)) {
+    throw new ApiError(
+      400,
+      "This workspace is missing the selected Meta ad account currency. Reconnect Meta before launch.",
+      "meta_ad_account_currency_missing",
+    );
+  }
+  assertSupportedMetaBudgetCurrency(selectedAccount.currency);
 
   const pageId = readMetadataString(metadata, "selected_page_id");
   if (!pageId) {
@@ -680,6 +713,7 @@ function resolveMetaWorkspaceCredentials(
     workspaceId: organizationId,
     connectionId: row.id,
     adAccountId: selectedAccount.externalAccountId,
+    currency: selectedAccount.currency,
     pageId,
     pixelId,
     accessToken: decryptSecret(row.access_token_encrypted, env.encryptionKey),
@@ -956,6 +990,7 @@ export async function selectMetaAdAccount(externalAccountId: string) {
       message: "That Meta ad account is not available for this connection.",
     });
   }
+  assertSupportedMetaBudgetCurrency(nextAccount.currency);
 
   const metadata =
     normalizeMetaConnectionMetadata(existing.connection_metadata ?? null);
@@ -1052,6 +1087,7 @@ export async function updateMetaLaunchSelections(input: {
       message: "Select a valid Meta ad account.",
     });
   }
+  assertSupportedMetaBudgetCurrency(nextAccount.currency);
 
   const nextPage =
     nextPageId ? availablePages.find((page) => page.id === nextPageId) ?? null : null;

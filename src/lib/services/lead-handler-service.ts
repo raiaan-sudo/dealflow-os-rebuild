@@ -14,14 +14,20 @@ import {
 } from "@/lib/services/booking-service";
 import {
   createSystemJob,
-  queueLeadSideEffectsJob,
 } from "@/lib/services/system-job-service";
+import {
+  resolveLeadEffectPolicy,
+  type MetaCapiConsentEvidence,
+} from "@/lib/services/lead-effect-aggregation-service";
 import { getAppContext } from "@/lib/services/app-context";
 import { normalizePhone, sendSMS } from "@/lib/services/sms-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import type { Database, Json } from "@/lib/supabase/types";
-import { assertLeadRetryParentScope } from "@/lib/leads/retry-scope";
+import {
+  assertLeadRetryParentScope,
+  type LeadRetryScope,
+} from "@/lib/leads/retry-scope";
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
@@ -121,6 +127,24 @@ type LeadInsertContext = {
   organizationId: string;
   userId: string;
   campaignId: string | null;
+};
+
+type PublicLeadSideEffectContext = {
+  requestId: string;
+  clientIp: string | null;
+  clientUserAgent: string | null;
+  fbp: string | null;
+  fbc: string | null;
+  advertisingConsent?: MetaCapiConsentEvidence | null;
+};
+
+type AtomicPublicLeadCaptureRow = {
+  lead_record?: unknown;
+  side_effect_job_id?: unknown;
+  lead_created?: unknown;
+  side_effect_job_created?: unknown;
+  lead_receipt?: unknown;
+  side_effect_job_receipt?: unknown;
 };
 
 type LeadBookingMetadata = {
@@ -1701,6 +1725,207 @@ export async function createPublicLeadAndStartConversation(input: CreateLeadInpu
   });
 }
 
+export async function createPublicLeadAndQueueSideEffectsAtomically(
+  input: CreateLeadInput,
+  sideEffects: PublicLeadSideEffectContext,
+  expectedScope?: LeadRetryScope,
+) {
+  const resolvedContext = await resolvePublicLeadInsertContext(input);
+  const context = expectedScope
+    ? assertLeadRetryParentScope({
+        expected: expectedScope,
+        resolved: resolvedContext,
+      })
+    : resolvedContext;
+  const supabase = await createPublicLeadInsertClient(context.userId);
+  const campaignId = context.campaignId?.trim() ?? "";
+  const requestId = sideEffects.requestId.trim();
+  const { firstName, lastName } = splitLeadName(input.name);
+  const phoneRaw = input.phone?.trim() || null;
+  const email = input.email?.trim() || null;
+  const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+  const smsConsent = input.sms_consent === true;
+  const dedupeHash = buildLeadDedupeHash({
+    organizationId: context.organizationId,
+    campaignId,
+    email,
+    phone,
+  });
+
+  if (!campaignId) {
+    throw new ApiError(
+      409,
+      "Public lead capture did not resolve to a canonical campaign.",
+      "lead_campaign_scope_missing",
+    );
+  }
+  if (!requestId) {
+    throw new ApiError(500, "Lead capture request identity is missing.", "lead_request_id_missing");
+  }
+  if (!phone && !email) {
+    throw new ApiError(400, "An email or phone number is required.", "validation_error");
+  }
+  if (phone && !smsConsent) {
+    throw new ApiError(
+      400,
+      "Explicit SMS consent is required when a phone number is submitted.",
+      "sms_consent_required",
+    );
+  }
+  if (!dedupeHash) {
+    throw new ApiError(
+      500,
+      "Lead capture could not derive a durable deduplication identity.",
+      "lead_dedupe_identity_missing",
+    );
+  }
+
+  const effectPolicy = resolveLeadEffectPolicy(
+    process.env,
+    sideEffects.advertisingConsent,
+  );
+  const metaConversionEnabled = effectPolicy.enabledEffects.includes("meta_conversion");
+  const createdAt = new Date().toISOString();
+  const leadMetadata = {
+    ...(input.metadata ?? {}),
+    ...(input.custom_answers && Object.keys(input.custom_answers).length > 0
+      ? {
+          custom_lead_answers: Object.entries(input.custom_answers).map(
+            ([question, answer]) => ({ question, answer }),
+          ),
+        }
+      : {}),
+  } as Json;
+  const jobPayload = {
+    enabledEffects: effectPolicy.enabledEffects,
+    requiredEffects: effectPolicy.requiredEffects,
+    ...(sideEffects.advertisingConsent
+      ? { advertisingConsent: sideEffects.advertisingConsent }
+      : {}),
+    ...(metaConversionEnabled
+      ? {
+          metaConversion: {
+            eventSourceUrl: input.landing_page_url?.trim() || null,
+            clientIp: sideEffects.clientIp,
+            clientUserAgent: sideEffects.clientUserAgent,
+            fbp: sideEffects.fbp,
+            fbc: sideEffects.fbc,
+          },
+        }
+      : {}),
+  } as Json;
+  const { data, error } = await (supabase as any).rpc(
+    "capture_public_lead_with_side_effects_v1",
+    {
+      p_organization_id: context.organizationId,
+      p_user_id: context.userId,
+      p_campaign_id: campaignId,
+      p_request_id: requestId,
+      p_name: input.name?.trim() || "Lead Contact",
+      p_source: input.source?.trim() || "lead_capture",
+      p_first_name: firstName,
+      p_last_name: lastName,
+      p_email: email,
+      p_phone: phone,
+      p_phone_raw: phoneRaw,
+      p_utm_source: input.utm_source?.trim() || null,
+      p_utm_medium: input.utm_medium?.trim() || null,
+      p_utm_campaign: input.utm_campaign?.trim() || null,
+      p_ad_id: input.ad_id?.trim() || null,
+      p_landing_page_url: input.landing_page_url?.trim() || null,
+      p_dedupe_hash: dedupeHash,
+      p_notes: input.notes?.trim() || null,
+      p_consent_metadata: buildSmsConsentMetadata({
+        source: input.consent_source?.trim() || input.source?.trim() || "lead_capture",
+        consented: smsConsent,
+        phone,
+        copy: input.sms_consent_copy,
+        url: input.consent_url,
+      }),
+      p_metadata: leadMetadata,
+      p_job_payload: jobPayload,
+      p_created_at: createdAt,
+    },
+  );
+  const rpcRow = (Array.isArray(data) ? data[0] : data) as AtomicPublicLeadCaptureRow | null;
+  const leadRecord = rpcRow?.lead_record;
+  const lead = leadRecord && typeof leadRecord === "object" && !Array.isArray(leadRecord)
+    ? (leadRecord as LeadRow)
+    : null;
+  const sideEffectJobId =
+    typeof rpcRow?.side_effect_job_id === "string" ? rpcRow.side_effect_job_id : null;
+  const leadReceipt =
+    rpcRow?.lead_receipt && typeof rpcRow.lead_receipt === "object" && !Array.isArray(rpcRow.lead_receipt)
+      ? (rpcRow.lead_receipt as Record<string, unknown>)
+      : null;
+  const jobReceipt =
+    rpcRow?.side_effect_job_receipt &&
+    typeof rpcRow.side_effect_job_receipt === "object" &&
+    !Array.isArray(rpcRow.side_effect_job_receipt)
+      ? (rpcRow.side_effect_job_receipt as Record<string, unknown>)
+      : null;
+
+  if (error || !lead?.id || !sideEffectJobId) {
+    throw new ApiError(
+      503,
+      error?.message ?? "Lead and its durable delivery job could not be committed together.",
+      "atomic_public_lead_capture_failed",
+    );
+  }
+  if (
+    lead.organization_id !== context.organizationId ||
+    lead.user_id !== context.userId ||
+    lead.campaign_id !== campaignId ||
+    lead.dedupe_hash !== dedupeHash ||
+    leadReceipt?.leadId !== lead.id ||
+    leadReceipt?.organizationId !== context.organizationId ||
+    leadReceipt?.campaignId !== campaignId ||
+    jobReceipt?.jobId !== sideEffectJobId ||
+    jobReceipt?.leadId !== lead.id ||
+    jobReceipt?.organizationId !== context.organizationId ||
+    jobReceipt?.campaignId !== campaignId ||
+    jobReceipt?.idempotencyKey !== `lead_side_effects:${lead.id}`
+  ) {
+    throw new ApiError(
+      503,
+      "Atomic lead capture returned an inconsistent persistence receipt.",
+      "atomic_public_lead_capture_receipt_invalid",
+    );
+  }
+
+  if (input.skip_lead_loop_verification !== true) {
+    void markCampaignLeadLoopVerified({
+      supabase,
+      campaignId,
+    }).catch((markError) => {
+      logWarn("Lead loop verification update failed", {
+        campaignId,
+        message: markError instanceof Error ? markError.message : "Unknown lead loop verification failure",
+      });
+    });
+  }
+  if (lead.phone) {
+    logWarn("Lead conversation bootstrap skipped", {
+      leadId: lead.id,
+      reason: "lead_sms_automation_disabled_internal_notifications_only",
+    });
+  }
+
+  return {
+    lead,
+    sideEffectJob: {
+      id: sideEffectJobId,
+      enabledEffects: effectPolicy.enabledEffects,
+    },
+    receipts: {
+      leadCreated: rpcRow?.lead_created === true,
+      sideEffectJobCreated: rpcRow?.side_effect_job_created === true,
+      lead: leadReceipt,
+      sideEffectJob: jobReceipt,
+    },
+  };
+}
+
 export async function createVerifiedProviderLeadAndStartConversation(
   input: Omit<CreateLeadInput, "campaign_id" | "funnel_id">,
   context: {
@@ -1750,25 +1975,6 @@ export async function createVerifiedProviderLeadAndStartConversation(
 
 export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetryInput) {
   const payloadCampaignId = input.campaignId?.trim() ?? "";
-  const resolvedContext = await resolvePublicLeadInsertContext({
-    // A retry is fenced to the immutable campaign id captured at queue time.
-    // Never resolve the mutable public funnel slug during replay.
-    campaign_id: payloadCampaignId || undefined,
-    funnel_id: null,
-  });
-  const replayScope = assertLeadRetryParentScope({
-    expected: {
-      organizationId: input.expectedOrganizationId,
-      userId: input.expectedUserId,
-      campaignId: input.expectedCampaignId,
-    },
-    resolved: {
-      organizationId: resolvedContext.organizationId,
-      userId: resolvedContext.userId,
-      campaignId: resolvedContext.campaignId,
-    },
-  });
-  const supabase = await createPublicLeadInsertClient(replayScope.userId);
   const retryNotes = [
     input.notes?.trim() || null,
     input.reason?.trim() ? `Recovered queued lead capture: ${input.reason.trim()}` : null,
@@ -1777,8 +1983,11 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     .filter(Boolean)
     .join("\n");
 
-  const lead = await createLeadAndStartConversationForContext({
-    campaign_id: replayScope.campaignId,
+  const recoveryRequestId = input.requestId?.trim() || `lead-recovery:${payloadCampaignId}`;
+  const atomicCapture = await createPublicLeadAndQueueSideEffectsAtomically({
+    // A retry is fenced to the immutable campaign id captured at queue time.
+    // Never resolve the mutable public funnel slug during replay.
+    campaign_id: payloadCampaignId || undefined,
     funnel_id: null,
     name: input.name?.trim() || "Unknown lead",
     email: input.email?.trim() || null,
@@ -1796,66 +2005,17 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     landing_page_url: input.landingPageUrl ?? input.consentUrl ?? null,
     custom_answers: input.customAnswers ?? {},
   }, {
-    supabase,
-    userId: replayScope.userId,
-    organizationId: replayScope.organizationId,
-    campaignId: replayScope.campaignId,
+    requestId: recoveryRequestId,
+    clientIp: null,
+    clientUserAgent: null,
+    fbp: null,
+    fbc: null,
+  }, {
+    organizationId: input.expectedOrganizationId,
+    userId: input.expectedUserId,
+    campaignId: input.expectedCampaignId,
   });
-
-  // A dedupe replay can return an existing row. Fence that row again before
-  // queuing any durable effects so an inconsistent historical row cannot move
-  // work across the parent job's tenant boundary.
-  assertLeadRetryParentScope({
-    expected: replayScope,
-    resolved: {
-      organizationId: lead.organization_id,
-      userId: lead.user_id,
-      campaignId: lead.campaign_id,
-    },
-  });
-
-  if (!lead.organization_id || !lead.user_id || !lead.campaign_id) {
-    throw new ApiError(
-      409,
-      "Recovered lead is missing the tenant or campaign scope required for durable effects.",
-      "lead_recovery_scope_missing",
-    );
-  }
-
-  const recoveryRequestId = input.requestId?.trim() || `lead-recovery:${lead.id}`;
-  const sideEffectJob = await queueLeadSideEffectsJob({
-    organizationId: lead.organization_id,
-    userId: lead.user_id,
-    campaignId: lead.campaign_id,
-    payload: {
-      requestId: recoveryRequestId,
-      lead: {
-        ...lead,
-        phone_raw: input.phone?.trim() || lead.phone || null,
-        phone_e164: lead.phone || null,
-        lead_type: null,
-        utm_source: input.utmSource ?? null,
-        utm_medium: input.utmMedium ?? null,
-        utm_campaign: input.utmCampaign ?? null,
-        ad_id: input.adId ?? null,
-        landing_page_url: input.landingPageUrl ?? input.consentUrl ?? null,
-      },
-      metaConversion: {
-        organizationId: lead.organization_id,
-        leadId: lead.id,
-        campaignId: lead.campaign_id,
-        eventSourceUrl: input.landingPageUrl ?? input.consentUrl ?? null,
-        eventTime: lead.created_at,
-        name: lead.name,
-        email: input.email,
-        phone: input.phone,
-        clientIp: null,
-        clientUserAgent: null,
-        fbp: null,
-        fbc: null,
-      },
-    },
-  });
+  const lead = atomicCapture.lead;
 
   return {
     leadId: lead.id,
@@ -1864,7 +2024,7 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     dedupeHash: lead.dedupe_hash,
     status: lead.status,
     source: lead.source,
-    sideEffectJobId: sideEffectJob.id,
+    sideEffectJobId: atomicCapture.sideEffectJob.id,
   };
 }
 

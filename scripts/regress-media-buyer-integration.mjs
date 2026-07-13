@@ -251,7 +251,7 @@ const killDecision = evaluateMediaBuyingDecision({
 assert.equal(killDecision.action, "kill");
 
 const scaleDecision = evaluateMediaBuyingDecision({
-  ctr: 2.5,
+  ctr: 0.025,
   cpc: 0.8,
   cpl: 42,
   frequency: 2,

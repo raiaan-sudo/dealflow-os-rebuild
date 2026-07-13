@@ -4,6 +4,7 @@ import { GuidedFlowBanner } from "@/components/layout/guided-flow-banner";
 import { TopBar } from "@/components/layout/top-bar";
 import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
+import { GhlEmbedCapabilityRefresher } from "@/components/ghl/ghl-embed-capability-refresher";
 import { isInternalAdminEmail } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
 import {
@@ -26,6 +27,7 @@ export default async function AppLayout({
 }>) {
   const headerStore = await headers();
   const pathname = headerStore.get("x-pathname") ?? "";
+  const embedParentOrigin = headerStore.get("x-dealflow-ghl-embed-parent-origin");
   const isFocusedProductRoute =
     pathname.startsWith("/builder") ||
     pathname.startsWith("/onboarding") ||
@@ -54,6 +56,7 @@ export default async function AppLayout({
     if (!appContext) {
       return (
         <>
+          <GhlEmbedCapabilityRefresher parentOrigin={embedParentOrigin} />
           <SkipToMainContent />
           <div className="flex h-screen w-screen overflow-hidden bg-transparent">
             <main
@@ -95,6 +98,7 @@ export default async function AppLayout({
 
     return (
       <>
+        <GhlEmbedCapabilityRefresher parentOrigin={embedParentOrigin} />
         <SkipToMainContent />
         <div className="relative min-h-screen w-screen overflow-hidden bg-transparent">
           {branding.isWhiteLabel ? (
@@ -121,6 +125,7 @@ export default async function AppLayout({
 
   return (
     <>
+      <GhlEmbedCapabilityRefresher parentOrigin={embedParentOrigin} />
       <SkipToMainContent />
       <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
         <AppSidebar

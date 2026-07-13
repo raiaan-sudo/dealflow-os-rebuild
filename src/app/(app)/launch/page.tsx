@@ -207,7 +207,16 @@ export default async function LaunchAliasPage({
     ...getLaunchBlockingReasons(launchRequirements),
     ...(metaSelectionReady && !metaPreflightReady ? metaPreflight?.errors ?? ["Meta preflight failed."] : []),
   ];
-  const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const selectedCreatives = plan.creatives.staticAds.filter((ad) => ad.id === selectedAdIds[0]);
+  const selectedMetaAccount = metaConnection.availableAccounts.find((account) =>
+    account.externalAccountId === metaConnection.accountId || account.id === metaConnection.accountId,
+  );
+  const approvedDailyBudgetMinor = savedRecord.plan.daily_budget_cents;
+  const approvedCurrency = selectedMetaAccount?.currency?.trim().toUpperCase() ?? "";
+  const activationApprovalReady =
+    Number.isSafeInteger(approvedDailyBudgetMinor) &&
+    approvedDailyBudgetMinor >= 100 &&
+    (approvedCurrency === "USD" || approvedCurrency === "CAD");
   const metaStatusText = metaLaunchReady
     ? `Connected (last verified ${formatLastVerified(metaPreflight?.checkedAt)})`
     : metaVerificationTimedOut
@@ -230,7 +239,7 @@ export default async function LaunchAliasPage({
         />
         <EmptyState
           title="No selected creative is saved for this campaign"
-          description="Launch is blocked until a persisted creative test set exists. Go back to creatives and choose the ads you want to test."
+          description="Launch is blocked until one persisted primary creative exists. Go back to creatives and choose the exact ad to launch."
         />
         <div>
           <Button asChild>
@@ -355,7 +364,7 @@ export default async function LaunchAliasPage({
             </div>
           </div>
           <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Primary launch creative</p>
             <div className="mt-4 grid gap-4">
               {selectedCreatives.map((selectedCreative) => (
                 <StaticCreativePreviewCard
@@ -401,9 +410,11 @@ export default async function LaunchAliasPage({
                 Back
               </Link>
             </Button>
-            {billingLaunchAllowed && metaLaunchReady ? (
+            {billingLaunchAllowed && metaLaunchReady && activationApprovalReady ? (
               <Button asChild className="w-full lg:w-auto">
-                <Link href={`/launching?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`}>
+                <Link href={`/launching?${new URLSearchParams({
+                  campaignId: savedRecord.campaign.id,
+                }).toString()}`}>
                   Ready to attempt launch
                 </Link>
               </Button>
@@ -415,7 +426,9 @@ export default async function LaunchAliasPage({
               </Button>
             ) : (
               <Button className="w-full lg:w-auto" disabled>
-                Ready to attempt launch
+                {billingLaunchAllowed && metaLaunchReady
+                  ? "Budget or currency review required"
+                  : "Ready to attempt launch"}
               </Button>
             )}
           </div>

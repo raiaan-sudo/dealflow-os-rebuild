@@ -451,11 +451,12 @@ const serviceSource = fs.readFileSync(
   "src/lib/services/meta-leadgen-ingestion-service.ts",
   "utf8",
 );
-assert.match(serviceSource, /enabledEffects:\s*\[\]/);
-assert.match(serviceSource, /requiredEffects:\s*\[\]/);
+assert.match(serviceSource, /enabledEffects:\s*\["ghl_delivery"\]/);
+assert.match(serviceSource, /requiredEffects:\s*\["ghl_delivery"\]/);
 assert.match(serviceSource, /communicationsEnabled:\s*false/);
 assert.match(serviceSource, /capiEnabled:\s*false/);
-assert.match(serviceSource, /providerMutationEnabled:\s*false/);
+assert.match(serviceSource, /ghlDeliveryRequested:\s*true/);
+assert.match(serviceSource, /providerMutationPerformed:\s*false/);
 assert.match(serviceSource, /createVerifiedProviderLeadAndStartConversation/);
 assert.doesNotMatch(serviceSource, /sendSMS|sendEmail|safeSendMetaLeadConversion|fetchMetaResponse\([^)]*method:\s*["']POST/);
 assert.match(serviceSource, /\.eq\("organization_id", params\.claim\.organizationId\)/);
@@ -503,5 +504,5 @@ assert.match(migrationSource, /read_only_ingestion_contract/);
 assert.match(migrationSource, /revoke all on table public\.meta_leadgen_events from public, anon, authenticated, service_role/);
 
 console.log(
-  "PASS Meta leadgen contract: verification, signed POST, bounds, provider identity, normalization, and default-off effects",
+  "PASS Meta leadgen contract: verification, signed POST, provider identity, consent suppression, and GHL-only delivery",
 );

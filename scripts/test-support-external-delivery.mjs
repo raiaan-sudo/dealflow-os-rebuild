@@ -22,6 +22,12 @@ new Function("require", "module", "exports", compiled)(
         isExplicitNonProductionDeployment: (env) =>
           ["staging", "preview", "development", "test"].includes(env.DEALFLOW_DEPLOYMENT_TARGET),
         isProductionDeployment: (env) => env.DEALFLOW_DEPLOYMENT_TARGET === "production",
+        isExactProductionVercelHost: (env) =>
+          env.DEALFLOW_DEPLOYMENT_TARGET === "production" &&
+          env.VERCEL_ENV === "production" &&
+          env.VERCEL_PROJECT_ID === "exact-production-project" &&
+          env.DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID === "exact-production-project" &&
+          env.DEALFLOW_PRODUCTION_HOST_ATTESTATION === "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1",
       };
     }
     throw new Error(`Unexpected import ${specifier}`);
@@ -48,6 +54,10 @@ assert.throws(
 
 const productionEnv = {
   DEALFLOW_DEPLOYMENT_TARGET: "production",
+  VERCEL_ENV: "production",
+  VERCEL_PROJECT_ID: "exact-production-project",
+  DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: "exact-production-project",
+  DEALFLOW_PRODUCTION_HOST_ATTESTATION: "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1",
   SUPPORT_NOTIFICATION_DELIVERY_MODE: "external",
   SUPPORT_EXTERNAL_DESTINATION: "owner@example.test",
   SUPPORT_EXTERNAL_DELIVERY_ENDPOINT: "https://delivery.example.test/v1/support",
@@ -56,6 +66,15 @@ const productionEnv = {
   SUPPORT_DELIVERY_ATTESTATION: "DEALFLOW_SUPPORT_DESTINATION_APPROVED_V1",
   SUPPORT_EXTERNAL_DELIVERY_TOKEN: "test-token",
 };
+assert.throws(
+  () => resolveSupportExternalDeliveryPolicy({
+    ...productionEnv,
+    VERCEL_PROJECT_ID: "wrong-project",
+  }),
+  (error) =>
+    error instanceof SupportDeliveryPolicyError &&
+    error.code === "support_external_production_host_unproven",
+);
 assert.throws(
   () => resolveSupportExternalDeliveryPolicy({
     ...productionEnv,

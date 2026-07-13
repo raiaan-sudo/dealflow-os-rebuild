@@ -10,6 +10,7 @@ import { getCampaignByIdForInternalActor } from "@/lib/services/campaign-persist
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { MetaLaunchInputBinding } from "@/lib/meta-launch-input-snapshot";
 import type { CampaignLaunchProviderMutationSettlement } from "@/lib/services/campaign-launch-audit-service";
+import { finalizeMetaActivationPreauthorizationAfterPausedLaunch } from "@/lib/services/meta-campaign-activation-authority-service";
 
 const SCHEDULED_LAUNCH_LEASE_MS = 30 * 60_000;
 const SCHEDULED_LAUNCH_HEARTBEAT_MS = 60_000;
@@ -154,6 +155,21 @@ async function renewScheduledLaunchLease(
 
   if (error || data !== true) {
     throw new ScheduledLaunchLeaseLostError();
+  }
+}
+
+async function assertScheduledActivationAuthority(
+  client: ScheduledLaunchClient,
+  claim: ScheduledCampaignLaunchClaim,
+) {
+  const { data, error } = await client.rpc("assert_meta_campaign_activation_preauthorization", {
+    p_launch_record_id: claim.id,
+    p_organization_id: claim.organizationId,
+    p_user_id: claim.userId,
+    p_campaign_id: claim.campaignId,
+  });
+  if (error || data !== true) {
+    throw new ScheduledLaunchDispatchError("meta_activation_preauthorization_missing", 409);
   }
 }
 
@@ -311,6 +327,7 @@ async function releaseScheduledLaunchAfterFailure(
     "campaign_launch_provider_receipt_persist_failed",
     "campaign_launch_provider_mutation_settlement_failed",
     "meta_lookup_ambiguous",
+    "meta_activation_preauthorization_missing",
   ].includes(errorCode);
   const decision = operatorRequiredError
     ? { status: "operator_action_required" as const, retryDelayMs: null }
@@ -736,6 +753,7 @@ export async function processScheduledCampaignLaunchBatch(params?: {
 
     try {
       await renewScheduledLaunchLease(client, claim);
+      await assertScheduledActivationAuthority(client, claim);
       metaLockToken = await acquireMetaLaunchLock(client, claim);
       const assertLeaseAndGates = async () => {
         const currentGate = getScheduledLaunchExecutionGate();
@@ -746,6 +764,7 @@ export async function processScheduledCampaignLaunchBatch(params?: {
           );
         }
         await renewScheduledLaunchLease(client, claim);
+        await assertScheduledActivationAuthority(client, claim);
         await renewMetaLaunchLock(client, claim, metaLockToken!);
       };
       heartbeat = setInterval(() => {
@@ -755,6 +774,12 @@ export async function processScheduledCampaignLaunchBatch(params?: {
       const result = await dispatch(claim, { assertLeaseAndGates, client });
       await assertLeaseAndGates();
       await completeScheduledLaunch(client, claim, result);
+      await finalizeMetaActivationPreauthorizationAfterPausedLaunch({
+        organizationId: claim.organizationId,
+        userId: claim.userId,
+        campaignId: claim.campaignId,
+        launchRecordId: claim.id,
+      });
       completedIds.push(claim.id);
     } catch (dispatchError) {
       if (dispatchError instanceof ScheduledLaunchOperatorActionError) {

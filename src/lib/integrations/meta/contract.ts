@@ -11,6 +11,8 @@ export const META_GRAPH_ORIGIN = "https://graph.facebook.com" as const;
 export const META_OAUTH_ORIGIN = "https://www.facebook.com" as const;
 export const META_LIVE_WRITE_ENV = "ALLOW_META_LIVE_LAUNCH" as const;
 export const META_CAPI_WRITE_ENV = "ALLOW_META_CAPI_EVENTS" as const;
+export const META_OPTIMIZATION_WRITE_ENV = "ALLOW_META_SANDBOX_OPTIMIZATION" as const;
+export const META_PRODUCTION_OPTIMIZATION_WRITE_ENV = "ALLOW_META_PRODUCTION_OPTIMIZATION" as const;
 
 const URL_CREDENTIAL_KEYS = new Set([
   "access_token",
@@ -179,4 +181,11 @@ export function isMetaCapiWriteAllowed(
   env: Record<string, string | undefined> = process.env,
 ) {
   return env[META_CAPI_WRITE_ENV] === "true";
+}
+
+export function isMetaOptimizationWriteAllowed(
+  env: Record<string, string | undefined> = process.env,
+) {
+  return env[META_OPTIMIZATION_WRITE_ENV] === "true" ||
+    env[META_PRODUCTION_OPTIMIZATION_WRITE_ENV] === "true";
 }

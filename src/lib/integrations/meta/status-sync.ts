@@ -4,6 +4,12 @@ import {
   withMetaBearerToken,
 } from "@/lib/integrations/meta/contract";
 import { fetchMetaResponse } from "@/lib/integrations/meta/request";
+import {
+  buildMetaReportingWindow,
+  metaReportingTimeRange,
+  normalizeMetaDeliveryInsight,
+  type MetaReportingWindow,
+} from "@/lib/integrations/meta/reporting-contract";
 import type {
   MetaCampaignSyncStatus,
   MetaConnectionRecord,
@@ -39,6 +45,8 @@ type MetaInsightsResponse = {
     impressions?: string;
     clicks?: string;
     ctr?: string;
+    frequency?: string;
+    reach?: string;
     actions?: Array<{
       action_type?: string;
       value?: string;
@@ -51,27 +59,52 @@ type MetaInsightsResponse = {
   error?: { message?: string; code?: number; error_subcode?: number };
 };
 
-const LEAD_ACTION_TYPES = [
+const AUTHORITATIVE_LEAD_ACTION_TYPES = [
   "lead",
-  "onsite_conversion.lead_grouped",
-  "offsite_conversion.fb_pixel_lead",
-  "offsite_conversion.custom",
   "omni_lead",
 ] as const;
 
-function extractLeadsFromActions(
+const MUTUALLY_EXCLUSIVE_LEAD_FALLBACK_TYPES = [
+  "onsite_conversion.lead_grouped",
+  "offsite_conversion.fb_pixel_lead",
+] as const;
+
+function readActionValue(
+  actions: Array<{ action_type?: string; value?: string }>,
+  actionType: string,
+) {
+  const values = actions
+    .filter((action) => action.action_type === actionType)
+    .map((action) => Number(action.value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  // Meta normally returns one row per action type. If it ever repeats a row,
+  // selecting the maximum preserves the aggregate without double-counting it.
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+export function extractLeadsFromActions(
   actions: Array<{ action_type?: string; value?: string }> | undefined,
 ) {
   if (!actions?.length) {
     return 0;
   }
 
-  return actions.reduce((sum, action) => {
-    if (!action.action_type || !LEAD_ACTION_TYPES.includes(action.action_type as (typeof LEAD_ACTION_TYPES)[number])) {
-      return sum;
-    }
+  // `lead` already contains offsite leads plus On-Facebook leads. `omni_lead`
+  // is the next aggregate fallback. Never add either aggregate to its
+  // component rows or Meta will overstate conversions.
+  for (const actionType of AUTHORITATIVE_LEAD_ACTION_TYPES) {
+    const authoritativeValue = readActionValue(actions, actionType);
 
-    return sum + Number(action.value ?? 0);
+    if (authoritativeValue !== null) {
+      return authoritativeValue;
+    }
+  }
+
+  // If Meta omits both aggregate rows, the onsite and pixel-specific rows are
+  // mutually exclusive and can be combined as a conservative fallback.
+  return MUTUALLY_EXCLUSIVE_LEAD_FALLBACK_TYPES.reduce((sum, actionType) => {
+    return sum + (readActionValue(actions, actionType) ?? 0);
   }, 0);
 }
 
@@ -202,11 +235,13 @@ export async function fetchDeliveryMetrics(params: {
   accessToken: string | null;
   mode: MetaSyncMode;
   campaignStatus: string | null;
+  reportingWindow?: MetaReportingWindow;
 }) {
   const accessToken = requireMetaAccessToken(params.accessToken);
+  const reportingWindow = params.reportingWindow ?? buildMetaReportingWindow();
   const url = buildMetaGraphUrl(`${params.campaignId}/insights`, {
-    fields: "spend,impressions,clicks,actions,conversions",
-    date_preset: "maximum",
+    fields: "spend,impressions,clicks,ctr,frequency,reach,actions,conversions",
+    time_range: metaReportingTimeRange(reportingWindow),
     limit: 1,
   });
 
@@ -222,22 +257,21 @@ export async function fetchDeliveryMetrics(params: {
   }
 
   const insight = data?.data?.[0];
+  const normalized = normalizeMetaDeliveryInsight(insight);
 
   return {
     spend: Number(insight?.spend ?? 0),
-    impressions: Number(insight?.impressions ?? 0),
-    clicks: Number(insight?.clicks ?? 0),
-    ctr:
-      insight?.ctr !== undefined
-        ? Number(insight.ctr)
-        : Number(insight?.clicks ?? 0) / Math.max(Number(insight?.impressions ?? 0), 1),
+    impressions: normalized.impressions,
+    clicks: normalized.clicks,
+    ctr: normalized.ctr,
     leads: extractLeadsFromActions(insight?.actions),
     appointments: 0,
     cpl: 0,
     cpa: 0,
     cpc: 0,
-    frequency: 0,
-    reach: 0,
+    frequency: normalized.frequency,
+    reach: normalized.reach,
+    attribution_window: reportingWindow,
     raw_actions: insight?.actions ?? [],
     raw_conversions: insight?.conversions ?? [],
   } satisfies MetaDeliveryMetrics;
@@ -248,12 +282,14 @@ export async function fetchAdInsights(params: {
   accessToken: string | null;
   mode: MetaSyncMode;
   adIds: string[];
+  reportingWindow?: MetaReportingWindow;
 }) {
   const accessToken = requireMetaAccessToken(params.accessToken);
+  const reportingWindow = params.reportingWindow ?? buildMetaReportingWindow();
   const url = buildMetaGraphUrl(`${params.campaignId}/insights`, {
     fields: "ad_id,ad_name,spend,impressions,clicks,ctr,actions",
     level: "ad",
-    date_preset: "maximum",
+    time_range: metaReportingTimeRange(reportingWindow),
     limit: Math.max(params.adIds.length, 25),
   });
 
@@ -273,16 +309,15 @@ export async function fetchAdInsights(params: {
   return (data?.data ?? [])
     .filter((row) => row.ad_id && allowedIds.has(row.ad_id))
     .map((row, index) => {
-      const impressions = Number(row.impressions ?? 0);
-      const clicks = Number(row.clicks ?? 0);
+      const normalized = normalizeMetaDeliveryInsight(row);
 
       return {
         adId: String(row.ad_id),
         adName: String(row.ad_name ?? `Ad ${index + 1}`),
         spend: Number(row.spend ?? 0),
-        impressions,
-        clicks,
-        ctr: row.ctr !== undefined ? Number(row.ctr) / 100 : clicks / Math.max(impressions, 1),
+        impressions: normalized.impressions,
+        clicks: normalized.clicks,
+        ctr: normalized.ctr,
         leads: extractLeadsFromActions(row.actions),
       } satisfies MetaAdInsight;
     });

@@ -148,7 +148,7 @@ export class GhlHttpClient {
         };
         const retryableRead = retryMode === "safe-read"
           && attempt < maxAttempts
-          && (response.status === 429 || response.status >= 500);
+          && (response.status === 408 || response.status === 429 || response.status >= 500);
         if (!retryableRead) return lastResponse;
         await this.sleep(lastResponse.retryAfterMs ?? Math.min(250 * (2 ** (attempt - 1)), 2_000));
       } catch (error) {

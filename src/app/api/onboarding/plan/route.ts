@@ -19,6 +19,7 @@ import {
 } from "@/lib/onboarding-contract";
 import { normalizePhone } from "@/lib/phone";
 import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
+import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   mergeCampaignPlanDocument,
@@ -165,6 +166,14 @@ async function persistCompleteOnboardingContract(params: {
 }) {
   const submission = params.submission;
   const agentName = `${submission.agentFirstName} ${submission.agentLastName}`.trim();
+  const effectiveLeadFormQuestions =
+    submission.adDestination === "meta_instant_form"
+      ? resolveMetaInstantFormQualificationQuestions({
+          leadCaptureMode: submission.leadCaptureMode,
+          language: submission.funnelLanguage,
+          customQuestions: submission.leadFormQuestions,
+        })
+      : submission.leadFormQuestions;
   const funnel = {
     ...buildWinningFunnel({
       market: submission.market,
@@ -176,6 +185,11 @@ async function persistCompleteOnboardingContract(params: {
       funnel_goal:
         submission.leadCaptureMode === "volume_lead_form" ? "lead_form" : "survey",
       language: submission.funnelLanguage,
+      capture_experience:
+        submission.adDestination === "meta_instant_form"
+          ? "meta_instant_form"
+          : "dealflow_website",
+      ad_destination: submission.adDestination,
       lead_capture_mode: submission.leadCaptureMode,
       agent_name: agentName,
       brokerage_name: submission.agentCompanyName,
@@ -187,7 +201,7 @@ async function persistCompleteOnboardingContract(params: {
         logoUrl: submission.logoUrl || null,
       },
     }),
-    customLeadFormQuestions: submission.leadFormQuestions,
+    customLeadFormQuestions: effectiveLeadFormQuestions,
   };
 
   await persistCampaignPlanDocumentUpdate({
@@ -220,7 +234,7 @@ async function persistCompleteOnboardingContract(params: {
       monthly_budget: submission.monthlyBudget,
       language: submission.funnelLanguage,
       lead_capture_mode: submission.leadCaptureMode,
-      lead_form_questions: submission.leadFormQuestions,
+      lead_form_questions: effectiveLeadFormQuestions,
       funnel,
       funnel_type: funnel.funnel_type,
       theme: {
@@ -241,8 +255,13 @@ async function persistCompleteOnboardingContract(params: {
         price_range: submission.priceRange,
         daily_budget_cents: submission.dailyBudgetCents,
         language: submission.funnelLanguage,
+        capture_experience:
+          submission.adDestination === "meta_instant_form"
+            ? "meta_instant_form"
+            : "dealflow_website",
+        ad_destination: submission.adDestination,
         lead_capture_mode: submission.leadCaptureMode,
-        lead_form_questions: submission.leadFormQuestions,
+        lead_form_questions: effectiveLeadFormQuestions,
         theme: funnel.theme,
         funnel,
       },

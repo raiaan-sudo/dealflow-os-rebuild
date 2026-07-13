@@ -14,6 +14,7 @@ import {
 } from "@/lib/services/campaign-plan-document";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -21,7 +22,7 @@ const paramsSchema = z.object({
 
 const bodySchema = z.object({
   selectedAdId: z.string().min(1).optional(),
-  selectedAdIds: z.array(z.string().min(1)).min(1).max(6).optional(),
+  selectedAdIds: z.array(z.string().min(1)).min(1).max(1).optional(),
 });
 
 export async function POST(
@@ -35,7 +36,7 @@ export async function POST(
     const body = await parseJsonBody(request, bodySchema);
     const selectedAdIds = Array.from(
       new Set([...(body.selectedAdIds ?? []), ...(body.selectedAdId ? [body.selectedAdId] : [])]),
-    ).slice(0, 6);
+    );
     const supabase = await createRouteHandlerClient();
 
     if (!supabase) {
@@ -68,8 +69,27 @@ export async function POST(
     }
 
     const currentPlan = row?.plan ?? {};
-    if (selectedAdIds.length === 0) {
-      throw new ApiError(400, "Select at least one creative before continuing.", "selected_ads_missing");
+    if (selectedAdIds.length !== 1) {
+      throw new ApiError(
+        400,
+        "Select exactly one primary creative before continuing.",
+        "selected_ad_single_primary_required",
+      );
+    }
+    const campaign = await getCampaignById(id);
+    const selectedCreatives = selectedAdIds.map((selectedId) =>
+      campaign?.creatives.staticAds.find((creative) => creative.id === selectedId) ?? null,
+    );
+    if (selectedCreatives.some((creative) => !creative)) {
+      throw new ApiError(409, "The selected creative no longer exists.", "selected_ad_stale");
+    }
+    const primaryCreative = selectedCreatives[0]!;
+    if (primaryCreative.imageGenerationState !== "generated" || !primaryCreative.imageUrl?.trim()) {
+      throw new ApiError(
+        409,
+        "The primary selected creative must finish generating before it can be saved for launch.",
+        "selected_ad_not_launchable",
+      );
     }
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);

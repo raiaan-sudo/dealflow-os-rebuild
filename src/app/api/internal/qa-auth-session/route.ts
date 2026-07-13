@@ -64,8 +64,8 @@ function redactEmail(email: string) {
 }
 
 const ELEVATED_ORGANIZATION_ROLES = new Set([
-  "admin",
   "owner",
+  "admin",
   "owner_admin",
   "operator",
   "platform_admin",

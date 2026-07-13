@@ -33,6 +33,7 @@ const REQUIRED_SECRET_STRENGTH_POLICIES = [
   "internalSystemJobsSecretStrong",
   "metaAppSecretStrong",
   "metaTokenEncryptionKeyStrong",
+  "partnerAttributionSigningSecretStrongOrWhiteLabelDisabled",
   "stripeWebhookSecretStrong",
   "vercelCronSecretStrong",
 ];
@@ -85,7 +86,7 @@ const REQUIRED_FAIL_SAFE_DEFAULTS = new Map([
   ["INTERNAL_LEAD_SMS_ENABLED", "false"],
   ["SMS_MOCK_MODE", "false"],
   ["TEST_SMS_MODE", ""],
-  ["TWILIO_EXECUTION_MODE", "live"],
+  ["TWILIO_EXECUTION_MODE", "disabled"],
   ["SMS_COMPLIANCE_ACK", ""],
   ["SUPPORT_NOTIFICATION_DELIVERY_MODE", "internal_operator_inbox"],
   ["SUPPORT_STAGING_SINK_ENABLED", "false"],

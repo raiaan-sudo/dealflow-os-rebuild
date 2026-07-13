@@ -7,6 +7,7 @@ import {
   evaluateGhlSandboxGate,
   ghlProductionGateFromEnvironment,
   ghlSandboxGateFromEnvironment,
+  GhlHttpClient,
   GhlSandboxAdapter,
   type GhlProductionGateInput,
   type GhlSandboxGateInput,
@@ -24,6 +25,9 @@ import {
   processGhlSandboxOutboxBatch,
 } from "./ghl-sandbox-outbox-service";
 import { processGhlPersonalizationWorkerBatch } from "./ghl-personalization-service";
+import { processGhlInboundFormReconciliationBatch } from "./ghl-inbound-form-reconciliation-service";
+import { processGhlPeriodicFormSweepBatch } from "./ghl-periodic-form-sweep-service";
+import { isolateGhlProviderWorkerComponent } from "./ghl-provider-worker-isolation";
 
 type JsonRecord = Record<string, unknown>;
 type Client = SupabaseClient<Database> & {
@@ -35,6 +39,16 @@ function row(value: unknown) {
 }
 
 function text(value: unknown) { return typeof value === "string" ? value : ""; }
+
+const GHL_INBOUND_HTTP_TIMEOUT_MS = 3_000;
+
+function createGhlInboundReadHttpClient(baseUrl?: string) {
+  return new GhlHttpClient({
+    baseUrl,
+    timeoutMs: GHL_INBOUND_HTTP_TIMEOUT_MS,
+    maxReadAttempts: 1,
+  });
+}
 
 type GhlRuntimeControl = "provisioning_writes_enabled" | "lead_writes_enabled";
 
@@ -127,15 +141,6 @@ export async function processGhlProvisioningWorkerBatch(input: {
       const next = input.environment === "production"
         ? await executeNextGhlProductionProvisioningStep(runId, { repository, provider, productionGate: input.productionGate })
         : await executeNextGhlSandboxProvisioningStep(runId, { repository, provider, sandboxGate: input.sandboxGate });
-      if (next.state === "ready") {
-        const prepared = await input.client.rpc("prepare_ghl_location_personalization_v1", {
-          p_provisioning_run_id: runId,
-          p_now: new Date().toISOString(),
-        });
-        if (prepared.error || !row(prepared.data)) {
-          throw new Error(prepared.error?.message ?? "GHL personalization receipt could not be prepared.");
-        }
-      }
       results.push({ runId, state: next.state });
     } finally {
       const released = await input.client.rpc("release_ghl_provisioning_run_claim_v1", {
@@ -161,6 +166,100 @@ function blockedComponent(code: string, reason: string) {
   };
 }
 
+function blockedPeriodicSweep(environment: "sandbox" | "production" | "unproven", code: string, reason: string) {
+  return {
+    environment,
+    status: "blocked" as const,
+    blockedReason: code,
+    reason,
+    processed: 0,
+    refreshed: 0,
+    providerMutationAttempted: false as const,
+    results: [],
+  };
+}
+
+/**
+ * Dedicated, deadline-aware entrypoint for the GET-only periodic form sweep.
+ *
+ * This is deliberately separate from the mixed provider worker so the cron
+ * invocation owns enough wall-clock budget for a bounded provider read and
+ * lease settlement. Runtime controls and claim fences remain authoritative in
+ * the database; application gates are evaluated before any claim is taken.
+ */
+export async function processGhlPeriodicFormSweepFromEnvironment(input: {
+  maxSweepItems?: number;
+  sweepConcurrency?: number;
+  maxAttestationRefreshItems?: number;
+  attestationRefreshConcurrency?: number;
+  workerId?: string;
+  deadlineAtMs?: number;
+  environment?: Readonly<Record<string, string | undefined>>;
+} = {}) {
+  const environment = input.environment ?? process.env;
+  const target = getDeploymentTarget(environment as Record<string, string | undefined>);
+  const client = createAdminClient();
+  if (!client) {
+    return blockedPeriodicSweep(
+      "unproven",
+      "service_role_missing",
+      "Supabase service-role authority is not configured.",
+    );
+  }
+
+  if (target === "production") {
+    const gate = ghlProductionGateFromEnvironment("form_submissions_read", environment);
+    const decision = evaluateGhlProductionGate(gate);
+    if (!decision.allowed) {
+      return blockedPeriodicSweep("production", decision.code, decision.reason);
+    }
+    const result = await processGhlPeriodicFormSweepBatch({
+      client: client as any,
+      environment: "production",
+      productionGate: gate,
+      maxSweepItems: input.maxSweepItems,
+      sweepConcurrency: input.sweepConcurrency,
+      maxAttestationRefreshItems: input.maxAttestationRefreshItems,
+      attestationRefreshConcurrency: input.attestationRefreshConcurrency,
+      workerId: input.workerId,
+      deadlineAtMs: input.deadlineAtMs,
+      providerFactory: (authority) => createGhlProductionAdapter({
+        credentialRef: authority.credentialRef,
+        credentialResolver: createProductionEnvironmentGhlCredentialResolver(environment),
+        gate,
+        httpClient: createGhlInboundReadHttpClient(gate.baseUrl),
+        companyId: authority.providerAgencyId,
+      }),
+    });
+    return { environment: "production" as const, ...result };
+  }
+
+  const gate = ghlSandboxGateFromEnvironment(environment);
+  const decision = evaluateGhlSandboxGate(gate);
+  if (!decision.allowed) {
+    return blockedPeriodicSweep("sandbox", decision.code, decision.reason);
+  }
+  const result = await processGhlPeriodicFormSweepBatch({
+    client: client as any,
+    environment: "sandbox",
+    sandboxGate: gate,
+    maxSweepItems: input.maxSweepItems,
+    sweepConcurrency: input.sweepConcurrency,
+    maxAttestationRefreshItems: input.maxAttestationRefreshItems,
+    attestationRefreshConcurrency: input.attestationRefreshConcurrency,
+    workerId: input.workerId,
+    deadlineAtMs: input.deadlineAtMs,
+    providerFactory: (authority) => new GhlSandboxAdapter({
+      credentialRef: authority.credentialRef,
+      credentialResolver: createEnvironmentGhlCredentialResolver(environment),
+      gate,
+      httpClient: createGhlInboundReadHttpClient(gate.baseUrl),
+      companyId: authority.providerAgencyId,
+    }),
+  });
+  return { environment: "sandbox" as const, ...result };
+}
+
 /**
  * Authoritative cron/system-runner entrypoint. It evaluates application gates
  * before any database claim. The claim functions enforce database controls,
@@ -169,6 +268,7 @@ function blockedComponent(code: string, reason: string) {
 export async function processGhlProviderWorkerFromEnvironment(input: {
   maxProvisioningSteps?: number;
   maxLeadItems?: number;
+  maxReconciliationItems?: number;
   environment?: Readonly<Record<string, string | undefined>>;
 } = {}) {
   const environment = input.environment ?? process.env;
@@ -179,6 +279,7 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
       environment: "unproven" as const,
       provisioning: blockedComponent("service_role_missing", "Supabase service-role authority is not configured."),
       personalization: blockedComponent("service_role_missing", "Supabase service-role authority is not configured."),
+      reconciliation: blockedComponent("service_role_missing", "Supabase service-role authority is not configured."),
       delivery: blockedComponent("service_role_missing", "Supabase service-role authority is not configured."),
     };
   }
@@ -186,32 +287,33 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
   if (target === "production") {
     const provisioningGate = ghlProductionGateFromEnvironment("provisioning", environment);
     const leadGate = ghlProductionGateFromEnvironment("lead_delivery", environment);
+    const reconciliationGate = ghlProductionGateFromEnvironment("lifecycle_webhook", environment);
     const provisioningDecision = evaluateGhlProductionGate(provisioningGate);
     const leadDecision = evaluateGhlProductionGate(leadGate);
-    const provisioning = provisioningDecision.allowed
-      ? await processGhlProvisioningWorkerBatch({
+    const reconciliationDecision = evaluateGhlProductionGate(reconciliationGate);
+    // Lead capture reconciliation runs first and every component is isolated;
+    // a provisioning, personalization, or delivery poison row cannot prevent
+    // signed inbound form receipts from progressing.
+    const reconciliation = reconciliationDecision.allowed
+      ? await isolateGhlProviderWorkerComponent("reconciliation", () => processGhlInboundFormReconciliationBatch({
           client: client as any,
           environment: "production",
-          productionGate: provisioningGate,
-          maxSteps: input.maxProvisioningSteps,
-        })
-      : blockedComponent(provisioningDecision.code, provisioningDecision.reason);
-    const personalization = provisioningDecision.allowed
-      ? await processGhlPersonalizationWorkerBatch({
-          client: client as any,
-          environment: "production",
-          productionGate: provisioningGate,
-          maxItems: input.maxProvisioningSteps,
+          productionGate: reconciliationGate,
+          // One receipt can fan out to 25 exact form GETs. Keep the sequential
+          // system-job budget bounded so support/reporting/optimizer stages
+          // always retain execution time in the same invocation.
+          maxItems: Math.min(input.maxReconciliationItems ?? 1, 1),
           providerFactory: (authority) => createGhlProductionAdapter({
             credentialRef: authority.credentialRef,
             credentialResolver: createProductionEnvironmentGhlCredentialResolver(environment),
-            gate: provisioningGate,
+            gate: reconciliationGate,
+            httpClient: createGhlInboundReadHttpClient(reconciliationGate.baseUrl),
             companyId: authority.providerAgencyId,
           }),
-        })
-      : blockedComponent(provisioningDecision.code, provisioningDecision.reason);
+        }))
+      : blockedComponent(reconciliationDecision.code, reconciliationDecision.reason);
     const delivery = leadDecision.allowed
-      ? await processGhlProductionOutboxBatch(
+      ? await isolateGhlProviderWorkerComponent("delivery", () => processGhlProductionOutboxBatch(
           { maxItems: input.maxLeadItems },
           {
             client: client as any,
@@ -223,9 +325,31 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
               companyId: authority.providerAgencyId,
             }),
           },
-        )
+        ))
       : blockedComponent(leadDecision.code, leadDecision.reason);
-    return { environment: "production" as const, provisioning, personalization, delivery };
+    const provisioning = provisioningDecision.allowed
+      ? await isolateGhlProviderWorkerComponent("provisioning", () => processGhlProvisioningWorkerBatch({
+          client: client as any,
+          environment: "production",
+          productionGate: provisioningGate,
+          maxSteps: input.maxProvisioningSteps,
+        }))
+      : blockedComponent(provisioningDecision.code, provisioningDecision.reason);
+    const personalization = provisioningDecision.allowed
+      ? await isolateGhlProviderWorkerComponent("personalization", () => processGhlPersonalizationWorkerBatch({
+          client: client as any,
+          environment: "production",
+          productionGate: provisioningGate,
+          maxItems: input.maxProvisioningSteps,
+          providerFactory: (authority) => createGhlProductionAdapter({
+            credentialRef: authority.credentialRef,
+            credentialResolver: createProductionEnvironmentGhlCredentialResolver(environment),
+            gate: provisioningGate,
+            companyId: authority.providerAgencyId,
+          }),
+        }))
+      : blockedComponent(provisioningDecision.code, provisioningDecision.reason);
+    return { environment: "production" as const, provisioning, personalization, reconciliation, delivery };
   }
 
   const sandboxGate = ghlSandboxGateFromEnvironment(environment);
@@ -235,28 +359,24 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
       environment: "sandbox" as const,
       provisioning: blockedComponent(sandboxDecision.code, sandboxDecision.reason),
       personalization: blockedComponent(sandboxDecision.code, sandboxDecision.reason),
+      reconciliation: blockedComponent(sandboxDecision.code, sandboxDecision.reason),
       delivery: blockedComponent(sandboxDecision.code, sandboxDecision.reason),
     };
   }
-  const provisioning = await processGhlProvisioningWorkerBatch({
+  const reconciliation = await isolateGhlProviderWorkerComponent("reconciliation", () => processGhlInboundFormReconciliationBatch({
     client: client as any,
     environment: "sandbox",
     sandboxGate,
-    maxSteps: input.maxProvisioningSteps,
-  });
-  const personalization = await processGhlPersonalizationWorkerBatch({
-    client: client as any,
-    environment: "sandbox",
-    sandboxGate,
-    maxItems: input.maxProvisioningSteps,
+    maxItems: Math.min(input.maxReconciliationItems ?? 1, 1),
     providerFactory: (authority) => new GhlSandboxAdapter({
       credentialRef: authority.credentialRef,
       credentialResolver: createEnvironmentGhlCredentialResolver(environment),
       gate: sandboxGate,
+      httpClient: createGhlInboundReadHttpClient(sandboxGate.baseUrl),
       companyId: authority.providerAgencyId,
     }),
-  });
-  const delivery = await processGhlSandboxOutboxBatch(
+  }));
+  const delivery = await isolateGhlProviderWorkerComponent("delivery", () => processGhlSandboxOutboxBatch(
     { maxItems: input.maxLeadItems },
     {
       client: client as any,
@@ -268,6 +388,24 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
         companyId: authority.providerAgencyId,
       }),
     },
-  );
-  return { environment: "sandbox" as const, provisioning, personalization, delivery };
+  ));
+  const provisioning = await isolateGhlProviderWorkerComponent("provisioning", () => processGhlProvisioningWorkerBatch({
+    client: client as any,
+    environment: "sandbox",
+    sandboxGate,
+    maxSteps: input.maxProvisioningSteps,
+  }));
+  const personalization = await isolateGhlProviderWorkerComponent("personalization", () => processGhlPersonalizationWorkerBatch({
+    client: client as any,
+    environment: "sandbox",
+    sandboxGate,
+    maxItems: input.maxProvisioningSteps,
+    providerFactory: (authority) => new GhlSandboxAdapter({
+      credentialRef: authority.credentialRef,
+      credentialResolver: createEnvironmentGhlCredentialResolver(environment),
+      gate: sandboxGate,
+      companyId: authority.providerAgencyId,
+    }),
+  }));
+  return { environment: "sandbox" as const, provisioning, personalization, reconciliation, delivery };
 }

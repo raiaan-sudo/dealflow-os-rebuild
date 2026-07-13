@@ -10,6 +10,12 @@ const name = `dealflow-reporting-optimizer-${process.pid}-${randomBytes(3).toStr
 const db = createDisposablePostgresHarness({ containerName: name, image, maxBuffer: 16 * 1024 * 1024 });
 const password = randomBytes(20).toString("hex");
 const migration = fs.readFileSync("supabase/migrations/20260712214000_create_continuous_reporting_and_safe_optimizer.sql", "utf8");
+const integrityMigration = fs.readFileSync("supabase/migrations/20260713018000_harden_meta_reporting_and_leadgen_integrity.sql", "utf8");
+const reportingIntegritySql = integrityMigration.slice(
+  integrityMigration.indexOf("-- BEGIN META REPORTING SETTLEMENT FENCING"),
+  integrityMigration.indexOf("-- END META REPORTING SETTLEMENT FENCING") +
+    "-- END META REPORTING SETTLEMENT FENCING".length,
+);
 let cleaned = false;
 
 function run(args, options = {}) { return db.run(args, options); }
@@ -52,7 +58,15 @@ try {
     create or replace function private.is_current_user_org_member(uuid) returns boolean language sql stable as $$ select true $$;
     create table public.organizations(id uuid primary key);
     create table public.campaign_plans(id uuid primary key, organization_id uuid not null references public.organizations(id), user_id uuid not null references auth.users(id), unique(id, organization_id), unique(id, organization_id, user_id));
-    create table public.campaign_sync_snapshots(id uuid primary key default gen_random_uuid());
+    create table public.campaign_sync_snapshots(
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null,
+      user_id uuid not null,
+      campaign_id uuid,
+      meta_campaign_id text,
+      sync_result text not null default 'failed',
+      delivery_metrics_confirmed boolean not null default false
+    );
     create table public.campaign_launch_records(id uuid primary key default gen_random_uuid(), organization_id uuid not null, user_id uuid not null, campaign_id uuid, result_status text not null, meta_campaign_id text);
     create table public.system_jobs(
       id uuid primary key default gen_random_uuid(), organization_id uuid not null, user_id uuid not null, campaign_id uuid,
@@ -75,12 +89,25 @@ try {
     );
     create table public.app_schema_metadata(key text primary key, value text not null, updated_at timestamptz not null default now());
     ${migration}
+    ${reportingIntegritySql}
   `, "Apply reporting/optimizer migration");
 
   const user = "10000000-0000-4000-8000-000000000001";
+  const userB = "10000000-0000-4000-8000-000000000002";
   const org = "20000000-0000-4000-8000-000000000001";
+  const orgB = "20000000-0000-4000-8000-000000000002";
   const campaign = "30000000-0000-4000-8000-000000000001";
-  sql(`insert into auth.users(id) values ('${user}'); insert into public.organizations values ('${org}'); insert into public.campaign_plans values ('${campaign}','${org}','${user}'); insert into public.campaign_launch_records(organization_id,user_id,campaign_id,result_status,meta_campaign_id) values ('${org}','${user}','${campaign}','success','meta-sandbox-campaign');`, "Seed reporting fixture");
+  const campaignB = "30000000-0000-4000-8000-000000000002";
+  sql(`
+    insert into auth.users(id) values ('${user}'),('${userB}');
+    insert into public.organizations values ('${org}'),('${orgB}');
+    insert into public.campaign_plans values
+      ('${campaign}','${org}','${user}'),
+      ('${campaignB}','${orgB}','${userB}');
+    insert into public.campaign_launch_records(
+      organization_id,user_id,campaign_id,result_status,meta_campaign_id
+    ) values ('${org}','${user}','${campaign}','success','meta-sandbox-campaign');
+  `, "Seed reporting fixture");
 
   const first = sql(`set role service_role; set request.jwt.claim.role='service_role'; select enqueued_count from public.enqueue_due_meta_reporting_sync_jobs(25);`, "First schedule enqueue");
   assert.equal(first, "1");
@@ -102,7 +129,51 @@ try {
   const [, tokenB, generationB] = claimB.split("|");
   assert.equal(generationB, "2");
   mustFail(`set role service_role; set request.jwt.claim.role='service_role'; select public.settle_meta_reporting_sync('${scheduleId}','${jobId}','worker-a','${tokenA}',1,gen_random_uuid());`, /meta_reporting_lease_lost/, "Superseded worker settlement");
-  const snapshot = sql(`insert into public.campaign_sync_snapshots default values returning id;`, "Create snapshot");
+  const scheduleB = sql(`
+    insert into public.meta_reporting_schedules(organization_id,user_id,campaign_id,next_sync_at)
+    values ('${orgB}','${userB}','${campaignB}',now()+interval '1 day') returning id;
+  `, "Create cross-tenant schedule");
+  const snapshotB = sql(`
+    insert into public.campaign_sync_snapshots(organization_id,user_id,campaign_id,meta_campaign_id,sync_result,delivery_metrics_confirmed)
+    values ('${orgB}','${userB}','${campaignB}','meta-other-campaign','success',true) returning id;
+  `, "Create cross-tenant snapshot");
+  const wrongCampaignSnapshot = sql(`
+    insert into public.campaign_sync_snapshots(organization_id,user_id,campaign_id,meta_campaign_id,sync_result,delivery_metrics_confirmed)
+    values ('${org}','${user}','${campaignB}','meta-wrong-campaign','success',true) returning id;
+  `, "Create wrong-campaign snapshot");
+  mustFail(
+    `set role service_role; set request.jwt.claim.role='service_role'; select public.record_meta_reporting_sync_failure('${scheduleB}','${jobId}','worker-b','${tokenB}',${generationB},'timeout');`,
+    /meta_reporting_schedule_job_scope_mismatch/,
+    "Cross-tenant failure settlement denial",
+  );
+  mustFail(
+    `set role service_role; set request.jwt.claim.role='service_role'; select public.settle_meta_reporting_sync('${scheduleB}','${jobId}','worker-b','${tokenB}',${generationB},'${snapshotB}');`,
+    /meta_reporting_schedule_job_scope_mismatch/,
+    "Cross-tenant schedule success settlement denial",
+  );
+  mustFail(
+    `set role service_role; set request.jwt.claim.role='service_role'; select public.settle_meta_reporting_sync('${scheduleId}','${jobId}','worker-b','${tokenB}',${generationB},'${snapshotB}');`,
+    /meta_reporting_snapshot_tenant_scope_mismatch/,
+    "Cross-tenant snapshot settlement denial",
+  );
+  mustFail(
+    `set role service_role; set request.jwt.claim.role='service_role'; select public.settle_meta_reporting_sync('${scheduleId}','${jobId}','worker-b','${tokenB}',${generationB},'${wrongCampaignSnapshot}');`,
+    /meta_reporting_snapshot_campaign_scope_mismatch/,
+    "Cross-campaign snapshot settlement denial",
+  );
+  const unconfirmedSnapshot = sql(`
+    insert into public.campaign_sync_snapshots(organization_id,user_id,campaign_id,meta_campaign_id,sync_result,delivery_metrics_confirmed)
+    values ('${org}','${user}','${campaign}','meta-sandbox-campaign','partial_success',false) returning id;
+  `, "Create failed delivery attempt");
+  mustFail(
+    `set role service_role; set request.jwt.claim.role='service_role'; select public.settle_meta_reporting_sync('${scheduleId}','${jobId}','worker-b','${tokenB}',${generationB},'${unconfirmedSnapshot}');`,
+    /meta_reporting_delivery_metrics_unconfirmed/,
+    "Unconfirmed delivery metrics cannot settle reporting freshness",
+  );
+  const snapshot = sql(`
+    insert into public.campaign_sync_snapshots(organization_id,user_id,campaign_id,meta_campaign_id,sync_result,delivery_metrics_confirmed)
+    values ('${org}','${user}','${campaign}','meta-sandbox-campaign','success',true) returning id;
+  `, "Create exact-scope snapshot");
   assert.equal(sql(`set role service_role; set request.jwt.claim.role='service_role'; select public.settle_meta_reporting_sync('${scheduleId}','${jobId}','worker-b','${tokenB}',${generationB},'${snapshot}');`, "Worker B settlement"), "t");
   assert.equal(sql(`select freshness_status||'|'||consecutive_failures from public.meta_reporting_schedules where id='${scheduleId}';`, "Successful freshness"), "current|0");
 
@@ -111,7 +182,7 @@ try {
   mustFail(`delete from public.meta_optimization_action_receipts where idempotency_key='receipt-key';`, /append-only/, "Receipt delete guard");
   assert.equal(sql(`select execution_enabled||'|'||global_kill_switch from public.optimization_campaign_controls where campaign_id='${campaign}';`, "Default optimizer controls"), "false|true");
 
-  console.log("continuous reporting/optimizer disposable DB: PASS (enqueue replay, lease exclusion/reclaim, stale-worker denial, freshness, immutable receipts)");
+  console.log("continuous reporting/optimizer disposable DB: PASS (enqueue replay, lease exclusion/reclaim, cross-tenant/campaign settlement denial, freshness, immutable receipts)");
 } finally {
   cleanup();
 }

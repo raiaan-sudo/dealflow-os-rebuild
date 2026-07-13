@@ -1,103 +1,92 @@
-# Commercial, Support, and White-Label Contract
+# DealFlow commercial, support, and white-label contract
 
-## New customer acquisition
+Status: `INTEGRATED CANDIDATE / FINAL-SEAL PROOF NOT_YET_RUN / HOSTED ACCEPTANCE NOT_YET_RUN / PRODUCTION NO_GO`
+
+## Single-plan acquisition and activation
 
 - The only new DealFlow subscription is Pro at `$297/month`.
-- Both authenticated checkout and public access-key checkout accept only the
-  literal `pro` tier. Partner checkout uses the same acquisition rule.
-- Stripe promotion codes remain allowed. A coupon may reduce the applied price,
-  but a zero-dollar checkout or manual invoice cannot newly activate a workspace
-  or grant the initial `$10` credit.
-- Starter and Growth remain parseable only for existing subscriptions. A Stripe
-  webhook may preserve either tier only when the subscription metadata names the
-  same tier and carries `legacy_plan_tier_reconciled=true`. Missing or conflicting
-  authority moves the subscription to `operator_action_required` and grants no
-  launch access.
-- Subscription status alone is insufficient for a new workspace. Entitlements
-  require the immutable positive-payment `commercial_activations` row. A
-  pre-existing account without that row is allowed only when an owner-controlled
-  reconciliation writes `legacy_commercial_activation_reconciled=true` into the
-  persisted billing metadata after verifying its historical payment.
-- GHL provisioning may consume only the durable `commercial_activations` row.
-  A Stripe customer, Checkout Session, subscription id, or `active`/`trialing`
-  projection is not provisioning authority by itself.
+- Authenticated, access-key and partner checkout accept only literal `pro`.
+- New workspaces and onboarding default to Pro. The obsolete design-preview
+  route fails closed, and login/dashboard/results ignore legacy plan-selection
+  query parameters.
+- Starter/Growth remain parseable only for grandfathered subscriptions carrying
+  exact owner-controlled reconciliation authority. They are not selectable or
+  advertised to new customers.
+- Promotion codes are allowed, but zero-dollar/manual-invoice paths do not
+  create a new activation or initial credit.
+- Activation is one immutable qualifying positive payment, not onboarding,
+  subscription status alone, GHL readiness, launch or first lead.
+- One activation grants exactly `$10` once. GHL provisioning consumes only the
+  durable activation receipt.
 
-## Credit rules
+## Credits
 
-- Credits do not expire.
-- Image generation reserves `$1`; video generation reserves `$5` before the
-  provider action.
-- A conclusive pre-dispatch release or provider rejection compensates the debit
-  exactly once through the unique provider-event ledger relationship.
-- A conclusive success consumes the reservation.
-- An ambiguous post-dispatch outcome becomes `operator_action_required`; it is
-  neither refunded nor automatically retried until reconciliation proves the
-  provider outcome.
-- Top-ups are between `$25` and `$1,000`, require an active paid subscription and
-  its existing Stripe customer, and settle only against the exact durable intent,
-  customer, amount, currency, Checkout Session, event, and payment receipt.
+- Credits do not expire under the current product contract.
+- Static generation reserves `$1`; video generation reserves `$5` before a
+  paid provider dispatch.
+- Conclusive pre-dispatch release/provider rejection compensates once;
+  conclusive success consumes once; possible-write ambiguity becomes operator
+  reconciliation and is neither blindly retried nor automatically refunded.
+- Zero balance blocks generation. Top-ups are `$25` to `$1,000`, require a
+  current paid entitlement and exact existing Stripe customer, and settle only
+  against the matching durable intent/session/payment receipt.
 
-## Support delivery
+Hosted Stripe test-mode checkout/webhook/replay/legacy/zero-dollar proof is
+`NOT_YET_RUN`. No live charge, refund or subscription mutation is claimed.
 
-Creating a ticket and its outbox row is atomic. Every successful user response
-includes the correlation reference; delivery is asynchronous and never controls
-whether the ticket itself exists. Reply routing uses the verified email already
-held on the authenticated account. The form does not accept or persist a second
-plaintext reply address. The delivery worker reads the account email transiently
-under its exact lease and sends it only to the approved adapter as `replyTo`.
+## Support
 
-Delivery defaults to `internal_operator_inbox`. External delivery requires all
-of the following:
+Ticket and outbox creation are atomic. The user receives a durable correlation
+reference even when notification delivery is pending. Reply routing uses the
+verified account email transiently; the form does not accept/store a second
+plaintext reply address.
 
-1. An explicit owner destination in `SUPPORT_EXTERNAL_DESTINATION`.
-2. An exact HTTPS delivery endpoint and exact allowed origin.
-3. An idempotent gateway that honors the outbox idempotency key and returns an
-   `x-support-delivery-receipt` header.
-4. The explicit external enable flag, the exact owner attestation, and a secret
-   token stored in the deployment secret manager.
-5. In production, the additional production enable flag. Production external
-   delivery is disabled by default.
+Default delivery is `internal_operator_inbox`. Nonproduction acceptance uses
+the zero-communication `staging_sink` or an exact loopback mail sink under its
+test attestation. External delivery requires an owner-approved exact HTTPS
+idempotent gateway/origin, destination, secret-manager token, receipt header,
+global/operation flags, production flag, database control and current lease.
+Post-dispatch ambiguity becomes `operator_action_required`.
 
-The canonical proposed destination is `support@agentdealflow.io`; this is
-documentation only, not an active configuration or proof that the mailbox is
-owned, monitored, or appropriate. Owner approval remains required.
+`support@agentdealflow.io` remains only the proposed owner destination. Mailbox
+ownership, monitoring, gateway and SLA are `BLOCKED_OWNER_AUTHORITY`. No email,
+SMS or external support communication is claimed.
 
-Nonproduction acceptance uses either the zero-communication `staging_sink` or
-the explicit loopback-only `mail_sink` with its test-only attestation. No test
-may send a real email. Successful external or mail-sink delivery records a
-durable receipt containing the ticket, organization, user reference, adapter,
-scope, destination hash, provider receipt, and timestamp. The plaintext
-destination is not stored in the receipt table. Conclusive pre-dispatch failures
-use the bounded retry schedule. A timeout, receipt-persistence failure, or other
-post-dispatch ambiguity immediately becomes `operator_action_required`; it is
-never retried until reconciliation proves whether the gateway accepted the
-idempotency key.
+## Verified white-label host and branding
 
-## White-label embed
+White-label branding is selected only when server-side records yield exactly
+one non-deleted, verified, SSL-active domain joined to one active non-deleted
+partner. Branding fields are length/type sanitized; logos require safe HTTPS;
+invalid/ambiguous records fail closed to DealFlow.
 
-The full explicitly approved realtor journey is embeddable on ClickToScale app
-hosts: onboarding, campaign build completion, paywall, funnel/creative review,
-preview, launch, launch progress/success, checkout return, results/dashboard,
-settings, and support. Authentication continuation is permitted only when it
-returns to one of those exact paths. Admin paths remain non-embeddable.
+Partner attribution is HMAC-signed, short-lived, exact-host bound and stored in
+an HttpOnly secure cookie. It is not derived from a caller-provided slug,
+header, query parameter or unverified host. Signing secrets must meet strength
+policy.
 
-An authenticated workspace resolves its partner branding from the active
-workspace attribution first and then loads only that exact active partner.
-Product/brand name, validated primary color, optional HTTPS logo reference, and
-the `Powered by DealFlow` decision flow through the shared application layout.
-Client-controlled partner ids never select branding.
+Exact approved realtor paths can be framed only from configured exact HTTPS
+partner origins after the request host independently resolves to that same
+verified partner domain. Wildcards, credentials/paths in origins and shared GHL
+vendor origins are refused. Login continuation preserves only safe approved
+embedded routes. Admin paths remain non-embeddable.
 
-Frame access is not tenant authority. Every embedded request continues through
-normal Supabase authentication, organization membership, RLS, RPC tenant
-checks, billing gates, and provider write gates. Exact HTTPS frame ancestors
-must be configured; wildcards and shared vendor origins are refused.
+Frame/branding context never grants tenant authority. Every route still
+requires normal Supabase auth, active organization membership, RLS/RPC checks,
+billing and provider gates. Direct tenants require platform-owned GHL mapping;
+partner children require the exact active partner and partner-owned mapping.
 
-## External owner gaps
+Hosted partner-domain login, onboarding, builder, paywall, launch, results,
+settings and support proof—plus attacker host, ambiguous domain, disabled
+partner, removed member and cross-tenant negatives—is `NOT_YET_RUN`.
 
-- Confirm ownership and monitoring of the support mailbox.
-- Select or implement the idempotent HTTPS email-delivery gateway.
-- Store its endpoint, exact allowed origin, token, destination, and attestations
-  through the deployment secret manager.
-- Approve production activation only after the nonproduction mail-sink journey,
-  duplicate request, retry, ambiguous-result reconciliation, and dead-letter
-  tests pass in hosted staging.
+## Production authority still required
+
+- Stripe live/test mode and exact product/price authority;
+- support destination, gateway, ownership, monitoring and SLA;
+- verified production partner domains, frame ancestors and signing-secret
+  attestation;
+- GHL direct/partner ownership, export, retention and offboarding policy; and
+- protected exact-deployment/drain/canary evidence.
+
+No provider, customer, billing, communication or production mutation is
+authorized or proven by this contract.

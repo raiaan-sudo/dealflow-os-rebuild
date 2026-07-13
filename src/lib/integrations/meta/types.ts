@@ -55,6 +55,8 @@ export type MetaAvailableAdAccount = {
   externalAccountId?: string;
   externalAccountName?: string;
   status?: string | null;
+  currency?: string | null;
+  timezoneName?: string | null;
   [key: string]: any;
 };
 
@@ -167,6 +169,8 @@ export type MetaConnectionState = {
 };
 
 export type MetaCampaignSyncSnapshot = {
+  id?: string;
+  internalCampaignId?: string | null;
   campaignId?: string | null;
   adSetIds?: string[];
   adIds?: string[];
@@ -185,6 +189,11 @@ export type MetaCampaignSyncSnapshot = {
   adSetStatuses?: MetaEntityStatus[];
   adStatuses?: MetaEntityStatus[];
   syncErrors?: string[];
+  deliveryMetricsConfirmed?: boolean;
+  latestAttemptAt?: string | null;
+  latestAttemptResult?: "success" | "partial_success" | "failed" | null;
+  latestAttemptDeliveryMetricsConfirmed?: boolean | null;
+  latestAttemptErrors?: string[];
   metrics: MetaDeliveryMetrics;
   deliveryMetrics: MetaDeliveryMetrics;
   lastSyncedAt?: string | null;

@@ -4,11 +4,16 @@ import { ApiError } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { syncMetaCampaignStatus } from "@/lib/services/meta-campaign-sync-service";
 import {
-  REALTOR_OPTIMIZATION_POLICY_V1,
   evaluateRealtorOptimizationPolicy,
 } from "@/lib/optimization-engine/realtor-policy";
 import { evaluateOptimizationEvidence } from "@/lib/optimization-engine/safety-policy";
 import { recordOptimizationDecision } from "@/lib/services/optimization-decision-service";
+import { getActiveMetaOptimizationPolicyForCampaign } from "@/lib/services/meta-optimization-policy-service";
+import { enqueueMetaOptimizationExecutionIntent } from "@/lib/services/meta-optimization-execution-service";
+import {
+  metaCtrRatioToPolicyPercent,
+  readMetaReportingWindow,
+} from "@/lib/integrations/meta/reporting-contract";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { SystemJobLease } from "@/lib/services/system-job-lease-service";
 
@@ -63,13 +68,34 @@ export async function processMetaReportingSyncJob(params: {
         userId: params.job.user_id,
       },
     });
+    if (snapshot.deliveryMetricsConfirmed !== true) {
+      throw new ApiError(
+        503,
+        "Meta delivery insights were not confirmed; the last known-good metrics remain authoritative.",
+        "meta_delivery_metrics_unconfirmed",
+      );
+    }
     const raw = snapshot.deliveryMetrics;
     const impressions = Number(raw.impressions ?? 0);
     const clicks = Number(raw.clicks ?? 0);
     const spend = Number(raw.spend ?? 0);
     const leads = Number(raw.leads ?? 0);
+    const syncMetadata =
+      snapshot.syncMetadata &&
+      typeof snapshot.syncMetadata === "object" &&
+      !Array.isArray(snapshot.syncMetadata)
+        ? (snapshot.syncMetadata as Record<string, unknown>)
+        : null;
+    const reportingWindow = readMetaReportingWindow(syncMetadata?.reporting_window);
+    if (!reportingWindow) {
+      throw new ApiError(
+        409,
+        "Meta reporting evidence is missing the approved seven-day interval.",
+        "meta_reporting_window_invalid",
+      );
+    }
     const metrics = {
-      ctr: Number(((Number(raw.ctr ?? 0) <= 1 ? Number(raw.ctr ?? 0) * 100 : Number(raw.ctr ?? 0))).toFixed(2)),
+      ctr: Number(metaCtrRatioToPolicyPercent(raw.ctr ?? 0).toFixed(2)),
       cpc: clicks > 0 ? Number((spend / clicks).toFixed(2)) : 0,
       cpl: leads > 0 ? Number((spend / leads).toFixed(2)) : 0,
       frequency: Number(raw.frequency ?? 0),
@@ -79,7 +105,7 @@ export async function processMetaReportingSyncJob(params: {
       impressions,
       clicks,
     };
-    const [controlsResult, executionResult, launchResult] = await Promise.all([
+    const [controlsResult, executionResult, launchResult, activePolicy] = await Promise.all([
       admin.from("optimization_campaign_controls")
         .select("*")
         .eq("organization_id", params.job.organization_id)
@@ -100,6 +126,11 @@ export async function processMetaReportingSyncJob(params: {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      getActiveMetaOptimizationPolicyForCampaign({
+        organizationId: params.job.organization_id,
+        userId: params.job.user_id,
+        campaignId: params.job.campaign_id,
+      }),
     ]);
     if (controlsResult.error) {
       throw new ApiError(500, controlsResult.error.message, "optimization_controls_lookup_failed");
@@ -111,23 +142,24 @@ export async function processMetaReportingSyncJob(params: {
       throw new ApiError(500, launchResult.error.message, "optimization_launch_age_lookup_failed");
     }
     const controls = controlsResult.data;
-    const currentDailyBudget = Number(executionResult.data?.daily_budget ?? 0);
+    const currentDailyBudget = activePolicy
+      ? activePolicy.currentDailyBudgetMinor / 100
+      : Number(executionResult.data?.daily_budget ?? 0);
     const launchMs = Date.parse(String(launchResult.data?.created_at ?? ""));
     const campaignAgeHours = Number.isFinite(launchMs)
       ? Math.max(0, (Date.now() - launchMs) / 3_600_000)
       : null;
-    const customerCeiling = Number(controls?.customer_daily_budget_ceiling ?? 0);
+    const customerCeiling = activePolicy
+      ? activePolicy.customerDailyBudgetCeilingMinor / 100
+      : Number(controls?.customer_daily_budget_ceiling ?? 0);
     const snapshotSyncedAt = snapshot.syncedAt ?? null;
-    const approvedPolicy = {
-      ...REALTOR_OPTIMIZATION_POLICY_V1,
-      customerDailyBudgetCeiling: customerCeiling,
-    };
+    const approvedPolicy = activePolicy?.approvedPolicy ?? null;
     const evidence = evaluateOptimizationEvidence({
       sourceStatus: snapshot.syncResult === "success" ? "confirmed" : "partial",
       syncedAt: snapshotSyncedAt,
       metrics,
       approvedPolicy,
-      lastProviderMutationAt: controls?.last_provider_mutation_at ?? null,
+      lastProviderMutationAt: activePolicy?.lastProviderMutationAt ?? controls?.last_provider_mutation_at ?? null,
     });
     const policyEvaluation = evaluateRealtorOptimizationPolicy({
       sourceStatus: snapshot.syncResult === "success" ? "confirmed" : "partial",
@@ -136,14 +168,19 @@ export async function processMetaReportingSyncJob(params: {
       dailyBudget: currentDailyBudget > 0 ? currentDailyBudget : null,
       customerDailyBudgetCeiling: customerCeiling,
       campaignAgeHours,
-      scaleAppliedLast24HoursPercent: Number(controls?.scale_applied_last_24h_percent ?? 0),
-      lastProviderMutationAt: controls?.last_provider_mutation_at ?? null,
+      scaleAppliedLast24HoursPercent:
+        activePolicy?.scaleWindowStartedAt &&
+        Date.parse(activePolicy.scaleWindowStartedAt) > Date.now() - 24 * 60 * 60_000
+          ? activePolicy.scaleAppliedLast24HoursPercent
+          : 0,
+      lastProviderMutationAt: activePolicy?.lastProviderMutationAt ?? controls?.last_provider_mutation_at ?? null,
       switches: {
-        global: controls?.global_kill_switch !== false,
+        global: !activePolicy || !activePolicy.executionEnabled || controls?.global_kill_switch !== false,
         account: controls?.account_kill_switch === true,
         campaign: controls?.campaign_kill_switch === true,
         emergencyStop: controls?.emergency_stop === true,
       },
+      approvedPolicy,
     });
     const decision = await recordOptimizationDecision({
       campaignId: params.job.campaign_id,
@@ -152,16 +189,34 @@ export async function processMetaReportingSyncJob(params: {
       metrics,
       evidence,
       approvedPolicy,
-      lastProviderMutationAt: controls?.last_provider_mutation_at ?? null,
+      reportingWindow,
+      lastProviderMutationAt: activePolicy?.lastProviderMutationAt ?? controls?.last_provider_mutation_at ?? null,
       proposedActions:
         policyEvaluation.state === "PROPOSED"
-          ? [`${policyEvaluation.action.type}:${policyEvaluation.action.changePercent}`]
+          ? [`${policyEvaluation.action.type}:${policyEvaluation.action.changePercent}:${policyEvaluation.action.reason}`]
           : [],
       internalActor: {
         organizationId: params.job.organization_id,
         userId: params.job.user_id,
       },
     });
+    const optimizationExecutionIntentId =
+      activePolicy &&
+      policyEvaluation.state === "PROPOSED" &&
+      (policyEvaluation.action.type === "pause" || policyEvaluation.action.type === "budget")
+        ? await enqueueMetaOptimizationExecutionIntent({
+            organizationId: params.job.organization_id,
+            userId: params.job.user_id,
+            campaignId: params.job.campaign_id,
+            decisionId: decision.id,
+            actionType: policyEvaluation.action.type,
+            actionReason: policyEvaluation.action.reason,
+            intendedDailyBudgetMinor:
+              policyEvaluation.action.type === "budget"
+                ? Math.floor(activePolicy.currentDailyBudgetMinor * 1.2)
+                : null,
+          })
+        : null;
     const { data, error } = await admin.rpc("settle_meta_reporting_sync", {
       p_schedule_id: scheduleId,
       p_job_id: params.job.id,
@@ -180,6 +235,7 @@ export async function processMetaReportingSyncJob(params: {
       syncedAt: snapshot.syncedAt,
       optimizationDecisionId: decision.id,
       optimizationState: policyEvaluation.state,
+      optimizationExecutionIntentId,
     };
   } catch (error) {
     const errorCode = error instanceof ApiError ? error.code : "meta_reporting_sync_failed";

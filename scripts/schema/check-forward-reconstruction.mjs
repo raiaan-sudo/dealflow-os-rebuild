@@ -21,6 +21,31 @@ const ACTIVE_APP_CONTRACT_TABLES = [
   "campaign_execution_logs", "creative_asset_logs", "creative_intelligence",
   "creative_pattern_scores", "creative_performance_snapshots", "creative_render_jobs",
 ];
+const FROZEN_FOUNDATION_LAST_FILE =
+  "20260710235994_create_execution_and_creative_app_contracts.sql";
+const FROZEN_FOUNDATION_MIGRATION_COUNT = 80;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 99;
+const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
+  "20260712213000_create_ghl_sandbox_provider_path.sql",
+  "20260712214000_create_continuous_reporting_and_safe_optimizer.sql",
+  "20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql",
+  "20260712235991_create_meta_instant_form_provisioning.sql",
+  "20260713010000_harden_support_external_delivery.sql",
+  "20260713011000_create_customer_authorized_meta_activation.sql",
+  "20260713012000_require_meta_activation_preauthorization.sql",
+  "20260713012100_harden_meta_activation_delivery_and_recovery.sql",
+  "20260713013000_create_customer_authorized_meta_optimizer_executor.sql",
+  "20260713014000_scope_ghl_personalization_to_campaign.sql",
+  "20260713015000_bind_verified_partner_attribution_atomically.sql",
+  "20260713016000_terminalize_ambiguous_ghl_dispatches.sql",
+  "20260713017000_make_paid_creative_dispatch_recoverable.sql",
+  "20260713018000_harden_meta_reporting_and_leadgen_integrity.sql",
+  "20260713019000_capture_public_lead_and_outbox_atomically.sql",
+  "20260713020000_add_fair_reporting_worker_claim.sql",
+  "20260713021000_require_paid_activation_for_campaign_creation.sql",
+  "20260713022000_reconcile_native_ghl_form_submissions.sql",
+  "20260713024000_add_durable_ghl_periodic_form_sweeps.sql",
+];
 
 function fail(message, details = {}) {
   failures.push({ message, ...details });
@@ -115,9 +140,107 @@ function addedColumnEvents(recordsToInspect, table) {
 
 const failures = [];
 const files = readdirSync(MIGRATIONS).filter((name) => /^\d{14}_.+\.sql$/.test(name)).sort();
-if (files.length !== 80) fail("migration count must equal 80", { actual: files.length });
+const foundationBoundaryIndex = files.indexOf(FROZEN_FOUNDATION_LAST_FILE);
+if (foundationBoundaryIndex + 1 !== FROZEN_FOUNDATION_MIGRATION_COUNT) {
+  fail("frozen foundation boundary moved", {
+    expected: FROZEN_FOUNDATION_MIGRATION_COUNT,
+    actual: foundationBoundaryIndex + 1,
+  });
+}
+if (new Set(files.map((name) => name.slice(0, 14))).size !== files.length) {
+  fail("migration versions must remain globally unique");
+}
+for (const requiredMigration of REQUIRED_PRODUCT_EXTENSION_MIGRATIONS) {
+  if (!files.includes(requiredMigration)) {
+    fail("required product extension migration is missing", {
+      migration: requiredMigration,
+    });
+  }
+}
+if (
+  files.length !== EXACT_INTEGRATED_MIGRATION_COUNT ||
+  EXACT_INTEGRATED_MIGRATION_COUNT !==
+    FROZEN_FOUNDATION_MIGRATION_COUNT + REQUIRED_PRODUCT_EXTENSION_MIGRATIONS.length
+) {
+  fail("migration chain does not have the exact reviewed product extensions", {
+    expected: EXACT_INTEGRATED_MIGRATION_COUNT,
+    actual: files.length,
+  });
+}
 
 const records = files.map((file) => ({ file, version: file.slice(0, 14), sql: readFileSync(join(MIGRATIONS, file), "utf8") }));
+const activationMigration = records.find(({ version }) => version === "20260713011000");
+if (!activationMigration) {
+  fail("customer-authorized Meta activation migration is missing");
+} else {
+  const normalizedActivationSql = activationMigration.sql
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const activationTables = [
+    "meta_campaign_activation_runtime_controls",
+    "meta_campaign_activation_intents",
+    "meta_campaign_activation_objects",
+  ];
+  for (const table of activationTables) {
+    for (const requiredToken of [
+      `create table if not exists public.${table}`,
+      `alter table public.${table} enable row level security;`,
+      `alter table public.${table} force row level security;`,
+      `revoke all on table public.${table} from public, anon, authenticated, service_role;`,
+      `grant select on table public.${table} to service_role;`,
+    ]) {
+      if (!normalizedActivationSql.includes(requiredToken)) {
+        fail("Meta activation table security contract is incomplete", {
+          table,
+          requiredToken,
+        });
+      }
+    }
+  }
+  if (
+    !normalizedActivationSql.includes(
+      "activation_writes_enabled boolean not null default false",
+    )
+    || !/\('staging', false, 1, 'seeded_closed'\),\s*\('production', false, 1, 'seeded_closed'\)/i.test(
+      activationMigration.sql,
+    )
+  ) {
+    fail("Meta activation runtime controls are not deterministically seeded closed");
+  }
+
+  const customerRpcs = [
+    "authorize_meta_campaign_activation(uuid, uuid, uuid, timestamptz, bigint, text, text, text)",
+    "cancel_meta_campaign_activation(uuid)",
+  ];
+  const workerRpcs = [
+    "claim_due_meta_campaign_activation(text, text, integer)",
+    "renew_meta_campaign_activation_claim(uuid, text, uuid, bigint, integer)",
+    "arm_meta_campaign_activation_object(uuid, uuid, text, uuid, bigint)",
+    "record_meta_campaign_activation_receipt(uuid, uuid, text, uuid, bigint, text, text, jsonb)",
+    "settle_meta_campaign_activation_object(uuid, uuid, text, uuid, bigint)",
+    "settle_meta_campaign_activation(uuid, text, uuid, bigint, text, text, text)",
+    "reconcile_meta_campaign_activation_object(uuid, uuid, text, text, text, text)",
+  ];
+  for (const [signature, grantee] of [
+    ...customerRpcs.map((signature) => [signature, "authenticated"]),
+    ...workerRpcs.map((signature) => [signature, "service_role"]),
+  ]) {
+    for (const requiredToken of [
+      `create or replace function public.${signature.split("(")[0]}(`,
+      `revoke all on function public.${signature} from public, anon, authenticated, service_role;`,
+      `grant execute on function public.${signature} to ${grantee};`,
+    ]) {
+      if (!normalizedActivationSql.includes(requiredToken)) {
+        fail("Meta activation RPC privilege contract is incomplete", {
+          signature,
+          grantee,
+          requiredToken,
+        });
+      }
+    }
+  }
+}
 const generated = records.filter(({ sql }) => sql.includes("-- dealflow:migration "));
 if (generated.length !== 29) fail("generated migration count must equal 29", { actual: generated.length });
 for (const record of generated) {

@@ -594,6 +594,28 @@ function normalizeFunnel(
   };
 }
 
+function normalizeLeadCaptureMode(value: unknown) {
+  return value === "volume_lead_form" ||
+    value === "deep_qualification" ||
+    value === "quality_funnel"
+    ? value
+    : "quality_funnel";
+}
+
+function normalizeFunnelLanguage(value: unknown) {
+  return value === "fr" || value === "es" || value === "en" ? value : "en";
+}
+
+function normalizeDailyBudgetCents(value: unknown, monthlyBudget: number) {
+  const explicit = Number(value);
+  if (Number.isSafeInteger(explicit) && explicit > 0) {
+    return explicit;
+  }
+
+  const derived = Math.round((monthlyBudget * 100) / 30);
+  return Number.isSafeInteger(derived) && derived > 0 ? derived : 0;
+}
+
 function normalizeOptimizations(value: unknown): CampaignOptimization[] {
   return safeArray<CampaignOptimization>(value).map((item) => ({
     ...item,
@@ -647,6 +669,17 @@ export function normalizeCanonicalCampaign(params: {
     ? planSource.pain_points.map(String)
     : planRecord?.painPoints ?? [];
   const monthlyBudget = Number(planSource.monthly_budget ?? planRecord?.monthlyBudget ?? 0);
+  const dailyBudgetCents = normalizeDailyBudgetCents(
+    planSource.daily_budget_cents,
+    monthlyBudget,
+  );
+  const savedFunnel = params.savedDocument?.funnel as Record<string, unknown> | null | undefined;
+  const leadCaptureMode = normalizeLeadCaptureMode(
+    planSource.lead_capture_mode ?? savedFunnel?.leadCaptureMode ?? savedFunnel?.lead_capture_mode,
+  );
+  const funnelLanguage = normalizeFunnelLanguage(
+    planSource.language ?? savedFunnel?.language,
+  );
   const creativeStrategy = normalizeCreativeStrategy(
     {
       campaignCategory: planSource.campaign_category ?? planRecord?.creativeStrategy?.campaignCategory,
@@ -785,6 +818,9 @@ export function normalizeCanonicalCampaign(params: {
       creative_strategy: creativeStrategy,
       pain_points: painPoints,
       monthly_budget: monthlyBudget,
+      daily_budget_cents: dailyBudgetCents,
+      lead_capture_mode: leadCaptureMode,
+      language: funnelLanguage,
       summary,
       targeting_summary: targetingSummary,
       offer_summary: offerSummary,

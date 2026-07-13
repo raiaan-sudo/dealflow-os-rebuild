@@ -7,10 +7,14 @@ const lastUpdated = "April 28, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16 text-white">
-      <p className="text-sm uppercase tracking-[0.3em] text-sky-300">DealFlow OS</p>
-      <h1 className="mt-4 text-4xl font-semibold tracking-tight">Privacy Policy</h1>
-      <p className="mt-3 text-sm text-white/60">Last updated: {lastUpdated}</p>
+    <>
+      <a className="df-skip-link" href="#privacy-content">
+        Skip to privacy policy
+      </a>
+      <main id="privacy-content" tabIndex={-1} className="mx-auto max-w-3xl px-6 py-16 text-white">
+        <p className="text-sm uppercase tracking-[0.3em] text-sky-300">DealFlow OS</p>
+        <h1 className="mt-4 text-4xl font-semibold tracking-tight">Privacy Policy</h1>
+        <p className="mt-3 text-sm text-white/60">Last updated: {lastUpdated}</p>
 
       <div className="surface-guided mt-10 space-y-8 rounded-df-panel border border-white/10 p-6 leading-7 text-white/75 shadow-df-elevated sm:p-8">
         <section>
@@ -129,7 +133,8 @@ export default function PrivacyPolicyPage() {
             .
           </p>
         </section>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }

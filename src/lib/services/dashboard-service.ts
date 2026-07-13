@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api/route";
 import { getAppContext } from "@/lib/services/app-context";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
@@ -8,6 +9,11 @@ type DealRow = Database["public"]["Tables"]["deals"]["Row"];
 type InsightRow = Database["public"]["Tables"]["insights"]["Row"];
 type RecommendationRow = Database["public"]["Tables"]["recommendations"]["Row"];
 type SnapshotRow = Database["public"]["Tables"]["campaign_snapshots"]["Row"];
+
+type CampaignDeliverySnapshotRow = {
+  synced_at: string;
+  delivery_metrics: Record<string, unknown> | null;
+};
 
 export type DashboardMetrics = {
   totalSpend: number;
@@ -62,6 +68,11 @@ function safeDivide(numerator: number, denominator: number) {
   return denominator === 0 ? 0 : numerator / denominator;
 }
 
+function finiteMetric(value: unknown) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
 export async function getDashboardData(
   campaignId: string | null = null,
 ): Promise<DashboardData | null> {
@@ -91,7 +102,7 @@ export async function getDashboardData(
   const appointmentsQuery = supabase
     .from("appointments")
     .select(
-      "id, lead_id, scheduled_at, status, appointment_type, notes, created_at",
+      "id, lead_id, campaign_id, scheduled_at, status, appointment_type, notes, created_at",
       { count: "exact" },
     )
     .eq("organization_id", organizationId)
@@ -105,12 +116,16 @@ export async function getDashboardData(
   const dealsQuery = supabase
     .from("deals")
     .select(
-      "id, title, contact_name, deal_type, stage, status, estimated_value, closed_value, commission_revenue, source, closed_at, created_at",
+      "id, campaign_id, title, contact_name, deal_type, stage, status, estimated_value, closed_value, commission_revenue, source, closed_at, created_at",
       { count: "exact" },
     )
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(8);
+
+  if (scopedCampaignId) {
+    dealsQuery.eq("campaign_id", scopedCampaignId);
+  }
 
   const snapshotsQuery = supabase
     .from("campaign_snapshots")
@@ -118,9 +133,16 @@ export async function getDashboardData(
     .eq("organization_id", organizationId)
     .order("snapshot_date", { ascending: true });
 
-  if (scopedCampaignId) {
-    snapshotsQuery.eq("campaign_id", scopedCampaignId);
-  }
+  const campaignDeliverySnapshotsQuery = scopedCampaignId
+    ? supabase
+        .from("campaign_sync_snapshots")
+        .select("synced_at,delivery_metrics")
+        .eq("organization_id", organizationId)
+        .eq("campaign_id", scopedCampaignId)
+        .eq("delivery_metrics_confirmed", true)
+        .order("synced_at", { ascending: true })
+        .limit(90)
+    : null;
 
   const [
     leadsResult,
@@ -129,11 +151,12 @@ export async function getDashboardData(
     snapshotsResult,
     insightsResult,
     recommendationsResult,
+    aggregatesResult,
   ] = await Promise.all([
     leadsQuery,
     appointmentsQuery,
-    scopedCampaignId ? Promise.resolve({ data: [], count: 0 } as const) : dealsQuery,
-    snapshotsQuery,
+    dealsQuery,
+    campaignDeliverySnapshotsQuery ?? snapshotsQuery,
     supabase
       .from("insights")
       .select("*")
@@ -146,28 +169,63 @@ export async function getDashboardData(
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(4),
+    (supabase as any).rpc("get_campaign_dashboard_aggregates_v1", {
+      p_organization_id: organizationId,
+      p_campaign_id: scopedCampaignId,
+    }),
   ]);
+
+  const failedQuery = [
+    [leadsResult.error, "dashboard_leads_lookup_failed"],
+    [appointmentsResult.error, "dashboard_appointments_lookup_failed"],
+    [dealsResult.error, "dashboard_deals_lookup_failed"],
+    [snapshotsResult.error, "dashboard_reporting_lookup_failed"],
+    [insightsResult.error, "dashboard_insights_lookup_failed"],
+    [recommendationsResult.error, "dashboard_recommendations_lookup_failed"],
+    [aggregatesResult.error, "dashboard_aggregates_lookup_failed"],
+  ].find(([error]) => Boolean(error));
+  if (failedQuery) {
+    const [error, code] = failedQuery as [{ message?: string }, string];
+    throw new ApiError(
+      500,
+      error?.message ?? "Dashboard data could not be loaded.",
+      code,
+    );
+  }
 
   const leadRows = (leadsResult.data ?? []) as LeadRow[];
   const appointmentRows = (appointmentsResult.data ?? []) as AppointmentRow[];
   const dealRows = (dealsResult.data ?? []) as DealRow[];
-  const snapshotRows = (snapshotsResult.data ?? []) as SnapshotRow[];
+  const legacySnapshotRows = scopedCampaignId
+    ? []
+    : ((snapshotsResult.data ?? []) as SnapshotRow[]);
+  const campaignDeliverySnapshotRows = scopedCampaignId
+    ? ((snapshotsResult.data ?? []) as CampaignDeliverySnapshotRow[])
+    : [];
+  const aggregateRow = (Array.isArray(aggregatesResult.data)
+    ? aggregatesResult.data[0]
+    : aggregatesResult.data) as Record<string, unknown> | null;
+  if (!aggregateRow || typeof aggregateRow !== "object") {
+    throw new ApiError(
+      500,
+      "Dashboard aggregates were not returned.",
+      "dashboard_aggregates_missing",
+    );
+  }
 
-  const totalSpend = snapshotRows.reduce((sum, row) => sum + row.spend, 0);
+  const latestCampaignDeliveryMetrics =
+    campaignDeliverySnapshotRows.at(-1)?.delivery_metrics ?? null;
+  const totalSpend = scopedCampaignId
+    ? finiteMetric(latestCampaignDeliveryMetrics?.spend)
+    : legacySnapshotRows.reduce((sum, row) => sum + finiteMetric(row.spend), 0);
   const totalLeads = leadsResult.count ?? 0;
-  const appointmentsBooked = (appointmentsResult.count ?? appointmentRows.length) || 0;
-  const activeDeals = dealRows.filter((deal) => deal.status === "active").length;
-  const closedDeals = dealRows.filter((deal) => deal.status === "closed_won").length;
-  const pipelineValue = dealRows
-    .filter((deal) => deal.status === "active")
-    .reduce((sum, deal) => sum + deal.estimated_value, 0);
-  const closedVolume = dealRows
-    .filter((deal) => deal.status === "closed_won")
-    .reduce((sum, deal) => sum + (deal.closed_value ?? 0), 0);
-  const commissionRevenue = dealRows
-    .filter((deal) => deal.status === "closed_won")
-    .reduce((sum, deal) => sum + (deal.commission_revenue ?? 0), 0);
-  const totalDeals = dealsResult.count ?? 0;
+  const appointmentsBooked = finiteMetric(aggregateRow.appointments_booked);
+  const activeDeals = finiteMetric(aggregateRow.active_deals);
+  const closedDeals = finiteMetric(aggregateRow.closed_deals);
+  const pipelineValue = finiteMetric(aggregateRow.pipeline_value);
+  const closedVolume = finiteMetric(aggregateRow.closed_volume);
+  const commissionRevenue = finiteMetric(aggregateRow.commission_revenue);
+  const totalDeals = finiteMetric(aggregateRow.total_deals);
 
   return {
     context,
@@ -203,15 +261,25 @@ export async function getDashboardData(
       scheduled_for: deal.closed_at,
       created_at: deal.created_at,
     })),
-    chartSeries: snapshotRows.map((row) => ({
-      label: row.snapshot_date,
-      spend: row.spend,
-      leads: row.leads,
-      appointmentsBooked: row.booked_jobs,
-      commissionRevenue: row.revenue,
-      bookedJobs: row.booked_jobs,
-      revenue: row.revenue,
-    })),
+    chartSeries: scopedCampaignId
+      ? campaignDeliverySnapshotRows.map((row) => ({
+          label: row.synced_at,
+          spend: finiteMetric(row.delivery_metrics?.spend),
+          leads: finiteMetric(row.delivery_metrics?.leads),
+          appointmentsBooked: finiteMetric(row.delivery_metrics?.appointments),
+          commissionRevenue: 0,
+          bookedJobs: finiteMetric(row.delivery_metrics?.appointments),
+          revenue: 0,
+        }))
+      : legacySnapshotRows.map((row) => ({
+          label: row.snapshot_date,
+          spend: finiteMetric(row.spend),
+          leads: finiteMetric(row.leads),
+          appointmentsBooked: finiteMetric(row.booked_jobs),
+          commissionRevenue: finiteMetric(row.revenue),
+          bookedJobs: finiteMetric(row.booked_jobs),
+          revenue: finiteMetric(row.revenue),
+        })),
     insights: (insightsResult.data ?? []) as InsightRow[],
     recommendations: (recommendationsResult.data ?? []) as RecommendationRow[],
   };

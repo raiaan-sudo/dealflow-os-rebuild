@@ -72,12 +72,12 @@ function getTwilioConfig() {
     };
   } catch (error) {
     return {
-      mode: "live" as const,
+      mode: "disabled" as const,
       accountSid: null,
       authToken: null,
       messagingServiceSid: null,
-      baseUrl: "https://api.twilio.com",
-      endpointMode: "official" as const,
+      baseUrl: null,
+      endpointMode: "disabled" as const,
       allowedTestRecipient: null,
       policyError:
         error instanceof Error ? error.message : "Twilio transport policy is invalid.",
@@ -258,7 +258,7 @@ async function postTwilioMessage(params: {
   authToken: string;
   messagingServiceSid: string;
   baseUrl: string;
-  mode: "live" | "test" | "loopback";
+  mode: "disabled" | "live" | "test" | "loopback";
   allowedTestRecipient: string | null;
   to: string;
   body: string;
@@ -413,7 +413,14 @@ export async function sendSms(params: SendSmsParams) {
     return { notificationId: notification.id, status: "sent" as const, providerMessageId };
   }
 
-  if (config.policyError || !config.accountSid || !config.authToken || !config.messagingServiceSid) {
+  if (
+    config.policyError
+    || config.mode === "disabled"
+    || !config.accountSid
+    || !config.authToken
+    || !config.messagingServiceSid
+    || !config.baseUrl
+  ) {
     const settled = await settleNotificationDelivery({
       claim,
       workerId,

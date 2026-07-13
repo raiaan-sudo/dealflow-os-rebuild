@@ -11,15 +11,15 @@ type LoginFormProps = {
   branding?: {
     appName?: string;
     logoUrl?: string | null;
-    loginEyebrow?: string;
-    loginHeadline?: string;
-    loginSubheadline?: string;
+    loginEyebrow?: string | null;
+    loginHeadline?: string | null;
+    loginSubheadline?: string | null;
     supportEmail?: string | null;
     poweredByDealFlow?: boolean;
   };
   partnerAttribution?: {
     partnerSlug?: string | null;
-    inviteCode?: string | null;
+    bindingToken?: string | null;
     source?: "slug" | "invite" | "domain" | "admin" | "import" | "native";
   };
 };
@@ -297,10 +297,8 @@ export function LoginForm({
           emailRedirectTo: getEmailConfirmationRedirectUrl(redirectedFrom),
           data: {
             full_name: fullName,
-            ...(partnerAttribution?.partnerSlug ? { partner_slug: partnerAttribution.partnerSlug } : {}),
-            ...(partnerAttribution?.inviteCode ? { partner_invite_code: partnerAttribution.inviteCode } : {}),
-            ...(partnerAttribution?.source && partnerAttribution.source !== "native"
-              ? { partner_attribution_source: partnerAttribution.source }
+            ...(partnerAttribution?.bindingToken
+              ? { partner_attribution_token: partnerAttribution.bindingToken }
               : {}),
             ...(accessKeyClaimToken ? { access_key_claim_token: accessKeyClaimToken } : {}),
             ...(accessKeyPartnerSlug ? { access_key_partner_slug: accessKeyPartnerSlug } : {}),

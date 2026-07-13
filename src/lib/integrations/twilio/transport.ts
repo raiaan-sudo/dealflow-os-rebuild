@@ -1,10 +1,11 @@
 import {
   isExplicitNonProductionDeployment,
+  isExactProductionVercelHost,
   isProductionDeployment,
 } from "@/lib/deployment-target";
 import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
 
-export type TwilioExecutionMode = "live" | "test" | "loopback";
+export type TwilioExecutionMode = "disabled" | "live" | "test" | "loopback";
 
 export class TwilioTransportPolicyError extends Error {
   constructor(
@@ -34,14 +35,33 @@ export function getTwilioExecutionMode(
   env: Record<string, string | undefined> = process.env,
 ): TwilioExecutionMode {
   const requested = env.TWILIO_EXECUTION_MODE?.trim().toLowerCase();
-  if (requested === "test" || requested === "loopback") return requested;
-  return "live";
+  if (requested === "live" || requested === "test" || requested === "loopback") return requested;
+  return "disabled";
 }
 
 export function getTwilioTransportConfig(
   env: Record<string, string | undefined> = process.env,
 ) {
   const mode = getTwilioExecutionMode(env);
+
+  if (mode === "disabled") {
+    return {
+      mode,
+      accountSid: null,
+      authToken: null,
+      messagingServiceSid: null,
+      baseUrl: null,
+      endpointMode: "disabled" as const,
+      allowedTestRecipient: null,
+    };
+  }
+
+  if (mode === "live" && !isExactProductionVercelHost(env)) {
+    throw new TwilioTransportPolicyError(
+      "Twilio live transport requires the exact attested production Vercel project.",
+      "twilio_live_target_blocked",
+    );
+  }
 
   if (mode !== "live" && (!isExplicitNonProductionDeployment(env) || isProductionDeployment(env))) {
     throw new TwilioTransportPolicyError(
@@ -102,6 +122,12 @@ export function assertTwilioRecipientAllowed(params: {
   to: string;
   allowedTestRecipient: string | null;
 }) {
+  if (params.mode === "disabled") {
+    throw new TwilioTransportPolicyError(
+      "Twilio transport is disabled.",
+      "twilio_transport_disabled",
+    );
+  }
   if (params.mode === "live") return;
   if (!params.allowedTestRecipient || params.to !== params.allowedTestRecipient) {
     throw new TwilioTransportPolicyError(

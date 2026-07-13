@@ -714,6 +714,10 @@ try {
     path.join(root, "src/lib/services/video-generation-job.ts"),
     "utf8",
   );
+  const videoProviderSource = fs.readFileSync(
+    path.join(root, "src/lib/ai/video-provider.ts"),
+    "utf8",
+  );
   const imageProviderSource = fs.readFileSync(
     path.join(root, "src/lib/integrations/creative/image-provider.ts"),
     "utf8",
@@ -736,7 +740,14 @@ try {
     systemJobSource,
     /providerUsage(?:RunId|AttemptKey):[^\n]*(?:lease\.generation|lease\.token)/,
   );
-  assert.match(videoJobSource, /getHeyGenProviderUsageOutcome\(error\)/);
+  assert.match(
+    videoJobSource,
+    /getDurableVideoProviderUsageOutcome\(videoProvider, error\)/,
+  );
+  assert.match(
+    videoProviderSource,
+    /provider === "higgsfield"[\s\S]{0,160}getHiggsfieldProviderUsageOutcome\(error\)[\s\S]{0,160}getHeyGenProviderUsageOutcome\(error\)/,
+  );
   assert.match(videoJobSource, /status: "consumed"[\s\S]{0,300}providerAccepted: true/);
   assert.match(imageProviderSource, /providerOutcome = response\.ok \? "ambiguous" : "rejected"/);
   const billingSync = billingSource.slice(

@@ -81,6 +81,9 @@ export type FullCampaignRecord = {
         creative_strategy: CampaignPlan["creativeStrategy"];
         pain_points: string[];
         monthly_budget: number;
+        daily_budget_cents: number;
+        lead_capture_mode: "volume_lead_form" | "quality_funnel" | "deep_qualification";
+        language: "en" | "fr" | "es";
         summary: string;
         targeting_summary: string;
         offer_summary: string;

@@ -31,7 +31,20 @@ import {
   type MetaLaunchInputBinding,
 } from "@/lib/meta-launch-input-snapshot";
 import { resolveCampaignDestinationContract } from "@/lib/campaign-destination";
-import { ensureMetaInstantForm } from "@/lib/services/meta-instant-form-service";
+import {
+  buildMetaInstantFormDefinition,
+  ensureMetaInstantForm,
+} from "@/lib/services/meta-instant-form-service";
+import {
+  prepareGhlCampaignPersonalization,
+  resolveReadyGhlDestination,
+} from "@/lib/services/ghl-personalization-service";
+import { getDeploymentTarget } from "@/lib/deployment-target";
+import {
+  getMetaDailyBudgetHardCeilingCents,
+  resolveExactCustomerApprovedMetaDailyBudgetCents,
+} from "@/lib/integrations/meta/budget-safety";
+import { resolveCreativeContentSha256 } from "@/lib/creative-content-integrity";
 
 type LaunchResumePayload = {
   metaCampaignId?: string | null;
@@ -87,6 +100,7 @@ type CampaignPayloadRecord = {
   campaign_destination?: string;
   capture_experience?: string;
   lead_capture_mode?: string;
+  daily_budget_cents?: number;
   business_profile?: {
     business_name?: string;
     service?: string;
@@ -113,24 +127,13 @@ type CampaignPayloadRecord = {
   budget_plan?: {
     monthly_budget?: number;
     estimated_daily_budget?: number;
+    daily_budget_cents?: number;
   };
   meta_ready_payload?: {
     objective?: string;
     campaign_name?: string;
   };
 };
-
-const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 200;
-
-function getMetaDailyBudgetCapCents() {
-  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
-
-  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
-    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
-  }
-
-  return Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
-}
 
 function assertMetaLiveLaunchEnabled() {
   if (process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
@@ -144,7 +147,7 @@ function assertMetaLiveLaunchEnabled() {
 
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
   if (/budget is too low|budget must be more than/i.test(rawMessage)) {
-    return `${rawMessage} Current safety cap is ${getMetaDailyBudgetCapCents()} cents/day, so launch is blocked until you choose an ad account whose minimum fits the cap or approve a higher daily cap.`;
+    return `${rawMessage} The configured hard ceiling is ${getMetaDailyBudgetHardCeilingCents()} cents/day; choose a valid customer-approved budget or deliberately change that ceiling before retrying.`;
   }
 
   const diagnostic = mapMetaError({
@@ -234,11 +237,6 @@ function inferAgeRange(audience: string, targetingSummary: string) {
   }
 
   return { min: 25, max: 54 };
-}
-
-function buildGeoTargeting(location: string) {
-  void location;
-  return {};
 }
 
 async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPayloadRecord | null> {
@@ -338,15 +336,17 @@ function normalizeObjective(value?: string | null) {
   return "OUTCOME_LEADS";
 }
 
-function toMinorDailyBudget(value?: number | null) {
-  const normalized = Number(value ?? 0);
-  const capCents = getMetaDailyBudgetCapCents();
-
-  if (!Number.isFinite(normalized) || normalized <= 0) {
-    return String(capCents);
-  }
-
-  return String(Math.min(capCents, Math.round(normalized * 100)));
+function toExactMinorDailyBudget(input: {
+  payload?: CampaignPayloadRecord | null;
+  canonicalDailyBudgetCents?: number | null;
+  legacyDailyBudgetDollars?: number | null;
+}) {
+  return String(resolveExactCustomerApprovedMetaDailyBudgetCents({
+    canonicalDailyBudgetCents: input.canonicalDailyBudgetCents,
+    payloadDailyBudgetCents: input.payload?.daily_budget_cents,
+    payloadBudgetPlanDailyBudgetCents: input.payload?.budget_plan?.daily_budget_cents,
+    legacyDailyBudgetDollars: input.legacyDailyBudgetDollars,
+  }));
 }
 
 function isPublicFunnelUrl(value: string) {
@@ -356,6 +356,190 @@ function isPublicFunnelUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function getGhlDestinationEnvironment() {
+  const target = getDeploymentTarget();
+  if (target === "production") return "production" as const;
+  if (["staging", "preview", "test", "development"].includes(target)) {
+    return "sandbox" as const;
+  }
+  return null;
+}
+
+function isSecureHostedDestinationUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && Boolean(url.hostname) && url.username === "" && url.password === "";
+  } catch {
+    return false;
+  }
+}
+
+type GhlDestinationEnvironment = "sandbox" | "production";
+type GhlAuthorityRow = Record<string, unknown>;
+
+function asGhlAuthorityRows(value: unknown): GhlAuthorityRow[] {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is GhlAuthorityRow => Boolean(item) && typeof item === "object" && !Array.isArray(item),
+    );
+  }
+
+  return value && typeof value === "object" ? [value as GhlAuthorityRow] : [];
+}
+
+function hasLegacyCommercialActivationAuthority(rows: GhlAuthorityRow[]) {
+  return rows.some((row) => {
+    const metadata =
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+    return (
+      metadata.legacy_commercial_activation_reconciled === true ||
+      metadata.legacy_commercial_activation_reconciled === "true"
+    );
+  });
+}
+
+/**
+ * Resolve the exact website destination without allowing a commercially
+ * activated or GHL-provisioned workspace to silently fall back to DealFlow's
+ * legacy hosted funnel. Every authority lookup is organization fenced, and
+ * environment-specific GHL records are additionally environment fenced.
+ */
+export async function resolveGhlAwareWebsiteDestination(input: {
+  client: any;
+  organizationId: string;
+  campaignId: string;
+  environment: GhlDestinationEnvironment;
+  legacyDestinationUrl: string;
+}) {
+  if (!input.client || !input.organizationId || !input.campaignId || !input.environment) {
+    throw new ApiError(
+      503,
+      "GHL destination authority is unavailable for this launch.",
+      "ghl_destination_authority_unavailable",
+    );
+  }
+
+  const [commercialActivation, legacyBilling, activationRequests, provisioningRuns] = await Promise.all([
+    input.client
+      .from("commercial_activations")
+      .select("id")
+      .eq("organization_id", input.organizationId)
+      .limit(1),
+    input.client
+      .from("billing_subscriptions")
+      .select("metadata")
+      .eq("organization_id", input.organizationId)
+      .limit(1),
+    input.client
+      .from("ghl_billing_activation_requests")
+      .select("id,status,blocker_code")
+      .eq("organization_id", input.organizationId)
+      .eq("environment", input.environment),
+    input.client
+      .from("ghl_provisioning_runs")
+      .select("id,state,last_error_code")
+      .eq("organization_id", input.organizationId)
+      .eq("environment", input.environment),
+  ]);
+
+  if (
+    commercialActivation.error ||
+    legacyBilling.error ||
+    activationRequests.error ||
+    provisioningRuns.error
+  ) {
+    throw new ApiError(
+      503,
+      "GHL destination authority could not be verified. Retry after the workspace connection is available.",
+      "ghl_destination_authority_lookup_failed",
+    );
+  }
+
+  const commercialRows = asGhlAuthorityRows(commercialActivation.data);
+  const legacyBillingRows = asGhlAuthorityRows(legacyBilling.data);
+  const requestRows = asGhlAuthorityRows(activationRequests.data);
+  const runRows = asGhlAuthorityRows(provisioningRuns.data);
+  const commerciallyActivated =
+    commercialRows.length > 0 || hasLegacyCommercialActivationAuthority(legacyBillingRows);
+  const ghlRequired = commerciallyActivated || requestRows.length > 0 || runRows.length > 0;
+
+  if (ghlRequired && runRows.some((candidate) => candidate.state === "ready")) {
+    try {
+      await prepareGhlCampaignPersonalization({
+        client: input.client,
+        organizationId: input.organizationId,
+        campaignId: input.campaignId,
+        environment: input.environment,
+      });
+    } catch {
+      throw new ApiError(
+        409,
+        "The campaign-specific GHL funnel contract could not be prepared safely.",
+        "ghl_campaign_personalization_blocked",
+      );
+    }
+  }
+
+  let readyDestination: Awaited<ReturnType<typeof resolveReadyGhlDestination>>;
+  try {
+    readyDestination = await resolveReadyGhlDestination({
+      client: input.client,
+      organizationId: input.organizationId,
+      campaignId: input.campaignId,
+      environment: input.environment,
+    });
+  } catch {
+    throw new ApiError(
+      503,
+      "GHL destination readiness could not be verified. Retry after the workspace connection is available.",
+      "ghl_destination_resolution_failed",
+    );
+  }
+
+  if (readyDestination) {
+    if (!isSecureHostedDestinationUrl(readyDestination.destinationUrl)) {
+      throw new ApiError(
+        409,
+        "The verified GHL destination is not a valid HTTPS URL.",
+        "ghl_destination_invalid",
+      );
+    }
+    return readyDestination.destinationUrl;
+  }
+
+  if (!ghlRequired) {
+    return input.legacyDestinationUrl;
+  }
+
+  const blockedRequest = requestRows.some((row) => row.status === "blocked_configuration");
+  const blockedRun = runRows.some((row) =>
+    row.state === "operator_action_required" || row.state === "canceled",
+  );
+  if (blockedRequest || blockedRun) {
+    throw new ApiError(
+      409,
+      "GHL setup is blocked and must be resolved before this website campaign can launch.",
+      "ghl_destination_blocked",
+    );
+  }
+
+  if (requestRows.length > 0 || runRows.length > 0) {
+    throw new ApiError(
+      409,
+      "GHL setup is still in progress. Wait for the verified GHL destination before launching.",
+      "ghl_destination_pending",
+    );
+  }
+
+  throw new ApiError(
+    409,
+    "This paid workspace requires GHL provisioning before a website campaign can launch.",
+    "ghl_destination_provisioning_required",
+  );
 }
 
 function buildLaunchAttemptId(params: {
@@ -926,10 +1110,13 @@ export async function launchCampaignToMeta(
       storedPayload?.targeting_plan?.summary ?? record.plan.targeting_summary ?? "";
     void audience;
     void targetingSummary;
-    const dailyBudget = toMinorDailyBudget(
-      storedPayload?.budget_plan?.estimated_daily_budget ??
-      Math.round((record.plan.monthly_budget ?? 0) / 30),
-    );
+    const dailyBudget = toExactMinorDailyBudget({
+      payload: storedPayload,
+      canonicalDailyBudgetCents: record.plan.daily_budget_cents,
+      legacyDailyBudgetDollars:
+        storedPayload?.budget_plan?.estimated_daily_budget ??
+        (record.plan.monthly_budget ?? 0) / 30,
+    });
     const pixelId = credentials.pixelId?.trim() || null;
     const pageId = credentials.pageId?.trim() || null;
 
@@ -957,6 +1144,13 @@ export async function launchCampaignToMeta(
         "selected_ad_not_found",
       );
     }
+    if (selectedStaticAd.imageGenerationState !== "generated" || !selectedStaticAd.imageUrl?.trim()) {
+      throw new ApiError(
+        409,
+        "The selected creative is not fully generated and cannot be launched.",
+        "meta_selected_creative_not_ready",
+      );
+    }
 
     const selectedCopy =
       record.creatives.copy.find(
@@ -981,13 +1175,84 @@ export async function launchCampaignToMeta(
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
       : "";
-    const destinationUrl = storedPayload?.destination_url?.trim() ?? "";
+    const fallbackDestinationUrl = storedPayload?.destination_url?.trim() ?? "";
 
-    if (!publicSlug || !destinationUrl || destinationUrl !== expectedDestinationUrl || !isPublicFunnelUrl(destinationUrl)) {
+    if (
+      !publicSlug ||
+      !fallbackDestinationUrl ||
+      fallbackDestinationUrl !== expectedDestinationUrl ||
+      !isPublicFunnelUrl(fallbackDestinationUrl)
+    ) {
       throw new ApiError(
         400,
         "Missing public destination URL",
         "missing_public_destination_url",
+      );
+    }
+
+    let destinationUrl = fallbackDestinationUrl;
+    if (destinationContract.adDestination === "website") {
+      const environment = getGhlDestinationEnvironment();
+      const admin = createAdminClient();
+      if (!environment || !admin) {
+        throw new ApiError(
+          503,
+          "GHL destination authority is unavailable for this launch.",
+          "ghl_destination_authority_unavailable",
+        );
+      }
+      destinationUrl = await resolveGhlAwareWebsiteDestination({
+        client: admin as any,
+        organizationId: workspaceId,
+        campaignId,
+        environment,
+        legacyDestinationUrl: fallbackDestinationUrl,
+      });
+    }
+
+    const instantFormDefinition = destinationContract.adDestination === "meta_instant_form"
+      ? buildMetaInstantFormDefinition(record)
+      : null;
+    const imageContentSha256 = await resolveCreativeContentSha256(selectedStaticAd.imageUrl.trim());
+
+    const launchInputBinding = buildMetaLaunchInputBinding({
+        organizationId: workspaceId,
+        campaignId,
+        attemptId: activeAttemptId,
+        adAccountId: externalAccountId,
+        accountCurrency: credentials.currency,
+        pageId,
+        pixelId,
+        selectedAdId,
+        imageContentSha256,
+        primaryText,
+        headline,
+        destinationUrl,
+        objective,
+        countryCode,
+        location,
+        dailyBudgetMinor: dailyBudget,
+        captureExperience: destinationContract.captureExperience,
+        adDestination: destinationContract.adDestination,
+        providerFormId: null,
+        formDefinitionDigest: instantFormDefinition?.digest ?? null,
+      });
+    await options.bindLaunchInputSnapshot(launchInputBinding);
+    const providerContract = launchInputBinding.snapshot.provider_contract;
+
+    // Complete the exact read-only account, hierarchy, currency, pixel, and
+    // destination preflight before Instant Form or Page-subscription writes.
+    // The checked credential snapshot is the same one frozen above.
+    const preflight = await validateMetaLaunchSelectionsForOrganization({
+      organizationId: options?.internalActor?.organizationId ?? workspaceId,
+      credentials,
+      destinationUrl,
+    });
+    if (!preflight.ready) {
+      throw new ApiError(
+        400,
+        preflight.errors[0] ?? "Meta launch preflight failed.",
+        "meta_launch_preflight_failed",
       );
     }
 
@@ -1000,50 +1265,10 @@ export async function launchCampaignToMeta(
             marketingAccountId: credentials.connectionId,
             pageId,
             userAccessToken: credentials.accessToken,
+            expectedDefinitionDigest: instantFormDefinition!.digest,
             assertProviderMutationAllowed: options.assertProviderMutationAllowed,
           })
         : null;
-
-    await options.bindLaunchInputSnapshot(
-      buildMetaLaunchInputBinding({
-        organizationId: workspaceId,
-        campaignId,
-        attemptId: activeAttemptId,
-        adAccountId: externalAccountId,
-        pageId,
-        pixelId,
-        selectedAdId,
-        imageUrl: selectedStaticAd.imageUrl || null,
-        primaryText,
-        headline,
-        destinationUrl,
-        objective,
-        countryCode,
-        location,
-        dailyBudgetMinor: dailyBudget,
-        captureExperience: destinationContract.captureExperience,
-        adDestination: destinationContract.adDestination,
-        providerFormId: instantForm?.providerFormId ?? null,
-        formDefinitionDigest: instantForm?.definition.digest ?? null,
-      }),
-    );
-
-    // Preflight the exact credential snapshot that was just committed to the
-    // immutable launch binding. Reloading selected provider assets here could
-    // validate selection B and then mutate the already-frozen selection A.
-    const preflight = await validateMetaLaunchSelectionsForOrganization({
-      organizationId: options?.internalActor?.organizationId ?? workspaceId,
-      credentials,
-      destinationUrl,
-    });
-
-    if (!preflight.ready) {
-      throw new ApiError(
-        400,
-        preflight.errors[0] ?? "Meta launch preflight failed.",
-        "meta_launch_preflight_failed",
-      );
-    }
 
     const adImageUrl = selectedStaticAd.imageUrl || null;
     const campaignMetaName = buildDeterministicMetaName({
@@ -1223,11 +1448,11 @@ export async function launchCampaignToMeta(
       });
       const campaignBody = new URLSearchParams({
         name: campaignMetaName,
-        objective,
+        objective: providerContract.campaign.objective,
         status: "PAUSED",
-        special_ad_categories: JSON.stringify(["HOUSING"]),
-        special_ad_category_country: JSON.stringify([countryCode]),
-        is_adset_budget_sharing_enabled: "false",
+        special_ad_categories: JSON.stringify(providerContract.campaign.special_ad_categories),
+        special_ad_category_country: JSON.stringify(providerContract.campaign.special_ad_category_country),
+        is_adset_budget_sharing_enabled: String(providerContract.campaign.is_adset_budget_sharing_enabled),
       });
       await options?.assertProviderMutationAllowed?.();
       await armProviderMutation("campaign", campaignObjectKey);
@@ -1500,43 +1725,19 @@ export async function launchCampaignToMeta(
       const adSetBody = new URLSearchParams({
         name: adSetMetaName,
         campaign_id: lastKnownIds.campaign_id!,
-        billing_event: "IMPRESSIONS",
-        optimization_goal:
-          destinationContract.adDestination === "meta_instant_form"
-            ? "LEAD_GENERATION"
-            : objective === "OUTCOME_TRAFFIC"
-              ? "LINK_CLICKS"
-              : "OFFSITE_CONVERSIONS",
-        daily_budget: dailyBudget,
-        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-        targeting: JSON.stringify({
-          geo_locations: {
-            countries: [countryCode],
-            ...buildGeoTargeting(location),
-          },
-        }),
+        billing_event: providerContract.ad_set.billing_event,
+        optimization_goal: providerContract.ad_set.optimization_goal,
+        daily_budget: providerContract.ad_set.daily_budget_minor,
+        bid_strategy: providerContract.ad_set.bid_strategy,
+        targeting: JSON.stringify(providerContract.ad_set.targeting),
         status: "PAUSED",
       });
       if (destinationContract.adDestination === "meta_instant_form") {
-        adSetBody.set("destination_type", "ON_AD");
-        adSetBody.set("promoted_object", JSON.stringify({ page_id: pageId }));
+        adSetBody.set("destination_type", providerContract.ad_set.destination_type!);
+        adSetBody.set("promoted_object", JSON.stringify(providerContract.ad_set.promoted_object));
       } else {
-        adSetBody.set(
-          "promoted_object",
-          JSON.stringify({
-            pixel_id: pixelId,
-            custom_event_type: "LEAD",
-          }),
-        );
-        adSetBody.set(
-          "tracking_specs",
-          JSON.stringify([
-            {
-              action_type: ["offsite_conversion"],
-              fb_pixel: [pixelId],
-            },
-          ]),
-        );
+        adSetBody.set("promoted_object", JSON.stringify(providerContract.ad_set.promoted_object));
+        adSetBody.set("tracking_specs", JSON.stringify(providerContract.ad_set.tracking_specs));
       }
       await options?.assertProviderMutationAllowed?.();
       await armProviderMutation("adset", adSetObjectKey);
@@ -1685,17 +1886,14 @@ export async function launchCampaignToMeta(
 
     const linkData: Record<string, unknown> = {
       message: primaryText,
-      link:
-        destinationContract.adDestination === "meta_instant_form"
-          ? "https://fb.me/"
-          : destinationUrl,
+      link: providerContract.creative.link,
       name: headline,
       call_to_action: {
-        type: "LEARN_MORE",
+        type: providerContract.creative.call_to_action_type,
         value:
           destinationContract.adDestination === "meta_instant_form"
             ? { lead_gen_form_id: instantForm!.providerFormId }
-            : { link: destinationUrl },
+            : { link: providerContract.creative.cta_link },
       },
     };
 

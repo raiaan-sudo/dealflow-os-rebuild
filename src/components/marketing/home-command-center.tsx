@@ -706,7 +706,7 @@ function CommandCenterVisual() {
                   )}
                 />
               </span>
-              <span className="relative z-10 mt-1 block text-[11px] leading-4 text-white/45">{mode.cue}</span>
+              <span className="relative z-10 mt-1 block text-[11px] leading-4 text-white/60">{mode.cue}</span>
               {activeMode === index ? <span className="df-mode-fill" /> : null}
             </button>
           ))}
@@ -1275,7 +1275,7 @@ function AgencyFatigueSection() {
                 >
                   <div className="relative z-10 grid gap-4 sm:grid-cols-[0.45fr_1fr_auto] sm:items-center">
                     <div>
-                      <p className="text-xs font-semibold uppercase text-white/45">{card.label}</p>
+                      <p className="text-xs font-semibold uppercase text-white/60">{card.label}</p>
                       <p
                         className={cn(
                           "mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold",

@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/card";
 import { CanonicalFunnelRenderer } from "@/components/funnels/canonical-funnel-renderer";
 import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
+import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
 import { normalizeOfferForCampaign } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,10 @@ export type PrepaywallCampaignPreviewDraft = {
   offer?: string;
   leadCaptureMode?: string;
   lead_capture_mode?: string;
+  leadFormQuestions?: string[];
+  adDestination?: string;
+  ad_destination?: string;
+  funnelLanguage?: "en" | "fr" | "es";
   formType?: string;
   form_type?: string;
   destination?: string;
@@ -444,12 +449,23 @@ function InstantFormSetupPreview({
   draft: PrepaywallCampaignPreviewDraft;
   compact?: boolean;
 }) {
-  const fields = ["Full name", "Email", "Phone number"];
+  const leadCaptureMode =
+    draft.leadCaptureMode === "volume_lead_form" ||
+    draft.leadCaptureMode === "deep_qualification" ||
+    draft.leadCaptureMode === "quality_funnel"
+      ? draft.leadCaptureMode
+      : "quality_funnel";
+  const qualificationQuestions = resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode,
+    language: draft.funnelLanguage ?? "en",
+    customQuestions: draft.leadFormQuestions,
+  });
+  const fields = ["Full name", "Email", "Phone number", ...qualificationQuestions];
   const readiness = [
     "Meta ad account and Page selected",
-    "Instant form reviewed by operator",
+    "Exact Instant Form definition prepared",
     "Privacy policy URL ready",
-    "GHL delivery enabled when configured",
+    "Lead persistence and GHL routing prepared",
   ];
 
   return (
@@ -464,7 +480,7 @@ function InstantFormSetupPreview({
       <div className="flex items-start gap-3">
         <MiniIconTile icon={FileText} className="text-cyan-100" />
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Fast Website Form Setup</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Meta Instant Form setup</p>
           <h4 className={cn("mt-2 font-semibold tracking-[-0.04em] text-white", compact ? "text-base" : "text-xl")}>
             Leads stay inside Facebook and Instagram
           </h4>
@@ -496,7 +512,7 @@ function InstantFormSetupPreview({
       </div>
 
       <div className={cn("mt-4 rounded-[18px] border border-amber-300/16 bg-amber-300/[0.055] px-3 text-xs text-amber-100/82", compact ? "py-2 leading-4" : "py-2.5 leading-5")}>
-        Operator-assisted Meta note: this preview does not create a Meta instant form, campaign, ad set, ad, GHL record, SMS, or email. Launch stays gated until the operator verifies the native form setup and delivery path.
+        Preview only: no Meta form, campaign, ad set, ad, GHL record, SMS, or email is created here. At an authorized launch, DealFlow creates or reuses the exact form only after its provider and delivery preflight passes.
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">

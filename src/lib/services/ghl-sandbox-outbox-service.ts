@@ -133,6 +133,7 @@ async function executeClaimedEffect(
   claimed: JsonRecord,
   dependencies: AnyOutboxDependencies,
   mode: "sandbox" | "production",
+  dispatchTrace: { providerDispatchStarted: boolean },
 ) {
   const errorPrefix = mode === "production" ? "ghl_production" : "ghl_sandbox";
   const payload = asRecord(claimed.request_payload);
@@ -182,7 +183,7 @@ async function executeClaimedEffect(
   }
   const lead = await maybeOne(
     dependencies.client.from("leads")
-      .select("id,organization_id,first_name,last_name,name,email,phone,source")
+      .select("id,organization_id,campaign_id,first_name,last_name,name,email,phone,source")
       .eq("id", leadId)
       .eq("organization_id", organizationId),
     `${errorPrefix}_lead_lookup_failed`,
@@ -193,6 +194,50 @@ async function executeClaimedEffect(
         outcome: "operator_action_required",
         errorCode: `${errorPrefix}_lead_missing`,
         safeMessage: "The canonical lead no longer exists in the expected tenant.",
+      }),
+      providerMutationAttempted: false,
+    };
+  }
+  const campaignId = stringValue(lead.campaign_id);
+  if (!campaignId) {
+    return {
+      result: providerFailure({
+        outcome: "operator_action_required",
+        errorCode: `${errorPrefix}_lead_campaign_missing`,
+        safeMessage: "The canonical lead is not bound to an exact DealFlow campaign.",
+      }),
+      providerMutationAttempted: false,
+    };
+  }
+  const campaign = await maybeOne(
+    dependencies.client.from("campaign_plans")
+      .select("id,organization_id,plan")
+      .eq("id", campaignId)
+      .eq("organization_id", organizationId),
+    `${errorPrefix}_campaign_lookup_failed`,
+  );
+  if (!campaign) {
+    return {
+      result: providerFailure({
+        outcome: "operator_action_required",
+        errorCode: `${errorPrefix}_lead_campaign_missing`,
+        safeMessage: "The lead's exact DealFlow campaign no longer exists in this tenant.",
+      }),
+      providerMutationAttempted: false,
+    };
+  }
+  const campaignPlan = asRecord(campaign.plan);
+  const onboardingContract = asRecord(campaignPlan.onboarding_contract);
+  const campaignPayload = asRecord(campaignPlan.campaign_payload);
+  const adDestination = stringValue(
+    onboardingContract.adDestination ?? campaignPayload.ad_destination,
+  );
+  if (adDestination !== "website" && adDestination !== "meta_instant_form") {
+    return {
+      result: providerFailure({
+        outcome: "operator_action_required",
+        errorCode: `${errorPrefix}_campaign_destination_invalid`,
+        safeMessage: "The lead's canonical campaign destination contract is invalid.",
       }),
       providerMutationAttempted: false,
     };
@@ -208,23 +253,33 @@ async function executeClaimedEffect(
     source: stringValue(lead.source) || null,
   };
 
-  const personalization = await maybeOne(
-    dependencies.client.from("ghl_location_personalizations")
-      .select("id,status,current_step,verified_at,destination_url")
-      .eq("organization_id", organizationId)
-      .eq("location_mapping_id", mappingId)
-      .eq("environment", mode)
-      .eq("status", "ready")
-      .eq("current_step", "ready")
-      .not("verified_at", "is", null),
-    `${errorPrefix}_personalization_lookup_failed`,
-  );
+  let personalization: JsonRecord | null = { id: "meta-instant-form-campaign" };
+  if (adDestination === "website") {
+    const resolved = await dependencies.client.rpc("resolve_ghl_ready_campaign_destination_v2", {
+      p_organization_id: organizationId,
+      p_campaign_id: campaignId,
+      p_environment: mode,
+    });
+    if (resolved.error) {
+      throw new GhlSandboxOutboxError(
+        `${errorPrefix}_personalization_lookup_failed`,
+        resolved.error.message,
+      );
+    }
+    personalization = rows(resolved.data)[0] ?? null;
+    if (
+      personalization
+      && stringValue(personalization.location_mapping_id) !== mappingId
+    ) {
+      personalization = null;
+    }
+  }
   if (!personalization) {
     return {
       result: providerFailure({
         outcome: "retryable_failure",
         errorCode: `${errorPrefix}_personalization_not_ready`,
-        safeMessage: `The GHL ${mode} location is not personalized and form-verified yet.`,
+        safeMessage: `The exact GHL ${mode} campaign destination is not personalized and form-verified yet.`,
       }),
       providerMutationAttempted: false,
     };
@@ -252,6 +307,7 @@ async function executeClaimedEffect(
   const provider = dependencies.providerFactory(authority);
 
   if (effectKind === "contact_upsert") {
+    dispatchTrace.providerDispatchStarted = true;
     const result = await provider.upsertContact({
       idempotencyKey,
       providerLocationId: authority.providerLocationId,
@@ -298,6 +354,7 @@ async function executeClaimedEffect(
         providerMutationAttempted: false,
       };
     }
+    dispatchTrace.providerDispatchStarted = true;
     const result = await provider.upsertOpportunity({
         idempotencyKey,
         providerLocationId: authority.providerLocationId,
@@ -320,6 +377,7 @@ async function executeClaimedEffect(
         providerMutationAttempted: false,
       };
     }
+    dispatchTrace.providerDispatchStarted = true;
     const result = await provider.applyTag({
         idempotencyKey,
         providerLocationId: authority.providerLocationId,
@@ -340,6 +398,7 @@ async function executeClaimedEffect(
         providerMutationAttempted: false,
       };
     }
+    dispatchTrace.providerDispatchStarted = true;
     const result = await provider.enrollWorkflow({
         idempotencyKey,
         providerLocationId: authority.providerLocationId,
@@ -381,17 +440,25 @@ async function processNextGhlProviderOutbox(
   const claimed = rows(data)[0] ?? null;
   if (!claimed) return { status: "idle" as const, providerMutationAttempted: false };
 
+  const dispatchTrace = { providerDispatchStarted: false };
   let execution: Awaited<ReturnType<typeof executeClaimedEffect>>;
   try {
-    execution = await executeClaimedEffect(claimed, dependencies, mode);
+    execution = await executeClaimedEffect(claimed, dependencies, mode, dispatchTrace);
   } catch (error) {
+    const providerDispatchStarted = dispatchTrace.providerDispatchStarted;
     execution = {
       result: providerFailure({
-        outcome: "operator_action_required",
-        errorCode: error instanceof GhlSandboxOutboxError ? error.code : `${errorPrefix}_worker_failed`,
-        safeMessage: `The GHL ${mode} worker failed before a safe provider result was available.`,
+        outcome: providerDispatchStarted ? "uncertain" : "operator_action_required",
+        errorCode: providerDispatchStarted
+          ? `${errorPrefix}_provider_dispatch_ambiguous`
+          : error instanceof GhlSandboxOutboxError
+            ? error.code
+            : `${errorPrefix}_worker_failed`,
+        safeMessage: providerDispatchStarted
+          ? `The GHL ${mode} provider dispatch started, but no safe terminal result was available. Operator reconciliation is required before replay.`
+          : `The GHL ${mode} worker failed before provider dispatch started.`,
       }),
-      providerMutationAttempted: false,
+      providerMutationAttempted: providerDispatchStarted,
     };
   }
   const settlement = await settle({ dependencies, claimed, ...execution, mode });

@@ -1,4 +1,11 @@
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
+import {
+  getPublicFunnelLanguage,
+  getPublicFunnelPageCopy,
+  getPublicFunnelThankYouExpectation,
+  getPublicFunnelThankYouHeadline,
+  type PublicFunnelLanguage,
+} from "@/lib/public-funnel-language";
 
 type ThankYouLink = {
   label: string;
@@ -6,27 +13,19 @@ type ThankYouLink = {
 };
 
 export type PublicFunnelThankYouViewModel = {
+  language: PublicFunnelLanguage;
   businessName: string;
   headline: string;
   expectation: string;
   offerContext: string;
+  receivedDetailsPrefix: string;
+  nextStepLabel: string;
+  watchForUsLabel: string;
+  watchForUsBody: string;
+  privacyLabel: string;
+  privacyBody: string;
   primaryLink: ThankYouLink | null;
   secondaryLink: ThankYouLink;
-};
-
-const BOOKING_LABEL = "Book a quick call";
-const RETURN_LABEL = "Back to listing request";
-const DEFAULT_EXPECTATION =
-  "We will review your criteria and follow up with the strongest next steps.";
-const FOLLOW_UP_EXPECTATIONS: Record<string, string> = {
-  redirect_to_calendar:
-    "Book a quick call if you want faster help, or watch for our follow-up with the strongest next steps.",
-  send_to_follow_up_sequence:
-    "We will review your criteria and follow up with the strongest next steps.",
-  show_thank_you_page:
-    "We will review your request and follow up shortly with the clearest next step.",
-  show_thank_you_page_call_5_15_minutes:
-    "We will review your criteria and follow up shortly with the strongest next steps.",
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -56,17 +55,6 @@ function extractFirstUrl(value: unknown) {
   const raw = safeText(value);
   const match = raw?.match(/https?:\/\/[^\s)"'<]+/i);
   return match ? safePublicUrl(match[0]) : null;
-}
-
-function getFollowUpExpectation(value: unknown) {
-  const raw = safeText(value);
-
-  if (!raw) {
-    return DEFAULT_EXPECTATION;
-  }
-
-  const normalizedKey = raw.trim().toLowerCase();
-  return FOLLOW_UP_EXPECTATIONS[normalizedKey] ?? raw;
 }
 
 export function getPublicFunnelBookingUrl(record: FullCampaignRecord) {
@@ -108,25 +96,37 @@ export function buildPublicFunnelThankYouViewModel(params: {
 }): PublicFunnelThankYouViewModel {
   const { record, slug } = params;
   const bookingUrl = getPublicFunnelBookingUrl(record);
+  const language = getPublicFunnelLanguage(record);
+  const copy = getPublicFunnelPageCopy(language);
   const businessName =
     safeText(record.plan.business_name) ||
     safeText(record.plan.client_name) ||
     safeText(record.campaign.name) ||
-    "the team";
+    copy.defaultBusinessName;
   const offerContext =
     safeText(record.funnel.headline) ||
     safeText(record.plan.offer) ||
-    "your request";
-  const expectation = getFollowUpExpectation(record.funnel.follow_up_action);
+    copy.defaultOfferContext;
+  const expectation = getPublicFunnelThankYouExpectation(
+    language,
+    record.funnel.follow_up_action,
+  );
 
   return {
+    language,
     businessName,
-    headline: "Your request was received.",
+    headline: getPublicFunnelThankYouHeadline(language),
     expectation,
     offerContext,
-    primaryLink: bookingUrl ? { label: BOOKING_LABEL, href: bookingUrl } : null,
+    receivedDetailsPrefix: copy.receivedDetailsPrefix,
+    nextStepLabel: copy.nextStepLabel,
+    watchForUsLabel: copy.watchForUsLabel,
+    watchForUsBody: copy.watchForUsBody,
+    privacyLabel: copy.privacyLabel,
+    privacyBody: copy.privacyBody,
+    primaryLink: bookingUrl ? { label: copy.bookCallLabel, href: bookingUrl } : null,
     secondaryLink: {
-      label: bookingUrl ? RETURN_LABEL : "Return to page",
+      label: bookingUrl ? copy.returnToRequestLabel : copy.returnToPageLabel,
       href: `/f/${encodeURIComponent(slug)}`,
     },
   };

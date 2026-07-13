@@ -52,6 +52,7 @@ const credentials = {
   workspaceId: ORG_A,
   connectionId: "connection-a",
   adAccountId: "act_account-a",
+  currency: "USD",
   pageId: "page-a",
   pixelId: "pixel-a",
   accessToken: "offline-redacted-token",
@@ -75,6 +76,7 @@ const marketingRow = {
         id: "account-a",
         external_account_id: "act_account-a",
         name: "Account A",
+        currency: "USD",
       },
     ],
     available_pages: [{ id: "page-a", name: "Page A" }],
@@ -116,7 +118,7 @@ const metaService = loadTsModuleWithMocks("src/lib/integrations/meta/service.ts"
       const path = String(url).replace("https://graph.invalid/", "");
       if (path === "me") return { response: { ok: true }, data: { id: "meta-user" } };
       if (path === "act_account-a") {
-        return { response: { ok: true }, data: { id: "account-a", account_status: 1 } };
+        return { response: { ok: true }, data: { id: "account-a", account_status: 1, currency: "USD" } };
       }
       if (path === "page-a") return { response: { ok: true }, data: { id: "page-a" } };
       if (path === "act_account-a/adspixels") {

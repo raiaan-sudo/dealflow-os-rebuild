@@ -2,6 +2,18 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import ts from "typescript";
+import vm from "node:vm";
+
+function loadPureTs(file) {
+  const output = ts.transpileModule(fs.readFileSync(file, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const context = { module: { exports: {} }, exports: {}, console };
+  context.exports = context.module.exports;
+  vm.runInNewContext(output, context, { filename: file });
+  return context.module.exports;
+}
 
 const migration = fs.readFileSync("supabase/migrations/20260706170000_create_lead_tracking_health.sql", "utf8");
 const trackingService = fs.readFileSync("src/lib/services/lead-tracking-service.ts", "utf8");
@@ -24,6 +36,8 @@ const supabaseBrowserClient = fs.readFileSync("src/lib/supabase/client.ts", "utf
 const supabaseServerClient = fs.readFileSync("src/lib/supabase/server.ts", "utf8");
 const qaAuthSessionRoute = fs.readFileSync("src/app/api/internal/qa-auth-session/route.ts", "utf8");
 const proxy = fs.readFileSync("src/proxy.ts", "utf8");
+const trackingAttributionSource = fs.readFileSync("src/lib/integrations/meta/tracking-attribution.ts", "utf8");
+const trackingAttribution = loadPureTs("src/lib/integrations/meta/tracking-attribution.ts");
 
 function assertOrdered(source, patterns, message) {
   let cursor = -1;
@@ -75,9 +89,55 @@ assert.match(browserPixelRoute, /eventType: "browser_pixel_attempted"/, "browser
 assert.match(conversions, /eventType: "capi_sent"/, "CAPI success must be tracked");
 assert.match(conversions, /eventType: "capi_failed"/, "CAPI failures and skips must be tracked");
 assert.match(conversions, /meta_connection_missing/, "CAPI missing connection skip must be visible");
-assert.match(conversions, /meta_pixel_missing/, "CAPI missing pixel skip must be visible");
+assert.match(trackingAttributionSource, /meta_campaign_pixel_missing/, "CAPI missing launch-authorized pixel skip must be visible");
 assert.match(conversions, /meta_access_token_missing/, "CAPI missing token skip must be visible");
 assert.match(conversions, /meta_env_missing/, "CAPI missing env skip must be visible");
+assert.match(conversions, /\.eq\("status", "connected"\)/, "CAPI and browser pixel authority must require a connected Meta account");
+assert.match(conversions, /getMetaCampaignTrackingContract/, "CAPI must resolve the immutable campaign tracking contract");
+assert.match(conversions, /resolveLaunchAuthorizedMetaPixel/, "CAPI must fail closed on post-launch pixel drift");
+assert.match(browserPixelRoute, /campaign_tracking_contracts/, "browser telemetry must bind to the immutable launch tracking contract");
+assert.match(browserPixelRoute, /browser_pixel_contract_mismatch/, "browser telemetry must reject a client pixel that differs from launch authority");
+
+const campaignAContract = {
+  connectionStatus: "connected",
+  currentPixelId: "pixel-a",
+  contractPixelId: "pixel-a",
+  contractStatus: "configured",
+  trackingMode: "website_funnel",
+};
+assert.equal(trackingAttribution.resolveLaunchAuthorizedMetaPixel(campaignAContract).pixelId, "pixel-a");
+assert.equal(
+  trackingAttribution.resolveLaunchAuthorizedMetaPixel({
+    ...campaignAContract,
+    connectionStatus: "disconnected",
+  }).reason,
+  "meta_connection_not_connected",
+);
+assert.equal(
+  trackingAttribution.resolveLaunchAuthorizedMetaPixel({
+    ...campaignAContract,
+    connectionStatus: "connected",
+  }).pixelId,
+  "pixel-a",
+  "reconnecting the same launch-authorized pixel restores the exact campaign route",
+);
+assert.equal(
+  trackingAttribution.resolveLaunchAuthorizedMetaPixel({
+    ...campaignAContract,
+    currentPixelId: "pixel-b",
+  }).reason,
+  "meta_campaign_pixel_drift",
+  "campaign A must not silently follow a workspace pixel changed after launch",
+);
+assert.equal(
+  trackingAttribution.resolveLaunchAuthorizedMetaPixel({
+    ...campaignAContract,
+    currentPixelId: "pixel-b",
+    contractPixelId: "pixel-b",
+  }).pixelId,
+  "pixel-b",
+  "campaign B may use the newly launch-authorized pixel without mutating campaign A",
+);
 
 assert.match(launchRoute, /completeManualCampaignLaunchClaim/, "launch must settle through the atomic completion RPC");
 assert.match(launchRoute, /bindManualCampaignLaunchInputSnapshot/, "manual launch must bind one immutable provider input snapshot");

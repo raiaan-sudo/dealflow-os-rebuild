@@ -210,7 +210,9 @@ export function evaluateGhlDeliveryResult(result: unknown): EffectEvaluation {
   const reason = asReason(record.reason, "ghl_delivery_enqueue_failed");
   return {
     succeeded: false,
-    retryable: reason === "ghl_delivery_enqueue_retryable",
+    retryable:
+      reason === "ghl_delivery_enqueue_retryable" ||
+      reason === "effect_disabled_by_policy",
     reason,
     operatorRequired: reason === "ghl_sandbox_mapping_not_ready"
       || reason === "ghl_production_mapping_not_ready"

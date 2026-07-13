@@ -3,6 +3,8 @@ import {
   assertGhlSandboxAllowed,
   assertGhlProductionAllowed,
   assertGhlReplayDue,
+  buildGhlLocationCreateRequestFingerprint,
+  buildGhlSnapshotManifestFingerprint,
   GHL_CAPABILITY_MATRIX,
   GhlProvisioningInvariantError,
   transitionGhlProvisioning,
@@ -69,6 +71,67 @@ function buildOperationIdempotencyKey(run: GhlProvisioningRun, operation: GhlPro
   return `${run.idempotencyKey}:${operation}`;
 }
 
+function buildLocationCreateInput(run: GhlProvisioningRun) {
+  const snapshotManifestFingerprint = buildGhlSnapshotManifestFingerprint(run.snapshotManifest);
+  const immutableInput = {
+    idempotencyKey: buildOperationIdempotencyKey(run, "location_create"),
+    installationId: run.installationId,
+    environment: run.environment,
+    organizationId: run.organizationId,
+    profile: run.locationProfile,
+    snapshotManifest: run.snapshotManifest,
+    snapshotManifestFingerprint,
+  };
+  return {
+    ...immutableInput,
+    requestFingerprint: buildGhlLocationCreateRequestFingerprint(immutableInput),
+  };
+}
+
+function locationCreateOutboxPayload(run: GhlProvisioningRun) {
+  const input = buildLocationCreateInput(run);
+  return {
+    contractVersion: 2,
+    environment: input.environment,
+    organizationId: input.organizationId,
+    installationId: input.installationId,
+    snapshotManifestId: input.snapshotManifest.id,
+    snapshotKey: input.snapshotManifest.snapshotKey,
+    snapshotVersion: input.snapshotManifest.snapshotVersion,
+    providerSnapshotId: input.snapshotManifest.providerSnapshotId,
+    snapshotManifestFingerprint: input.snapshotManifestFingerprint,
+    requestFingerprint: input.requestFingerprint,
+  };
+}
+
+function locationCreateReceiptMetadata(run: GhlProvisioningRun) {
+  const input = buildLocationCreateInput(run);
+  return {
+    snapshotManifestId: input.snapshotManifest.id,
+    providerSnapshotId: input.snapshotManifest.providerSnapshotId,
+    snapshotManifestFingerprint: input.snapshotManifestFingerprint,
+    requestFingerprint: input.requestFingerprint,
+  };
+}
+
+function assertLocationCreateReceiptIdentity(
+  run: GhlProvisioningRun,
+  receipt: GhlProviderReceipt,
+) {
+  const expected = locationCreateReceiptMetadata(run);
+  if (
+    receipt.metadata.snapshotManifestId !== expected.snapshotManifestId
+    || receipt.metadata.providerSnapshotId !== expected.providerSnapshotId
+    || receipt.metadata.snapshotManifestFingerprint !== expected.snapshotManifestFingerprint
+    || receipt.metadata.requestFingerprint !== expected.requestFingerprint
+  ) {
+    throw new GhlProvisioningInvariantError(
+      "ghl_location_create_receipt_identity_mismatch",
+      "The durable GHL location-create receipt does not match the exact approved snapshot request.",
+    );
+  }
+}
+
 function operationForResumeState(state: GhlRetryResumeState): GhlProviderOperation {
   switch (state) {
     case "location_create_requested":
@@ -93,6 +156,23 @@ export function assertGhlProvisioningRequest(request: GhlProvisioningRequest) {
     throw new GhlProvisioningInvariantError(
       "snapshot_not_approved",
       "Provisioning requires an approved snapshot manifest.",
+    );
+  }
+  if (
+    !request.snapshotManifest.id.trim()
+    || request.snapshotManifest.id.length > 180
+    || !request.snapshotManifest.snapshotKey.trim()
+    || request.snapshotManifest.snapshotKey.length > 180
+    || !request.snapshotManifest.snapshotVersion.trim()
+    || request.snapshotManifest.snapshotVersion.length > 180
+    || !/^[A-Za-z0-9_-]{3,180}$/.test(request.snapshotManifest.providerSnapshotId)
+    || !["preinstalled", "provider_api"].includes(
+      request.snapshotManifest.installationMode ?? "provider_api",
+    )
+  ) {
+    throw new GhlProvisioningInvariantError(
+      "snapshot_identity_invalid",
+      "Provisioning requires one structurally valid, immutable provider snapshot identity.",
     );
   }
   if (request.snapshotManifest.requiredObjects.length === 0) {
@@ -126,6 +206,17 @@ export function assertGhlProvisioningRequest(request: GhlProvisioningRequest) {
       "A qualifying payment activation event is required for provisioning idempotency.",
     );
   }
+}
+
+function assertGhlProvisioningRunIdentity(run: GhlProvisioningRun) {
+  assertGhlProvisioningRequest({
+    organizationId: run.organizationId,
+    environment: run.environment,
+    activationEventId: run.activationEventId,
+    installationId: run.installationId,
+    snapshotManifest: run.snapshotManifest,
+    locationProfile: run.locationProfile,
+  });
 }
 
 export async function requestGhlProvisioning(
@@ -165,7 +256,9 @@ async function beginProviderAttempt(
   const latestReceipt = await dependencies.repository.getLatestReceipt(existing.id);
   const reconciledUncertainCreate = existing.status === "uncertain"
     && operation === "location_create"
-    && run.lastReconciledAt !== null;
+    && run.state === "location_create_requested"
+    && run.lastReconciledAt !== null
+    && run.lastErrorCode === "location_absent_after_reconciliation";
   const unreconciledPendingPoll = existing.status === "pending"
     && latestReceipt?.outcome === "accepted"
     && latestReceipt.metadata.providerStatus === "pending"
@@ -400,14 +493,11 @@ async function executeLocationCreate(
   const attempt = await beginProviderAttempt(
     run,
     "location_create",
-    {
-      environment: run.environment,
-      organizationId: run.organizationId,
-      snapshotVersion: run.snapshotManifest.snapshotVersion,
-    },
+    locationCreateOutboxPayload(run),
     dependencies,
   );
   if (attempt.kind === "settled") {
+    assertLocationCreateReceiptIdentity(run, attempt.receipt);
     if (attempt.outbox.status === "succeeded" && attempt.receipt.outcome === "succeeded") {
       if (!attempt.receipt.providerReference) {
         throw new GhlProvisioningInvariantError(
@@ -441,13 +531,42 @@ async function executeLocationCreate(
     }, dependencies);
   }
   const outbox = attempt.outbox;
-  const result = await dependencies.provider.createLocation({
-    idempotencyKey: run.idempotencyKey,
-    installationId: run.installationId,
-    environment: run.environment,
-    organizationId: run.organizationId,
-    profile: run.locationProfile,
-  });
+  let result: Awaited<ReturnType<GhlProviderAdapter["createLocation"]>>;
+  try {
+    result = await dependencies.provider.createLocation(buildLocationCreateInput(run));
+  } catch {
+    let errorCode = "ghl_location_create_dispatch_ambiguous";
+    let safeMessage = "The GHL location-create dispatch started, but no terminal provider result was available. Reconciliation is required before any replay.";
+    try {
+      await recordProviderOutcome(outbox, {
+        outcome: "uncertain",
+        outboxStatus: "uncertain",
+        providerRequestId: null,
+        providerReference: run.idempotencyKey,
+        httpStatus: null,
+        responseFingerprint: null,
+        metadata: {
+          ...locationCreateReceiptMetadata(run),
+          errorCode,
+          providerMutationAttempted: true,
+          providerDispatchStarted: true,
+        },
+      }, dependencies);
+    } catch {
+      // The forward database claim contract terminalizes an expired dispatching
+      // lease as uncertain. Move the saga to the same fail-closed state now so
+      // no caller can replay location creation while settlement is unresolved.
+      errorCode = "ghl_location_create_dispatch_ambiguous_settlement_unconfirmed";
+      safeMessage = "The GHL location-create dispatch and its durable settlement are both unconfirmed. Operator reconciliation is required before any replay.";
+    }
+    const next = transitionGhlProvisioning(run, "location_uncertain", {
+      lastErrorCode: errorCode,
+      lastErrorMessage: safeMessage,
+      nextRetryAt: null,
+      resumeState: null,
+    }, nowFrom(dependencies));
+    return saveTransition(dependencies.repository, run, next);
+  }
 
   if (result.outcome === "succeeded") {
     await recordProviderOutcome(outbox, {
@@ -457,7 +576,10 @@ async function executeLocationCreate(
       providerReference: result.providerLocationId,
       httpStatus: result.httpStatus,
       responseFingerprint: null,
-      metadata: { providerLocationIdRecorded: true },
+      metadata: {
+        ...locationCreateReceiptMetadata(run),
+        providerLocationIdRecorded: true,
+      },
     }, dependencies);
     const mapping = await dependencies.repository.assignLocation({
       run,
@@ -481,7 +603,10 @@ async function executeLocationCreate(
       providerReference: run.idempotencyKey,
       httpStatus: result.httpStatus,
       responseFingerprint: null,
-      metadata: { errorCode: result.errorCode },
+      metadata: {
+        ...locationCreateReceiptMetadata(run),
+        errorCode: result.errorCode,
+      },
     }, dependencies);
     const next = transitionGhlProvisioning(run, "location_uncertain", {
       lastErrorCode: result.errorCode,
@@ -497,7 +622,10 @@ async function executeLocationCreate(
     providerReference: run.idempotencyKey,
     httpStatus: result.httpStatus,
     responseFingerprint: null,
-    metadata: { errorCode: result.errorCode },
+    metadata: {
+      ...locationCreateReceiptMetadata(run),
+      errorCode: result.errorCode,
+    },
   }, dependencies);
 
   return result.outcome === "operator_action_required"
@@ -520,7 +648,13 @@ async function reconcileUncertainLocation(
   const attempt = await beginProviderAttempt(
     run,
     "location_reconcile",
-    { environment: run.environment, originalRequestKey: run.idempotencyKey },
+    {
+      environment: run.environment,
+      originalRequestKey: buildOperationIdempotencyKey(run, "location_create"),
+      providerSnapshotId: run.snapshotManifest.providerSnapshotId,
+      snapshotManifestFingerprint: buildGhlSnapshotManifestFingerprint(run.snapshotManifest),
+      requestFingerprint: buildLocationCreateInput(run).requestFingerprint,
+    },
     dependencies,
   );
   if (attempt.kind === "settled") {
@@ -561,7 +695,7 @@ async function reconcileUncertainLocation(
   }
   const outbox = attempt.outbox;
   const result = await dependencies.provider.reconcileLocationCreate({
-    idempotencyKey: run.idempotencyKey,
+    idempotencyKey: buildOperationIdempotencyKey(run, "location_create"),
     installationId: run.installationId,
     environment: run.environment,
   });
@@ -968,11 +1102,7 @@ async function executeProvisioningState(
         run,
         operation: "location_create",
         idempotencyKey: buildOperationIdempotencyKey(run, "location_create"),
-        requestPayload: {
-          environment: run.environment,
-          organizationId: run.organizationId,
-          snapshotVersion: run.snapshotManifest.snapshotVersion,
-        },
+        requestPayload: locationCreateOutboxPayload(run),
         now: nowFrom(dependencies),
       });
       const next = transitionGhlProvisioning(
@@ -1024,6 +1154,7 @@ export async function executeNextGhlProvisioningStep(
   if (!run) {
     throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
   }
+  assertGhlProvisioningRunIdentity(run);
   if (
     run.environment !== "test"
     || process.env.NODE_ENV === "production"
@@ -1060,6 +1191,7 @@ export async function executeNextGhlSandboxProvisioningStep(
   if (!run) {
     throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
   }
+  assertGhlProvisioningRunIdentity(run);
   if (run.environment !== "sandbox") {
     throw new GhlProvisioningInvariantError(
       "ghl_sandbox_run_environment_required",
@@ -1094,6 +1226,7 @@ export async function executeNextGhlProductionProvisioningStep(
   }
   const run = await dependencies.repository.getRun(runId);
   if (!run) throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
+  assertGhlProvisioningRunIdentity(run);
   if (run.environment !== "production") {
     throw new GhlProvisioningInvariantError(
       "ghl_production_run_environment_required",
@@ -1113,7 +1246,16 @@ export async function requestGhlProvisioningReplay(
   }
   const now = nowFrom(dependencies);
   assertGhlReplayDue(run, now);
-  if (!(run.resumeState === "location_create_requested" && run.lastReconciledAt)) {
+  const reconciledLocationCreateReplay = run.resumeState === "location_create_requested"
+    && run.lastReconciledAt !== null
+    && run.lastErrorCode === "location_absent_after_reconciliation";
+  if (run.resumeState === "location_create_requested" && !reconciledLocationCreateReplay) {
+    throw new GhlProvisioningInvariantError(
+      "location_reconciliation_absence_not_proven",
+      "Location creation cannot be replayed until reconciliation conclusively proves the original request absent.",
+    );
+  }
+  if (!reconciledLocationCreateReplay) {
     await dependencies.repository.prepareOutboxReplay({
       organizationId: run.organizationId,
       idempotencyKey: buildOperationIdempotencyKey(run, operationForResumeState(run.resumeState!)),
@@ -1121,8 +1263,12 @@ export async function requestGhlProvisioningReplay(
     });
   }
   const next = transitionGhlProvisioning(run, run.resumeState!, {
-    lastErrorCode: null,
-    lastErrorMessage: null,
+    lastErrorCode: reconciledLocationCreateReplay
+      ? "location_absent_after_reconciliation"
+      : null,
+    lastErrorMessage: reconciledLocationCreateReplay
+      ? "Provider reconciliation conclusively proved the original location-create request absent; one fenced replay is authorized."
+      : null,
   }, now);
   return saveTransition(dependencies.repository, run, next);
 }

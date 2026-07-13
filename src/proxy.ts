@@ -4,6 +4,21 @@ import { createServerClient } from "@supabase/ssr";
 import { isExplicitNonProductionDeployment } from "@/lib/deployment-target";
 import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
+import {
+  createPartnerAttributionToken,
+  getPartnerAttributionCookieOptions,
+  loadVerifiedPartnerDomainContext,
+  PARTNER_ATTRIBUTION_COOKIE,
+} from "@/lib/white-label/verified-partner-domain";
+import {
+  getAllowedGhlParentOrigins,
+  GHL_EMBED_BOOTSTRAP_PATH,
+  GHL_EMBED_CAPABILITY_COOKIE,
+  GHL_EMBED_SESSION_COOKIE,
+  type GhlEmbedCapability,
+  verifyGhlEmbedCapability,
+  verifyGhlEmbedSessionMarker,
+} from "@/lib/white-label/ghl-embed-capability";
 
 const PUBLIC_PATHS = new Set([
   "/",
@@ -12,6 +27,7 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
+  "/ghl/embed",
   "/access/checkout",
   "/access-key/success",
   "/access-key/cancel",
@@ -40,6 +56,8 @@ const PUBLIC_API_PATHS = new Set([
   "/api/access-keys/checkout",
   "/api/access-keys/preclaim",
   "/api/access-keys/reveal-ack",
+  "/api/integrations/ghl/embed-context",
+  "/api/integrations/ghl/webhook",
 ]);
 
 function isPublicRequest(pathname: string) {
@@ -103,17 +121,7 @@ function isAuthorizedInternalRequest(request: NextRequest) {
   };
 }
 
-const CLICK_TO_SCALE_IFRAME_HOSTS = new Set([
-  "clicktoscale.io",
-  "www.clicktoscale.io",
-  "clip2scale.io",
-  "www.clip2scale.io",
-]);
 const ROOT_APP_REDIRECT_HOSTS = new Set([
-  "clicktoscale.io",
-  "www.clicktoscale.io",
-  "clip2scale.io",
-  "www.clip2scale.io",
   "agentdealflow.io",
   "app.agentdealflow.io",
 ]);
@@ -132,47 +140,8 @@ const GHL_EMBEDDABLE_PATHS = new Set([
   "/dashboard",
   "/settings",
   "/support",
+  "/builder",
 ]);
-const SHARED_VENDOR_FRAME_HOSTS = new Set([
-  "app.gohighlevel.com",
-  "app.leadconnectorhq.com",
-]);
-
-function normalizeExactFrameAncestor(source: string) {
-  try {
-    const url = new URL(source);
-    const hostname = url.hostname.toLowerCase();
-    const validHostname = hostname
-      .split(".")
-      .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
-
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.pathname !== "/" ||
-      url.search ||
-      url.hash ||
-      !validHostname ||
-      SHARED_VENDOR_FRAME_HOSTS.has(hostname)
-    ) {
-      return null;
-    }
-
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
-function getConfiguredFrameAncestors() {
-  return (process.env.GHL_IFRAME_ALLOWED_FRAME_ANCESTORS ?? "")
-    .split(/[\s,]+/)
-    .map((source) => source.trim())
-    .map(normalizeExactFrameAncestor)
-    .filter((source): source is string => Boolean(source));
-}
-
 function hasEmbeddedAppReturn(request: NextRequest) {
   if (
     request.nextUrl.pathname !== "/login" ||
@@ -200,6 +169,24 @@ function hasEmbeddedAppReturn(request: NextRequest) {
   }
 }
 
+function getGhlEmbedReturnPath(request: NextRequest) {
+  if (
+    request.nextUrl.pathname !== "/login" ||
+    request.nextUrl.searchParams.get("embed") !== "ghl"
+  ) {
+    return null;
+  }
+  const redirectedFrom = request.nextUrl.searchParams.get("redirectedFrom");
+  if (!redirectedFrom || redirectedFrom.startsWith("//") || redirectedFrom.includes("\\")) {
+    return null;
+  }
+  try {
+    return new URL(redirectedFrom, request.url).pathname;
+  } catch {
+    return null;
+  }
+}
+
 function isGhlEmbeddableSurface(request: NextRequest) {
   return (
     GHL_EMBEDDABLE_PATHS.has(request.nextUrl.pathname) ||
@@ -207,34 +194,72 @@ function isGhlEmbeddableSurface(request: NextRequest) {
   );
 }
 
-function getFrameAncestors(request: NextRequest) {
+function shouldResolvePartnerDomainContext(request: NextRequest) {
+  return (
+    request.nextUrl.pathname === "/" ||
+    request.nextUrl.pathname === "/login" ||
+    request.nextUrl.pathname === GHL_EMBED_BOOTSTRAP_PATH ||
+    isGhlEmbeddableSurface(request)
+  );
+}
+
+function getFrameAncestors(
+  request: NextRequest,
+  verifiedPartnerDomain: string | null,
+  embedCapability: GhlEmbedCapability | null,
+) {
   const host = request.nextUrl.hostname.toLowerCase();
-  const configuredAncestors = getConfiguredFrameAncestors();
 
   if (
     process.env.GHL_IFRAME_EMBED_ENABLED !== "true" ||
-    !CLICK_TO_SCALE_IFRAME_HOSTS.has(host) ||
-    !isGhlEmbeddableSurface(request) ||
-    configuredAncestors.length === 0
+    !verifiedPartnerDomain ||
+    verifiedPartnerDomain !== host
   ) {
     return "'none'";
   }
 
-  return Array.from(new Set(configuredAncestors)).join(" ");
+  if (request.nextUrl.pathname === GHL_EMBED_BOOTSTRAP_PATH) {
+    const bootstrapParents = getAllowedGhlParentOrigins(host);
+    return bootstrapParents.length > 0 ? bootstrapParents.join(" ") : "'none'";
+  }
+
+  if (!embedCapability || embedCapability.domain !== host) return "'none'";
+  const embedReturnPath = getGhlEmbedReturnPath(request);
+  if (
+    embedReturnPath === GHL_EMBED_BOOTSTRAP_PATH ||
+    (embedCapability.stage === "authenticated" &&
+      embedReturnPath &&
+      GHL_EMBEDDABLE_PATHS.has(embedReturnPath))
+  ) {
+    return embedCapability.parentOrigin;
+  }
+  if (embedCapability.stage === "authenticated" && isGhlEmbeddableSurface(request)) {
+    return embedCapability.parentOrigin;
+  }
+  return "'none'";
 }
 
-function addEmbeddedAuthRedirectState(request: NextRequest, loginUrl: URL) {
-  if (getFrameAncestors(request) === "'none'") {
+function addEmbeddedAuthRedirectState(
+  request: NextRequest,
+  loginUrl: URL,
+  verifiedPartnerDomain: string | null,
+  embedCapability: GhlEmbedCapability | null,
+) {
+  if (getFrameAncestors(request, verifiedPartnerDomain, embedCapability) === "'none'") {
     return;
   }
 
-  loginUrl.searchParams.set("embed", "1");
+  loginUrl.searchParams.set("embed", "ghl");
 }
 
-function shouldRedirectRootToApp(request: NextRequest) {
+function shouldRedirectRootToApp(
+  request: NextRequest,
+  verifiedPartnerDomain: string | null,
+) {
+  const host = request.nextUrl.hostname.toLowerCase();
   return (
     request.nextUrl.pathname === "/" &&
-    ROOT_APP_REDIRECT_HOSTS.has(request.nextUrl.hostname.toLowerCase())
+    (ROOT_APP_REDIRECT_HOSTS.has(host) || verifiedPartnerDomain === host)
   );
 }
 
@@ -278,11 +303,16 @@ function getIsolatedLoopbackSupabaseOrigin() {
   }
 }
 
-function buildContentSecurityPolicy(request: NextRequest, nonce: string) {
+function buildContentSecurityPolicy(
+  request: NextRequest,
+  nonce: string,
+  verifiedPartnerDomain: string | null,
+  embedCapability: GhlEmbedCapability | null,
+) {
   const isProductionBuild = process.env.NODE_ENV === "production";
   const useProductionTransportSecurity =
     isProductionBuild && !isExplicitNonProductionDeployment();
-  const frameAncestors = getFrameAncestors(request);
+  const frameAncestors = getFrameAncestors(request, verifiedPartnerDomain, embedCapability);
   const surface = getSecuritySurface(request.nextUrl.pathname);
   const isolatedLoopbackSupabaseOrigin = getIsolatedLoopbackSupabaseOrigin();
   const scriptSrc = [
@@ -350,11 +380,13 @@ function applySecurityHeaders(
   request: NextRequest,
   response: NextResponse,
   nonce: string,
+  verifiedPartnerDomain: string | null,
+  embedCapability: GhlEmbedCapability | null,
   startedAt?: number,
 ) {
   const useProductionTransportSecurity =
     process.env.NODE_ENV === "production" && !isExplicitNonProductionDeployment();
-  const frameAncestors = getFrameAncestors(request);
+  const frameAncestors = getFrameAncestors(request, verifiedPartnerDomain, embedCapability);
   const allowsExternalFrameAncestors = frameAncestors !== "'none'";
 
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -373,7 +405,7 @@ function applySecurityHeaders(
   );
   response.headers.set(
     "Content-Security-Policy",
-    buildContentSecurityPolicy(request, nonce),
+    buildContentSecurityPolicy(request, nonce, verifiedPartnerDomain, embedCapability),
   );
 
   if (useProductionTransportSecurity) {
@@ -392,17 +424,112 @@ function applySecurityHeaders(
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now();
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  const finalize = (nextResponse: NextResponse) =>
-    applySecurityHeaders(request, nextResponse, nonce, startedAt);
+  const pathname = request.nextUrl.pathname;
+  const shouldResolvePartnerDomain = shouldResolvePartnerDomainContext(request);
+  const verifiedPartnerContext = shouldResolvePartnerDomain
+    ? await loadVerifiedPartnerDomainContext(request.nextUrl.hostname)
+    : null;
+  const verifiedPartnerDomain = verifiedPartnerContext?.domain ?? null;
+  const embedCapability = verifiedPartnerDomain
+    ? await verifyGhlEmbedCapability(
+        request.cookies.get(GHL_EMBED_CAPABILITY_COOKIE)?.value,
+        { expectedHost: verifiedPartnerDomain },
+      )
+    : null;
+  const embedSessionMarker = verifiedPartnerDomain
+    ? await verifyGhlEmbedSessionMarker(
+        request.cookies.get(GHL_EMBED_SESSION_COOKIE)?.value,
+        { expectedHost: verifiedPartnerDomain },
+      )
+    : null;
+  const partnerAttributionToken = verifiedPartnerContext
+    ? await createPartnerAttributionToken(verifiedPartnerContext)
+    : null;
+  const finalize = (
+    nextResponse: NextResponse,
+    effectiveEmbedCapability = embedCapability,
+  ) => {
+    if (verifiedPartnerContext && partnerAttributionToken) {
+      nextResponse.cookies.set(
+        PARTNER_ATTRIBUTION_COOKIE,
+        partnerAttributionToken,
+        getPartnerAttributionCookieOptions(request.nextUrl.protocol === "https:"),
+      );
+    }
+    return applySecurityHeaders(
+      request,
+      nextResponse,
+      nonce,
+      verifiedPartnerDomain,
+      effectiveEmbedCapability,
+      startedAt,
+    );
+  };
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete("x-dealflow-verified-partner-domain");
+  requestHeaders.delete("x-dealflow-verified-partner-id");
+  requestHeaders.delete("x-dealflow-verified-partner-slug");
+  requestHeaders.delete("x-dealflow-partner-attribution");
+  requestHeaders.delete("x-dealflow-ghl-embed-organization");
+  requestHeaders.delete("x-dealflow-ghl-embed-parent-origin");
+  if (verifiedPartnerContext) {
+    requestHeaders.set("x-dealflow-verified-partner-domain", verifiedPartnerContext.domain);
+    requestHeaders.set("x-dealflow-verified-partner-id", verifiedPartnerContext.partnerId);
+    requestHeaders.set("x-dealflow-verified-partner-slug", verifiedPartnerContext.partnerSlug);
+  }
+  if (partnerAttributionToken) {
+    requestHeaders.set("x-dealflow-partner-attribution", partnerAttributionToken);
+  }
+  if (embedCapability?.stage === "authenticated") {
+    requestHeaders.set(
+      "x-dealflow-ghl-embed-organization",
+      embedCapability.organizationId,
+    );
+    requestHeaders.set(
+      "x-dealflow-ghl-embed-parent-origin",
+      embedCapability.parentOrigin,
+    );
+  }
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", buildContentSecurityPolicy(request, nonce));
+  requestHeaders.set(
+    "Content-Security-Policy",
+    buildContentSecurityPolicy(request, nonce, verifiedPartnerDomain, embedCapability),
+  );
   let response = NextResponse.next({ request: { headers: requestHeaders } });
-  const pathname = request.nextUrl.pathname;
 
-  if (shouldRedirectRootToApp(request)) {
+  if (shouldRedirectRootToApp(request, verifiedPartnerDomain)) {
     return finalize(NextResponse.redirect(buildRootAppRedirect(request)));
+  }
+
+  if (
+    embedSessionMarker &&
+    !embedCapability &&
+    pathname !== GHL_EMBED_BOOTSTRAP_PATH &&
+    pathname !== "/api/integrations/ghl/embed-context"
+  ) {
+    if (pathname.startsWith("/api/")) {
+      return finalize(
+        NextResponse.json(
+          {
+            error: "The embedded CRM session must be refreshed.",
+            code: "ghl_embed_reauthentication_required",
+            nextPath: GHL_EMBED_BOOTSTRAP_PATH,
+          },
+          { status: 401 },
+        ),
+        null,
+      );
+    }
+    if (
+      GHL_EMBEDDABLE_PATHS.has(pathname) ||
+      pathname === "/login"
+    ) {
+      return finalize(
+        NextResponse.redirect(new URL(GHL_EMBED_BOOTSTRAP_PATH, request.url)),
+        null,
+      );
+    }
   }
 
   if (isPublicRequest(pathname)) {
@@ -442,7 +569,12 @@ export async function proxy(request: NextRequest) {
     loginUrl.searchParams.set("reason", "setup");
     if (!pathname.startsWith("/api/")) {
       loginUrl.searchParams.set("redirectedFrom", `${pathname}${request.nextUrl.search}`);
-      addEmbeddedAuthRedirectState(request, loginUrl);
+      addEmbeddedAuthRedirectState(
+        request,
+        loginUrl,
+        verifiedPartnerDomain,
+        embedCapability,
+      );
     }
     return finalize(NextResponse.redirect(loginUrl));
   }
@@ -469,6 +601,19 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (user) {
+    if (
+      embedCapability?.stage === "authenticated" &&
+      embedCapability.dealflowUserId !== user.id &&
+      getFrameAncestors(request, verifiedPartnerDomain, embedCapability) !== "'none'"
+    ) {
+      return finalize(
+        NextResponse.json(
+          { error: "The embedded CRM session does not match this DealFlow user." },
+          { status: 403 },
+        ),
+        null,
+      );
+    }
     return finalize(response);
   }
 
@@ -482,7 +627,12 @@ export async function proxy(request: NextRequest) {
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("reason", "expired");
   loginUrl.searchParams.set("redirectedFrom", `${pathname}${request.nextUrl.search}`);
-  addEmbeddedAuthRedirectState(request, loginUrl);
+  addEmbeddedAuthRedirectState(
+    request,
+    loginUrl,
+    verifiedPartnerDomain,
+    embedCapability,
+  );
   return finalize(NextResponse.redirect(loginUrl));
 }
 

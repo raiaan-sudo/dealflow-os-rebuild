@@ -65,11 +65,12 @@ export function evaluateRealtorOptimizationPolicy(params: {
   scaleAppliedLast24HoursPercent?: number;
   lastProviderMutationAt?: string | null;
   switches: OptimizationKillSwitches;
+  approvedPolicy?: ApprovedOptimizationPolicy | null;
   now?: Date;
 }): RealtorOptimizationEvaluation {
   const now = params.now ?? new Date();
   const metrics = params.metrics;
-  const policy = REALTOR_OPTIMIZATION_POLICY_V1;
+  const policy = params.approvedPolicy ?? REALTOR_OPTIMIZATION_POLICY_V1;
   const blockers: string[] = [];
 
   if (Object.values(params.switches).some(Boolean)) blockers.push("kill_switch_active");
@@ -107,7 +108,7 @@ export function evaluateRealtorOptimizationPolicy(params: {
   if (blockers.length > 0) return hold(blockers[0], blockers);
 
   const safeMetrics = metrics!;
-  const thresholds = policy.thresholds;
+  const thresholds = KPI;
   const pauseReasons: string[] = [];
   if (safeMetrics.ctr < thresholds.CTR_KILL) pauseReasons.push("ctr_below_kill_threshold");
   if (

@@ -12,6 +12,15 @@ const migrationPath = path.join(
   "supabase/migrations/20260710235990_create_meta_leadgen_ingestion.sql",
 );
 const migration = fs.readFileSync(migrationPath, "utf8");
+const integrityMigration = fs.readFileSync(
+  path.join(root, "supabase/migrations/20260713018000_harden_meta_reporting_and_leadgen_integrity.sql"),
+  "utf8",
+);
+const leadgenIntegritySql = integrityMigration.slice(
+  integrityMigration.indexOf("-- BEGIN META LEADGEN GHL-ONLY SETTLEMENT"),
+  integrityMigration.indexOf("-- END META LEADGEN GHL-ONLY SETTLEMENT") +
+    "-- END META LEADGEN GHL-ONLY SETTLEMENT".length,
+);
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-meta-leadgen-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image, maxBuffer: 12 * 1024 * 1024 });
@@ -34,6 +43,8 @@ const RECON_JOB = "50000000-0000-4000-8000-000000000001";
 const SIDE_JOB = "50000000-0000-4000-8000-000000000002";
 const UNAVAILABLE_JOB = "50000000-0000-4000-8000-000000000003";
 const UNSAFE_SIDE_JOB = "50000000-0000-4000-8000-000000000004";
+const META_SIDE_JOB = "50000000-0000-4000-8000-000000000005";
+const CONSENT_SIDE_JOB = "50000000-0000-4000-8000-000000000006";
 const LEAD_A = "60000000-0000-4000-8000-000000000001";
 const LEAD_B = "60000000-0000-4000-8000-000000000002";
 
@@ -343,6 +354,7 @@ try {
   `, "synthetic prerequisite schema");
 
   psql(migration, "Meta leadgen migration");
+  psql(leadgenIntegritySql, "Meta leadgen GHL-only integrity migration");
 
   psql(
     asService(`
@@ -549,11 +561,20 @@ try {
     values
     (
       '${SIDE_JOB}', '${ORG_A}', '${USER_A}', '${CAMPAIGN_A}',
-      'lead_side_effects', 'pending', '{"enabledEffects":[],"requiredEffects":[]}'
+      'lead_side_effects', 'pending',
+      '{"requestId":"app-shaped-meta-leadgen","enabledEffects":["ghl_delivery"],"requiredEffects":["ghl_delivery"],"advertisingConsent":null,"lead":{"id":"${LEAD_A}","organization_id":"${ORG_A}","campaign_id":"${CAMPAIGN_A}"}}'
     ),
     (
       '${UNSAFE_SIDE_JOB}', '${ORG_A}', '${USER_A}', '${CAMPAIGN_A}',
       'lead_side_effects', 'pending', '{"enabledEffects":["agent_notification"],"requiredEffects":[]}'
+    ),
+    (
+      '${META_SIDE_JOB}', '${ORG_A}', '${USER_A}', '${CAMPAIGN_A}',
+      'lead_side_effects', 'pending', '{"enabledEffects":["ghl_delivery","meta_conversion"],"requiredEffects":["ghl_delivery"],"advertisingConsent":null,"metaConversion":{"eventName":"Lead"}}'
+    ),
+    (
+      '${CONSENT_SIDE_JOB}', '${ORG_A}', '${USER_A}', '${CAMPAIGN_A}',
+      'lead_side_effects', 'pending', '{"enabledEffects":["ghl_delivery"],"requiredEffects":["ghl_delivery"],"advertisingConsent":{"granted":true}}'
     );
   `, "lead and suppressed side-effect fixtures");
 
@@ -591,6 +612,28 @@ try {
     "communication-enabled side-effect settlement denial",
   );
 
+  for (const [jobId, label] of [
+    [META_SIDE_JOB, "CAPI/Meta-enabled side-effect settlement denial"],
+    [CONSENT_SIDE_JOB, "non-null advertising consent settlement denial"],
+  ]) {
+    psqlMustFail(
+      asService(`
+        select public.settle_meta_leadgen_event(
+          p_event_id => '${eventId}',
+          p_processing_token => '${reconciliationToken}',
+          p_processing_generation => ${reconciliationGeneration},
+          p_status => 'persisted',
+          p_provider_ad_account_id => '${ACCOUNT_PROVIDER_A}',
+          p_provider_ad_id => '${AD_A}',
+          p_lead_id => '${LEAD_A}',
+          p_side_effect_job_id => '${jobId}'
+        );
+      `),
+      /meta_leadgen_side_effect_policy_mismatch/,
+      label,
+    );
+  }
+
   assert.equal(
     psql(
       asService(`
@@ -612,6 +655,27 @@ try {
   assert.equal(
     psql(`select status from public.meta_leadgen_events where id = '${eventId}';`, "persisted status"),
     "persisted",
+  );
+  assert.equal(
+    psql(`
+      select count(*) from public.system_jobs
+      where id = '${SIDE_JOB}' and kind = 'lead_side_effects'
+        and payload -> 'enabledEffects' = '["ghl_delivery"]'::jsonb
+        and payload -> 'requiredEffects' = '["ghl_delivery"]'::jsonb
+        and jsonb_typeof(payload -> 'advertisingConsent') = 'null'
+        and not (payload ? 'metaConversion');
+    `, "exactly one app-shaped GHL-only job"),
+    "1",
+  );
+  assert.equal(
+    psql(`
+      select count(*) from public.system_jobs
+      where id = '${SIDE_JOB}' and (
+        payload -> 'enabledEffects' ?| array['agent_notification','sms','email','meta_conversion']
+        or payload ? 'metaConversion'
+      );
+    `, "no communication or CAPI effect on accepted job"),
+    "0",
   );
   assert.equal(
     psql(`select count(*) from public.meta_leadgen_effect_receipts where event_id = '${eventId}' and status = 'suppressed';`, "suppressed effect count"),

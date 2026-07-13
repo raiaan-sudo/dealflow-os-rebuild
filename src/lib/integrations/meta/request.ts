@@ -3,6 +3,7 @@ import {
   assertMetaUrlHasNoCredentials,
   isMetaCapiWriteAllowed,
   isMetaLiveWriteAllowed,
+  isMetaOptimizationWriteAllowed,
 } from "@/lib/integrations/meta/contract";
 import { logWarn } from "@/lib/logging";
 
@@ -15,6 +16,7 @@ export type MetaRequestPurpose =
   | "launch_lookup"
   | "launch_create"
   | "conversion"
+  | "optimization"
   | "sync";
 
 type MetaRequestOptions = RequestInit & {
@@ -34,6 +36,7 @@ const META_TIMEOUTS_MS: Record<MetaRequestPurpose, number> = {
   launch_lookup: 10_000,
   launch_create: 15_000,
   conversion: 15_000,
+  optimization: 12_000,
   sync: 12_000,
 };
 
@@ -46,6 +49,7 @@ const META_RETRIES: Record<MetaRequestPurpose, number> = {
   launch_lookup: 2,
   launch_create: 0,
   conversion: 0,
+  optimization: 0,
   sync: 2,
 };
 
@@ -137,9 +141,17 @@ export async function fetchMetaResponse(
     );
   }
 
-  const isNonIdempotentLaunchCreate =
-    purpose === "launch_create" && method !== "GET" && method !== "HEAD";
-  const retries = isNonIdempotentLaunchCreate
+  if (isProviderWrite && purpose === "optimization" && !isMetaOptimizationWriteAllowed()) {
+    throw new ApiError(
+      403,
+      "Meta optimization writes are disabled. Only the exact isolated staging sandbox executor may enable them.",
+      "meta_optimization_writes_disabled",
+    );
+  }
+
+  const isNonIdempotentProviderWrite =
+    (purpose === "launch_create" || purpose === "optimization") && method !== "GET" && method !== "HEAD";
+  const retries = isNonIdempotentProviderWrite
     ? 0
     : requestedRetries ?? META_RETRIES[purpose];
 
@@ -177,7 +189,7 @@ export async function fetchMetaResponse(
       if (
         isRetryableMetaStatus(response.status) &&
         attempt >= retries &&
-        isNonIdempotentLaunchCreate
+        isNonIdempotentProviderWrite
       ) {
         return response;
       }

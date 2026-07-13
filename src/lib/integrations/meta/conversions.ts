@@ -18,6 +18,7 @@ import {
   type MetaCapiConsentEvidence,
 } from "@/lib/services/lead-effect-aggregation-service";
 import type { Json } from "@/lib/supabase/types";
+import { resolveLaunchAuthorizedMetaPixel } from "@/lib/integrations/meta/tracking-attribution";
 
 type MetaConnectionRow = {
   id: string;
@@ -25,6 +26,14 @@ type MetaConnectionRow = {
   pixel_id: string | null;
   access_token_encrypted: string | null;
   connection_metadata: Json | null;
+};
+
+type MetaCampaignTrackingContractRow = {
+  organization_id: string;
+  campaign_id: string;
+  tracking_mode: string | null;
+  status: string | null;
+  pixel_id: string | null;
 };
 
 type MetaLeadConversionParams = {
@@ -102,6 +111,7 @@ async function getMetaConnectionRow(organizationId: string) {
     .select("id, status, pixel_id, access_token_encrypted, connection_metadata")
     .eq("organization_id", organizationId)
     .eq("platform", "meta_ads")
+    .eq("status", "connected")
     .maybeSingle();
 
   if (error) {
@@ -111,18 +121,43 @@ async function getMetaConnectionRow(organizationId: string) {
   return (data as MetaConnectionRow | null) ?? null;
 }
 
-export async function getMetaPixelIdForOrganization(organizationId: string | null | undefined) {
-  if (!organizationId) {
-    return null;
-  }
+async function getMetaCampaignTrackingContract(
+  organizationId: string,
+  campaignId: string,
+) {
+  const admin = createAdminClient();
+  if (!admin) return null;
+  const { data, error } = await admin
+    .from("campaign_tracking_contracts")
+    .select("organization_id,campaign_id,tracking_mode,status,pixel_id")
+    .eq("organization_id", organizationId)
+    .eq("campaign_id", campaignId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as MetaCampaignTrackingContractRow | null) ?? null;
+}
 
-  const row = await getMetaConnectionRow(organizationId);
+function getWorkspacePixelId(row: MetaConnectionRow | null) {
+  return row?.pixel_id?.trim() || getMetadataString(row?.connection_metadata, "pixel_id");
+}
 
-  if (!row) {
-    return null;
-  }
-
-  return row.pixel_id?.trim() || getMetadataString(row.connection_metadata, "pixel_id");
+export async function getMetaPixelIdForCampaign(params: {
+  organizationId: string | null | undefined;
+  campaignId: string | null | undefined;
+}) {
+  if (!params.organizationId || !params.campaignId) return null;
+  const [row, contract] = await Promise.all([
+    getMetaConnectionRow(params.organizationId),
+    getMetaCampaignTrackingContract(params.organizationId, params.campaignId),
+  ]);
+  const authority = resolveLaunchAuthorizedMetaPixel({
+    connectionStatus: row?.status,
+    currentPixelId: getWorkspacePixelId(row),
+    contractPixelId: contract?.pixel_id,
+    contractStatus: contract?.status,
+    trackingMode: contract?.tracking_mode,
+  });
+  return authority.allowed ? authority.pixelId : null;
 }
 
 export function getMetaCookiesFromHeader(cookieHeader: string | null | undefined) {
@@ -158,20 +193,30 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
       return { sent: false, reason: "meta_capi_consent_missing" } as const;
     }
 
-    const row = await getMetaConnectionRow(params.organizationId);
+    const [row, trackingContract] = await Promise.all([
+      getMetaConnectionRow(params.organizationId),
+      params.campaignId
+        ? getMetaCampaignTrackingContract(params.organizationId, params.campaignId)
+        : Promise.resolve(null),
+    ]);
 
     if (!row) {
       await recordSkippedConversion("meta_connection_missing");
       return { sent: false, reason: "meta_connection_missing" } as const;
     }
 
-    const pixelId =
-      row.pixel_id?.trim() || getMetadataString(row.connection_metadata, "pixel_id");
-
-    if (!pixelId) {
-      await recordSkippedConversion("meta_pixel_missing");
-      return { sent: false, reason: "meta_pixel_missing" } as const;
+    const pixelAuthority = resolveLaunchAuthorizedMetaPixel({
+      connectionStatus: row.status,
+      currentPixelId: getWorkspacePixelId(row),
+      contractPixelId: trackingContract?.pixel_id,
+      contractStatus: trackingContract?.status,
+      trackingMode: trackingContract?.tracking_mode,
+    });
+    if (!pixelAuthority.allowed) {
+      await recordSkippedConversion(pixelAuthority.reason);
+      return { sent: false, reason: pixelAuthority.reason } as const;
     }
+    const pixelId = pixelAuthority.pixelId;
 
     if (!isMetaCapiWriteAllowed()) {
       await recordSkippedConversion("meta_capi_events_disabled", pixelId);

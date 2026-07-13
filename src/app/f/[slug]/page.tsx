@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
+import type { Metadata } from "next";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
+import { PublicFunnelDocumentLanguage } from "@/app/f/[slug]/public-funnel-document-language";
 import { MetaPixelConsentControl } from "@/components/privacy/meta-pixel-consent-control";
-import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
+import { getMetaPixelIdForCampaign } from "@/lib/integrations/meta/conversions";
 import {
   isMetaPixelTrackingAllowed,
   getMetaPixelConsentPolicyVersion,
@@ -15,6 +17,12 @@ import {
   buildOfferFirstHeadline,
   textPreservesOfferConcept,
 } from "@/lib/copy/offer-consistency";
+import {
+  getPublicFunnelLanguage,
+  getPublicFunnelOpenGraphLocale,
+  getPublicFunnelPageCopy,
+  normalizePublicMetadataText,
+} from "@/lib/public-funnel-language";
 
 export const revalidate = 60;
 
@@ -27,11 +35,55 @@ const getCachedPublicFunnel = unstable_cache(
   { revalidate: 60 },
 );
 
+type PublicFunnelPageProps = {
+  params: Promise<{ slug: string }> | { slug: string };
+};
+
+export async function generateMetadata({
+  params,
+}: PublicFunnelPageProps): Promise<Metadata> {
+  const resolvedParams = params instanceof Promise ? await params : params;
+  const { record } = await getCachedPublicFunnel(resolvedParams.slug);
+
+  if (!record) {
+    return {
+      title: { absolute: "Page not found" },
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const language = getPublicFunnelLanguage(record);
+  const copy = getPublicFunnelPageCopy(language);
+  const title = normalizePublicMetadataText(
+    record.funnel.headline,
+    copy.metadataFallbackTitle,
+    70,
+  );
+  const description = normalizePublicMetadataText(
+    record.funnel.subheadline,
+    copy.metadataFallbackDescription,
+    160,
+  );
+  const canonicalPath = `/f/${encodeURIComponent(record.publish.slug ?? resolvedParams.slug)}`;
+
+  return {
+    title: { absolute: title },
+    description,
+    alternates: { canonical: canonicalPath },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      locale: getPublicFunnelOpenGraphLocale(language),
+      url: canonicalPath,
+    },
+    other: { "content-language": language },
+  };
+}
+
 export default async function PublicFunnelPage({
   params,
-}: {
-  params: Promise<{ slug: string }> | { slug: string };
-}) {
+}: PublicFunnelPageProps) {
   const resolvedParams = params instanceof Promise ? await params : params;
   const { record } = await getCachedPublicFunnel(resolvedParams.slug);
 
@@ -50,7 +102,10 @@ export default async function PublicFunnelPage({
   });
   const metaPixelId =
     metaPixelAllowed && record.campaign.organization_id
-      ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
+      ? await getMetaPixelIdForCampaign({
+          organizationId: record.campaign.organization_id,
+          campaignId: record.campaign.id,
+        })
       : null;
 
   const visibleSections = record.funnel.sections.filter((section) => section.visible !== false);
@@ -68,12 +123,21 @@ export default async function PublicFunnelPage({
       body: record.funnel.subheadline,
       offer,
     }) || record.funnel.subheadline;
+  const language = getPublicFunnelLanguage(record);
+  const copy = getPublicFunnelPageCopy(language);
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[1100px] flex-col gap-8 px-6 py-10 lg:flex-row lg:items-start">
+    <main
+      className="mx-auto flex min-h-screen w-full max-w-[1100px] flex-col gap-8 px-6 py-10 lg:flex-row lg:items-start"
+      data-public-funnel-language={language}
+      dir="ltr"
+      lang={language}
+    >
+      <PublicFunnelDocumentLanguage language={language} />
       {metaPixelConsentPolicyVersion ? (
         <MetaPixelConsentControl
           currentCookieValue={metaPixelConsentCookie}
+          language={language}
           policyVersion={metaPixelConsentPolicyVersion}
         />
       ) : null}
@@ -115,10 +179,11 @@ export default async function PublicFunnelPage({
           funnelSlug={record.publish.slug ?? resolvedParams.slug}
           formFields={record.funnel.form_fields ?? []}
           customQuestions={record.funnel.customLeadFormQuestions ?? []}
-          cta={record.funnel.cta || "Submit"}
+          cta={record.funnel.cta || copy.defaultCta}
+          language={language}
           metaPixelId={metaPixelId}
         />
       </div>
-    </div>
+    </main>
   );
 }

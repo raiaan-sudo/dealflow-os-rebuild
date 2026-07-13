@@ -5,6 +5,7 @@ import {
   isInstantFormCampaign,
   resolveCampaignDestinationContract,
 } from "../src/lib/campaign-destination";
+import { resolveMetaInstantFormQualificationQuestions } from "../src/lib/meta-instant-form-qualification";
 
 function source(file: string) {
   return readFileSync(path.join(process.cwd(), file), "utf8");
@@ -31,6 +32,10 @@ assert.deepEqual(explicitMeta, {
 });
 assert.equal(isInstantFormCampaign({ ad_destination: "meta_instant_form" }), true);
 assert.equal(
+  isInstantFormCampaign({ adDestination: "meta_instant_form" }),
+  true,
+);
+assert.equal(
   isInstantFormCampaign({ campaign_payload: { form_type: "instant_form" } }),
   true,
 );
@@ -39,13 +44,72 @@ assert.equal(
   false,
 );
 
+assert.deepEqual(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "volume_lead_form",
+    customQuestions: ["When are you moving?"],
+  }),
+  [],
+);
+assert.equal(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "quality_funnel",
+    customQuestions: ["First custom question?", "Second custom question?"],
+  }).length,
+  1,
+);
+assert.equal(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "deep_qualification",
+    customQuestions: [],
+  }).length,
+  3,
+);
+assert.deepEqual(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "deep_qualification",
+    customQuestions: ["My first question?", "My second question?", "My third question?"],
+  }),
+  [
+    "When are you hoping to make a move?",
+    "What type of property or opportunity are you considering?",
+    "Which city or neighbourhood are you focused on?",
+  ],
+);
+assert.doesNotMatch(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "deep_qualification",
+    customQuestions: ["What is your age?"],
+  }).join(" "),
+  /age/i,
+);
+assert.doesNotMatch(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "quality_funnel",
+    language: "fr",
+    customQuestions: ["Quel âge avez-vous ?"],
+  }).join(" "),
+  /âge/i,
+);
+assert.doesNotMatch(
+  resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: "quality_funnel",
+    language: "es",
+    customQuestions: ["¿Cuál es su estado civil?"],
+  }).join(" "),
+  /estado civil/i,
+);
+
 const launchSource = source("src/app/api/campaigns/create/route.ts");
 assert.match(launchSource, /resolveCampaignDestinationContract/);
 assert.match(launchSource, /await ensureMetaInstantForm\(/);
 assert.match(launchSource, /marketingAccountId: credentials\.connectionId/);
-assert.match(launchSource, /providerFormId: instantForm\?\.providerFormId/);
-assert.match(launchSource, /formDefinitionDigest: instantForm\?\.definition\.digest/);
-assert.match(launchSource, /adSetBody\.set\("destination_type", "ON_AD"\)/);
+assert.match(launchSource, /provider_form_id: instantForm\?\.providerFormId \?\? null/);
+assert.match(launchSource, /formDefinitionDigest: instantFormDefinition\?\.digest \?\? null/);
+assert.match(
+  launchSource,
+  /adSetBody\.set\("destination_type", providerContract\.ad_set\.destination_type!\)/,
+);
 assert.match(launchSource, /lead_gen_form_id: instantForm!\.providerFormId/);
 
 const routeSource = source("src/app/api/campaigns/[id]/launch/route.ts");
@@ -58,6 +122,7 @@ assert.match(snapshotSource, /capture_experience/);
 assert.match(snapshotSource, /ad_destination/);
 assert.match(snapshotSource, /provider_form_id/);
 assert.match(snapshotSource, /form_definition_digest/);
+assert.match(snapshotSource, /destination_type: adDestination === "meta_instant_form" \? "ON_AD" : null/);
 
 const routingSource = source(
   "src/lib/services/meta-instant-form-route-service.ts",
@@ -68,6 +133,17 @@ assert.match(routingSource, /definition_digest/);
 const serviceSource = source("src/lib/services/meta-instant-form-service.ts");
 assert.match(serviceSource, /for \(let page = 0; page < 20; page \+= 1\)/);
 assert.match(serviceSource, /seenCursors/);
+assert.match(serviceSource, /match\.status !== "ACTIVE"/);
+assert.match(serviceSource, /meta_instant_form_not_active/);
+assert.match(serviceSource, /meta_instant_form_identity_conflict/);
+assert.match(serviceSource, /meta_instant_form_revalidation_claim_required/);
+assert.match(serviceSource, /reacquire_meta_instant_form_verification/);
+assert.match(serviceSource, /readPageLeadgenSubscription/);
+assert.match(serviceSource, /observedAppIds: sortedObservedAppIds/);
+assert.doesNotMatch(
+  serviceSource,
+  /provisioning_status === "created" && claim\.provider_form_id\) \{\s*return/,
+);
 assert.match(serviceSource, /renew_meta_instant_form_provisioning/);
 assert.match(serviceSource, /arm_meta_instant_form_provider_mutation/);
 assert.match(serviceSource, /record_meta_instant_form_provider_receipt/);
@@ -75,6 +151,11 @@ assert.match(serviceSource, /meta_instant_form_operator_required/);
 assert.match(serviceSource, /privacy_policy: JSON\.stringify/);
 assert.match(serviceSource, /follow_up_action_url/);
 assert.match(serviceSource, /application\/x-www-form-urlencoded/);
+assert.match(serviceSource, /resolveMetaInstantFormQualificationQuestions/);
+assert.match(
+  source("src/lib/meta-instant-form-qualification.ts"),
+  /never forwarded into a Meta Instant Form/,
+);
 
 const migrationSource = source(
   "supabase/migrations/20260712235991_create_meta_instant_form_provisioning.sql",

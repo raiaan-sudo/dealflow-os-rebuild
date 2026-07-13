@@ -9,6 +9,10 @@ const migrationPath = path.join(
   repoRoot,
   "supabase/migrations/20260710170000_create_ghl_tenant_provisioning_foundation.sql",
 );
+const ambiguousDispatchMigrationPath = path.join(
+  repoRoot,
+  "supabase/migrations/20260713016000_terminalize_ambiguous_ghl_dispatches.sql",
+);
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-ghl-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
@@ -135,6 +139,46 @@ function parseClaim(output, label) {
   return { outboxId, organizationId, workerId, leaseToken, generation: Number(generation) };
 }
 
+function sqlLiteral(value) {
+  if (value === null || value === undefined) return "null";
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function lifecycleFingerprint(label) {
+  return createHash("sha256").update(`dealflow-ghl-lifecycle:${label}`).digest("hex");
+}
+
+function ingestLifecycle({
+  locationId,
+  eventId,
+  eventType,
+  objectId,
+  contactId = null,
+  calendarId = null,
+  status = null,
+  startsAt = null,
+  endsAt = null,
+  updatedAt = null,
+  receivedAt = "2026-07-13T20:00:00.000Z",
+  fingerprintLabel = eventId,
+}) {
+  return psql(`
+    select concat_ws(
+      '|', projection_status, coalesce(projection_code, ''),
+      coalesce(resolved_lead_id::text, ''),
+      coalesce(canonical_appointment_id::text, '')
+    )
+    from public.ingest_ghl_lifecycle_webhook_v1(
+      ${sqlLiteral(locationId)}, ${sqlLiteral(eventId)}, ${sqlLiteral(eventType)},
+      ${sqlLiteral(objectId)}, ${sqlLiteral(contactId)}, ${sqlLiteral(calendarId)},
+      ${sqlLiteral(status)}, ${sqlLiteral(startsAt)}::timestamptz,
+      ${sqlLiteral(endsAt)}::timestamptz, ${sqlLiteral(updatedAt)}::timestamptz,
+      ${sqlLiteral(lifecycleFingerprint(fingerprintLabel))},
+      ${sqlLiteral(receivedAt)}::timestamptz
+    );
+  `, `GHL lifecycle ingest failed for ${eventId}`);
+}
+
 async function waitForPostgres() {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const initProcess = dockerSync([
@@ -181,6 +225,7 @@ const mappingId = "40000000-0000-4000-8000-000000000001";
 
 try {
   assert.ok(fs.existsSync(migrationPath), "GHL migration is missing");
+  assert.ok(fs.existsSync(ambiguousDispatchMigrationPath), "GHL ambiguous-dispatch migration is missing");
   assertCommandSucceeded(
     dockerSync(["image", "inspect", image], { timeout: 15_000 }),
     "Cached Supabase PostgreSQL image is unavailable",
@@ -264,9 +309,57 @@ try {
       amount_paid_cents integer not null
     );
 
+    create table public.campaign_plans (
+      id uuid primary key,
+      organization_id uuid null references public.organizations(id),
+      user_id uuid null references public.users(id),
+      plan jsonb not null,
+      publish_state text not null default 'draft'
+    );
+
+    create unique index campaign_plans_id_organization_unique
+      on public.campaign_plans (id, organization_id);
+    create unique index campaign_plans_id_organization_user_unique
+      on public.campaign_plans (id, organization_id, user_id);
+
     create table public.leads (
       id uuid primary key,
-      organization_id uuid not null references public.organizations (id) on delete cascade
+      organization_id uuid not null references public.organizations (id) on delete cascade,
+      user_id uuid null references public.users(id),
+      campaign_id uuid null,
+      status text not null default 'new',
+      metadata jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default timezone('utc', now()),
+      updated_at timestamptz not null default timezone('utc', now()),
+      constraint leads_campaign_tenant_user_fk
+        foreign key (campaign_id, organization_id, user_id)
+        references public.campaign_plans(id, organization_id, user_id)
+        on update restrict on delete restrict
+    );
+
+    create table public.appointments (
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null references public.organizations(id) on delete cascade,
+      lead_id uuid null references public.leads(id) on delete set null,
+      scheduled_at timestamptz not null,
+      status text not null default 'scheduled',
+      appointment_type text null,
+      notes text null,
+      created_at timestamptz not null default timezone('utc', now()),
+      updated_at timestamptz not null default timezone('utc', now())
+    );
+
+    create table public.deals (
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null references public.organizations(id) on delete cascade,
+      lead_id uuid null references public.leads(id) on delete set null,
+      appointment_id uuid null references public.appointments(id) on delete set null,
+      campaign_id uuid null,
+      title text not null,
+      contact_name text not null,
+      status text not null default 'active',
+      created_at timestamptz not null default timezone('utc', now()),
+      updated_at timestamptz not null default timezone('utc', now())
     );
 
     create table public.app_schema_metadata (
@@ -876,6 +969,12 @@ try {
     repoRoot,
     "supabase/migrations/20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql",
   );
+  const campaignPersonalizationMigrationPath = process.env.DEALFLOW_GHL_CAMPAIGN_PERSONALIZATION_MIGRATION
+    ? path.resolve(process.env.DEALFLOW_GHL_CAMPAIGN_PERSONALIZATION_MIGRATION)
+    : path.join(
+        repoRoot,
+        "supabase/migrations/20260713014000_scope_ghl_personalization_to_campaign.sql",
+      );
   psql(`
     alter table public.ghl_snapshot_manifests
       add column if not exists installation_mode text not null default 'provider_api';
@@ -911,12 +1010,836 @@ try {
     $$;
   `, "Synthetic predecessor GHL sandbox protocol failed");
   psql(fs.readFileSync(productionMigrationPath, "utf8"), "GHL production/personalization migration failed");
+  assert.ok(
+    fs.existsSync(campaignPersonalizationMigrationPath),
+    `GHL campaign-personalization migration is missing: ${campaignPersonalizationMigrationPath}`,
+  );
+  psql(
+    fs.readFileSync(campaignPersonalizationMigrationPath, "utf8"),
+    "GHL campaign-scoped personalization migration failed",
+  );
+  psql(`
+    create table if not exists public.workspace_ghl_mapping (
+      workspace_id uuid primary key,
+      ghl_location_id text null,
+      sync_enabled boolean not null default false
+    );
+    create table if not exists public.partner_ghl_config (
+      partner_id uuid primary key,
+      default_location_id text null,
+      enabled boolean not null default false
+    );
+  `, "GHL compatibility-projection test prerequisites failed");
+  psql(
+    fs.readFileSync(ambiguousDispatchMigrationPath, "utf8"),
+    "GHL ambiguous-dispatch terminalization migration failed",
+  );
+
+  const ambiguousProvisioningRunId = "60000000-0000-4000-8000-000000000001";
+  const ambiguousLocationOutboxId = "60000000-0000-4000-8000-000000000002";
+  const ambiguousSnapshotOutboxId = "60000000-0000-4000-8000-000000000003";
+  psql(`
+    insert into public.ghl_provisioning_runs (
+      id, organization_id, environment, activation_event_id, installation_id,
+      snapshot_manifest_id, idempotency_key, state
+    ) values (
+      '${ambiguousProvisioningRunId}', '${organizationId}', 'test',
+      'ambiguous-dispatch-activation', '${installationId}', '${manifestId}',
+      'ghl-provision-v1:test:ambiguous-dispatch', 'requested'
+    );
+
+    update public.ghl_provisioning_runs
+    set state = 'location_create_requested', revision = revision + 1
+    where id = '${ambiguousProvisioningRunId}';
+
+    insert into public.ghl_provider_outbox (
+      id, organization_id, provisioning_run_id, operation, idempotency_key,
+      status, request_payload, attempt_count, available_at, locked_at, locked_by,
+      lease_token, lease_generation, lease_expires_at
+    ) values
+      (
+        '${ambiguousLocationOutboxId}', '${organizationId}', '${ambiguousProvisioningRunId}',
+        'location_create', 'ghl-provision-v1:test:ambiguous-dispatch:location_create',
+        'dispatching', '{"environment":"test"}'::jsonb, 1,
+        timezone('utc', now()) - interval '2 minutes',
+        timezone('utc', now()) - interval '2 minutes', 'expired-location-worker',
+        '60000000-0000-4000-8000-000000000012', 1,
+        timezone('utc', now()) - interval '1 minute'
+      ),
+      (
+        '${ambiguousSnapshotOutboxId}', '${organizationId}', '${ambiguousProvisioningRunId}',
+        'snapshot_install', 'ghl-provision-v1:test:ambiguous-dispatch:snapshot_install',
+        'dispatching', '{"environment":"test"}'::jsonb, 1,
+        timezone('utc', now()) - interval '2 minutes',
+        timezone('utc', now()) - interval '2 minutes', 'expired-snapshot-worker',
+        '60000000-0000-4000-8000-000000000013', 1,
+        timezone('utc', now()) - interval '1 minute'
+      );
+  `, "Ambiguous provisioning-dispatch fixture failed");
+
+  assert.equal(
+    psql(`
+      select count(*) from public.claim_ghl_provider_outbox(
+        '${ambiguousLocationOutboxId}', '${organizationId}',
+        'replacement-location-worker', timezone('utc', now()), 60000
+      );
+    `, "Expired location-create terminalization failed"),
+    "0",
+    "An expired location-create dispatch was automatically re-leased",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|', outbox.status, outbox.last_error_code,
+        (outbox.lease_token is null)::text,
+        receipt.outcome,
+        receipt.receipt_metadata ->> 'providerMutationAttempted'
+      )
+      from public.ghl_provider_outbox outbox
+      join public.ghl_provider_receipts receipt on receipt.outbox_id = outbox.id
+      where outbox.id = '${ambiguousLocationOutboxId}';
+    `, "Expired location-create terminal truth failed"),
+    "uncertain|ghl_location_create_dispatch_lease_expired_uncertain|true|uncertain|true",
+    "Expired location creation was not preserved as durable uncertainty",
+  );
+  assert.equal(
+    psql(`
+      select count(*) from public.claim_ghl_provider_outbox(
+        '${ambiguousLocationOutboxId}', '${organizationId}',
+        'unreconciled-location-worker', timezone('utc', now()), 60000
+      );
+    `, "Unreconciled location-create replay rejection failed"),
+    "0",
+    "An uncertain location-create result replayed before proven-absence reconciliation",
+  );
+
+  assert.equal(
+    psql(`
+      select count(*) from public.claim_ghl_provider_outbox(
+        '${ambiguousSnapshotOutboxId}', '${organizationId}',
+        'replacement-snapshot-worker', timezone('utc', now()), 60000
+      );
+    `, "Expired snapshot-install terminalization failed"),
+    "0",
+    "An expired snapshot-install dispatch was automatically re-leased",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', outbox.status, outbox.last_error_code, receipt.outcome)
+      from public.ghl_provider_outbox outbox
+      join public.ghl_provider_receipts receipt on receipt.outbox_id = outbox.id
+      where outbox.id = '${ambiguousSnapshotOutboxId}';
+    `, "Expired snapshot-install terminal truth failed"),
+    "operator_action_required|ghl_provider_dispatch_lease_expired_operator_action_required|operator_action_required",
+    "Expired non-location provisioning dispatch was not routed to operator action",
+  );
+
+  psql(`
+    update public.ghl_provisioning_runs
+    set state = 'location_create_requested',
+        last_reconciled_at = timezone('utc', now()),
+        last_error_code = 'location_absent_after_reconciliation',
+        revision = revision + 1
+    where id = '${ambiguousProvisioningRunId}';
+  `, "Conclusive location-absence reconciliation fixture failed");
+  assert.equal(
+    psql(`
+      select concat_ws('|', status, attempt_count::text, lease_generation::text)
+      from public.claim_ghl_provider_outbox(
+        '${ambiguousLocationOutboxId}', '${organizationId}',
+        'reconciled-location-worker', timezone('utc', now()), 60000
+      );
+    `, "Reconciled location-create replay claim failed"),
+    "dispatching|2|2",
+    "A conclusively absent location create did not permit one fenced replay",
+  );
+
+  const sandboxDispatchInstallationId = "61000000-0000-4000-8000-000000000001";
+  const productionDispatchInstallationId = "61000000-0000-4000-8000-000000000002";
+  const sandboxDispatchManifestId = "61000000-0000-4000-8000-000000000003";
+  const productionDispatchManifestId = "61000000-0000-4000-8000-000000000004";
+  const sandboxDispatchMappingId = "61000000-0000-4000-8000-000000000005";
+  const productionDispatchMappingId = "61000000-0000-4000-8000-000000000006";
+  const sandboxDispatchLeadId = "61000000-0000-4000-8000-000000000007";
+  const productionDispatchLeadId = "61000000-0000-4000-8000-000000000008";
+  const sandboxDispatchOutboxId = "61000000-0000-4000-8000-000000000009";
+  const productionDispatchOutboxId = "61000000-0000-4000-8000-000000000010";
+  const sandboxDispatchEffectId = "61000000-0000-4000-8000-000000000011";
+  const productionDispatchEffectId = "61000000-0000-4000-8000-000000000012";
+  psql(`
+    insert into public.leads (id, organization_id) values
+      ('${sandboxDispatchLeadId}', '${organizationId}'),
+      ('${productionDispatchLeadId}', '${organizationId}');
+
+    insert into public.ghl_installations (
+      id, environment, owner_kind, provider_agency_id,
+      encrypted_credential_ref, status
+    ) values
+      (
+        '${sandboxDispatchInstallationId}', 'sandbox', 'platform',
+        'sandbox-ambiguous-dispatch-agency', 'env:GHL_SANDBOX_AGENCY_TOKEN', 'active'
+      ),
+      (
+        '${productionDispatchInstallationId}', 'production', 'platform',
+        'production-ambiguous-dispatch-agency', 'env:GHL_PRODUCTION_AGENCY_TOKEN', 'active'
+      );
+
+    insert into public.ghl_snapshot_manifests (
+      id, environment, snapshot_key, snapshot_version, provider_snapshot_id,
+      required_objects, installation_mode, installation_id, status, approved_at
+    ) values
+      (
+        '${sandboxDispatchManifestId}', 'sandbox', 'ambiguous-dispatch', 'sandbox-v1',
+        'sandbox-ambiguous-snapshot', '[{"kind":"tag","key":"dealflow-lead"}]'::jsonb,
+        'preinstalled', '${sandboxDispatchInstallationId}', 'approved', timezone('utc', now())
+      ),
+      (
+        '${productionDispatchManifestId}', 'production', 'ambiguous-dispatch', 'production-v1',
+        'production-ambiguous-snapshot', '[{"kind":"tag","key":"dealflow-lead"}]'::jsonb,
+        'preinstalled', '${productionDispatchInstallationId}', 'approved', timezone('utc', now())
+      );
+
+    insert into public.ghl_location_mappings (
+      id, organization_id, installation_id, environment, provider_location_id,
+      provisioning_owner, snapshot_manifest_id, status,
+      snapshot_verified_at, required_objects_verified_at
+    ) values
+      (
+        '${sandboxDispatchMappingId}', '${organizationId}', '${sandboxDispatchInstallationId}',
+        'sandbox', 'sandbox-ambiguous-location', 'platform', '${sandboxDispatchManifestId}',
+        'active', timezone('utc', now()), timezone('utc', now())
+      ),
+      (
+        '${productionDispatchMappingId}', '${organizationId}', '${productionDispatchInstallationId}',
+        'production', 'production-ambiguous-location', 'platform', '${productionDispatchManifestId}',
+        'active', timezone('utc', now()), timezone('utc', now())
+      );
+
+    insert into public.ghl_provider_outbox (
+      id, organization_id, operation, idempotency_key, status, request_payload,
+      attempt_count, available_at, locked_at, locked_by, lease_token,
+      lease_generation, lease_expires_at
+    ) values
+      (
+        '${sandboxDispatchOutboxId}', '${organizationId}', 'lead_contact_upsert',
+        'ghl-sandbox-ambiguous-dispatch', 'dispatching',
+        jsonb_build_object(
+          'provider_mode', 'sandbox', 'organization_id', '${organizationId}',
+          'lead_id', '${sandboxDispatchLeadId}',
+          'location_mapping_id', '${sandboxDispatchMappingId}', 'effect_kind', 'contact_upsert'
+        ), 1, timezone('utc', now()) - interval '2 minutes',
+        timezone('utc', now()) - interval '2 minutes', 'expired-sandbox-lead-worker',
+        '61000000-0000-4000-8000-000000000021', 1,
+        timezone('utc', now()) - interval '1 minute'
+      ),
+      (
+        '${productionDispatchOutboxId}', '${organizationId}', 'lead_contact_upsert',
+        'ghl-production-ambiguous-dispatch', 'dispatching',
+        jsonb_build_object(
+          'provider_mode', 'production', 'organization_id', '${organizationId}',
+          'lead_id', '${productionDispatchLeadId}',
+          'location_mapping_id', '${productionDispatchMappingId}', 'effect_kind', 'contact_upsert'
+        ), 1, timezone('utc', now()) - interval '2 minutes',
+        timezone('utc', now()) - interval '2 minutes', 'expired-production-lead-worker',
+        '61000000-0000-4000-8000-000000000022', 1,
+        timezone('utc', now()) - interval '1 minute'
+      );
+
+    insert into public.ghl_lead_effect_events (
+      id, organization_id, lead_id, location_mapping_id, effect_kind,
+      idempotency_key, status, outbox_id, attempt_count
+    ) values
+      (
+        '${sandboxDispatchEffectId}', '${organizationId}', '${sandboxDispatchLeadId}',
+        '${sandboxDispatchMappingId}', 'contact_upsert', 'ghl-sandbox-ambiguous-effect',
+        'pending', '${sandboxDispatchOutboxId}', 0
+      ),
+      (
+        '${productionDispatchEffectId}', '${organizationId}', '${productionDispatchLeadId}',
+        '${productionDispatchMappingId}', 'contact_upsert', 'ghl-production-ambiguous-effect',
+        'pending', '${productionDispatchOutboxId}', 0
+      );
+
+    update public.ghl_lead_effect_events
+    set status = 'dispatching', attempt_count = 1
+    where id in ('${sandboxDispatchEffectId}', '${productionDispatchEffectId}');
+
+    update public.ghl_runtime_controls
+    set lead_writes_enabled = true
+    where environment = 'production';
+  `, "Ambiguous sandbox/production lead-dispatch fixture failed");
+
+  for (const [mode, outboxId, effectId] of [
+    ["sandbox", sandboxDispatchOutboxId, sandboxDispatchEffectId],
+    ["production", productionDispatchOutboxId, productionDispatchEffectId],
+  ]) {
+    assert.equal(
+      psql(`
+        select count(*) from public.claim_next_ghl_${mode}_lead_outbox(
+          'replacement-${mode}-lead-worker', timezone('utc', now()), 60000
+        );
+      `, `Expired ${mode} lead dispatch terminalization failed`),
+      "0",
+      `An expired ${mode} lead dispatch was automatically re-leased`,
+    );
+    assert.equal(
+      psql(`
+        select concat_ws(
+          '|', outbox.status, effect.status, outbox.last_error_code,
+          effect.last_error_code, (outbox.lease_token is null)::text,
+          receipt.outcome,
+          receipt.receipt_metadata ->> 'provider_mutation_attempted'
+        )
+        from public.ghl_provider_outbox outbox
+        join public.ghl_lead_effect_events effect
+          on effect.outbox_id = outbox.id and effect.id = '${effectId}'
+        join public.ghl_provider_receipts receipt on receipt.outbox_id = outbox.id
+        where outbox.id = '${outboxId}';
+      `, `Expired ${mode} lead dispatch terminal truth failed`),
+      "uncertain|uncertain|ghl_lead_effect_dispatch_lease_expired_uncertain|ghl_lead_effect_dispatch_lease_expired_uncertain|true|uncertain|true",
+      `Expired ${mode} lead dispatch was not preserved as durable uncertainty`,
+    );
+    assert.equal(
+      psql(`
+        select count(*) from public.claim_next_ghl_${mode}_lead_outbox(
+          'second-${mode}-lead-worker', timezone('utc', now()) + interval '1 hour', 60000
+        );
+      `, `Terminal ${mode} lead replay check failed`),
+      "0",
+      `A terminal uncertain ${mode} lead effect was automatically replayed`,
+    );
+  }
+  psql(`
+    update public.ghl_location_mappings
+    set status = 'inactive'
+    where id in ('${sandboxDispatchMappingId}', '${productionDispatchMappingId}');
+    update public.ghl_installations
+    set status = 'inactive'
+    where id in ('${sandboxDispatchInstallationId}', '${productionDispatchInstallationId}');
+  `, "Ambiguous-dispatch fixture retirement failed");
+
+  const lifecycleInstallationId = "62000000-0000-4000-8000-000000000001";
+  const lifecycleManifestId = "62000000-0000-4000-8000-000000000002";
+  const lifecycleMappingAId = "62000000-0000-4000-8000-000000000003";
+  const lifecycleMappingBId = "62000000-0000-4000-8000-000000000004";
+  const lifecycleUserAId = "62000000-0000-4000-8000-000000000005";
+  const lifecycleUserBId = "62000000-0000-4000-8000-000000000006";
+  const lifecycleCampaignAId = "62000000-0000-4000-8000-000000000007";
+  const lifecycleCampaignBId = "62000000-0000-4000-8000-000000000008";
+  const lifecycleLeadAId = "62000000-0000-4000-8000-000000000009";
+  const lifecycleLeadBId = "62000000-0000-4000-8000-000000000010";
+  const lifecycleAmbiguousLeadId = "62000000-0000-4000-8000-000000000011";
+  const lifecycleLocationA = "production_lifecycle_location_a";
+  const lifecycleLocationB = "production_lifecycle_location_b";
+  const lifecycleContactShared = "contact_shared_across_tenants";
+  const lifecycleContactAmbiguous = "contact_ambiguous_within_tenant";
+  const lifecycleOpportunityA = "opportunity_lifecycle_a";
+
+  psql(`
+    insert into public.users (id, email) values
+      ('${lifecycleUserAId}', 'lifecycle-a@example.test'),
+      ('${lifecycleUserBId}', 'lifecycle-b@example.test');
+
+    update public.organizations set owner_user_id = '${lifecycleUserAId}'
+    where id = '${organizationId}';
+    update public.organizations set owner_user_id = '${lifecycleUserBId}'
+    where id = '${otherOrganizationId}';
+
+    insert into public.organization_memberships (organization_id, user_id, role) values
+      ('${organizationId}', '${lifecycleUserAId}', 'owner'),
+      ('${otherOrganizationId}', '${lifecycleUserBId}', 'owner');
+
+    insert into public.ghl_workspace_tenants (
+      organization_id, tenant_kind, partner_id, status
+    ) values (
+      '${otherOrganizationId}', 'direct_realtor', null, 'active'
+    );
+
+    insert into public.campaign_plans (id, organization_id, user_id, plan, publish_state) values
+      ('${lifecycleCampaignAId}', '${organizationId}', '${lifecycleUserAId}', '{}'::jsonb, 'published'),
+      ('${lifecycleCampaignBId}', '${otherOrganizationId}', '${lifecycleUserBId}', '{}'::jsonb, 'published');
+
+    insert into public.leads (id, organization_id, user_id, campaign_id, status) values
+      ('${lifecycleLeadAId}', '${organizationId}', '${lifecycleUserAId}', '${lifecycleCampaignAId}', 'new'),
+      ('${lifecycleLeadBId}', '${otherOrganizationId}', '${lifecycleUserBId}', '${lifecycleCampaignBId}', 'new'),
+      ('${lifecycleAmbiguousLeadId}', '${organizationId}', '${lifecycleUserAId}', '${lifecycleCampaignAId}', 'new');
+
+    insert into public.ghl_installations (
+      id, environment, owner_kind, partner_id, provider_agency_id,
+      encrypted_credential_ref, status
+    ) values (
+      '${lifecycleInstallationId}', 'production', 'platform', null,
+      'production-lifecycle-agency', 'env:GHL_PRODUCTION_AGENCY_TOKEN', 'active'
+    );
+
+    insert into public.ghl_snapshot_manifests (
+      id, environment, snapshot_key, snapshot_version, provider_snapshot_id,
+      required_objects, installation_mode, installation_id, status, approved_at
+    ) values (
+      '${lifecycleManifestId}', 'production', 'lifecycle-proof', 'v1',
+      'production-lifecycle-snapshot', '[{"kind":"calendar","key":"appointments"}]'::jsonb,
+      'preinstalled', '${lifecycleInstallationId}', 'approved', timezone('utc', now())
+    );
+
+    insert into public.ghl_location_mappings (
+      id, organization_id, installation_id, environment, provider_location_id,
+      provisioning_owner, snapshot_manifest_id, status,
+      snapshot_verified_at, required_objects_verified_at
+    ) values
+      (
+        '${lifecycleMappingAId}', '${organizationId}', '${lifecycleInstallationId}',
+        'production', '${lifecycleLocationA}', 'platform', '${lifecycleManifestId}',
+        'active', timezone('utc', now()), timezone('utc', now())
+      ),
+      (
+        '${lifecycleMappingBId}', '${otherOrganizationId}', '${lifecycleInstallationId}',
+        'production', '${lifecycleLocationB}', 'platform', '${lifecycleManifestId}',
+        'active', timezone('utc', now()), timezone('utc', now())
+      );
+
+    insert into public.ghl_lead_effect_events (
+      organization_id, lead_id, location_mapping_id, effect_kind,
+      idempotency_key, status
+    ) values
+      ('${organizationId}', '${lifecycleLeadAId}', '${lifecycleMappingAId}',
+       'contact_upsert', 'lifecycle-a-contact-shared', 'pending'),
+      ('${organizationId}', '${lifecycleLeadAId}', '${lifecycleMappingAId}',
+       'opportunity_upsert', 'lifecycle-a-opportunity', 'pending'),
+      ('${organizationId}', '${lifecycleLeadAId}', '${lifecycleMappingAId}',
+       'contact_upsert', 'lifecycle-a-contact-ambiguous-first', 'pending'),
+      ('${organizationId}', '${lifecycleAmbiguousLeadId}', '${lifecycleMappingAId}',
+       'contact_upsert', 'lifecycle-a-contact-ambiguous-second', 'pending'),
+      ('${otherOrganizationId}', '${lifecycleLeadBId}', '${lifecycleMappingBId}',
+       'contact_upsert', 'lifecycle-b-contact-shared', 'pending');
+
+    update public.ghl_lead_effect_events
+    set status = 'dispatching', attempt_count = 1
+    where idempotency_key like 'lifecycle-%';
+
+    update public.ghl_lead_effect_events
+    set status = 'succeeded',
+        provider_contact_id = case
+          when idempotency_key in (
+            'lifecycle-a-contact-ambiguous-first',
+            'lifecycle-a-contact-ambiguous-second'
+          ) then '${lifecycleContactAmbiguous}'
+          else '${lifecycleContactShared}'
+        end,
+        provider_opportunity_id = case
+          when idempotency_key = 'lifecycle-a-opportunity' then '${lifecycleOpportunityA}'
+          else null
+        end,
+        completed_at = timezone('utc', now())
+    where idempotency_key like 'lifecycle-%';
+
+    update public.ghl_runtime_controls
+    set lifecycle_webhook_enabled = true
+    where environment = 'production';
+  `, "Tenant-fenced GHL lifecycle fixture failed");
+
+  const mainAppointmentId = "appointment_lifecycle_main";
+  const createResult = ingestLifecycle({
+    locationId: lifecycleLocationA,
+    eventId: "lifecycle_main_create",
+    eventType: "AppointmentCreate",
+    objectId: mainAppointmentId,
+    contactId: lifecycleContactShared,
+    calendarId: "calendar_lifecycle_a",
+    status: "confirmed",
+    startsAt: "2026-07-14T13:00:00.000Z",
+    endsAt: "2026-07-14T13:30:00.000Z",
+    updatedAt: "2026-07-13T20:01:00.000Z",
+    receivedAt: "2026-07-13T20:01:01.000Z",
+  });
+  assert.match(
+    createResult,
+    new RegExp(`^reconciled\\|canonical_state_projected\\|${lifecycleLeadAId}\\|[0-9a-f-]{36}$`),
+    "AppointmentCreate did not project one exact canonical appointment",
+  );
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_main_create",
+      eventType: "AppointmentCreate",
+      objectId: mainAppointmentId,
+      contactId: lifecycleContactShared,
+      calendarId: "calendar_lifecycle_a",
+      status: "confirmed",
+      startsAt: "2026-07-14T13:00:00.000Z",
+      endsAt: "2026-07-14T13:30:00.000Z",
+      updatedAt: "2026-07-13T20:01:00.000Z",
+      receivedAt: "2026-07-13T20:01:01.000Z",
+    }),
+    createResult,
+    "Exact webhook replay did not return the original durable projection",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|', count(*)::text, min(appointment.status), min(appointment.lead_id::text),
+        min(appointment.campaign_id::text), min(lead.status)
+      )
+      from public.appointments appointment
+      join public.leads lead
+        on lead.id = appointment.lead_id
+       and lead.organization_id = appointment.organization_id
+      where appointment.ghl_location_mapping_id = '${lifecycleMappingAId}'
+        and appointment.ghl_appointment_id = '${mainAppointmentId}';
+    `, "Canonical appointment create truth failed"),
+    `1|booked|${lifecycleLeadAId}|${lifecycleCampaignAId}|booked`,
+    "Appointment replay duplicated or crossed canonical campaign/lead scope",
+  );
+
+  const updateResult = ingestLifecycle({
+    locationId: lifecycleLocationA,
+    eventId: "lifecycle_main_update",
+    eventType: "AppointmentUpdate",
+    objectId: mainAppointmentId,
+    contactId: lifecycleContactShared,
+    calendarId: "calendar_lifecycle_a",
+    status: "showed",
+    startsAt: "2026-07-14T13:15:00.000Z",
+    endsAt: "2026-07-14T13:45:00.000Z",
+    updatedAt: "2026-07-13T20:02:00.000Z",
+    receivedAt: "2026-07-13T20:02:01.000Z",
+  });
+  assert.match(updateResult, /^reconciled\|canonical_state_projected\|/);
+  assert.equal(
+    psql(`
+      select concat_ws('|', status, scheduled_at::text, ghl_last_event_id)
+      from public.appointments
+      where ghl_location_mapping_id = '${lifecycleMappingAId}'
+        and ghl_appointment_id = '${mainAppointmentId}';
+    `, "Canonical appointment update truth failed"),
+    "completed|2026-07-14 13:15:00+00|lifecycle_main_update",
+    "AppointmentUpdate did not advance canonical status and schedule",
+  );
+
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_main_same_version_conflict",
+      eventType: "AppointmentUpdate",
+      objectId: mainAppointmentId,
+      contactId: lifecycleContactShared,
+      calendarId: "calendar_lifecycle_a",
+      status: "active",
+      startsAt: "2026-07-14T13:30:00.000Z",
+      endsAt: "2026-07-14T14:00:00.000Z",
+      updatedAt: "2026-07-13T20:02:00.000Z",
+      receivedAt: "2026-07-13T20:02:30.000Z",
+    }),
+    "operator_action_required|ghl_lifecycle_same_version_conflict||",
+    "Same provider version with different content was not durably operator-routed",
+  );
+
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_main_out_of_order",
+      eventType: "AppointmentUpdate",
+      objectId: mainAppointmentId,
+      contactId: lifecycleContactShared,
+      calendarId: "calendar_lifecycle_a",
+      status: "active",
+      startsAt: "2026-07-14T12:45:00.000Z",
+      endsAt: "2026-07-14T13:15:00.000Z",
+      updatedAt: "2026-07-13T20:01:30.000Z",
+      receivedAt: "2026-07-13T20:03:01.000Z",
+    }),
+    "operator_action_required|ghl_lifecycle_out_of_order_event||",
+    "Out-of-order appointment update was not durably operator-routed",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', status, scheduled_at::text, ghl_last_event_id)
+      from public.appointments
+      where ghl_location_mapping_id = '${lifecycleMappingAId}'
+        and ghl_appointment_id = '${mainAppointmentId}';
+    `, "Out-of-order appointment immutability check failed"),
+    "completed|2026-07-14 13:15:00+00|lifecycle_main_update",
+    "Out-of-order event mutated canonical appointment truth",
+  );
+
+  assert.match(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_main_delete",
+      eventType: "AppointmentDelete",
+      objectId: mainAppointmentId,
+      contactId: lifecycleContactShared,
+      calendarId: "calendar_lifecycle_a",
+      updatedAt: "2026-07-13T20:04:00.000Z",
+      receivedAt: "2026-07-13T20:04:01.000Z",
+    }),
+    /^reconciled\|canonical_state_projected\|/,
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', status, (ghl_deleted_at is not null)::text, ghl_last_event_id)
+      from public.appointments
+      where ghl_location_mapping_id = '${lifecycleMappingAId}'
+        and ghl_appointment_id = '${mainAppointmentId}';
+    `, "Canonical appointment delete truth failed"),
+    "canceled|true|lifecycle_main_delete",
+    "AppointmentDelete did not preserve a canceled canonical tombstone",
+  );
+
+  const documentedAppointmentStatuses = [
+    ["new", "booked"],
+    ["confirmed", "booked"],
+    ["active", "booked"],
+    ["showed", "completed"],
+    ["completed", "completed"],
+    ["cancelled", "canceled"],
+    ["noshow", "no_show"],
+  ];
+  for (const [providerStatus, canonicalStatus] of documentedAppointmentStatuses) {
+    const objectId = `appointment_status_${providerStatus}`;
+    const eventId = `lifecycle_status_${providerStatus}`;
+    assert.match(
+      ingestLifecycle({
+        locationId: lifecycleLocationA,
+        eventId,
+        eventType: "AppointmentCreate",
+        objectId,
+        contactId: lifecycleContactShared,
+        calendarId: "calendar_lifecycle_a",
+        status: providerStatus,
+        startsAt: "2026-07-15T13:00:00.000Z",
+        endsAt: "2026-07-15T13:30:00.000Z",
+        updatedAt: `2026-07-13T21:${String(documentedAppointmentStatuses.indexOf(documentedAppointmentStatuses.find(([status]) => status === providerStatus))).padStart(2, "0")}:00.000Z`,
+        receivedAt: "2026-07-13T22:00:00.000Z",
+      }),
+      /^reconciled\|canonical_state_projected\|/,
+      `${providerStatus} did not reconcile`,
+    );
+    assert.equal(
+      psql(`
+        select status from public.appointments
+        where ghl_location_mapping_id = '${lifecycleMappingAId}'
+          and ghl_appointment_id = '${objectId}';
+      `, `Canonical status check failed for ${providerStatus}`),
+      canonicalStatus,
+      `GHL ${providerStatus} mapped to an unsafe canonical appointment status`,
+    );
+  }
+
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_status_unknown",
+      eventType: "AppointmentCreate",
+      objectId: "appointment_status_unknown",
+      contactId: lifecycleContactShared,
+      calendarId: "calendar_lifecycle_a",
+      status: "rescheduled_somewhere_else",
+      startsAt: "2026-07-15T14:00:00.000Z",
+      endsAt: "2026-07-15T14:30:00.000Z",
+      updatedAt: "2026-07-13T21:30:00.000Z",
+      receivedAt: "2026-07-13T22:01:00.000Z",
+    }),
+    "operator_action_required|ghl_lifecycle_appointment_status_unknown||",
+    "Unknown appointment status was counted as booked instead of failing safe",
+  );
+  assert.equal(
+    psql(`
+      select count(*) from public.appointments
+      where ghl_location_mapping_id = '${lifecycleMappingAId}'
+        and ghl_appointment_id = 'appointment_status_unknown';
+    `, "Unknown appointment status persistence check failed"),
+    "0",
+    "Unknown appointment status created a canonical appointment",
+  );
+
+  for (const [eventId, timestamp] of [
+    ["lifecycle_contact_first", "2026-07-13T23:01:00.000Z"],
+    ["lifecycle_contact_latest", "2026-07-13T23:02:00.000Z"],
+  ]) {
+    assert.match(ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId,
+      eventType: "ContactUpdate",
+      objectId: lifecycleContactShared,
+      contactId: lifecycleContactShared,
+      updatedAt: timestamp,
+      receivedAt: timestamp,
+    }), /^reconciled\|canonical_state_projected\|/);
+  }
+  for (const [eventId, providerStatus, timestamp] of [
+    ["lifecycle_opportunity_open", "open", "2026-07-13T23:03:00.000Z"],
+    ["lifecycle_opportunity_won", "won", "2026-07-13T23:04:00.000Z"],
+    ["lifecycle_opportunity_lost", "lost", "2026-07-13T23:04:30.000Z"],
+  ]) {
+    assert.match(ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId,
+      eventType: "OpportunityStatusUpdate",
+      objectId: lifecycleOpportunityA,
+      contactId: lifecycleContactShared,
+      status: providerStatus,
+      updatedAt: timestamp,
+      receivedAt: timestamp,
+    }), /^reconciled\|canonical_state_projected\|/);
+  }
+  assert.equal(
+    psql(`
+      select string_agg(object_kind || ':' || last_event_id, '|' order by object_kind)
+      from public.ghl_lifecycle_object_states
+      where location_mapping_id = '${lifecycleMappingAId}'
+        and object_kind in ('contact', 'opportunity');
+    `, "Latest contact/opportunity lifecycle state check failed"),
+    "contact:lifecycle_contact_latest|opportunity:lifecycle_opportunity_lost",
+    "Contact or opportunity projection did not retain the latest provider timestamp",
+  );
+
+  assert.match(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_outbound_message",
+      eventType: "OutboundMessage",
+      objectId: "outbound_message_lifecycle_a",
+      contactId: lifecycleContactShared,
+      status: "delivered",
+      updatedAt: "2026-07-13T23:04:45.000Z",
+      receivedAt: "2026-07-13T23:04:46.000Z",
+    }),
+    /^reconciled\|canonical_state_projected\|/,
+    "Outbound-message outcome did not project to canonical lifecycle state",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', object_kind, provider_status, lead_id::text)
+      from public.ghl_lifecycle_object_states
+      where location_mapping_id = '${lifecycleMappingAId}'
+        and provider_object_id = 'outbound_message_lifecycle_a';
+    `, "Outbound-message lifecycle state check failed"),
+    `outbound_message|delivered|${lifecycleLeadAId}`,
+    "Outbound-message outcome was not tenant-fenced to the known lead",
+  );
+
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_unmatched_contact",
+      eventType: "ContactUpdate",
+      objectId: "contact_not_bound_to_any_lead",
+      updatedAt: "2026-07-13T23:05:00.000Z",
+      receivedAt: "2026-07-13T23:05:01.000Z",
+    }),
+    "operator_action_required|ghl_lifecycle_unknown_lead_binding||",
+    "Unmatched contact was not durably operator-routed",
+  );
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_unmatched_contact",
+      eventType: "ContactUpdate",
+      objectId: "contact_not_bound_to_any_lead",
+      updatedAt: "2026-07-13T23:05:00.000Z",
+      receivedAt: "2026-07-13T23:05:01.000Z",
+    }),
+    "operator_action_required|ghl_lifecycle_unknown_lead_binding||",
+    "Unknown-contact replay did not return its original durable operator result",
+  );
+  assert.equal(
+    ingestLifecycle({
+      locationId: lifecycleLocationA,
+      eventId: "lifecycle_ambiguous_contact",
+      eventType: "ContactUpdate",
+      objectId: lifecycleContactAmbiguous,
+      updatedAt: "2026-07-13T23:06:00.000Z",
+      receivedAt: "2026-07-13T23:06:01.000Z",
+    }),
+    "operator_action_required|ghl_lifecycle_ambiguous_lead_binding||",
+    "Ambiguous same-tenant contact was not durably operator-routed",
+  );
+
+  const tenantBAppointmentResult = ingestLifecycle({
+    locationId: lifecycleLocationB,
+    eventId: "lifecycle_tenant_b_create",
+    eventType: "AppointmentCreate",
+    objectId: "appointment_lifecycle_tenant_b",
+    contactId: lifecycleContactShared,
+    calendarId: "calendar_lifecycle_b",
+    status: "active",
+    startsAt: "2026-07-16T15:00:00.000Z",
+    endsAt: "2026-07-16T15:30:00.000Z",
+    updatedAt: "2026-07-13T23:07:00.000Z",
+    receivedAt: "2026-07-13T23:07:01.000Z",
+  });
+  assert.match(
+    tenantBAppointmentResult,
+    new RegExp(`^reconciled\\|canonical_state_projected\\|${lifecycleLeadBId}\\|`),
+    "Same provider contact id crossed tenant boundaries",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', organization_id::text, lead_id::text, campaign_id::text, status)
+      from public.appointments
+      where ghl_location_mapping_id = '${lifecycleMappingBId}'
+        and ghl_appointment_id = 'appointment_lifecycle_tenant_b';
+    `, "Second-tenant appointment projection check failed"),
+    `${otherOrganizationId}|${lifecycleLeadBId}|${lifecycleCampaignBId}|booked`,
+    "Second-tenant appointment was not fenced to its exact campaign and lead",
+  );
+
+  assert.ok(
+    Number(psql(`
+      select count(*) from public.appointments
+      where organization_id = '${organizationId}'
+        and campaign_id = '${lifecycleCampaignAId}'
+        and status in ('booked', 'completed');
+    `, "Dashboard-visible lifecycle appointment count failed")) > 0,
+    "Canonical lifecycle appointments remained invisible to campaign dashboard reporting",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|',
+        count(*) filter (where projection_status = 'operator_action_required')::text,
+        (select count(*) from public.ghl_operator_requests where request_kind = 'lifecycle_reconciliation')::text
+      )
+      from public.ghl_lifecycle_webhook_events;
+    `, "Durable lifecycle operator-action parity check failed"),
+    "5|5",
+    "Lifecycle conflicts were not paired one-for-one with durable operator work",
+  );
+  assert.equal(
+    psql(`
+      select concat(
+        has_function_privilege(
+          'authenticated',
+          'public.ingest_ghl_lifecycle_webhook_v1(text,text,text,text,text,text,text,timestamptz,timestamptz,timestamptz,text,timestamptz)',
+          'EXECUTE'
+        ),
+        '|',
+        has_table_privilege('authenticated', 'public.ghl_lifecycle_object_states', 'SELECT'),
+        '|',
+        has_table_privilege('service_role', 'public.ghl_lifecycle_object_states', 'INSERT'),
+        '|',
+        has_table_privilege('service_role', 'public.ghl_lifecycle_webhook_events', 'INSERT')
+      );
+    `, "GHL lifecycle ACL check failed"),
+    "f|f|f|f",
+    "Lifecycle receipt or projection tables retained direct write authority",
+  );
+  psqlAsMustFail(
+    authenticatedProbeRole,
+    `select count(*) from public.ghl_lifecycle_object_states;`,
+    /permission denied/i,
+    "Authenticated role read internal GHL lifecycle state",
+  );
 
   const paidOrganizationId = "50000000-0000-4000-8000-000000000001";
   const paidUserId = "50000000-0000-4000-8000-000000000002";
   const activationId = "50000000-0000-4000-8000-000000000003";
   const sandboxInstallationId = "50000000-0000-4000-8000-000000000004";
   const sandboxManifestId = "50000000-0000-4000-8000-000000000005";
+  const firstCampaignId = "50000000-0000-4000-8000-000000000007";
+  const secondCampaignId = "50000000-0000-4000-8000-000000000008";
+  const thirdCampaignId = "50000000-0000-4000-8000-000000000009";
+  const alternatePaidMappingId = "50000000-0000-4000-8000-000000000010";
   psql(`
     insert into public.users (id, email) values ('${paidUserId}', 'paid-synthetic@example.test');
     insert into public.organizations (id, owner_user_id, name)
@@ -930,6 +1853,71 @@ try {
       '${activationId}', '${paidOrganizationId}', '${paidUserId}', 'stripe', 'evt_paid_synthetic',
       'checkout.session.completed', 'sub_paid_synthetic', 29700
     );
+    insert into public.campaign_plans (id, organization_id, publish_state, plan)
+    values
+      (
+        '${firstCampaignId}', '${paidOrganizationId}', 'published',
+        '{
+          "onboarding_contract_version":1,
+          "onboarding_contract":{
+            "businessType":"real_estate_realtor","adDestination":"website","campaignMode":"seller",
+            "offer":"Free seller valuation","market":"Toronto","audience":"Toronto homeowners",
+            "propertyType":"Detached homes","priceRange":"$800k-$1.5m",
+            "agentFirstName":"Ada","agentLastName":"Lovelace","agentCompanyName":"Synthetic Realty",
+            "agentPhone":"+14165550101","funnelLanguage":"en","themePrimaryColor":"#112233",
+            "themeSecondaryColor":"#445566","themeAccentColor":"#778899","logoUrl":"https://assets.example.test/logo-a.png"
+          },
+          "selected_ad_id":"creative-a",
+          "staticAds":[{"id":"creative-a","headline":"Know what your Toronto home is worth","primaryText":"Get a clear local valuation before you list.","cta":"Get my valuation"}],
+          "campaign_payload":{
+            "selected_ad_id":"creative-a",
+            "funnel":{"headlines":["Know what your Toronto home is worth"],"cta":"Get my valuation"},
+            "creatives":{"primary_text_variations":["Get a clear local valuation before you list."]}
+          }
+        }'::jsonb
+      ),
+      (
+        '${secondCampaignId}', '${paidOrganizationId}', 'published',
+        '{
+          "onboarding_contract_version":1,
+          "onboarding_contract":{
+            "businessType":"real_estate_realtor","adDestination":"website","campaignMode":"buyer",
+            "offer":"Off-market buyer list","market":"Mississauga","audience":"First-time buyers",
+            "propertyType":"Condos","priceRange":"$500k-$800k",
+            "agentFirstName":"Grace","agentLastName":"Hopper","agentCompanyName":"Synthetic Realty",
+            "agentPhone":"+19055550102","funnelLanguage":"en","themePrimaryColor":"#123456",
+            "themeSecondaryColor":"#abcdef","themeAccentColor":"#fedcba","logoUrl":"https://assets.example.test/logo-b.png"
+          },
+          "selected_ad_id":"creative-b",
+          "staticAds":[{"id":"creative-b","headline":"See Mississauga homes before everyone else","primaryText":"Find the right condo with a focused local list.","cta":"Get the list"}],
+          "campaign_payload":{
+            "selected_ad_id":"creative-b",
+            "funnel":{"headlines":["See Mississauga homes before everyone else"],"cta":"Get the list"},
+            "creatives":{"primary_text_variations":["Find the right condo with a focused local list."]}
+          }
+        }'::jsonb
+      ),
+      (
+        '${thirdCampaignId}', '${paidOrganizationId}', 'published',
+        '{
+          "onboarding_contract_version":1,
+          "onboarding_contract":{
+            "businessType":"real_estate_realtor","adDestination":"website","campaignMode":"investor",
+            "offer":"Investor property list","market":"Hamilton","audience":"Local investors",
+            "propertyType":"Multiplex","priceRange":"$700k-$1.2m",
+            "agentFirstName":"Katherine","agentLastName":"Johnson","agentCompanyName":"Synthetic Realty",
+            "agentPhone":"+19055550103","funnelLanguage":"en","themePrimaryColor":"#223344",
+            "themeSecondaryColor":"#556677","themeAccentColor":"#8899aa","logoUrl":""
+          },
+          "selected_ad_id":"creative-c",
+          "staticAds":[{"id":"creative-c","headline":"Find Hamilton investment properties","primaryText":"Review focused multiplex opportunities.","cta":"See opportunities"}],
+          "campaign_payload":{
+            "selected_ad_id":"creative-c",
+            "funnel":{"headlines":["Find Hamilton investment properties"],"cta":"See opportunities"},
+            "creatives":{"primary_text_variations":["Review focused multiplex opportunities."]}
+          }
+        }'::jsonb
+      );
     insert into public.ghl_installations (
       id, environment, owner_kind, provider_agency_id, encrypted_credential_ref,
       status, capability_manifest
@@ -945,7 +1933,31 @@ try {
       '${sandboxManifestId}', 'sandbox', 'paid-snapshot', '1.0.0', 'paid-provider-snapshot',
       '[{"kind":"pipeline","key":"new-lead","providerObjectId":"pipeline-paid"}]'::jsonb,
       'preinstalled', '${sandboxInstallationId}',
-      '{"customValues":{"DealFlow Offer":"Free valuation"},"requiredFormIds":["form-paid"],"destinationUrl":"https://funnels.example.test/paid"}'::jsonb,
+      jsonb_build_object(
+        'customValues', jsonb_build_object('DealFlow Platform', 'DealFlow'),
+        'requiredFormIds', jsonb_build_array('form-paid-root'),
+        'destinationUrl', 'https://funnels.example.test/root',
+        'campaignSlots', jsonb_build_array(
+          jsonb_build_object(
+            'slotKey', 'slot-a',
+            'destinationUrl', 'https://funnels.example.test/campaign-a',
+            'requiredFormIds', jsonb_build_array('form-paid-a'),
+            'customValueNames', (
+              select jsonb_object_agg(entry.key, entry.value || ' Slot A')
+              from jsonb_each_text(public.ghl_default_campaign_custom_value_names_v2()) entry
+            )
+          ),
+          jsonb_build_object(
+            'slotKey', 'slot-b',
+            'destinationUrl', 'https://funnels.example.test/campaign-b',
+            'requiredFormIds', jsonb_build_array('form-paid-b'),
+            'customValueNames', (
+              select jsonb_object_agg(entry.key, entry.value || ' Slot B')
+              from jsonb_each_text(public.ghl_default_campaign_custom_value_names_v2()) entry
+            )
+          )
+        )
+      ),
       'approved', timezone('utc', now())
     );
   `, "Paid GHL activation fixture failed");
@@ -1004,22 +2016,153 @@ try {
     commit;
   `, "Ready provisioning fixture failed");
 
-  const personalizationId = psql(`
-    select id::text from public.prepare_ghl_location_personalization_v1(
-      '${provisioningRunId}', timezone('utc', now())
+  function preparePersonalization(campaignId) {
+    const prepared = psql(`
+      select concat_ws(
+        '|', id::text, campaign_id::text, slot_key, status, current_step,
+        contract_revision::text, values_fingerprint
+      )
+      from public.prepare_ghl_campaign_personalization_v2(
+        '${paidOrganizationId}', '${campaignId}', 'sandbox', timezone('utc', now())
+      );
+    `, `Campaign personalization ${campaignId} preparation failed`);
+    const [id, preparedCampaignId, slotKey, status, step, revision, fingerprint] = prepared.split("|");
+    assert.match(id, /^[0-9a-f-]{36}$/i);
+    assert.equal(preparedCampaignId, campaignId);
+    assert.match(fingerprint, /^[a-f0-9]{64}$/);
+    return { id, campaignId: preparedCampaignId, slotKey, status, step, revision: Number(revision), fingerprint };
+  }
+  const concurrentPrepareSql = `
+    select concat_ws('|', id::text, campaign_id::text, slot_key, values_fingerprint)
+    from public.prepare_ghl_campaign_personalization_v2(
+      '${paidOrganizationId}', '${firstCampaignId}', 'sandbox', timezone('utc', now())
     );
-  `, "Personalization preparation failed");
-  assert.match(personalizationId, /^[0-9a-f-]{36}$/i);
+  `;
+  const [concurrentPrepareA, concurrentPrepareB] = await Promise.all([
+    psqlAsync(concurrentPrepareSql),
+    psqlAsync(concurrentPrepareSql),
+  ]);
+  assert.equal(concurrentPrepareA.status, 0, `Concurrent campaign prepare A failed: ${sanitize(concurrentPrepareA.stderr)}`);
+  assert.equal(concurrentPrepareB.status, 0, `Concurrent campaign prepare B failed: ${sanitize(concurrentPrepareB.stderr)}`);
+  assert.equal(
+    concurrentPrepareA.stdout.trim(),
+    concurrentPrepareB.stdout.trim(),
+    "Concurrent identical campaign preparation produced different row/slot identities",
+  );
+  const firstPrepared = preparePersonalization(firstCampaignId);
+  const secondPrepared = preparePersonalization(secondCampaignId);
+  assert.equal(firstPrepared.slotKey, "slot-a");
+  assert.equal(secondPrepared.slotKey, "slot-b");
+  assert.equal(preparePersonalization(firstCampaignId).id, firstPrepared.id, "Preparation replay changed row identity");
+  assert.notEqual(firstPrepared.fingerprint, secondPrepared.fingerprint, "Two campaign contracts shared a fingerprint");
+  psql(`
+    insert into public.ghl_location_mappings (
+      id, organization_id, installation_id, environment, provider_location_id,
+      provisioning_owner, snapshot_manifest_id, status
+    ) values (
+      '${alternatePaidMappingId}', '${paidOrganizationId}', '${sandboxInstallationId}', 'sandbox',
+      'paid-sandbox-location-retired', 'platform', '${sandboxManifestId}', 'inactive'
+    );
+  `, "Alternate inactive campaign-mapping fixture failed");
+  psqlMustFail(`
+    insert into public.ghl_location_personalizations (
+      id, organization_id, campaign_id, location_mapping_id, environment, slot_key,
+      custom_values, required_form_ids, destination_url, status, current_step,
+      values_fingerprint, source_plan_fingerprint, destination_contract_fingerprint
+    )
+    select gen_random_uuid(), organization_id, campaign_id, '${alternatePaidMappingId}', environment,
+      'alternate-slot', custom_values, required_form_ids, destination_url, status, current_step,
+      values_fingerprint, source_plan_fingerprint, destination_contract_fingerprint
+    from public.ghl_location_personalizations where id = '${firstPrepared.id}';
+  `, /ghl_location_personalizations_campaign_scope_unique/i, "One campaign acquired two mapping-scoped personalization identities");
+
+  psqlMustFail(`
+    select count(*) from public.prepare_ghl_campaign_personalization_v2(
+      '${otherOrganizationId}', '${firstCampaignId}', 'sandbox', timezone('utc', now())
+    );
+  `, /no data found|query returned no rows/i, "Cross-tenant campaign personalization was accepted");
+  psql(`
+    begin;
+    set local session_replication_role = replica;
+    update public.ghl_snapshot_manifests
+    set personalization_contract = jsonb_set(
+      personalization_contract,
+      '{campaignSlots,1,customValueNames}',
+      (
+        select jsonb_object_agg(entry.key, upper(entry.value) || '   ')
+        from jsonb_each_text(personalization_contract #> '{campaignSlots,0,customValueNames}') entry
+      )
+    )
+    where id = '${sandboxManifestId}';
+    commit;
+  `, "Overlapping GHL campaign-slot fixture failed");
+  psqlMustFail(`
+    select count(*) from public.prepare_ghl_campaign_personalization_v2(
+      '${paidOrganizationId}', '${thirdCampaignId}', 'sandbox', timezone('utc', now())
+    );
+  `, /invalid or cross-campaign mutable/i, "Overlapping GHL slot custom-value names were accepted");
+  psql(`
+    begin;
+    set local session_replication_role = replica;
+    update public.ghl_snapshot_manifests
+    set personalization_contract = jsonb_set(
+      personalization_contract,
+      '{campaignSlots,1,customValueNames}',
+      (
+        select jsonb_object_agg(entry.key, entry.value || ' Slot B')
+        from jsonb_each_text(public.ghl_default_campaign_custom_value_names_v2()) entry
+      )
+    )
+    where id = '${sandboxManifestId}';
+    commit;
+  `, "Overlapping GHL campaign-slot fixture cleanup failed");
+  psql(`
+    begin;
+    set local session_replication_role = replica;
+    update public.ghl_snapshot_manifests
+    set personalization_contract = jsonb_set(
+      personalization_contract,
+      '{campaignSlots,1,requiredFormIds}',
+      personalization_contract #> '{campaignSlots,0,requiredFormIds}'
+    )
+    where id = '${sandboxManifestId}';
+    commit;
+  `, "Overlapping GHL campaign form fixture failed");
+  psqlMustFail(`
+    select count(*) from public.prepare_ghl_campaign_personalization_v2(
+      '${paidOrganizationId}', '${thirdCampaignId}', 'sandbox', timezone('utc', now())
+    );
+  `, /invalid or cross-campaign mutable/i, "One preinstalled form was shared across campaign slots");
+  psql(`
+    begin;
+    set local session_replication_role = replica;
+    update public.ghl_snapshot_manifests
+    set personalization_contract = jsonb_set(
+      personalization_contract,
+      '{campaignSlots,1,requiredFormIds}',
+      '["form-paid-b"]'::jsonb
+    )
+    where id = '${sandboxManifestId}';
+    commit;
+  `, "Overlapping GHL campaign form fixture cleanup failed");
+  psqlMustFail(`
+    select count(*) from public.prepare_ghl_campaign_personalization_v2(
+      '${paidOrganizationId}', '${thirdCampaignId}', 'sandbox', timezone('utc', now())
+    );
+  `, /slot capacity is exhausted/i, "A third campaign reused an occupied GHL slot");
 
   function claimPersonalization(workerId) {
     const claim = psql(`
-      select concat_ws('|', id::text, lease_token::text, lease_generation::text, current_step)
+      select concat_ws(
+        '|', id::text, campaign_id::text, lease_token::text,
+        lease_generation::text, current_step, destination_url
+      )
       from public.claim_next_ghl_location_personalization_v1(
         'sandbox', '${workerId}', timezone('utc', now()), 60000
       );
     `, `Personalization ${workerId} claim failed`);
-    const [id, token, generation, step] = claim.split("|");
-    return { id, token, generation: Number(generation), step, workerId };
+    const [id, campaignId, token, generation, step, destinationUrl] = claim.split("|");
+    return { id, campaignId, token, generation: Number(generation), step, destinationUrl, workerId };
   }
   function settlePersonalization(claim, outcome) {
     return psql(`
@@ -1031,38 +2174,226 @@ try {
       );
     `, `Personalization ${claim.step} settlement failed`);
   }
-  const customClaim = claimPersonalization("custom-worker");
-  assert.equal(customClaim.step, "custom_values");
-  assert.match(settlePersonalization(customClaim, "succeeded"), /^pending\|forms\|/);
-  const formsClaim = claimPersonalization("forms-worker");
-  assert.equal(formsClaim.step, "forms");
-  assert.equal(
-    settlePersonalization(formsClaim, "succeeded"),
-    "ready|ready|https://funnels.example.test/paid",
+  const observedCampaignSteps = [];
+  for (let index = 0; index < 4; index += 1) {
+    const claim = claimPersonalization(`campaign-worker-${index}`);
+    observedCampaignSteps.push(`${claim.campaignId}:${claim.step}`);
+    const settled = settlePersonalization(claim, "succeeded");
+    if (claim.step === "custom_values") assert.match(settled, /^pending\|forms\|/);
+    else assert.match(settled, /^ready\|ready\|https:\/\//);
+  }
+  assert.deepEqual(
+    new Set(observedCampaignSteps),
+    new Set([
+      `${firstCampaignId}:custom_values`, `${firstCampaignId}:forms`,
+      `${secondCampaignId}:custom_values`, `${secondCampaignId}:forms`,
+    ]),
+    "Both exact campaign personalization sagas did not complete both steps",
   );
   assert.equal(
     psql(`
-      select destination_url from public.resolve_ghl_ready_destination_v1(
-        '${paidOrganizationId}', 'sandbox'
+      select destination_url from public.resolve_ghl_ready_campaign_destination_v2(
+        '${paidOrganizationId}', '${firstCampaignId}', 'sandbox'
       );
-    `, "Ready GHL destination resolution failed"),
-    "https://funnels.example.test/paid",
+    `, "First ready GHL campaign destination resolution failed"),
+    "https://funnels.example.test/campaign-a",
   );
+  assert.equal(
+    psql(`
+      select destination_url from public.resolve_ghl_ready_campaign_destination_v2(
+        '${paidOrganizationId}', '${secondCampaignId}', 'sandbox'
+      );
+    `, "Second ready GHL campaign destination resolution failed"),
+    "https://funnels.example.test/campaign-b",
+  );
+  psql(`update public.campaign_plans set publish_state = 'draft' where id = '${firstCampaignId}';`,
+    "Unpublished campaign destination fixture failed");
+  assert.equal(
+    psql(`
+      select count(*) from public.resolve_ghl_ready_campaign_destination_v2(
+        '${paidOrganizationId}', '${firstCampaignId}', 'sandbox'
+      );
+    `, "Unpublished GHL campaign destination resolution failed"),
+    "0",
+    "An unpublished campaign retained a ready GHL launch destination",
+  );
+  psql(`update public.campaign_plans set publish_state = 'published' where id = '${firstCampaignId}';`,
+    "Unpublished campaign destination fixture cleanup failed");
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|',
+        first.custom_values ->> 'DealFlow Offer Slot A',
+        coalesce(first.custom_values ->> 'DealFlow Offer Slot B', ''),
+        second.custom_values ->> 'DealFlow Offer Slot B',
+        coalesce(second.custom_values ->> 'DealFlow Offer Slot A', '')
+      )
+      from public.ghl_location_personalizations first
+      join public.ghl_location_personalizations second on second.campaign_id = '${secondCampaignId}'
+      where first.campaign_id = '${firstCampaignId}';
+    `, "Cross-campaign custom-value isolation verification failed"),
+    "Free seller valuation||Off-market buyer list|",
+    "Campaign custom values leaked into another slot",
+  );
+
+  psql(`
+    update public.campaign_plans
+    set plan = jsonb_set(plan, '{onboarding_contract,offer}', '"Updated seller valuation"'::jsonb)
+    where id = '${firstCampaignId}';
+  `, "Campaign contract revision fixture failed");
+  const revisedPrepared = preparePersonalization(firstCampaignId);
+  assert.equal(revisedPrepared.id, firstPrepared.id, "Campaign revision changed stable slot identity");
+  assert.equal(revisedPrepared.revision, 2, "Campaign revision did not advance exactly once");
+  assert.equal(revisedPrepared.slotKey, "slot-a", "Campaign revision moved to another slot");
+  assert.equal(
+    psql(`select count(*) from public.resolve_ghl_ready_campaign_destination_v2(
+      '${paidOrganizationId}', '${firstCampaignId}', 'sandbox'
+    );`, "Stale destination suppression failed"),
+    "0",
+    "A revised campaign resolved before its new values and forms were verified",
+  );
+  const revisedCustomClaim = claimPersonalization("campaign-revision-custom-worker");
+  assert.equal(revisedCustomClaim.campaignId, firstCampaignId);
+  assert.equal(revisedCustomClaim.step, "custom_values");
+  assert.equal(
+    psql(`
+    select id::text from public.prepare_ghl_campaign_personalization_v2(
+      '${paidOrganizationId}', '${firstCampaignId}', 'sandbox', timezone('utc', now())
+    );
+  `, "Idempotent in-flight personalization replay failed"),
+    revisedCustomClaim.id,
+    "An idempotent in-flight preparation changed campaign personalization identity",
+  );
+  assert.equal(
+    psql(`
+      select count(*) from public.claim_next_ghl_location_personalization_v1(
+        'sandbox', 'expired-lease-sweeper', timezone('utc', now()) + interval '61 seconds', 60000
+      );
+    `, "Expired personalization lease sweep failed"),
+    "0",
+    "An expired ambiguous provider effect was silently reclaimed",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', status, last_error_code, (lease_token is null)::text)
+      from public.ghl_location_personalizations where id = '${revisedCustomClaim.id}';
+    `, "Expired personalization lease state verification failed"),
+    "uncertain|ghl_campaign_personalization_lease_expired_uncertain|true",
+    "An expired provider effect was not preserved as uncertain",
+  );
+  psqlMustFail(
+    `select count(*) from public.settle_ghl_location_personalization_v1(
+      '${revisedCustomClaim.id}', '${revisedCustomClaim.workerId}', '${revisedCustomClaim.token}',
+      ${revisedCustomClaim.generation}, 'succeeded', '{}'::jsonb, null, null, timezone('utc', now())
+    );`,
+    /lease expired or was superseded/i,
+    "A stale personalization worker settled after lease expiry",
+  );
+  psql(`
+    select id from public.requeue_ghl_campaign_personalization_v2(
+      '${revisedCustomClaim.id}', '${revisedPrepared.fingerprint}', timezone('utc', now())
+    );
+  `, "Exact-fingerprint personalization reconciliation failed");
+  const reconciledCustomClaim = claimPersonalization("campaign-revision-reconciled-worker");
+  assert.equal(reconciledCustomClaim.id, revisedCustomClaim.id);
+  assert.equal(
+    reconciledCustomClaim.generation,
+    revisedCustomClaim.generation + 1,
+    "Reconciled personalization did not advance its fencing generation exactly once",
+  );
+  settlePersonalization(reconciledCustomClaim, "succeeded");
+  const revisedFormsClaim = claimPersonalization("campaign-revision-forms-worker");
+  assert.equal(revisedFormsClaim.campaignId, firstCampaignId);
+  assert.equal(revisedFormsClaim.step, "forms");
+  settlePersonalization(revisedFormsClaim, "succeeded");
+
+  psql(`
+    update public.campaign_plans
+    set plan = jsonb_set(plan, '{onboarding_contract,offer}', '"Buyer list revision two"'::jsonb)
+    where id = '${secondCampaignId}';
+  `, "Second campaign contract revision fixture failed");
+  const secondRevision = preparePersonalization(secondCampaignId);
+  assert.equal(secondRevision.revision, 2);
+  const driftClaim = claimPersonalization("campaign-plan-drift-worker");
+  assert.equal(driftClaim.campaignId, secondCampaignId);
+  psql(`
+    update public.campaign_plans
+    set plan = jsonb_set(plan, '{onboarding_contract,offer}', '"Buyer list revision three"'::jsonb)
+    where id = '${secondCampaignId}';
+  `, "In-flight campaign plan drift fixture failed");
+  psqlMustFail(`
+    select count(*) from public.prepare_ghl_campaign_personalization_v2(
+      '${paidOrganizationId}', '${secondCampaignId}', 'sandbox', timezone('utc', now())
+    );
+  `, /in flight and must settle/i, "A changed in-flight campaign contract replaced provider inputs");
+  assert.equal(
+    settlePersonalization(driftClaim, "succeeded"),
+    "operator_action_required|custom_values|https://funnels.example.test/campaign-b",
+    "A provider effect settled as current after its authoritative campaign plan changed",
+  );
+  assert.equal(
+    psql(`select last_error_code from public.ghl_location_personalizations where id = '${driftClaim.id}';`, "Plan-drift blocker lookup failed"),
+    "ghl_campaign_plan_changed_during_provider_effect",
+  );
+  psqlMustFail(`
+    select count(*) from public.requeue_ghl_campaign_personalization_v2(
+      '${driftClaim.id}', '${secondRevision.fingerprint}', timezone('utc', now())
+    );
+  `, /identity changed or is not requeueable/i, "A stale plan fingerprint requeued campaign personalization");
+  const secondReprepared = preparePersonalization(secondCampaignId);
+  assert.equal(secondReprepared.revision, 3, "Plan-drift recovery did not create the next exact contract revision");
+  assert.equal(secondReprepared.slotKey, "slot-b", "Plan-drift recovery moved campaigns across slots");
+  psql(`
+    update public.ghl_location_personalizations set max_attempts = 1
+    where id = '${secondReprepared.id}';
+  `, "Personalization retry-exhaustion fixture failed");
+  const exhaustionClaim = claimPersonalization("campaign-retry-exhaustion-worker");
+  assert.equal(exhaustionClaim.campaignId, secondCampaignId);
+  assert.equal(
+    settlePersonalization(exhaustionClaim, "retryable_failure"),
+    "operator_action_required|custom_values|https://funnels.example.test/campaign-b",
+    "A final retryable personalization attempt was silently requeued",
+  );
+  assert.equal(
+    psql(`select last_error_code from public.ghl_location_personalizations where id = '${secondReprepared.id}';`, "Personalization exhaustion blocker lookup failed"),
+    "ghl_campaign_personalization_attempts_exhausted",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws('|', count(*)::text, min(contract_revision)::text, max(contract_revision)::text)
+      from public.ghl_campaign_personalization_receipts;
+    `, "Append-only personalization receipt verification failed"),
+    "8|1|3",
+    "Campaign personalization receipts did not preserve both revisions and steps",
+  );
+  psqlMustFail(`
+    update public.ghl_campaign_personalization_receipts
+    set receipt = receipt
+    where id = (select id from public.ghl_campaign_personalization_receipts order by id limit 1);
+  `, /receipts are append-only/i, "A campaign personalization receipt could be updated");
+  psqlMustFail(`
+    delete from public.ghl_campaign_personalization_receipts
+    where id = (select id from public.ghl_campaign_personalization_receipts order by id limit 1);
+  `, /receipts are append-only/i, "A campaign personalization receipt could be deleted");
 
   assert.equal(
     psql(`
       select concat(
         has_function_privilege('authenticated', 'public.request_ghl_provisioning_from_billing_activation_v1(uuid,uuid,text,uuid,text,timestamptz)', 'EXECUTE'),
         '|',
-        has_function_privilege('authenticated', 'public.resolve_ghl_ready_destination_v1(uuid,text)', 'EXECUTE')
+        has_function_privilege('authenticated', 'public.resolve_ghl_ready_campaign_destination_v2(uuid,uuid,text)', 'EXECUTE'),
+        '|',
+        has_table_privilege('service_role', 'public.ghl_location_personalizations', 'UPDATE'),
+        '|',
+        has_table_privilege('service_role', 'public.ghl_campaign_personalization_receipts', 'INSERT')
       );
     `, "Production GHL internal RPC privilege lookup failed"),
-    "f|f",
-    "Authenticated callers retained GHL activation or destination RPC authority",
+    "f|f|f|f",
+    "GHL campaign personalization retained direct or authenticated mutation authority",
   );
 
   console.log(
-    "GHL disposable database regression passed: fake and production-path migrations, paid activation boundary, tenant/environment gates, concurrent fencing, atomic settlement, personalization/form/destination receipts, max-attempt sweeping, RPC-only mutation, manifest validation, and grants.",
+    "GHL disposable database regression passed: fake and production paths; paid activation; exact campaign/org/environment fencing; two-tenant lifecycle contact, opportunity, outbound, and appointment projection; create/update/delete and exact replay; stale and same-version conflict routing; documented-status mapping and unknown-status rejection; unknown/ambiguous lead operator parity; dashboard-visible canonical appointments; durable revisions/leases/receipts; bounded retries; RPC-only mutation; manifest validation; and ACL grants.",
   );
 } catch (error) {
   console.error(`GHL disposable database regression failed: ${sanitize(error?.message ?? error)}`);

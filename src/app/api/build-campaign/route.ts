@@ -39,6 +39,7 @@ type CampaignPayloadRecord = {
   targeting_plan?: Record<string, unknown>;
   budget_plan?: Record<string, unknown>;
   meta_ready_payload?: Record<string, unknown>;
+  daily_budget_cents?: number;
 };
 
 function isRealEstateCampaign(params: {
@@ -206,7 +207,7 @@ export async function POST(request: Request) {
           campaign_id: campaignId,
           selected_ad_id: existingPayload?.selected_ad_id,
           selected_ad_ids: Array.isArray(existingPayload?.selected_ad_ids)
-            ? existingPayload.selected_ad_ids.map(String).filter(Boolean).slice(0, 6)
+            ? existingPayload.selected_ad_ids.map(String).filter(Boolean).slice(0, 1)
             : existingPayload?.selected_ad_id
               ? [existingPayload.selected_ad_id]
               : undefined,
@@ -268,9 +269,11 @@ export async function POST(request: Request) {
               ? 15
               : null,
           },
+          daily_budget_cents: record.plan.daily_budget_cents,
           budget_plan: {
             monthly_budget: record.plan.monthly_budget,
-            estimated_daily_budget: Math.max(1, Math.round((record.plan.monthly_budget ?? 0) / 30)),
+            daily_budget_cents: record.plan.daily_budget_cents,
+            estimated_daily_budget: record.plan.daily_budget_cents / 100,
           },
           meta_ready_payload: {
             objective: "LEAD_GENERATION",

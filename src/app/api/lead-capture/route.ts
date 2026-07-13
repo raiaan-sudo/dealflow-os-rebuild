@@ -23,12 +23,11 @@ import {
   validateCustomLeadAnswers,
 } from "@/lib/leads/custom-question-contract";
 import {
-  createPublicLeadAndStartConversation,
+  createPublicLeadAndQueueSideEffectsAtomically,
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
 import { getPublicFunnelEntitlements } from "@/lib/services/campaign-entitlements";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
-import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
 import { isExactIsolatedSupabaseProject } from "@/lib/security/supabase-isolation";
 import { verifyLeadCaptureTurnstile } from "@/lib/security/turnstile";
 
@@ -469,7 +468,8 @@ async function handleLeadCaptureRequest(req: Request) {
       customAnswers,
     };
 
-    const lead = await createPublicLeadAndStartConversation({
+    const metaCookies = getMetaCookiesFromHeader(cookieHeader);
+    const atomicCapture = await createPublicLeadAndQueueSideEffectsAtomically({
       campaign_id: campaignId,
       funnel_id: payload.funnel_id,
       name: payload.name,
@@ -489,7 +489,15 @@ async function handleLeadCaptureRequest(req: Request) {
       custom_answers: customAnswers,
       skip_recent_duplicate_fallback: isLoadTestBypass,
       skip_lead_loop_verification: isLoadTestBypass,
+    }, {
+      requestId,
+      clientIp: requestIp,
+      clientUserAgent: userAgent,
+      fbp: metaCookies.fbp,
+      fbc: metaCookies.fbc,
     });
+    const lead = atomicCapture.lead;
+    const sideEffectJob = atomicCapture.sideEffectJob;
 
     logOperationalEvent("lead_capture.succeeded", {
       requestId,
@@ -533,42 +541,6 @@ async function handleLeadCaptureRequest(req: Request) {
       },
     }).catch(() => null);
 
-    const metaCookies = getMetaCookiesFromHeader(cookieHeader);
-    const notificationLead = {
-      ...lead,
-      phone_raw: phone,
-      phone_e164: null,
-      lead_type: null,
-      utm_source: utmSource,
-      utm_medium: utmMedium,
-      utm_campaign: utmCampaign,
-      ad_id: adId,
-      landing_page_url: landingPageUrl,
-    };
-
-    const sideEffectJob = await queueLeadSideEffectsJob({
-      organizationId: lead.organization_id,
-      userId: lead.user_id,
-      campaignId: lead.campaign_id,
-      payload: {
-        requestId,
-        lead: notificationLead,
-        metaConversion: {
-          organizationId: lead.organization_id,
-          leadId: lead.id,
-          campaignId: lead.campaign_id,
-          eventSourceUrl: landingPageUrl,
-          eventTime: lead.created_at,
-          name: lead.name,
-          email,
-          phone,
-          clientIp: requestIp,
-          clientUserAgent: userAgent,
-          fbp: metaCookies.fbp,
-          fbc: metaCookies.fbc,
-        },
-      },
-    });
     const metaConversionQueued = sideEffectJob.enabledEffects.includes("meta_conversion");
 
     logOperationalEvent("lead_capture.side_effects_queued", {
@@ -577,6 +549,8 @@ async function handleLeadCaptureRequest(req: Request) {
       organizationId: lead.organization_id,
       jobId: sideEffectJob.id,
       loadTest: isLoadTestBypass,
+      leadCreated: atomicCapture.receipts.leadCreated,
+      sideEffectJobCreated: atomicCapture.receipts.sideEffectJobCreated,
     });
 
     await recordLeadTrackingEvent({

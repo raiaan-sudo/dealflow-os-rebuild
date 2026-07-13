@@ -1,5 +1,6 @@
 import {
   getDeploymentTarget,
+  isExactIsolatedStagingVercelHost,
   type DeploymentTarget,
 } from "../../deployment-target";
 
@@ -12,6 +13,7 @@ export type GhlSandboxGateInput = {
   deploymentTarget?: DeploymentTarget;
   nodeEnv: string | undefined;
   vercelEnv: string | undefined;
+  exactIsolatedStagingHost?: boolean;
   isolatedDatabase: boolean;
   actualProjectRef: string | undefined;
   expectedProjectRef: string | undefined;
@@ -46,7 +48,12 @@ export function extractSupabaseProjectRef(supabaseUrl: string | undefined) {
 }
 
 export function evaluateGhlSandboxGate(input: GhlSandboxGateInput): GhlSandboxGateDecision {
-  if (input.deploymentTarget === "production" || input.vercelEnv === "production") {
+  const exactHostedStaging =
+    input.deploymentTarget === "staging" && input.exactIsolatedStagingHost === true;
+  if (
+    input.deploymentTarget === "production" ||
+    (input.vercelEnv === "production" && !exactHostedStaging)
+  ) {
     return {
       allowed: false,
       code: "production_environment_forbidden",
@@ -143,6 +150,9 @@ export function ghlSandboxGateFromEnvironment(
     deploymentTarget: getDeploymentTarget(environment as Record<string, string | undefined>),
     nodeEnv: environment.NODE_ENV,
     vercelEnv: environment.VERCEL_ENV,
+    exactIsolatedStagingHost: isExactIsolatedStagingVercelHost(
+      environment as Record<string, string | undefined>,
+    ),
     isolatedDatabase: environment.GHL_SANDBOX_ISOLATED_DATABASE === "true",
     actualProjectRef: extractSupabaseProjectRef(environment.NEXT_PUBLIC_SUPABASE_URL),
     expectedProjectRef: environment.GHL_SANDBOX_ISOLATED_SUPABASE_PROJECT_REF?.trim(),

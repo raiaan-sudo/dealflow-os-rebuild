@@ -6,6 +6,7 @@ import {
   type KpiThresholds,
   type PerformanceMetrics,
 } from "@/lib/optimization-engine/kpi";
+import { metaCtrRatioToPolicyPercent } from "@/lib/integrations/meta/reporting-contract";
 
 export type MediaBuyingAction =
   | "kill"
@@ -104,7 +105,7 @@ export function evaluateMediaBuyingDecision(
 ): MediaBuyingDecision {
   const normalized = normalizePerformanceMetrics({
     ...metrics,
-    ctr: metrics.ctr > 0 && metrics.ctr <= 1 ? metrics.ctr * 100 : metrics.ctr,
+    ctr: metaCtrRatioToPolicyPercent(metrics.ctr),
     lp_cvr: metrics.lp_cvr > 0 && metrics.lp_cvr <= 1 ? metrics.lp_cvr * 100 : metrics.lp_cvr,
   });
   const strongMetrics = getStrongMetrics(normalized, thresholds);

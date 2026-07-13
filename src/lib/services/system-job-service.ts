@@ -28,6 +28,7 @@ import {
   type SystemJobLease,
   updateSystemJobIfLeaseOwned,
 } from "@/lib/services/system-job-lease-service";
+import { shouldRetryLeadCaptureJob } from "@/lib/services/system-job-retry-policy";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -655,6 +656,36 @@ export async function claimNextPendingSystemJob() {
   return claimedJob;
 }
 
+async function claimNextPendingSystemJobKind(kind: "meta_reporting_sync") {
+  const supabase = getJobClient();
+  const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${kind}:${crypto.randomUUID()}`;
+  const { data, error } = await (supabase as any).rpc(
+    "claim_next_system_job_kind_v1",
+    {
+      p_kind: kind,
+      p_worker_id: workerId,
+      p_lease_ms: SYSTEM_JOB_LEASE_MS,
+      p_protocol_version: 1,
+    },
+  );
+  if (error) {
+    throw new ApiError(500, error.message, "system_job_kind_claim_failed");
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const claimedJob = parseSystemJob(row as SystemJobRow);
+  if (claimedJob.kind !== kind) {
+    throw new ApiError(500, "Kind claim returned an unexpected job.", "system_job_kind_claim_mismatch");
+  }
+  await appendSystemJobLogBestEffort({
+    supabase,
+    jobId: claimedJob.id,
+    message: `${kind.replace(/_/g, " ")} job started in the fair reporting lane.`,
+    details: { workerId, lockedUntil: claimedJob.locked_until ?? null } as Json,
+  });
+  return claimedJob;
+}
+
 export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000) {
   const supabase = getJobClient();
   void staleAfterMs;
@@ -748,18 +779,29 @@ export async function retrySystemJob(
 }
 
 function shouldAutoRetrySystemJob(job: SystemJobRecord, error: unknown) {
-  if (job.kind === "video_generation") {
+  if (job.retry_count >= MAX_SYSTEM_JOB_RETRIES || !(error instanceof ApiError)) {
     return false;
   }
 
-  if (job.retry_count >= MAX_SYSTEM_JOB_RETRIES || !(error instanceof ApiError)) {
-    return false;
+  if (job.kind === "video_generation") {
+    // The provider output is already fenced by paid_creative_dispatches for
+    // these post-acceptance database failures, so retry resumes projection and
+    // cannot issue a second paid provider POST.
+    return [
+      "creative_asset_create_failed",
+      "campaign_video_ads_save_failed",
+      "video_status_job_create_failed",
+      "paid_creative_projection_finalize_failed",
+    ].includes(error.code);
   }
 
   return [
     "video_generation_timeout",
     "video_provider_request_failed",
     "video_provider_status_failed",
+    "creative_asset_persist_failed",
+    "paid_creative_projection_finalize_failed",
+    "campaign_static_generation_state_save_failed",
   ].includes(error.code);
 }
 
@@ -975,7 +1017,8 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
         (effect) => currentPolicy.enabledEffects.includes(effect),
       );
       const requiredEffects = (payload.requiredEffects ?? currentPolicy.requiredEffects).filter(
-        (effect) => currentPolicy.requiredEffects.includes(effect),
+        (effect) =>
+          currentPolicy.requiredEffects.includes(effect) || effect === "ghl_delivery",
       );
       const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
       const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
@@ -1111,7 +1154,16 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
       (!(error instanceof ApiError) || error.status === 408 || error.status === 429 || error.status >= 500) &&
       currentAttempt < maxAttempts
     );
-    const retryEligible = legacyAutoRetry || leadEffectRetry || metaLeadgenRetry || metaReportingRetry;
+    const leadCaptureRetry = Boolean(
+      processingJob.kind === "lead_capture_retry" &&
+      shouldRetryLeadCaptureJob({ error, currentAttempt, maxAttempts })
+    );
+    const retryEligible =
+      legacyAutoRetry ||
+      leadEffectRetry ||
+      metaLeadgenRetry ||
+      metaReportingRetry ||
+      leadCaptureRetry;
 
     if (retryEligible) {
       const retriedJob = await fencedUpdate({
@@ -1123,7 +1175,8 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
           leadEffectFailure?.code ??
           (error instanceof ApiError ? error.code : "system_job_transient_failure"),
         retry_count:
-          processingJob.retry_count + (legacyAutoRetry || metaLeadgenRetry || metaReportingRetry ? 1 : 0),
+          processingJob.retry_count +
+          (legacyAutoRetry || metaLeadgenRetry || metaReportingRetry || leadCaptureRetry ? 1 : 0),
         locked_by: null,
         locked_until: null,
         lease_token: null,
@@ -1474,5 +1527,47 @@ export async function runSystemJobWorkerBatch(options?: {
     resetCount,
     cycles: maxCycles,
     exhausted: false,
+  };
+}
+
+export async function runSystemJobWorkerKindBatch(options: {
+  kind: "meta_reporting_sync";
+  maxCycles: number;
+  concurrency: number;
+}): Promise<SystemJobWorkerBatchResult> {
+  const maxCycles = Math.min(Math.max(Math.trunc(options.maxCycles), 1), 50);
+  const concurrency = Math.min(Math.max(Math.trunc(options.concurrency), 1), 5);
+  const processedJobIds: string[] = [];
+  let claimSlotsTaken = 0;
+  let emptyClaims = 0;
+
+  const worker = async () => {
+    while (true) {
+      if (claimSlotsTaken >= maxCycles) return;
+      claimSlotsTaken += 1;
+      const job = await claimNextPendingSystemJobKind(options.kind);
+      if (!job) {
+        emptyClaims += 1;
+        return;
+      }
+      const lease = getSystemJobLease(job);
+      if (!lease) {
+        throw new ApiError(
+          500,
+          "Kind-claimed system job did not include a durable lease.",
+          "system_job_kind_claim_lease_missing",
+        );
+      }
+      await processSystemJob(job.id, lease);
+      processedJobIds.push(job.id);
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return {
+    processedJobIds,
+    resetCount: 0,
+    cycles: claimSlotsTaken,
+    exhausted: emptyClaims > 0,
   };
 }

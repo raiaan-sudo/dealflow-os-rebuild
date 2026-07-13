@@ -9,12 +9,13 @@ export type MetaLaunchInputSnapshot = {
   attempt_id: string;
   provider: {
     ad_account_id: string;
+    account_currency: string;
     page_id: string;
     pixel_id: string;
   };
   creative: {
     selected_ad_id: string;
-    image_url_sha256: string | null;
+    image_content_sha256: string;
     primary_text_sha256: string;
     headline_sha256: string;
   };
@@ -32,6 +33,40 @@ export type MetaLaunchInputSnapshot = {
     location: string;
     daily_budget_minor: string;
     special_ad_categories: ["HOUSING"];
+  };
+  provider_contract: {
+    campaign: {
+      objective: string;
+      special_ad_categories: ["HOUSING"];
+      special_ad_category_country: [string];
+      is_adset_budget_sharing_enabled: false;
+    };
+    ad_set: {
+      billing_event: "IMPRESSIONS";
+      optimization_goal: string;
+      daily_budget_minor: string;
+      bid_strategy: "LOWEST_COST_WITHOUT_CAP";
+      targeting: {
+        geo_locations: {
+          countries: [string];
+        };
+      };
+      destination_type: "ON_AD" | null;
+      promoted_object:
+        | { page_id: string }
+        | { pixel_id: string; custom_event_type: "LEAD" };
+      tracking_specs: Array<{
+        action_type: ["offsite_conversion"];
+        fb_pixel: [string];
+      }>;
+    };
+    creative: {
+      page_id: string;
+      call_to_action_type: "LEARN_MORE";
+      link: string;
+      cta_link: string | null;
+      provider_form_binding: "provisioning_receipt" | null;
+    };
   };
 };
 
@@ -65,10 +100,11 @@ export function buildMetaLaunchInputBinding(params: {
   campaignId: string;
   attemptId: string;
   adAccountId: string;
+  accountCurrency: string;
   pageId: string;
   pixelId: string;
   selectedAdId: string;
-  imageUrl: string | null;
+  imageContentSha256: string;
   primaryText: string;
   headline: string;
   destinationUrl: string;
@@ -81,7 +117,20 @@ export function buildMetaLaunchInputBinding(params: {
   providerFormId?: string | null;
   formDefinitionDigest?: string | null;
 }): MetaLaunchInputBinding {
+  const accountCurrency = params.accountCurrency.trim().toUpperCase();
+  if (accountCurrency !== "USD" && accountCurrency !== "CAD") {
+    throw new Error("Meta account currency must be USD or CAD for an immutable launch binding.");
+  }
+  if (!params.imageContentSha256 || !/^[0-9a-f]{64}$/.test(params.imageContentSha256)) {
+    throw new Error("A verified creative content checksum is required for an immutable launch binding.");
+  }
   const destination = new URL(params.destinationUrl);
+  const objective = params.objective.trim().toUpperCase();
+  const countryCode = params.countryCode.trim().toUpperCase();
+  const adDestination = params.adDestination ?? "website";
+  const optimizationGoal = adDestination === "meta_instant_form"
+    ? "LEAD_GENERATION"
+    : objective === "OUTCOME_TRAFFIC" ? "LINK_CLICKS" : "OFFSITE_CONVERSIONS";
   const snapshot: MetaLaunchInputSnapshot = {
     schema_version: 1,
     organization_id: params.organizationId,
@@ -89,12 +138,13 @@ export function buildMetaLaunchInputBinding(params: {
     attempt_id: params.attemptId,
     provider: {
       ad_account_id: params.adAccountId,
+      account_currency: accountCurrency,
       page_id: params.pageId,
       pixel_id: params.pixelId,
     },
     creative: {
       selected_ad_id: params.selectedAdId,
-      image_url_sha256: params.imageUrl ? sha256(params.imageUrl) : null,
+      image_content_sha256: params.imageContentSha256,
       primary_text_sha256: sha256(params.primaryText),
       headline_sha256: sha256(params.headline),
     },
@@ -102,16 +152,49 @@ export function buildMetaLaunchInputBinding(params: {
     destination_host: destination.hostname.toLowerCase(),
     destination: {
       capture_experience: params.captureExperience ?? "dealflow_website",
-      ad_destination: params.adDestination ?? "website",
+      ad_destination: adDestination,
       provider_form_id: params.providerFormId ?? null,
       form_definition_digest: params.formDefinitionDigest ?? null,
     },
     delivery: {
-      objective: params.objective,
-      country_code: params.countryCode,
+      objective,
+      country_code: countryCode,
       location: params.location,
       daily_budget_minor: params.dailyBudgetMinor,
       special_ad_categories: ["HOUSING"],
+    },
+    provider_contract: {
+      campaign: {
+        objective,
+        special_ad_categories: ["HOUSING"],
+        special_ad_category_country: [countryCode],
+        is_adset_budget_sharing_enabled: false,
+      },
+      ad_set: {
+        billing_event: "IMPRESSIONS",
+        optimization_goal: optimizationGoal,
+        daily_budget_minor: params.dailyBudgetMinor,
+        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+        targeting: {
+          geo_locations: {
+            countries: [countryCode],
+          },
+        },
+        destination_type: adDestination === "meta_instant_form" ? "ON_AD" : null,
+        promoted_object: adDestination === "meta_instant_form"
+          ? { page_id: params.pageId }
+          : { pixel_id: params.pixelId, custom_event_type: "LEAD" },
+        tracking_specs: adDestination === "meta_instant_form"
+          ? []
+          : [{ action_type: ["offsite_conversion"], fb_pixel: [params.pixelId] }],
+      },
+      creative: {
+        page_id: params.pageId,
+        call_to_action_type: "LEARN_MORE",
+        link: adDestination === "meta_instant_form" ? "https://fb.me/" : params.destinationUrl,
+        cta_link: adDestination === "meta_instant_form" ? null : params.destinationUrl,
+        provider_form_binding: adDestination === "meta_instant_form" ? "provisioning_receipt" : null,
+      },
     },
   };
 

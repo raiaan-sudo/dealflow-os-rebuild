@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   isExplicitNonProductionDeployment,
+  isExactProductionVercelHost,
   isProductionDeployment,
 } from "@/lib/deployment-target";
 
@@ -181,17 +182,24 @@ export function resolveSupportExternalDeliveryPolicy(
   }
 
   if (
-    !isProductionDeployment(env) &&
-    !isExplicitNonProductionDeployment(env)
+    !isProductionDeployment(env)
   ) {
     throw new SupportDeliveryPolicyError(
-      "The support delivery deployment target is not attested.",
+      "External support delivery requires the production deployment target.",
       "support_external_deployment_unproven",
     );
   }
 
   if (
-    isProductionDeployment(env) &&
+    !isExactProductionVercelHost(env)
+  ) {
+    throw new SupportDeliveryPolicyError(
+      "External support delivery requires the exact attested production Vercel project.",
+      "support_external_production_host_unproven",
+    );
+  }
+
+  if (
     env.SUPPORT_PRODUCTION_EXTERNAL_DELIVERY_ENABLED !== "true"
   ) {
     throw new SupportDeliveryPolicyError(

@@ -254,7 +254,7 @@ envProcess.env = {
   NODE_ENV: "development",
   VERCEL_ENV: "production",
   STRIPE_FORCE_TEST_MODE: "true",
-  STRIPE_TEST_SECRET_KEY: "sk_test_vercel_production_must_reject",
+  STRIPE_TEST_SECRET_KEY: "sk_test_sentinel_vercel_production_must_reject",
 };
 assert.equal(envModule.getStripeEnv(), null, "Vercel production accepted forced Stripe test mode");
 envProcess.env = {
@@ -262,7 +262,7 @@ envProcess.env = {
   NODE_ENV: "production",
   DEALFLOW_DEPLOYMENT_TARGET: "staging",
   STRIPE_FORCE_TEST_MODE: "true",
-  STRIPE_TEST_SECRET_KEY: "rk_test_production_build_staging_fixture",
+  STRIPE_TEST_SECRET_KEY: "rk_test_sentinel_production_build_staging_fixture",
 };
 assert.equal(
   envModule.getStripeEnv().mode,
@@ -273,7 +273,7 @@ envProcess.env = {
   ...stripeCommonEnv,
   NODE_ENV: "production",
   STRIPE_FORCE_TEST_MODE: "true",
-  STRIPE_TEST_SECRET_KEY: "rk_test_unknown_target_must_reject",
+  STRIPE_TEST_SECRET_KEY: "rk_test_sentinel_unknown_target_must_reject",
 };
 assert.equal(
   envModule.getStripeEnv(),
@@ -295,7 +295,7 @@ assert.equal(envModule.getStripeAccessKeyPrefix(), null);
 envProcess.env = {
   ...stripeCommonEnv,
   NODE_ENV: "development",
-  STRIPE_SECRET_KEY: "sk_test_implicit_mode_must_reject",
+  STRIPE_SECRET_KEY: "sk_test_sentinel_implicit_mode_must_reject",
 };
 assert.equal(envModule.getStripeEnv(), null, "implicit nonproduction Stripe test mode was accepted");
 
@@ -543,7 +543,9 @@ for (const flag of [
 assert.equal(envValues.get("BILLING_CHECKOUT_SAFE_MODE"), "true");
 assert.equal(envValues.has("QA_AUTH_HARNESS_PRODUCTION_ENABLED"), false);
 assert.equal(envValues.get("GHL_IFRAME_EMBED_ENABLED"), "false");
-assert.equal(envValues.get("GHL_IFRAME_ALLOWED_FRAME_ANCESTORS"), "");
+assert.equal(envValues.get("GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS"), "false");
+assert.equal(envValues.get("GHL_IFRAME_PARTNER_PARENT_ORIGINS_JSON"), "{}");
+assert.equal(envValues.get("GHL_APP_SHARED_SECRET"), "");
 assert.equal(envValues.get("PUBLIC_CLIENT_ERROR_TELEMETRY_ENABLED"), "false");
 assert.equal(envValues.get("QA_ISOLATED_SUPABASE_PROJECT_REF"), "");
 assert.equal(envValues.get("LOAD_TEST_ISOLATED_SUPABASE_PROJECT_REF"), "");
@@ -583,6 +585,7 @@ const acceptedLoopback = spawnSync(process.execPath, ["scripts/load-test.mjs", "
   encoding: "utf8",
   env: { ...process.env, LOAD_BASE_URL: "http://127.0.0.1:39999", LOAD_REQUESTS: "0" },
 });
-assert.equal(acceptedLoopback.status, 0, acceptedLoopback.stderr);
+assert.equal(acceptedLoopback.status, 1);
+assert.match(acceptedLoopback.stderr, /exact zero-external-effects load attestation is required/);
 
 console.log("PASS security/config truth tranche");

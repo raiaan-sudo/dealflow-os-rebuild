@@ -740,7 +740,14 @@ const leadHandlerSource = fs.readFileSync(
 assert.match(leadHandlerSource, /\.select\("id, owner_id, user_id, organization_id"\)/);
 assert.match(leadHandlerSource, /campaign_workspace_ambiguous/);
 assert.match(leadHandlerSource, /getAppContext\(\)/);
-assert.match(leadHandlerSource, /sideEffectJob = await queueLeadSideEffectsJob/);
-assert.match(leadHandlerSource, /sideEffectJobId: sideEffectJob\.id/);
+assert.match(leadHandlerSource, /createPublicLeadAndQueueSideEffectsAtomically/);
+assert.match(leadHandlerSource, /"capture_public_lead_with_side_effects_v1"/);
+assert.match(leadHandlerSource, /atomic_public_lead_capture_receipt_invalid/);
+assert.match(leadHandlerSource, /sideEffectJobId: atomicCapture\.sideEffectJob\.id/);
+assert.doesNotMatch(
+  leadHandlerSource,
+  /sideEffectJob = await queueLeadSideEffectsJob/,
+  "public lead retry must not split lead persistence from its durable side-effect job",
+);
 
 console.log("Reliability wave deterministic no-network tests passed.");

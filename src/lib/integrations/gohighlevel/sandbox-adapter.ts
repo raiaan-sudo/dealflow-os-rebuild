@@ -1,4 +1,10 @@
+import { createHash } from "node:crypto";
 import type {
+  GhlInboundFormSubmission,
+  GhlInboundFormSubmissionsReadAdapter,
+  GhlInboundFormSubmissionsReadResult,
+  GhlPeriodicFormSweepReadAdapter,
+  GhlPeriodicFormSweepReadResult,
   GhlLeadProviderAdapter,
   GhlLeadProviderResult,
   GhlPersonalizationProviderAdapter,
@@ -18,6 +24,7 @@ import {
 import { GhlHttpClient, GhlHttpTransportError, type GhlHttpResponse } from "./http-client";
 import { assertGhlSandboxAllowed, type GhlSandboxGateInput } from "./sandbox-gate";
 import { assertGhlProductionAllowed, type GhlProductionGateInput } from "./production-gate";
+import { isExactGhlLocationCreateContract } from "./snapshot-create-contract";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -51,17 +58,221 @@ function normalizedKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+function boundedOptionalString(value: unknown, maxLength: number) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized.length <= maxLength ? normalized : null;
+}
+
+function boundedHttpUrl(value: unknown) {
+  const candidate = boundedOptionalString(value, 2_048);
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function pageAttribution(pageUrl: string | null) {
+  if (!pageUrl) {
+    return { utmSource: null, utmMedium: null, utmCampaign: null, adId: null };
+  }
+  const url = new URL(pageUrl);
+  const parameter = (names: string[], maximum: number) => {
+    for (const name of names) {
+      const value = boundedOptionalString(url.searchParams.get(name), maximum);
+      if (value) return value;
+    }
+    return null;
+  };
+  return {
+    utmSource: parameter(["utm_source"], 500),
+    utmMedium: parameter(["utm_medium"], 500),
+    utmCampaign: parameter(["utm_campaign"], 500),
+    adId: parameter(["ad_id", "adId", "adid"], 180),
+  };
+}
+
+function strictIsoTimestamp(value: unknown) {
+  if (typeof value !== "string" || value.length > 64) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+}
+
+function expandedDateOnly(value: string, dayOffset: number) {
+  const timestamp = strictIsoTimestamp(value);
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+}
+
+function boundedQualificationFields(others: JsonRecord, allowedFieldIds: ReadonlySet<string>) {
+  const ignored = new Set(["eventData", "fieldsOriSequance"]);
+  const entries = Object.entries(others)
+    .filter(([id]) => !ignored.has(id) && allowedFieldIds.has(id))
+    .sort(([left], [right]) => left.localeCompare(right));
+  if (entries.length > 100) return null;
+  const fields: GhlInboundFormSubmission["qualification"]["fields"] = [];
+  for (const [rawId, value] of entries) {
+    const id = rawId.trim();
+    if (!id || id.length > 180 || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
+    if (typeof value === "string") {
+      if (value.length > 500) return null;
+      fields.push({ id, value });
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      fields.push({ id, value });
+    } else if (typeof value === "boolean") {
+      fields.push({ id, value });
+    } else if (value !== null && value !== undefined) {
+      return null;
+    }
+  }
+  return fields;
+}
+
+function parseInboundFormSubmission(
+  value: unknown,
+  allowedFieldIds: ReadonlySet<string>,
+): GhlInboundFormSubmission | null {
+  const submission = asRecord(value);
+  const providerSubmissionId = safeProviderId(submission.id);
+  const providerFormId = safeProviderId(submission.formId);
+  const providerContactId = safeProviderId(submission.contactId);
+  const submittedAt = strictIsoTimestamp(submission.createdAt);
+  if (!providerSubmissionId || !providerFormId || !providerContactId || !submittedAt) return null;
+
+  const others = asRecord(submission.others);
+  const qualificationFields = boundedQualificationFields(others, allowedFieldIds);
+  if (!qualificationFields) return null;
+  const eventData = asRecord(others.eventData ?? submission.eventData);
+  const page = asRecord(eventData.page);
+  const pageUrl = boundedHttpUrl(page.url);
+  const urlAttribution = pageAttribution(pageUrl);
+  const attribution = {
+    fbc: boundedOptionalString(eventData.fbc, 500),
+    fbp: boundedOptionalString(eventData.fbp, 500),
+    pageUrl,
+    referrer: boundedHttpUrl(eventData.referrer),
+    adSource: boundedOptionalString(eventData.adSource, 500),
+    source: boundedOptionalString(eventData.source, 500),
+    medium: boundedOptionalString(eventData.medium, 500),
+    ...urlAttribution,
+  };
+
+  const normalized: Omit<GhlInboundFormSubmission, "submissionFingerprint"> = {
+    providerSubmissionId,
+    providerFormId,
+    providerContactId,
+    submittedAt,
+    name: boundedOptionalString(submission.name, 500),
+    firstName: boundedOptionalString(submission.firstName ?? others.first_name, 250),
+    lastName: boundedOptionalString(submission.lastName ?? others.last_name, 250),
+    email: boundedOptionalString(submission.email, 500),
+    phone: boundedOptionalString(submission.phone ?? others.phone, 100),
+    qualification: { fields: qualificationFields },
+    attribution,
+  };
+  return {
+    ...normalized,
+    submissionFingerprint: createHash("sha256")
+      .update(JSON.stringify(normalized))
+      .digest("hex"),
+  };
+}
+
+function formReadFailure(
+  response: GhlHttpResponse,
+  codePrefix: string,
+): Exclude<GhlInboundFormSubmissionsReadResult, { outcome: "succeeded" }> {
+  const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+  return {
+    outcome: retryable ? "retryable_failure" : "operator_action_required",
+    errorCode: `${codePrefix}_${response.status}`,
+    safeMessage: retryable
+      ? "The GHL forms provider is temporarily unavailable or rate limited."
+      : "The GHL forms provider rejected the bounded read-only request.",
+    providerRequestId: response.providerRequestId,
+    responseFingerprint: response.responseFingerprint,
+    ...(response.retryAfterMs === null ? {} : { retryAfterMs: response.retryAfterMs }),
+    providerMutationAttempted: false,
+  };
+}
+
+function formReadTransportFailure(
+  error: unknown,
+): Exclude<GhlInboundFormSubmissionsReadResult, { outcome: "succeeded" }> {
+  if (error instanceof GhlCredentialResolutionError) {
+    return {
+      outcome: "operator_action_required",
+      errorCode: error.code,
+      safeMessage: error.message,
+      providerRequestId: null,
+      responseFingerprint: null,
+      providerMutationAttempted: false,
+    };
+  }
+  if (error instanceof GhlHttpTransportError) {
+    return {
+      outcome: "retryable_failure",
+      errorCode: `ghl_form_submissions_${error.code}`,
+      safeMessage: error.message,
+      providerRequestId: null,
+      responseFingerprint: null,
+      providerMutationAttempted: false,
+    };
+  }
+  return {
+    outcome: "operator_action_required",
+    errorCode: "ghl_form_submissions_unexpected_response",
+    safeMessage: "The GHL forms provider returned an unexpected read-only result.",
+    providerRequestId: null,
+    responseFingerprint: null,
+    providerMutationAttempted: false,
+  };
+}
+
 function requestFailure(
   response: GhlHttpResponse,
   prefix: string,
 ): Extract<GhlLeadProviderResult, { outcome: Exclude<GhlLeadProviderResult["outcome"], "succeeded"> }> {
-  const retryable = response.status === 429 || response.status >= 500;
+  const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
   return {
     outcome: retryable ? "retryable_failure" : "operator_action_required",
     errorCode: `${prefix}_${response.status}`,
     safeMessage: retryable
       ? "The GHL provider is temporarily unavailable or rate limited."
       : "The GHL provider rejected the bounded request.",
+    providerRequestId: response.providerRequestId,
+    httpStatus: response.status,
+    responseFingerprint: response.responseFingerprint,
+    ...(response.retryAfterMs === null ? {} : { retryAfterMs: response.retryAfterMs }),
+    providerMutationAttempted: true,
+  };
+}
+
+/**
+ * A dispatched provider write is ambiguous whenever the remote side could
+ * have committed it before returning a timeout, rate limit, or server error.
+ * Those responses must be reconciled by durable provider identity; blindly
+ * replaying them can duplicate contacts, opportunities, appointments, or
+ * other side effects.
+ */
+function writeFailure(
+  response: GhlHttpResponse,
+  prefix: string,
+): Extract<GhlLeadProviderResult, { outcome: Exclude<GhlLeadProviderResult["outcome"], "succeeded"> }> {
+  const uncertain = response.status === 408 || response.status === 429 || response.status >= 500;
+  return {
+    outcome: uncertain ? "uncertain" : "operator_action_required",
+    errorCode: `${prefix}_${response.status}`,
+    safeMessage: uncertain
+      ? "The GHL write may have completed, so its provider state must be reconciled before replay."
+      : "The GHL provider rejected the bounded write request.",
     providerRequestId: response.providerRequestId,
     httpStatus: response.status,
     responseFingerprint: response.responseFingerprint,
@@ -118,7 +329,7 @@ export type GhlSandboxAdapterOptions = {
     | { kind: "production"; gate: GhlProductionGateInput };
 };
 
-export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAdapter, GhlPersonalizationProviderAdapter {
+export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAdapter, GhlPersonalizationProviderAdapter, GhlInboundFormSubmissionsReadAdapter, GhlPeriodicFormSweepReadAdapter {
   readonly kind: "sandbox" | "production";
   readonly networkAccess = "https" as const;
   private readonly credentialRef: string;
@@ -166,28 +377,48 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         httpStatus: null,
       };
     }
+    if (
+      input.snapshotManifest.environment !== input.environment
+      || input.snapshotManifest.status !== "approved"
+      || input.snapshotManifest.installationMode !== "preinstalled"
+      || !safeProviderId(input.snapshotManifest.providerSnapshotId)
+      || !isExactGhlLocationCreateContract(input)
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_location_snapshot_contract_mismatch",
+        safeMessage: "GHL location creation requires the exact approved preinstalled snapshot contract.",
+        providerRequestId: null,
+        httpStatus: null,
+      };
+    }
     try {
       const response = await this.withCredential((credential) => this.http.request<JsonRecord>({
         method: "POST",
         path: "/locations/",
         credential,
+        version: "v3",
         retryMode: "no-retry",
         body: {
           companyId: this.companyId,
           name: input.profile.displayName,
           country: input.profile.country,
           timezone: input.profile.timezone,
-          prospectInfo: {
-            source: this.providerEnvironment === "production"
-              ? "DealFlow production"
-              : "DealFlow isolated sandbox",
-            id: input.idempotencyKey,
-          },
+          snapshotId: input.snapshotManifest.providerSnapshotId,
         },
       }));
       if (!response.ok) {
+        if (response.status === 408 || response.status === 429 || response.status >= 500) {
+          return {
+            outcome: "uncertain",
+            errorCode: `ghl_location_create_ambiguous_${response.status}`,
+            safeMessage: "GHL returned a non-conclusive response after location creation was dispatched; reconciliation is required before replay.",
+            providerRequestId: response.providerRequestId,
+            httpStatus: response.status,
+          };
+        }
         const failure = requestFailure(response, "ghl_location_create");
-        return { ...failure, outcome: failure.outcome === "uncertain" ? "retryable_failure" : failure.outcome };
+        return { ...failure, outcome: "operator_action_required" };
       }
       const root = asRecord(response.data);
       const location = asRecord(root.location);
@@ -274,11 +505,25 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
   async getSnapshotStatus(
     input: Parameters<GhlProviderAdapter["getSnapshotStatus"]>[0],
   ): Promise<GhlSnapshotStatusResult> {
+    if (
+      !safeProviderId(input.providerLocationId)
+      || !safeProviderId(input.manifest.providerSnapshotId)
+      || input.manifest.environment !== this.providerEnvironment
+      || input.manifest.status !== "approved"
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_snapshot_status_contract_invalid",
+        safeMessage: "Snapshot status requires exact approved snapshot and sub-account identities.",
+        providerRequestId: null,
+      };
+    }
     try {
       const response = await this.withCredential((credential) => this.http.request<JsonRecord>({
         method: "GET",
         path: `/snapshots/snapshot-status/${encodeURIComponent(input.manifest.providerSnapshotId)}/location/${encodeURIComponent(input.providerLocationId)}`,
         credential,
+        version: "v3",
         retryMode: "safe-read",
       }));
       if (!response.ok) {
@@ -291,22 +536,75 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         };
       }
       const root = asRecord(response.data);
-      const nested = asRecord(root.snapshotPush);
-      const rawStatus = stringValue(root, ["status", "snapshotStatus", "pushStatus"])
-        || stringValue(nested, ["status", "snapshotStatus", "pushStatus"]);
+      const hasDocumentedWrapper = Object.prototype.hasOwnProperty.call(root, "data");
+      const documented = asRecord(root.data);
+      const legacy = asRecord(root.snapshotPush);
+      let providerPushId: string | null = null;
+      let rawStatus = "";
+      if (hasDocumentedWrapper) {
+        providerPushId = safeProviderId(documented.id);
+        const returnedLocationId = safeProviderId(documented.locationId);
+        const completed = documented.completed;
+        const pending = documented.pending;
+        if (
+          !providerPushId
+          || !returnedLocationId
+          || !Array.isArray(completed)
+          || !Array.isArray(pending)
+          || completed.length > 500
+          || pending.length > 500
+          || [...completed, ...pending].some((item) =>
+            typeof item !== "string" || !item.trim() || item.length > 180
+          )
+        ) {
+          return {
+            outcome: "operator_action_required",
+            errorCode: "ghl_snapshot_status_receipt_invalid",
+            safeMessage: "GHL returned a malformed snapshot-push receipt.",
+            providerRequestId: response.providerRequestId,
+          };
+        }
+        if (returnedLocationId !== input.providerLocationId) {
+          return {
+            outcome: "operator_action_required",
+            errorCode: "ghl_snapshot_status_location_mismatch",
+            safeMessage: "GHL returned snapshot status for a different sub-account.",
+            providerRequestId: response.providerRequestId,
+          };
+        }
+        rawStatus = stringValue(documented, ["status"]);
+      } else {
+        const returnedLocationId = stringValue(root, ["locationId"])
+          || stringValue(legacy, ["locationId"]);
+        if (returnedLocationId && (
+          !safeProviderId(returnedLocationId)
+          || returnedLocationId !== input.providerLocationId
+        )) {
+          return {
+            outcome: "operator_action_required",
+            errorCode: "ghl_snapshot_status_location_mismatch",
+            safeMessage: "GHL returned snapshot status for a different sub-account.",
+            providerRequestId: response.providerRequestId,
+          };
+        }
+        rawStatus = stringValue(root, ["status", "snapshotStatus", "pushStatus"])
+          || stringValue(legacy, ["status", "snapshotStatus", "pushStatus"]);
+      }
       const normalized = normalizedKey(rawStatus);
       if (["completed", "complete", "success", "succeeded", "ready"].includes(normalized)) {
         return {
           outcome: "ready",
           providerRequestId: response.providerRequestId ?? `response:${response.responseFingerprint}`,
-          providerReference: `${input.manifest.providerSnapshotId}:${input.providerLocationId}`,
+          providerReference: providerPushId
+            ?? `${input.manifest.providerSnapshotId}:${input.providerLocationId}`,
         };
       }
       if (["pending", "processing", "queued", "in-progress", "started"].includes(normalized)) {
         return {
           outcome: "pending",
           providerRequestId: response.providerRequestId ?? `response:${response.responseFingerprint}`,
-          providerReference: `${input.manifest.providerSnapshotId}:${input.providerLocationId}`,
+          providerReference: providerPushId
+            ?? `${input.manifest.providerSnapshotId}:${input.providerLocationId}`,
         };
       }
       return {
@@ -425,7 +723,7 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         retryMode: "no-retry",
         ...(input.body ? { body: input.body } : {}),
       }));
-      if (!response.ok) return requestFailure(response, input.errorPrefix);
+      if (!response.ok) return writeFailure(response, input.errorPrefix);
       const reference = input.providerReference(asRecord(response.data));
       if (!reference) {
         return {
@@ -541,6 +839,7 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         providerMutationAttempted: false,
       };
     }
+    let mutationAttempted = false;
     try {
       return await this.withCredential(async (credential) => {
         const listed = await this.http.request<JsonRecord>({
@@ -557,7 +856,6 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         const references: string[] = [];
         let lastRequestId = listed.providerRequestId;
         let lastFingerprint = listed.responseFingerprint;
-        let mutationAttempted = false;
         for (const [rawName, value] of entries) {
           const name = rawName.trim();
           const existing = existingRows.find((candidate) => stringValue(candidate, ["name"]) === name);
@@ -579,7 +877,7 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
           lastRequestId = response.providerRequestId ?? lastRequestId;
           lastFingerprint = response.responseFingerprint;
           if (!response.ok) {
-            const failure = requestFailure(response, "ghl_custom_value_write");
+            const failure = writeFailure(response, "ghl_custom_value_write");
             return { ...failure, responseFingerprint: response.responseFingerprint, providerMutationAttempted: true };
           }
           const responseBody = asRecord(response.data);
@@ -606,7 +904,7 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
       });
     } catch (error) {
       const failure = transportFailure(error, "ghl_custom_values");
-      return { ...failure, providerMutationAttempted: true };
+      return { ...failure, providerMutationAttempted: mutationAttempted };
     }
   }
 
@@ -614,31 +912,589 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
     providerLocationId: string;
     requiredFormIds: string[];
   }): Promise<GhlPersonalizationResult> {
-    if (input.requiredFormIds.length === 0 || input.requiredFormIds.some((id) => !safeProviderId(id))) {
+    const requiredFormIds = input.requiredFormIds.map((id) => id.trim());
+    if (
+      !safeProviderId(input.providerLocationId)
+      || requiredFormIds.length === 0
+      || requiredFormIds.length > 25
+      || new Set(requiredFormIds).size !== requiredFormIds.length
+      || requiredFormIds.some((id) => !safeProviderId(id))
+    ) {
       return { outcome: "operator_action_required", errorCode: "ghl_required_forms_invalid", safeMessage: "Exact preinstalled GHL form IDs are required.", providerRequestId: null, responseFingerprint: null, providerMutationAttempted: false };
     }
     try {
       return await this.withCredential(async (credential) => {
-        const response = await this.http.request<JsonRecord>({
-          method: "GET",
-          path: `/forms/?locationId=${encodeURIComponent(input.providerLocationId)}`,
-          credential,
-          retryMode: "safe-read",
-        });
-        if (!response.ok) {
-          const failure = requestFailure(response, "ghl_forms_verify");
-          return { ...failure, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+        const pageSize = 50;
+        const maximumForms = 1_000;
+        const maximumPages = maximumForms / pageSize;
+        const observed = new Set<string>();
+        const evidence: Array<{ skip: number; count: number; fingerprint: string }> = [];
+        let expectedTotal: number | null = null;
+        let skip = 0;
+        let lastRequestId: string | null = null;
+        for (let page = 0; page < maximumPages; page += 1) {
+          const parameters = new URLSearchParams({
+            locationId: input.providerLocationId,
+            skip: String(skip),
+            limit: String(pageSize),
+          });
+          const response = await this.http.request<JsonRecord>({
+            method: "GET",
+            path: `/forms/?${parameters.toString()}`,
+            credential,
+            version: "v3",
+            retryMode: "safe-read",
+          });
+          lastRequestId = response.providerRequestId ?? lastRequestId;
+          if (!response.ok) {
+            const failure = requestFailure(response, "ghl_forms_verify");
+            return { ...failure, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+          }
+          const root = asRecord(response.data);
+          const rows = root.forms;
+          const total = root.total;
+          if (
+            !Array.isArray(rows)
+            || !Number.isInteger(total)
+            || (total as number) < 0
+            || (total as number) > maximumForms
+            || rows.length > pageSize
+            || (expectedTotal !== null && total !== expectedTotal)
+            || skip + rows.length > (total as number)
+          ) {
+            return { outcome: "operator_action_required", errorCode: "ghl_forms_page_contract_invalid", safeMessage: "GHL returned an inconsistent or unbounded forms page.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+          }
+          expectedTotal = total as number;
+          if (skip < expectedTotal && rows.length === 0) {
+            return { outcome: "operator_action_required", errorCode: "ghl_forms_pagination_nonprogress", safeMessage: "GHL forms pagination stopped before the declared total.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+          }
+          for (const rawRow of rows) {
+            const row = asRecord(rawRow);
+            const formId = safeProviderId(row.id);
+            const locationId = safeProviderId(row.locationId);
+            if (!formId || !locationId) {
+              return { outcome: "operator_action_required", errorCode: "ghl_form_identity_invalid", safeMessage: "GHL returned a form without stable tenant identity.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+            }
+            if (locationId !== input.providerLocationId) {
+              return { outcome: "operator_action_required", errorCode: "ghl_form_location_mismatch", safeMessage: "GHL returned a form from a different sub-account.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+            }
+            if (observed.has(formId)) {
+              return { outcome: "operator_action_required", errorCode: "ghl_form_identity_duplicate", safeMessage: "GHL returned one form identity more than once across pagination.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+            }
+            observed.add(formId);
+          }
+          evidence.push({ skip, count: rows.length, fingerprint: response.responseFingerprint });
+          skip += rows.length;
+          if (skip === expectedTotal) break;
         }
-        const observed = new Set(asRows(response.data, ["forms"]).map((item) => safeProviderId(item.id)).filter(Boolean));
-        const missing = input.requiredFormIds.filter((id) => !observed.has(id));
+        if (expectedTotal === null || skip !== expectedTotal) {
+          return { outcome: "operator_action_required", errorCode: "ghl_forms_pagination_limit_reached", safeMessage: "GHL forms exceeded the bounded verification window.", providerRequestId: lastRequestId, responseFingerprint: createHash("sha256").update(JSON.stringify(evidence)).digest("hex"), providerMutationAttempted: false };
+        }
+        const missing = requiredFormIds.filter((id) => !observed.has(id));
+        const responseFingerprint = createHash("sha256")
+          .update(JSON.stringify(evidence))
+          .digest("hex");
         if (missing.length > 0) {
-          return { outcome: "operator_action_required", errorCode: "ghl_preinstalled_forms_missing", safeMessage: "One or more exact preinstalled GHL forms are missing.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+          return { outcome: "operator_action_required", errorCode: "ghl_preinstalled_forms_missing", safeMessage: "One or more exact preinstalled GHL forms are missing.", providerRequestId: lastRequestId, responseFingerprint, providerMutationAttempted: false };
         }
-        return { outcome: "succeeded", verifiedReferences: [...input.requiredFormIds], providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+        return { outcome: "succeeded", verifiedReferences: [...requiredFormIds], providerRequestId: lastRequestId, responseFingerprint, providerMutationAttempted: false };
       });
     } catch (error) {
       const failure = transportFailure(error, "ghl_forms_verify");
       return { ...failure, providerMutationAttempted: false };
+    }
+  }
+
+  /**
+   * Proves the credential is accepted by the exact submissions endpoint, not
+   * merely the form-definition endpoint. The impossible probe identity and
+   * 1970 date fence are intentionally non-customer-bearing. Any returned row
+   * is discarded and fails closed; no response body leaves this method.
+   */
+  async verifyFormSubmissionsReadScope(input: {
+    providerLocationId: string;
+    requiredFormIds: string[];
+  }): Promise<GhlPersonalizationResult> {
+    const formIds = [...new Set(input.requiredFormIds.map((id) => id.trim()))].sort();
+    if (
+      !safeProviderId(input.providerLocationId)
+      || formIds.length === 0
+      || formIds.length > 25
+      || formIds.some((id) => !safeProviderId(id))
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_form_submissions_scope_probe_invalid",
+        safeMessage: "Exact preinstalled GHL form IDs are required for the read-scope probe.",
+        providerRequestId: null,
+        responseFingerprint: null,
+        providerMutationAttempted: false,
+      };
+    }
+    try {
+      return await this.withCredential(async (credential) => {
+        let lastRequestId: string | null = null;
+        let lastFingerprint = "";
+        for (const formId of formIds) {
+          const parameters = new URLSearchParams({
+            locationId: input.providerLocationId,
+            page: "1",
+            limit: "1",
+            formId,
+            q: "dealflow_scope_probe_no_contact_000000000000",
+            startAt: "1970-01-01",
+            endAt: "1970-01-01",
+          });
+          const response = await this.http.request<JsonRecord>({
+            method: "GET",
+            path: `/forms/submissions?${parameters.toString()}`,
+            credential,
+            version: "v3",
+            // The fenced authority command is the retry boundary. One bounded
+            // GET per form avoids an unbounded interactive rotation command.
+            retryMode: "no-retry",
+          });
+          lastRequestId = response.providerRequestId ?? lastRequestId;
+          lastFingerprint = response.responseFingerprint;
+          if (!response.ok) {
+            const failure = requestFailure(response, "ghl_form_submissions_scope_probe");
+            return { ...failure, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+          }
+          const root = asRecord(response.data);
+          const submissions = root.submissions;
+          const meta = asRecord(root.meta);
+          if (
+            !Array.isArray(submissions)
+            || submissions.length !== 0
+            || (meta.nextPage !== null && meta.nextPage !== undefined)
+          ) {
+            return {
+              outcome: "operator_action_required",
+              errorCode: "ghl_form_submissions_scope_probe_unbounded",
+              safeMessage: "The zero-customer GHL submissions scope probe returned unexpected data or pagination.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: false,
+            };
+          }
+        }
+        return {
+          outcome: "succeeded",
+          verifiedReferences: formIds,
+          providerRequestId: lastRequestId,
+          responseFingerprint: lastFingerprint,
+          providerMutationAttempted: false,
+        };
+      });
+    } catch (error) {
+      const failure = transportFailure(error, "ghl_form_submissions_scope_probe");
+      return { ...failure, providerMutationAttempted: false };
+    }
+  }
+
+  async readFormSubmissions(input: {
+    providerLocationId: string;
+    providerContactId: string;
+    requiredFormIds: string[];
+    allowedFieldIds: string[];
+    windowStart: string;
+    windowEnd: string;
+    limitPerForm?: number;
+  }): Promise<GhlInboundFormSubmissionsReadResult> {
+    const uniqueFormIds = [...new Set(input.requiredFormIds.map((id) => id.trim()))].sort();
+    const uniqueAllowedFieldIds = [...new Set(input.allowedFieldIds.map((id) => id.trim()))].sort();
+    const allowedFieldIds = new Set(uniqueAllowedFieldIds);
+    // GHL's provider-side date filters are day-only and can be interpreted in
+    // the location timezone. Expand one UTC day on both sides, then apply the
+    // exact ISO window to every normalized row below.
+    const startAt = expandedDateOnly(input.windowStart, -1);
+    const endAt = expandedDateOnly(input.windowEnd, 1);
+    const limit = Math.min(Math.max(input.limitPerForm ?? 20, 1), 20);
+    const exactWindowMs = Date.parse(input.windowEnd) - Date.parse(input.windowStart);
+    if (
+      !safeProviderId(input.providerLocationId)
+      || !safeProviderId(input.providerContactId)
+      || uniqueFormIds.length === 0
+      || uniqueFormIds.length > 25
+      || uniqueFormIds.some((id) => !safeProviderId(id))
+      || uniqueAllowedFieldIds.length > 125
+      || uniqueAllowedFieldIds.some((id) => !/^[A-Za-z0-9_-]{3,180}$/.test(id))
+      || !startAt
+      || !endAt
+      || !Number.isFinite(exactWindowMs)
+      || exactWindowMs < 0
+      || exactWindowMs > 48 * 60 * 60 * 1_000
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_form_submissions_read_contract_invalid",
+        safeMessage: "The bounded GHL form-submission read contract is invalid.",
+        providerRequestId: null,
+        responseFingerprint: null,
+        providerMutationAttempted: false,
+      };
+    }
+
+    try {
+      return await this.withCredential(async (credential) => {
+        const submissions = new Map<string, GhlInboundFormSubmission>();
+        const evidence: Array<{ formId: string; providerRequestId: string | null; fingerprint: string }> = [];
+        for (const formId of uniqueFormIds) {
+          const parameters = new URLSearchParams({
+            locationId: input.providerLocationId,
+            page: "1",
+            limit: String(limit),
+            formId,
+            q: input.providerContactId,
+            startAt,
+            endAt,
+          });
+          const response = await this.http.request<JsonRecord>({
+            method: "GET",
+            path: `/forms/submissions?${parameters.toString()}`,
+            credential,
+            version: "v3",
+            // Reconciliation itself is the durable retry boundary. Retrying
+            // each of up to 25 form reads inside one system-job invocation can
+            // starve every later stage, so each GET gets one bounded attempt.
+            retryMode: "no-retry",
+          });
+          if (!response.ok) return formReadFailure(response, "ghl_form_submissions_read");
+          const root = asRecord(response.data);
+          if (!Array.isArray(root.submissions)) {
+            return {
+              outcome: "operator_action_required" as const,
+              errorCode: "ghl_form_submissions_response_invalid",
+              safeMessage: "GHL returned a malformed form-submission response.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: false as const,
+            };
+          }
+          const meta = asRecord(root.meta);
+          if (
+            (meta.nextPage !== null && meta.nextPage !== undefined)
+            || (meta.nextPage === undefined && root.submissions.length >= limit)
+          ) {
+            return {
+              outcome: "operator_action_required" as const,
+              errorCode: "ghl_form_submissions_result_truncated",
+              safeMessage: "The bounded GHL form-submission result requires operator reconciliation.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: false as const,
+            };
+          }
+          for (const candidate of root.submissions) {
+            const parsed = parseInboundFormSubmission(candidate, allowedFieldIds);
+            if (!parsed) {
+              return {
+                outcome: "operator_action_required" as const,
+                errorCode: "ghl_form_submission_row_invalid",
+                safeMessage: "GHL returned a form submission without stable routing identity.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            if (parsed.providerFormId !== formId) {
+              return {
+                outcome: "operator_action_required" as const,
+                errorCode: "ghl_form_submission_form_scope_mismatch",
+                safeMessage: "GHL returned a form submission outside the exact requested form scope.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            if (
+              parsed.providerContactId !== input.providerContactId
+              || Date.parse(parsed.submittedAt) < Date.parse(input.windowStart)
+              || Date.parse(parsed.submittedAt) > Date.parse(input.windowEnd)
+            ) {
+              // q and day-level date filters are provider-side fuzzy filters.
+              // Only exact contact and timestamp evidence may leave the adapter.
+              continue;
+            }
+            const prior = submissions.get(parsed.providerSubmissionId);
+            if (prior && JSON.stringify(prior) !== JSON.stringify(parsed)) {
+              return {
+                outcome: "operator_action_required" as const,
+                errorCode: "ghl_form_submission_identity_conflict",
+                safeMessage: "GHL returned conflicting rows for one stable submission identity.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            submissions.set(parsed.providerSubmissionId, parsed);
+          }
+          evidence.push({
+            formId,
+            providerRequestId: response.providerRequestId,
+            fingerprint: response.responseFingerprint,
+          });
+        }
+        return {
+          outcome: "succeeded" as const,
+          submissions: [...submissions.values()].sort((left, right) =>
+            left.submittedAt.localeCompare(right.submittedAt)
+              || left.providerSubmissionId.localeCompare(right.providerSubmissionId)
+          ),
+          providerRequestIds: evidence.flatMap((item) => item.providerRequestId ? [item.providerRequestId] : []),
+          responseFingerprint: createHash("sha256").update(JSON.stringify(evidence)).digest("hex"),
+          requestCount: evidence.length,
+          providerMutationAttempted: false as const,
+        };
+      });
+    } catch (error) {
+      return formReadTransportFailure(error);
+    }
+  }
+
+  async readPeriodicFormSubmissionWindow(input: {
+    providerLocationId: string;
+    providerFormId: string;
+    allowedFieldIds: string[];
+    windowStart: string;
+    windowEnd: string;
+    maxPages?: number;
+    maxSubmissions?: number;
+  }): Promise<GhlPeriodicFormSweepReadResult> {
+    const providerLocationId = input.providerLocationId.trim();
+    const providerFormId = input.providerFormId.trim();
+    const uniqueAllowedFieldIds = [...new Set(input.allowedFieldIds.map((id) => id.trim()))].sort();
+    const allowedFieldIds = new Set(uniqueAllowedFieldIds);
+    const windowStartMs = Date.parse(input.windowStart);
+    const windowEndMs = Date.parse(input.windowEnd);
+    const startAt = expandedDateOnly(input.windowStart, -1);
+    const endAt = expandedDateOnly(input.windowEnd, 1);
+    // Ten full pages is the hard per-cursor wall-time boundary (at the shared
+    // 3s HTTP timeout: <=30s before application overhead). Higher-volume
+    // provider-day results fail closed without cursor advancement and require
+    // an operator-approved provider-supported partition strategy.
+    const maxPages = Math.min(Math.max(input.maxPages ?? 10, 1), 10);
+    const maxSubmissions = Math.min(Math.max(input.maxSubmissions ?? 1_000, 1), 1_000);
+    if (
+      !safeProviderId(providerLocationId)
+      || !safeProviderId(providerFormId)
+      || uniqueAllowedFieldIds.length > 125
+      || uniqueAllowedFieldIds.some((id) => !/^[A-Za-z0-9_-]{3,180}$/.test(id))
+      || !startAt
+      || !endAt
+      || !Number.isFinite(windowStartMs)
+      || !Number.isFinite(windowEndMs)
+      || windowEndMs <= windowStartMs
+      || windowEndMs - windowStartMs > 48 * 60 * 60 * 1_000
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_periodic_form_sweep_read_contract_invalid",
+        safeMessage: "The bounded GHL periodic form-submission read contract is invalid.",
+        providerRequestId: null,
+        responseFingerprint: null,
+        providerMutationAttempted: false,
+      };
+    }
+
+    try {
+      return await this.withCredential(async (credential) => {
+        const submissions: GhlInboundFormSubmission[] = [];
+        const seen = new Map<string, string>();
+        const providerRequestIds: string[] = [];
+        const responseEvidence: Array<{ page: number; fingerprint: string; requestId: string | null }> = [];
+        let fetchedRowCount = 0;
+        let expectedTotal: number | null = null;
+        let expectedPageCount: number | null = null;
+
+        for (let page = 1; page <= maxPages; page += 1) {
+          const parameters = new URLSearchParams({
+            locationId: providerLocationId,
+            page: String(page),
+            limit: "100",
+            formId: providerFormId,
+            startAt,
+            endAt,
+          });
+          const response = await this.http.request<JsonRecord>({
+            method: "GET",
+            path: `/forms/submissions?${parameters.toString()}`,
+            credential,
+            version: "v3",
+            retryMode: "no-retry",
+          });
+          if (!response.ok) return formReadFailure(response, "ghl_periodic_form_sweep_read");
+          const root = asRecord(response.data);
+          const rows = root.submissions;
+          const meta = asRecord(root.meta);
+          const total = meta.total;
+          const currentPage = meta.currentPage;
+          const nextPage = meta.nextPage;
+          const prevPage = meta.prevPage;
+          if (
+            !Array.isArray(rows)
+            || !Number.isSafeInteger(total)
+            || (total as number) < 0
+            || !Number.isSafeInteger(currentPage)
+            || currentPage !== page
+            || !(
+              nextPage === null
+              || (Number.isSafeInteger(nextPage) && (nextPage as number) > 0)
+            )
+            || !(
+              prevPage === null
+              || (Number.isSafeInteger(prevPage) && (prevPage as number) > 0)
+            )
+          ) {
+            return {
+              outcome: "operator_action_required" as const,
+              errorCode: "ghl_periodic_form_sweep_pagination_meta_invalid",
+              safeMessage: "GHL returned malformed periodic form-submission pagination metadata.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: false as const,
+            };
+          }
+          const pageTotal = total as number;
+          const pageCount = Math.max(1, Math.ceil(pageTotal / 100));
+          const expectedPrevious = page === 1 ? null : page - 1;
+          const expectedNext = page < pageCount ? page + 1 : null;
+          const expectedRows = page < pageCount ? 100 : Math.max(pageTotal - ((page - 1) * 100), 0);
+          if (
+            (expectedTotal !== null && pageTotal !== expectedTotal)
+            || (expectedPageCount !== null && pageCount !== expectedPageCount)
+            || prevPage !== expectedPrevious
+            || nextPage !== expectedNext
+            || rows.length !== expectedRows
+          ) {
+            return {
+              outcome: "retryable_failure" as const,
+              errorCode: "ghl_periodic_form_sweep_pagination_unstable",
+              safeMessage: "GHL changed the live form-submission result while it was being paged; the closed window will be retried without advancing its cursor.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: false as const,
+            };
+          }
+          expectedTotal ??= pageTotal;
+          expectedPageCount ??= pageCount;
+          if (pageCount > maxPages || pageTotal > maxSubmissions) {
+            return {
+              outcome: "operator_action_required" as const,
+              errorCode: "ghl_periodic_form_sweep_work_cap_exceeded",
+              safeMessage: "The periodic GHL form-submission window exceeds its bounded work cap.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: false as const,
+            };
+          }
+
+          for (const candidate of rows) {
+            const raw = asRecord(candidate);
+            if (
+              (raw.locationId !== undefined && raw.locationId !== providerLocationId)
+              || (raw.location_id !== undefined && raw.location_id !== providerLocationId)
+            ) {
+              return {
+                outcome: "operator_action_required" as const,
+                errorCode: "ghl_periodic_form_sweep_location_scope_mismatch",
+                safeMessage: "GHL returned a form submission outside the exact requested location scope.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            const parsed = parseInboundFormSubmission(candidate, allowedFieldIds);
+            if (!parsed) {
+              return {
+                outcome: "operator_action_required" as const,
+                errorCode: "ghl_periodic_form_sweep_row_invalid",
+                safeMessage: "GHL returned a malformed periodic form-submission row.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            if (parsed.providerFormId !== providerFormId) {
+              return {
+                outcome: "operator_action_required" as const,
+                errorCode: "ghl_periodic_form_sweep_row_scope_mismatch",
+                safeMessage: "GHL returned a successful row outside the exact periodic sweep scope.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            if (seen.has(parsed.providerSubmissionId)) {
+              const identical = seen.get(parsed.providerSubmissionId) === parsed.submissionFingerprint;
+              return {
+                outcome: identical ? "retryable_failure" as const : "operator_action_required" as const,
+                errorCode: identical
+                  ? "ghl_periodic_form_sweep_duplicate_submission"
+                  : "ghl_periodic_form_sweep_submission_identity_conflict",
+                safeMessage: identical
+                  ? "GHL pagination shifted while the live submission result was being read; the closed window will be retried without cursor advancement."
+                  : "GHL returned conflicting data for one stable submission identity.",
+                providerRequestId: response.providerRequestId,
+                responseFingerprint: response.responseFingerprint,
+                providerMutationAttempted: false as const,
+              };
+            }
+            seen.set(parsed.providerSubmissionId, parsed.submissionFingerprint);
+            fetchedRowCount += 1;
+            // startAt/endAt are provider day-only filters and are deliberately
+            // expanded. Same-route rows outside the closed ISO window are
+            // expected: validate and deduplicate them above, then locally
+            // retain only [windowStart, windowEnd) for durable enqueue.
+            if (
+              Date.parse(parsed.submittedAt) >= windowStartMs
+              && Date.parse(parsed.submittedAt) < windowEndMs
+            ) submissions.push(parsed);
+          }
+          if (response.providerRequestId) providerRequestIds.push(response.providerRequestId);
+          responseEvidence.push({
+            page,
+            fingerprint: response.responseFingerprint,
+            requestId: response.providerRequestId,
+          });
+          if (nextPage === null) break;
+        }
+
+        if (expectedTotal === null || expectedPageCount === null || fetchedRowCount !== expectedTotal) {
+          return {
+            outcome: "retryable_failure" as const,
+            errorCode: "ghl_periodic_form_sweep_result_incomplete",
+            safeMessage: "The live GHL form-submission result shifted before pagination completed; the closed window will be retried without cursor advancement.",
+            providerRequestId: providerRequestIds.at(-1) ?? null,
+            responseFingerprint: responseEvidence.at(-1)?.fingerprint ?? null,
+            providerMutationAttempted: false as const,
+          };
+        }
+        const responseFingerprint = createHash("sha256").update(JSON.stringify({
+          providerLocationId,
+          providerFormId,
+          windowStart: new Date(windowStartMs).toISOString(),
+          windowEnd: new Date(windowEndMs).toISOString(),
+          total: expectedTotal,
+          pages: responseEvidence,
+          submissions: submissions.map((submission) => ({
+            id: submission.providerSubmissionId,
+            fingerprint: submission.submissionFingerprint,
+          })),
+        })).digest("hex");
+        return {
+          outcome: "succeeded" as const,
+          submissions,
+          providerRequestIds,
+          responseFingerprint,
+          requestCount: responseEvidence.length,
+          pageCount: expectedPageCount,
+          observedTotal: expectedTotal,
+          providerMutationAttempted: false as const,
+        };
+      });
+    } catch (error) {
+      return formReadTransportFailure(error);
     }
   }
 }

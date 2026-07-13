@@ -3,11 +3,13 @@ import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LaunchSuccessRecheckButton } from "@/components/campaign/launch/launch-success-recheck-button";
+import { MetaActivationCancelButton } from "@/components/campaign/launch/meta-activation-cancel-button";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getMetaConnectionState, getDefaultMetaConnectionState } from "@/lib/integrations/meta/service";
 import { getMetaCampaignSyncSnapshotForCampaign } from "@/lib/services/meta-campaign-sync-service";
 import { getCampaignLaunchRecordForCampaign } from "@/lib/services/campaign-launch-audit-service";
+import { getMetaCampaignActivationAuthorizationStatus } from "@/lib/services/meta-campaign-activation-authority-service";
 import {
   getLaunchTruthPresentation,
   isFreshPausedLaunchConfirmation,
@@ -31,12 +33,21 @@ function buildMetaCampaignLink(metaCampaignId: string | null, adAccountId: strin
   return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?${params.toString()}`;
 }
 
-function currency(value: number) {
+function currencyFromMinorUnits(value: number, currency: "USD" | "CAD") {
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 0,
-  }).format(value);
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value / 100);
+}
+
+function activationStatusLabel(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 type SummaryItem = {
@@ -120,6 +131,9 @@ export default async function LaunchSuccessPage({
   const persistedAdId = plan?.runtime.adId ?? plan?.runtime.metaAdIds?.[0] ?? null;
   const resolvedSavedCampaignId = activeCampaign?.campaignId ?? campaignId ?? null;
   const resolvedCampaignName = plan?.businessName ?? plan?.clientName ?? "Campaign";
+  const activationAuthorization = resolvedSavedCampaignId
+    ? await getMetaCampaignActivationAuthorizationStatus(resolvedSavedCampaignId).catch(() => null)
+    : null;
   const launchReceipt =
     plan && resolvedSavedCampaignId
       ? await getCampaignLaunchRecordForCampaign({
@@ -153,6 +167,7 @@ export default async function LaunchSuccessPage({
   const syncSnapshot =
     plan && resolvedMetaCampaignId
       ? await getMetaCampaignSyncSnapshotForCampaign({
+          campaignId: resolvedSavedCampaignId,
           campaignName: resolvedCampaignName,
           metaCampaignId: resolvedMetaCampaignId,
         }).catch(() => null)
@@ -172,12 +187,23 @@ export default async function LaunchSuccessPage({
     syncedAdStatuses[0] && typeof syncedAdStatuses[0] === "object" && "status" in syncedAdStatuses[0]
       ? String(syncedAdStatuses[0].status ?? "")
       : null;
+  const selectedMetaAccount = metaConnection.availableAccounts.find(
+    (account) =>
+      account.externalAccountId === metaConnection.accountId ||
+      account.id === metaConnection.accountId,
+  );
+  const selectedAccountCurrency = selectedMetaAccount?.currency?.trim().toUpperCase();
+  const supportedCurrency =
+    selectedAccountCurrency === "USD" || selectedAccountCurrency === "CAD"
+      ? selectedAccountCurrency
+      : null;
+  const canonicalDailyBudgetMinor = activeCampaign?.record?.plan.daily_budget_cents ?? null;
   const resolvedBudget =
-    plan?.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
-      ? `${currency(plan.runtime.budgetDailyInput)}/day`
-      : plan?.monthlyBudget && plan.monthlyBudget > 0
-        ? `${currency(plan.monthlyBudget)}/month`
-        : "Budget not recorded";
+    Number.isSafeInteger(canonicalDailyBudgetMinor) &&
+    Number(canonicalDailyBudgetMinor) > 0 &&
+    supportedCurrency
+      ? `${currencyFromMinorUnits(Number(canonicalDailyBudgetMinor), supportedCurrency)} ${supportedCurrency}/day`
+      : "Exact budget unavailable";
   const createdLocally =
     launchReceipt?.resultStatus === "success" &&
     launchReceipt.campaignId === resolvedSavedCampaignId &&
@@ -403,6 +429,33 @@ export default async function LaunchSuccessPage({
               </div>
             ))}
           </div>
+
+          {activationAuthorization ? (
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Activation authorization
+                  </p>
+                  <p className="mt-2 text-sm font-medium">
+                    {activationStatusLabel(activationAuthorization.status)}
+                  </p>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    This is the tenant-scoped customer authorization state. Cancelling it does not
+                    contact Meta and is fenced once activation can no longer be safely stopped.
+                  </p>
+                </div>
+                {(activationAuthorization.status === "authorized" ||
+                  activationAuthorization.status === "finalized") &&
+                resolvedSavedCampaignId ? (
+                  <MetaActivationCancelButton
+                    authorizationId={activationAuthorization.authorizationId}
+                    campaignId={resolvedSavedCampaignId}
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap gap-3 pt-2">
             {launchTruthState === "provider_accepted" || launchTruthState === "provider_confirmed" ? (

@@ -156,6 +156,12 @@ try {
     create extension if not exists pgcrypto;
     create schema if not exists private;
 
+    -- The native disposable adapter intentionally creates the minimum
+    -- auth.users shape. This test exercises the support delivery contract,
+    -- which reads the Supabase email identity, so materialize that exact
+    -- provider-owned column in the isolated fixture.
+    alter table auth.users add column if not exists email text;
+
     do $$
     begin
       if not exists (select 1 from pg_roles where rolname = 'anon') then

@@ -93,9 +93,9 @@ export function buildWinningHeadline(input: WinningFunnelInput) {
   }
 
   if (input.language === "es") {
-    if (input.leadType === "seller") return `Vea cuanto podria valer su propiedad en ${market}`;
+    if (input.leadType === "seller") return `Vea cuánto podría valer su propiedad en ${market}`;
     if (input.leadType === "investor") return `Acceda a oportunidades inmobiliarias en ${market}`;
-    if (input.campaignAngle === "downsizer") return `Listo para simplificar su proxima mudanza en ${market}?`;
+    if (input.campaignAngle === "downsizer") return `¿Listo para simplificar su próxima mudanza en ${market}?`;
     return `${offer} en ${market}`;
   }
 
@@ -119,7 +119,7 @@ export function buildWinningSubheadline(input: WinningFunnelInput) {
   }
 
   if (input.language === "es") {
-    return `Preparamos un siguiente paso personalizado para ${audience} para que pueda avanzar con claridad, confianza y sin presion.`;
+    return `Preparamos un siguiente paso personalizado para ${audience} para que pueda avanzar con claridad, confianza y sin presión.`;
   }
 
   if (input.campaignAngle === "downsizer") {
@@ -167,7 +167,7 @@ export function buildWinningTrustBullets(input: WinningFunnelInput) {
     input.language === "fr"
       ? ["100% gratuit", "Sans obligation", "Options personnalisées", "Conseils locaux"]
       : input.language === "es"
-        ? ["100% gratis", "Sin obligacion", "Opciones personalizadas", "Guia local"]
+        ? ["100% gratis", "Sin obligación", "Opciones personalizadas", "Guía local"]
         : ["100% Free", "No Obligation", "Personalized Options", "Local Guidance"];
 
   return [...input.proofBadges, ...defaults].slice(0, 4);
@@ -183,14 +183,30 @@ export function buildWinningQuizSteps(input: WinningFunnelInput): WinningFunnelQ
         : input.leadType === "commercial"
           ? copy.motivationCommercial
           : copy.motivationBuyer;
-  const motivationOptions =
-    input.leadType === "seller"
-      ? ["Selling soon", "Curious about value", "Relocating", "Need more space", "Downsizing", "Other"]
-      : input.leadType === "investor"
-        ? ["Cash flow", "Off-market deals", "Value-add", "Long-term rental", "Portfolio growth", "Other"]
-        : input.leadType === "commercial"
-          ? ["Lease", "Purchase", "Expansion", "Relocation", "Investment", "Other"]
-          : ["Growing family", "Working from home", "Need more outdoor space", "Investment", "Looking for more storage", "Other"];
+  const localizedOptions = {
+    en: {
+      seller: ["Selling soon", "Curious about value", "Relocating", "Need more space", "Downsizing", "Other"],
+      investor: ["Cash flow", "Off-market deals", "Value-add", "Long-term rental", "Portfolio growth", "Other"],
+      commercial: ["Lease", "Purchase", "Expansion", "Relocation", "Investment", "Other"],
+      buyer: ["Growing family", "Working from home", "Need more outdoor space", "Investment", "Looking for more storage", "Other"],
+      timeline: ["Immediately", "Within 3 months", "3-6 months", "6-12 months", "Not sure yet"],
+    },
+    fr: {
+      seller: ["Vendre bientôt", "Connaître la valeur", "Relocalisation", "Besoin de plus d'espace", "Réduire la taille", "Autre"],
+      investor: ["Flux de trésorerie", "Occasions hors marché", "Valeur ajoutée", "Location à long terme", "Croissance du portefeuille", "Autre"],
+      commercial: ["Location", "Achat", "Expansion", "Relocalisation", "Investissement", "Autre"],
+      buyer: ["Famille grandissante", "Télétravail", "Besoin de plus d'espace extérieur", "Investissement", "Besoin de rangement", "Autre"],
+      timeline: ["Immédiatement", "Dans les 3 mois", "3 à 6 mois", "6 à 12 mois", "Pas encore certain"],
+    },
+    es: {
+      seller: ["Vender pronto", "Conocer el valor", "Reubicación", "Necesita más espacio", "Reducir el espacio", "Otro"],
+      investor: ["Flujo de caja", "Oportunidades fuera del mercado", "Valor agregado", "Alquiler a largo plazo", "Crecimiento de la cartera", "Otro"],
+      commercial: ["Arrendamiento", "Compra", "Expansión", "Reubicación", "Inversión", "Otro"],
+      buyer: ["Familia en crecimiento", "Trabajo desde casa", "Necesita más espacio exterior", "Inversión", "Necesita más almacenamiento", "Otro"],
+      timeline: ["De inmediato", "Dentro de 3 meses", "3 a 6 meses", "6 a 12 meses", "Aún no lo sé"],
+    },
+  }[input.language];
+  const motivationOptions = localizedOptions[input.leadType];
 
   return [
     {
@@ -206,7 +222,7 @@ export function buildWinningQuizSteps(input: WinningFunnelInput): WinningFunnelQ
     {
       id: "timeline",
       question: copy.timeline,
-      options: ["Immediately", "Within 3 months", "3-6 months", "6-12 months", "Not sure yet"],
+      options: localizedOptions.timeline,
     },
     {
       id: "contact",

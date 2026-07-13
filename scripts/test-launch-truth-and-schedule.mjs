@@ -100,18 +100,21 @@ const { getNextEligibleLaunchAt, LAUNCH_TIME_ZONE } = loadTsModule(
   "src/lib/launch-schedule.ts",
   ["getNextEligibleLaunchAt", "LAUNCH_TIME_ZONE"],
 );
+const deploymentTargetExports = loadTsModule(
+  "src/lib/deployment-target.ts",
+  [
+    "getDeploymentTarget",
+    "isExactIsolatedStagingVercelHost",
+    "isExactProductionVercelHost",
+  ],
+);
 const {
   getScheduledLaunchExecutionGate,
   getScheduledLaunchRetryDecision,
   SCHEDULED_META_LAUNCH_EXECUTION_ENV,
-} = loadTsModule(
-  "src/lib/scheduled-launch-gate.ts",
-  [
-    "getScheduledLaunchExecutionGate",
-    "getScheduledLaunchRetryDecision",
-    "SCHEDULED_META_LAUNCH_EXECUTION_ENV",
-  ],
-);
+} = loadTsModuleWithMocks("src/lib/scheduled-launch-gate.ts", {
+  "@/lib/deployment-target": deploymentTargetExports,
+});
 const directIsPausedMetaStatus = loadTsFunction(
   "src/app/api/campaigns/create/route.ts",
   "isPausedMetaStatus",
@@ -277,12 +280,22 @@ const runtimeRouteSource = fs.readFileSync("src/app/api/campaign/runtime/route.t
 const runtimeApiSource = fs.readFileSync("src/components/campaign/launch/launch-runtime-api.ts", "utf8");
 const envExampleSource = fs.readFileSync(".env.example", "utf8");
 assert.match(scheduleRouteSource, /getNextEligibleLaunchAt/);
+assert.match(scheduleRouteSource, /SCHEDULE_AND_AUTHORIZE_META_CAMPAIGN_ACTIVATION/);
+assert.match(scheduleRouteSource, /preauthorizeMetaCampaignActivation/);
+assert.match(scheduleRouteSource, /meta_activation_approval_stale/);
+assert.match(scheduleRouteSource, /customerApprovalDigest/);
 assert.match(scheduleRouteSource, /providerMutationPerformed: false/);
-assert.match(scheduleRouteSource, /status: schedule\.resultStatus/);
-assert.match(scheduleRouteSource, /scheduledFor: schedule\.scheduledFor/);
+assert.match(scheduleRouteSource, /scheduleId: activationAuthorization\.launchRecordId/);
+assert.match(scheduleRouteSource, /status: "scheduled"/);
+assert.match(scheduleRouteSource, /scheduledFor: activationAuthorization\.scheduledFor/);
 assert.match(providerLaunchRouteSource, /assertCampaignLaunchScheduleDue/);
 assert.match(providerLaunchRouteSource, /completedReceipt\.metaCreativeId/);
+assert.match(providerLaunchRouteSource, /getScheduledLaunchExecutionGate/);
+assert.match(providerLaunchRouteSource, /Meta launch execution authorization was withdrawn/);
 assert.match(internalRunnerSource, /processScheduledCampaignLaunchBatch/);
+assert.match(internalRunnerSource, /export const maxDuration = 300/);
+assert.match(internalRunnerSource, /system_jobs_safe_deadline_exhausted/);
+assert.match(internalRunnerSource, /processScheduledCampaignLaunchBatch\(\{ maxClaims: 1 \}\)/);
 assertOrdered(
   providerLaunchRouteSource,
   ["const record = await getCampaignById(id)", "if (!record)", "await assertCampaignCanLaunch(id)"],
@@ -369,18 +382,47 @@ for (const [stage, responseAssignment, failureMarker] of [
 }
 
 assert.equal(SCHEDULED_META_LAUNCH_EXECUTION_ENV, "ALLOW_SCHEDULED_META_LAUNCH_EXECUTION");
+const productionLaunchEnvironment = {
+  NODE_ENV: "production",
+  VERCEL_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "production",
+  VERCEL_PROJECT_ID: "dealflow-production-project",
+  DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: "dealflow-production-project",
+  DEALFLOW_PRODUCTION_HOST_ATTESTATION: "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1",
+  NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
+  META_PRODUCTION_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
+  META_PRODUCTION_PAUSED_LAUNCH_ATTESTATION:
+    "DEALFLOW_META_PAUSED_LAUNCH_PRODUCTION_EXACT_V1",
+  ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "true",
+  ALLOW_META_LIVE_LAUNCH: "true",
+  ALLOW_PRODUCTION_SCHEDULED_META_LAUNCH_EXECUTION: "true",
+};
+const stagingLaunchEnvironment = {
+  NODE_ENV: "production",
+  VERCEL_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "staging",
+  VERCEL_PROJECT_ID: "dealflow-isolated-staging-project",
+  DEALFLOW_STAGING_VERCEL_PROJECT_ID: "dealflow-isolated-staging-project",
+  DEALFLOW_STAGING_HOST_ATTESTATION: "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
+  NEXT_PUBLIC_SUPABASE_URL: "https://qrstabcdefghijklmnop.supabase.co",
+  META_STAGING_ISOLATED_SUPABASE_PROJECT_REF: "qrstabcdefghijklmnop",
+  META_STAGING_ISOLATED_DATABASE: "true",
+  META_STAGING_PAUSED_LAUNCH_ATTESTATION:
+    "DEALFLOW_META_PAUSED_LAUNCH_STAGING_ONLY_V1",
+  ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "true",
+  ALLOW_META_LIVE_LAUNCH: "true",
+  ALLOW_STAGING_SCHEDULED_META_LAUNCH_EXECUTION: "true",
+};
 assertJsonEqual(
   getScheduledLaunchExecutionGate({
-    NODE_ENV: "production",
+    ...productionLaunchEnvironment,
     ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "false",
-    ALLOW_META_LIVE_LAUNCH: "true",
   }),
   { allowed: false, reason: "scheduled_executor_disabled" },
 );
 assertJsonEqual(
   getScheduledLaunchExecutionGate({
-    NODE_ENV: "production",
-    ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "true",
+    ...productionLaunchEnvironment,
     ALLOW_META_LIVE_LAUNCH: "false",
   }),
   { allowed: false, reason: "meta_live_launch_disabled" },
@@ -391,23 +433,50 @@ assertJsonEqual(
     ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "true",
     ALLOW_META_LIVE_LAUNCH: "true",
   }),
-  { allowed: false, reason: "test_environment" },
+  { allowed: false, reason: "unsupported_deployment_target" },
 );
 assertJsonEqual(
   getScheduledLaunchExecutionGate({
-    NODE_ENV: "development",
-    ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "true",
-    ALLOW_META_LIVE_LAUNCH: "true",
+    ...productionLaunchEnvironment,
+    VERCEL_PROJECT_ID: "wrong-production-project",
   }),
-  { allowed: false, reason: "non_production_runtime" },
+  { allowed: false, reason: "production_host_attestation_missing" },
 );
 assertJsonEqual(
-  getScheduledLaunchExecutionGate({
-    NODE_ENV: "production",
-    ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "true",
-    ALLOW_META_LIVE_LAUNCH: "true",
-  }),
+  getScheduledLaunchExecutionGate(productionLaunchEnvironment),
   { allowed: true, reason: null },
+);
+assertJsonEqual(
+  getScheduledLaunchExecutionGate({
+    ...productionLaunchEnvironment,
+    META_PRODUCTION_SUPABASE_PROJECT_REF: "wrongprojectrefvalue",
+  }),
+  { allowed: false, reason: "supabase_project_attestation_missing" },
+);
+assertJsonEqual(
+  getScheduledLaunchExecutionGate({
+    ...productionLaunchEnvironment,
+    META_PRODUCTION_PAUSED_LAUNCH_ATTESTATION: "wrong",
+  }),
+  { allowed: false, reason: "provider_attestation_missing" },
+);
+assertJsonEqual(
+  getScheduledLaunchExecutionGate(stagingLaunchEnvironment),
+  { allowed: true, reason: null },
+);
+assertJsonEqual(
+  getScheduledLaunchExecutionGate({
+    ...stagingLaunchEnvironment,
+    META_STAGING_ISOLATED_DATABASE: "false",
+  }),
+  { allowed: false, reason: "staging_host_attestation_missing" },
+);
+assertJsonEqual(
+  getScheduledLaunchExecutionGate({
+    ...stagingLaunchEnvironment,
+    ALLOW_STAGING_SCHEDULED_META_LAUNCH_EXECUTION: "false",
+  }),
+  { allowed: false, reason: "staging_executor_disabled" },
 );
 assertJsonEqual(getScheduledLaunchRetryDecision({ attemptCount: 1, httpStatus: 503 }), {
   status: "scheduled",
@@ -672,6 +741,14 @@ const schedulerMocks = {
   "@/lib/services/lead-tracking-service": {
     upsertCampaignTrackingContract: async () => undefined,
   },
+  "@/lib/services/meta-campaign-activation-authority-service": {
+    finalizeMetaActivationPreauthorizationAfterPausedLaunch: async () => ({
+      status: "not_authorized",
+      authorizationId: null,
+      activationIntentId: null,
+      errorCode: null,
+    }),
+  },
   "@/lib/supabase/admin": { createAdminClient: () => null },
 };
 const {
@@ -772,6 +849,13 @@ class FakeScheduledLaunchStore {
       const owned = this.ownsLease(params);
       if (owned) this.record.lockedUntil = Date.now() + 1_800_000;
       return { data: owned, error: null };
+    }
+    if (name === "assert_meta_campaign_activation_preauthorization") {
+      return { data: this.ownsLease({
+        p_worker_id: this.record.lockedBy,
+        p_lease_token: this.record.leaseToken,
+        p_lease_generation: this.record.leaseGeneration,
+      }), error: null };
     }
     if (name === "complete_campaign_launch_schedule_claim") {
       const owned = this.ownsLease(params);

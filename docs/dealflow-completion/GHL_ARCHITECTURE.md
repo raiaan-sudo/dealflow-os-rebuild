@@ -1,6 +1,6 @@
 # DealFlow GoHighLevel architecture
 
-Status: `PRODUCTION_CAPABLE_DEFAULT_OFF / DISPOSABLE_DB_VERIFIED / LIVE_PROVIDER_ACCEPTANCE_BLOCKED`
+Status: `INTEGRATED 99-MIGRATION CANDIDATE / FINAL-SEAL PROOF NOT_YET_RUN / LIVE PROVIDER ACCEPTANCE BLOCKED`
 Overall release verdict: `NO_GO`
 
 ## Baseline versus candidate
@@ -20,12 +20,17 @@ lead-effect delivery path. The isolated candidate now contains:
 - terminal sweeps for exhausted attempts;
 - immutable paid-commercial-activation-to-provisioning receipts for exact direct and partner-owned tenants;
 - supported preinstalled-template custom-value/form personalization;
-- durable verified GHL destination resolution for campaign binding;
+- campaign-scoped, revisioned personalization using non-overlapping manifest
+  slots, exact source-plan fingerprints, and immutable provider receipts;
+- durable verified GHL destination resolution for one exact campaign binding;
 - signed appointment/contact lifecycle webhook reconciliation;
 - PII-free provider outbox payloads; and
 - deterministic plus network-disabled PostgreSQL tests.
 
-Provider paths are implemented but default disabled. No live acceptance has
+Provider paths are present in the integrated candidate but default disabled.
+The current exact candidate ends at migration
+`20260713024000_add_durable_ghl_periodic_form_sweeps.sql`; final clean-seal
+PostgreSQL proof is `NOT_YET_RUN`. No live acceptance has
 occurred, so production execution remains blocked. Direct snapshot, funnel,
 page, or form publication is not claimed because no documented writable API was
 proven. See `GHL_PRODUCTION_OPERATING_CONTRACT.md`.
@@ -78,17 +83,21 @@ location_create_requested
   -> snapshot_installing
   -> snapshot_verifying
   -> required_objects_verifying
-  -> provisioning_ready
+           -> provisioning_ready
+  -> campaign_slot_selected
+  -> campaign_revision_claimed
   -> custom_values
   -> exact_form_verification
-  -> destination_ready
+  -> campaign_destination_ready
 ```
 
-Lead-delivery readiness requires the exact mapping, owner-approved snapshot
-version and required-object manifest, provider-confirmed installation status,
+Website lead-delivery readiness requires the exact mapping, owner-approved
+snapshot version and required-object manifest, provider-confirmed installation
+status, one non-overlapping campaign slot, current campaign-plan fingerprint,
 custom-value receipt, exact form verification, approved HTTPS destination, and
-reconciled receipts. A local request, queue row, fake receipt, HTTP `202`, or
-accepted job is not provider readiness.
+reconciled receipts. A legacy root-only contract can serve one campaign only;
+a second campaign fails closed. A local request, queue row, fake receipt, HTTP
+`202`, or accepted job is not provider readiness.
 
 ## Lead and publication contract
 
@@ -100,15 +109,21 @@ parent job.
 
 Direct programmable funnel/page publication sufficient for the approved owner
 model is not exposed by the documented API. The implemented supported boundary
-requires an owner-preinstalled versioned template, applies documented custom
-values, and verifies exact preinstalled forms and required objects. Publication
-outside that boundary remains `BLOCKED_EXTERNAL`.
+binds an owner-approved versioned template as `snapshotId` during the one v3
+sub-account create request, applies documented custom values through one exact
+campaign manifest slot, and verifies exact copied forms and required objects.
+Snapshot status is not funnel publication; copied provider drafts remain
+fail-closed. Slot destinations and custom-value names cannot be
+shared across campaigns. Publication outside that boundary remains
+`BLOCKED_EXTERNAL`.
 
 ## Provider/owner blockers
 
 - Authoritative agency account/plan/capability and least-privileged credential.
 - Owner-approved snapshot ID/version and required-object manifest.
 - Supported personalization/publication mechanism and reconciliation contract.
+- Owner-approved non-overlapping campaign-slot manifest for the intended number
+  of concurrent website campaigns.
 - Data controller/processor, export, deletion, retention, ownership, portability,
   and offboarding obligations for DealFlow-provided locations.
 - Whether any provider object may be created before qualifying payment. Current
@@ -118,4 +133,5 @@ outside that boundary remains `BLOCKED_EXTERNAL`.
 - Signed deployed environment evidence and mandatory old-worker drain.
 
 No GHL connection, record, location, snapshot, contact, opportunity, workflow,
-calendar, funnel, communication, or external mutation occurred in this run.
+calendar, funnel, communication, or external mutation is claimed by this
+candidate documentation. Hosted sandbox acceptance is `NOT_YET_RUN`.

@@ -61,9 +61,25 @@ export async function GET(
 
     const storedPayload = await loadStoredCampaignPayload(id);
 
-    const campaignPayload =
-      storedPayload ??
-      {
+    const exactBudgetPlan = {
+      ...(
+        storedPayload?.budget_plan &&
+        typeof storedPayload.budget_plan === "object" &&
+        !Array.isArray(storedPayload.budget_plan)
+          ? storedPayload.budget_plan as Record<string, unknown>
+          : {}
+      ),
+      monthly_budget: record.plan.monthly_budget,
+      daily_budget_cents: record.plan.daily_budget_cents,
+      estimated_daily_budget: record.plan.daily_budget_cents / 100,
+    };
+    const campaignPayload = storedPayload
+      ? {
+          ...storedPayload,
+          daily_budget_cents: record.plan.daily_budget_cents,
+          budget_plan: exactBudgetPlan,
+        }
+      : {
         campaign_id: record.campaign.id,
         business_profile: {
           business_name: record.plan.business_name,
@@ -85,7 +101,8 @@ export async function GET(
         },
         budget_plan: {
           monthly_budget: record.plan.monthly_budget,
-          estimated_daily_budget: Math.max(1, Math.round(record.plan.monthly_budget / 30)),
+          daily_budget_cents: record.plan.daily_budget_cents,
+          estimated_daily_budget: record.plan.daily_budget_cents / 100,
         },
       };
 

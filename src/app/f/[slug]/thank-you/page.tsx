@@ -1,16 +1,22 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
+import type { Metadata } from "next";
+import { getMetaPixelIdForCampaign } from "@/lib/integrations/meta/conversions";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { buildPublicFunnelThankYouViewModel } from "@/lib/public-funnel-thank-you";
 import { ThankYouConversionTracker } from "@/app/f/[slug]/thank-you/thank-you-conversion-tracker";
+import { PublicFunnelDocumentLanguage } from "@/app/f/[slug]/public-funnel-document-language";
 import { MetaPixelConsentControl } from "@/components/privacy/meta-pixel-consent-control";
 import {
   isMetaPixelTrackingAllowed,
   getMetaPixelConsentPolicyVersion,
   META_PIXEL_CONSENT_COOKIE,
 } from "@/lib/meta-pixel-consent";
+import {
+  getPublicFunnelOpenGraphLocale,
+  normalizePublicMetadataText,
+} from "@/lib/public-funnel-language";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +24,52 @@ const LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS: Record<string, string> = {
   "raiaan-realty": "raiaan-broker-toronto-on-ccbfbfce",
 };
 
+type PublicFunnelThankYouPageProps = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export async function generateMetadata({
+  params,
+}: Pick<PublicFunnelThankYouPageProps, "params">): Promise<Metadata> {
+  const resolvedParams = await params;
+  const effectiveSlug =
+    LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS[resolvedParams.slug.toLowerCase()] ??
+    resolvedParams.slug;
+  const record = await getPublishedCampaignBySlug(effectiveSlug).catch(() => null);
+
+  if (!record) {
+    return {
+      title: { absolute: "Page not found" },
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const view = buildPublicFunnelThankYouViewModel({ record, slug: effectiveSlug });
+  const title = normalizePublicMetadataText(view.headline, view.headline, 70);
+  const description = normalizePublicMetadataText(view.expectation, view.expectation, 160);
+  const canonicalPath = `/f/${encodeURIComponent(effectiveSlug)}/thank-you`;
+
+  return {
+    title: { absolute: title },
+    description,
+    alternates: { canonical: canonicalPath },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      locale: getPublicFunnelOpenGraphLocale(view.language),
+      url: canonicalPath,
+    },
+    other: { "content-language": view.language },
+    robots: { index: false, follow: true },
+  };
+}
+
 export default async function PublicFunnelThankYouPage({
   params,
   searchParams,
-}: {
-  params: Promise<{ slug: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+}: PublicFunnelThankYouPageProps) {
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
   const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS[resolvedParams.slug.toLowerCase()];
@@ -50,7 +95,10 @@ export default async function PublicFunnelThankYouPage({
   });
   const metaPixelId =
     metaPixelAllowed && record.campaign.organization_id
-      ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
+      ? await getMetaPixelIdForCampaign({
+          organizationId: record.campaign.organization_id,
+          campaignId: record.campaign.id,
+        })
       : null;
   const view = buildPublicFunnelThankYouViewModel({
     record,
@@ -59,10 +107,17 @@ export default async function PublicFunnelThankYouPage({
   const submitted = resolvedSearchParams.submitted === "1";
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-[920px] flex-col justify-center px-5 py-10 sm:px-6">
+    <main
+      className="mx-auto flex min-h-screen w-full max-w-[920px] flex-col justify-center px-5 py-10 sm:px-6"
+      data-public-funnel-language={view.language}
+      dir="ltr"
+      lang={view.language}
+    >
+      <PublicFunnelDocumentLanguage language={view.language} />
       {metaPixelConsentPolicyVersion ? (
         <MetaPixelConsentControl
           currentCookieValue={metaPixelConsentCookie}
+          language={view.language}
           policyVersion={metaPixelConsentPolicyVersion}
         />
       ) : null}
@@ -80,14 +135,15 @@ export default async function PublicFunnelThankYouPage({
             {view.headline}
           </h1>
           <p className="max-w-[720px] text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
-            We received your details for <span className="font-semibold text-white">{view.offerContext}</span>.
+            {view.receivedDetailsPrefix}{" "}
+            <span className="font-semibold text-white">{view.offerContext}</span>.
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">
-              Next step
+              {view.nextStepLabel}
             </p>
             <p className="mt-3 text-sm leading-6 text-white/72">
               {view.expectation}
@@ -95,18 +151,18 @@ export default async function PublicFunnelThankYouPage({
           </div>
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">
-              Watch for us
+              {view.watchForUsLabel}
             </p>
             <p className="mt-3 text-sm leading-6 text-white/72">
-              Keep an eye on your phone and email. If you opted into texts, replies can include follow-up coordination about this request.
+              {view.watchForUsBody}
             </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">
-              Privacy
+              {view.privacyLabel}
             </p>
             <p className="mt-3 text-sm leading-6 text-white/72">
-              Your details are used for this inquiry and follow-up. Consent is not a condition of purchase.
+              {view.privacyBody}
             </p>
           </div>
         </div>

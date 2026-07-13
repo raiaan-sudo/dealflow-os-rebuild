@@ -125,6 +125,60 @@ for (const [label, expected, resolved, code] of [
   );
 }
 
+const retryPolicy = loadTypeScriptModule(
+  "src/lib/services/system-job-retry-policy.ts",
+);
+assert.equal(
+  retryPolicy.shouldRetryLeadCaptureJob({
+    error: new TestApiError(503, "Database unavailable", "atomic_public_lead_capture_failed"),
+    currentAttempt: 1,
+    maxAttempts: 2,
+  }),
+  true,
+);
+assert.equal(
+  retryPolicy.shouldRetryLeadCaptureJob({
+    error: new TestApiError(409, "Scope mismatch is not temporary", "lead_recovery_parent_scope_mismatch"),
+    currentAttempt: 1,
+    maxAttempts: 2,
+  }),
+  false,
+  "scope failures stay terminal even when their message contains temporary language",
+);
+assert.equal(
+  retryPolicy.shouldRetryLeadCaptureJob({
+    error: { code: "40001", message: "serialization failure" },
+    currentAttempt: 1,
+    maxAttempts: 2,
+  }),
+  true,
+);
+assert.equal(
+  retryPolicy.shouldRetryLeadCaptureJob({
+    error: Object.assign(new Error("fetch failed: connection reset"), { code: "ECONNRESET" }),
+    currentAttempt: 1,
+    maxAttempts: 2,
+  }),
+  true,
+);
+assert.equal(
+  retryPolicy.shouldRetryLeadCaptureJob({
+    error: new Error("validation failed"),
+    currentAttempt: 1,
+    maxAttempts: 2,
+  }),
+  false,
+);
+assert.equal(
+  retryPolicy.shouldRetryLeadCaptureJob({
+    error: new TestApiError(503, "Still unavailable", "atomic_public_lead_capture_failed"),
+    currentAttempt: 2,
+    maxAttempts: 2,
+  }),
+  false,
+  "retry count is bounded by max_attempts",
+);
+
 const creativeSource = read("src/lib/services/creative-builder-service.ts");
 const uploadSource = creativeSource.slice(
   creativeSource.indexOf("export async function uploadManualCreativeAsset"),
@@ -155,22 +209,20 @@ const replaySource = leadSource.slice(
 assert.match(queueSource, /campaignId: canonicalCampaignId/);
 assert.match(queueSource, /leadCapture:\s*{\s*campaignId: canonicalCampaignId/s);
 assert.match(replaySource, /campaign_id: payloadCampaignId \|\| undefined,\s*funnel_id: null/);
-assert.ok(
-  replaySource.indexOf("assertLeadRetryParentScope") <
-    replaySource.indexOf("createLeadAndStartConversationForContext"),
-  "parent scope must be fenced before the first lead write path",
-);
-assert.ok(
-  replaySource.lastIndexOf("assertLeadRetryParentScope") <
-    replaySource.indexOf("queueLeadSideEffectsJob"),
-  "a deduped lead row must be fenced again before any effect-job write",
-);
-assert.equal(
-  replaySource.match(/assertLeadRetryParentScope/g)?.length,
-  2,
-  "replay fences the campaign context before lead writes and the returned row before effect writes",
-);
+assert.match(replaySource, /createPublicLeadAndQueueSideEffectsAtomically/);
+assert.match(replaySource, /organizationId: input\.expectedOrganizationId/);
+assert.doesNotMatch(replaySource, /createLeadAndStartConversationForContext|queueLeadSideEffectsJob/);
 assert.doesNotMatch(replaySource, /createPublicLeadAndStartConversation\(/);
+
+const atomicCaptureSource = leadSource.slice(
+  leadSource.indexOf("export async function createPublicLeadAndQueueSideEffectsAtomically"),
+  leadSource.indexOf("export async function createVerifiedProviderLeadAndStartConversation"),
+);
+assert.ok(
+  atomicCaptureSource.indexOf("assertLeadRetryParentScope") <
+    atomicCaptureSource.indexOf('"capture_public_lead_with_side_effects_v1"'),
+  "queued replay scope must be fenced before the atomic lead/outbox write",
+);
 
 const workerSource = read("src/lib/services/system-job-service.ts");
 const retryWorkerSource = workerSource.slice(
@@ -180,6 +232,8 @@ const retryWorkerSource = workerSource.slice(
 assert.match(retryWorkerSource, /expectedOrganizationId: processingJob\.organization_id/);
 assert.match(retryWorkerSource, /expectedUserId: processingJob\.user_id/);
 assert.match(retryWorkerSource, /expectedCampaignId: processingJob\.campaign_id \?\? ""/);
+assert.match(workerSource, /shouldRetryLeadCaptureJob\(\{ error, currentAttempt, maxAttempts \}\)/);
+assert.match(workerSource, /metaReportingRetry \|\| leadCaptureRetry/);
 
 const migration = read(
   "supabase/migrations/20260710235700_protect_creative_asset_storage_identity.sql",

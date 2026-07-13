@@ -55,6 +55,71 @@ export type GhlRequiredObject = {
   providerObjectId?: string;
 };
 
+export const GHL_CAMPAIGN_PERSONALIZATION_FIELDS = [
+  "campaignId",
+  "organizationId",
+  "selectedCreativeId",
+  "campaignMode",
+  "offer",
+  "market",
+  "audience",
+  "propertyType",
+  "priceRange",
+  "headline",
+  "primaryText",
+  "cta",
+  "agentName",
+  "brokerageName",
+  "phone",
+  "language",
+  "themePrimaryColor",
+  "themeSecondaryColor",
+  "themeAccentColor",
+  "logoUrl",
+] as const;
+
+export type GhlCampaignPersonalizationField =
+  (typeof GHL_CAMPAIGN_PERSONALIZATION_FIELDS)[number];
+
+export type GhlInboundQuestionMapping = {
+  fieldId: string;
+  question: string;
+};
+
+export type GhlInboundQuestionMappings =
+  | []
+  | [GhlInboundQuestionMapping]
+  | [GhlInboundQuestionMapping, GhlInboundQuestionMapping]
+  | [GhlInboundQuestionMapping, GhlInboundQuestionMapping, GhlInboundQuestionMapping];
+
+export type GhlCampaignPersonalizationSlot = {
+  slotKey: string;
+  destinationUrl: string;
+  requiredFormIds: string[];
+  customValueNames: Record<GhlCampaignPersonalizationField, string>;
+  inboundSmsConsentFieldId?: string;
+  inboundSmsConsentPolicyVersion?: string;
+  inboundSmsConsentCopy?: string;
+  inboundAdvertisingConsentFieldId?: string;
+  inboundAdvertisingConsentPolicyVersion?: string;
+  inboundQuestionContractVersion?: string;
+  inboundQuestionMappings?: GhlInboundQuestionMappings;
+};
+
+export type GhlSnapshotPersonalizationContract = {
+  customValues: Record<string, string>;
+  requiredFormIds: string[];
+  destinationUrl: string;
+  inboundSmsConsentFieldId?: string;
+  inboundSmsConsentPolicyVersion?: string;
+  inboundSmsConsentCopy?: string;
+  inboundAdvertisingConsentFieldId?: string;
+  inboundAdvertisingConsentPolicyVersion?: string;
+  inboundQuestionContractVersion?: string;
+  inboundQuestionMappings?: GhlInboundQuestionMappings;
+  campaignSlots?: GhlCampaignPersonalizationSlot[];
+};
+
 export type GhlSnapshotManifest = {
   id: string;
   environment: GhlEnvironment;
@@ -62,6 +127,7 @@ export type GhlSnapshotManifest = {
   snapshotVersion: string;
   providerSnapshotId: string;
   installationMode?: "preinstalled" | "provider_api";
+  personalizationContract?: GhlSnapshotPersonalizationContract;
   requiredObjects: GhlRequiredObject[];
   status: "draft" | "approved" | "retired";
 };
@@ -264,16 +330,26 @@ export type GhlRequiredObjectsResult =
       providerRequestId: string | null;
     };
 
+/**
+ * Immutable input for the one non-retryable Create Sub-Account request. The
+ * full approved manifest is carried to the adapter so its fingerprint can be
+ * recomputed immediately before the provider mutation.
+ */
+export type GhlLocationCreateInput = {
+  idempotencyKey: string;
+  installationId: string;
+  environment: GhlEnvironment;
+  organizationId: string;
+  profile: GhlProvisioningRequest["locationProfile"];
+  snapshotManifest: GhlSnapshotManifest;
+  snapshotManifestFingerprint: string;
+  requestFingerprint: string;
+};
+
 export interface GhlProviderAdapter {
   readonly kind: "fake" | "sandbox" | "production";
   readonly networkAccess: "none" | "https";
-  createLocation(input: {
-    idempotencyKey: string;
-    installationId: string;
-    environment: GhlEnvironment;
-    organizationId: string;
-    profile: GhlProvisioningRequest["locationProfile"];
-  }): Promise<GhlLocationCreateResult>;
+  createLocation(input: GhlLocationCreateInput): Promise<GhlLocationCreateResult>;
   reconcileLocationCreate(input: {
     idempotencyKey: string;
     installationId: string;
@@ -390,6 +466,121 @@ export interface GhlPersonalizationProviderAdapter {
     providerLocationId: string;
     requiredFormIds: string[];
   }): Promise<GhlPersonalizationResult>;
+}
+
+export type GhlInboundFormQualificationField = {
+  id: string;
+  value: string | number | boolean;
+};
+
+export type GhlInboundFormAttribution = {
+  fbc: string | null;
+  fbp: string | null;
+  pageUrl: string | null;
+  referrer: string | null;
+  adSource: string | null;
+  source: string | null;
+  medium: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  adId: string | null;
+};
+
+/**
+ * A bounded, normalized projection of one provider form submission. Raw GHL
+ * responses are intentionally never returned to callers or persisted by this
+ * adapter contract.
+ */
+export type GhlInboundFormSubmission = {
+  providerSubmissionId: string;
+  providerFormId: string;
+  providerContactId: string;
+  submittedAt: string;
+  submissionFingerprint: string;
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  qualification: {
+    fields: GhlInboundFormQualificationField[];
+  };
+  attribution: GhlInboundFormAttribution;
+};
+
+export type GhlInboundFormSubmissionsReadResult =
+  | {
+      outcome: "succeeded";
+      submissions: GhlInboundFormSubmission[];
+      providerRequestIds: string[];
+      responseFingerprint: string;
+      requestCount: number;
+      providerMutationAttempted: false;
+    }
+  | {
+      outcome: "retryable_failure" | "operator_action_required";
+      errorCode: string;
+      safeMessage: string;
+      providerRequestId: string | null;
+      responseFingerprint: string | null;
+      retryAfterMs?: number;
+      providerMutationAttempted: false;
+    };
+
+export interface GhlInboundFormSubmissionsReadAdapter {
+  readonly kind: "sandbox" | "production";
+  readonly networkAccess: "https";
+  readFormSubmissions(input: {
+    providerLocationId: string;
+    providerContactId: string;
+    requiredFormIds: string[];
+    allowedFieldIds: string[];
+    windowStart: string;
+    windowEnd: string;
+    limitPerForm?: number;
+  }): Promise<GhlInboundFormSubmissionsReadResult>;
+}
+
+/**
+ * A complete, immutable provider window for one exact location/form route.
+ * Unlike contact-webhook reconciliation, this contract deliberately has no
+ * contact query: it is the durable recovery path for submissions whose
+ * ContactCreate/ContactUpdate webhook never arrived.
+ */
+export type GhlPeriodicFormSweepReadResult =
+  | {
+      outcome: "succeeded";
+      submissions: GhlInboundFormSubmission[];
+      providerRequestIds: string[];
+      responseFingerprint: string;
+      requestCount: number;
+      pageCount: number;
+      observedTotal: number;
+      providerMutationAttempted: false;
+    }
+  | {
+      outcome: "retryable_failure" | "operator_action_required";
+      errorCode: string;
+      safeMessage: string;
+      providerRequestId: string | null;
+      responseFingerprint: string | null;
+      retryAfterMs?: number;
+      providerMutationAttempted: false;
+    };
+
+export interface GhlPeriodicFormSweepReadAdapter {
+  readonly kind: "sandbox" | "production";
+  readonly networkAccess: "https";
+  readPeriodicFormSubmissionWindow(input: {
+    providerLocationId: string;
+    providerFormId: string;
+    allowedFieldIds: string[];
+    windowStart: string;
+    windowEnd: string;
+    maxPages?: number;
+    maxSubmissions?: number;
+  }): Promise<GhlPeriodicFormSweepReadResult>;
 }
 
 export interface GhlProvisioningRepository {

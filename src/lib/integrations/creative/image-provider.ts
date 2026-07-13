@@ -193,6 +193,11 @@ class OpenAiImageProvider implements ImageGenerationProvider {
     let resolvedModel: string | null = null;
     let retryCount = 0;
     let providerOutcome: "accepted" | "rejected" | "ambiguous" = "ambiguous";
+    const clientRequestId =
+      typeof request.metadata?.paidCreativeDispatchId === "string"
+        ? request.metadata.paidCreativeDispatchId.trim()
+        : "";
+    let providerRequestId: string | null = null;
 
     for (const model of models) {
       for (let attempt = 0; attempt < IMAGE_GENERATION_ATTEMPTS_PER_MODEL; attempt += 1) {
@@ -202,6 +207,7 @@ class OpenAiImageProvider implements ImageGenerationProvider {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${env.apiKey}`,
+              ...(clientRequestId ? { "X-Client-Request-Id": clientRequestId } : {}),
             },
             body: JSON.stringify({
               model,
@@ -217,6 +223,7 @@ class OpenAiImageProvider implements ImageGenerationProvider {
 
           const payload = data?.data?.[0] ?? null;
           const resolvedUrl = resolveImageUrl(payload);
+          providerRequestId = response.headers.get("x-request-id")?.trim() || null;
 
           if (response.ok && resolvedUrl) {
             fileUrl = resolvedUrl;
@@ -272,6 +279,8 @@ class OpenAiImageProvider implements ImageGenerationProvider {
         model: resolvedModel,
         retryCount,
         providerOutcome,
+        providerRequestId,
+        clientRequestId: clientRequestId || null,
       },
       error: fileUrl ? null : lastFailure ?? "Image provider did not return a URL.",
     };

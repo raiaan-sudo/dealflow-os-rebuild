@@ -139,6 +139,12 @@ try {
       () => assertGhlProvisioningRequest(duplicateManifest),
       (error) => error.code === "required_object_manifest_invalid",
     );
+    const invalidSnapshotIdentity = fixtureRequest("workspace-a", "payment-invalid-snapshot");
+    invalidSnapshotIdentity.snapshotManifest.providerSnapshotId = "";
+    assert.throws(
+      () => assertGhlProvisioningRequest(invalidSnapshotIdentity),
+      (error) => error.code === "snapshot_identity_invalid",
+    );
   }
 
   const directTenant = {
@@ -458,6 +464,13 @@ try {
     const first = await requestGhlProvisioning(request, dependencies);
     const replayedRequest = await requestGhlProvisioning(request, dependencies);
     assert.equal(replayedRequest.id, first.id, "same activation/snapshot request must be idempotent");
+    const changedSnapshotRequest = structuredClone(request);
+    changedSnapshotRequest.snapshotManifest.providerSnapshotId = "different-provider-snapshot";
+    await assert.rejects(
+      () => requestGhlProvisioning(changedSnapshotRequest, dependencies),
+      (error) => error.code === "idempotency_collision",
+      "one semantic activation/snapshot version cannot silently target a different provider snapshot",
+    );
 
     const ready = await driveToTerminal(first, dependencies, executeNextGhlProvisioningStep);
     assert.equal(ready.state, "ready");
@@ -467,6 +480,27 @@ try {
     assert.equal(repository.listMappings()[0].status, "active");
     assert.ok(repository.listReceipts().length >= 4, "provider request outcomes must have durable receipts");
     const firstOutbox = repository.listOutbox()[0];
+    assert.equal(firstOutbox.operation, "location_create");
+    assert.equal(firstOutbox.requestPayload.contractVersion, 2);
+    assert.equal(firstOutbox.requestPayload.snapshotManifestId, request.snapshotManifest.id);
+    assert.equal(firstOutbox.requestPayload.providerSnapshotId, request.snapshotManifest.providerSnapshotId);
+    assert.match(firstOutbox.requestPayload.snapshotManifestFingerprint, /^[a-f0-9]{64}$/);
+    assert.match(firstOutbox.requestPayload.requestFingerprint, /^[a-f0-9]{64}$/);
+    const locationCreateCall = provider.calls.find((call) => call.operation === "location_create");
+    assert.equal(locationCreateCall.idempotencyKey, `${first.idempotencyKey}:location_create`);
+    assert.equal(locationCreateCall.providerSnapshotId, request.snapshotManifest.providerSnapshotId);
+    assert.equal(locationCreateCall.requestFingerprint, firstOutbox.requestPayload.requestFingerprint);
+    const locationCreateReceipt = repository.listReceipts().find((receipt) =>
+      receipt.outboxId === firstOutbox.id
+    );
+    assert.equal(locationCreateReceipt.metadata.snapshotManifestId, request.snapshotManifest.id);
+    assert.equal(locationCreateReceipt.metadata.providerSnapshotId, request.snapshotManifest.providerSnapshotId);
+    assert.equal(locationCreateReceipt.metadata.requestFingerprint, firstOutbox.requestPayload.requestFingerprint);
+    assert.deepEqual(
+      provider.calls.map((call) => call.operation),
+      ["location_create", "snapshot_install", "snapshot_status", "required_objects_verify"],
+      "snapshotId at sub-account creation never replaces status and required-object verification",
+    );
     await assert.rejects(
       () => repository.ensureOutbox({
         run: ready,
@@ -546,6 +580,57 @@ try {
   {
     const clock = makeClock();
     const repository = new MemoryGhlProvisioningRepository([directTenant]);
+    const provider = new FakeGhlAdapter();
+    const originalSaveRun = repository.saveRun.bind(repository);
+    let injectAfterCreateSettlement = true;
+    repository.saveRun = async (candidate, expectedRevision) => {
+      if (injectAfterCreateSettlement && candidate.state === "location_assigned") {
+        injectAfterCreateSettlement = false;
+        const error = new Error("injected_after_location_create_settlement");
+        error.code = "injected_after_location_create_settlement";
+        throw error;
+      }
+      return originalSaveRun(candidate, expectedRevision);
+    };
+    const dependencies = {
+      repository,
+      provider,
+      writeGate: { enabled: true, adapterKind: "fake" },
+      isolatedDatabase: true,
+      databaseUrl: "http://127.0.0.1:54321",
+      now: clock.now,
+    };
+    let run = await requestGhlProvisioning(
+      fixtureRequest("workspace-a", "payment-location-receipt-mismatch"),
+      dependencies,
+    );
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    await assert.rejects(
+      () => executeNextGhlProvisioningStep(run.id, dependencies),
+      (error) => error.code === "injected_after_location_create_settlement",
+    );
+    const originalLatestReceipt = repository.getLatestReceipt.bind(repository);
+    repository.getLatestReceipt = async (outboxId) => {
+      const receipt = await originalLatestReceipt(outboxId);
+      return receipt
+        ? { ...receipt, metadata: { ...receipt.metadata, providerSnapshotId: "wrong-snapshot" } }
+        : receipt;
+    };
+    await assert.rejects(
+      () => executeNextGhlProvisioningStep(run.id, dependencies),
+      (error) => error.code === "ghl_location_create_receipt_identity_mismatch",
+      "a durable receipt for a different snapshot must never advance the saga",
+    );
+    assert.equal(
+      provider.calls.filter((call) => call.operation === "location_create").length,
+      1,
+      "receipt mismatch handling must never replay location creation",
+    );
+  }
+
+  {
+    const clock = makeClock();
+    const repository = new MemoryGhlProvisioningRepository([directTenant]);
     const provider = new FakeGhlAdapter({ createOutcome: "timeout_after_create" });
     const dependencies = {
       repository,
@@ -567,6 +652,45 @@ try {
       "uncertain result must reconcile before any create replay",
     );
     assert.equal(repository.listMappings().length, 1);
+  }
+
+  {
+    const clock = makeClock();
+    const repository = new MemoryGhlProvisioningRepository([directTenant]);
+    const provider = new FakeGhlAdapter();
+    let createDispatchCalls = 0;
+    let createInput = null;
+    provider.createLocation = async (input) => {
+      createDispatchCalls += 1;
+      createInput = input;
+      throw new Error("synthetic timeout after location-create write");
+    };
+    const dependencies = {
+      repository,
+      provider,
+      writeGate: { enabled: true, adapterKind: "fake" },
+      isolatedDatabase: true,
+      databaseUrl: "http://127.0.0.1:54321",
+      now: clock.now,
+    };
+    let run = await requestGhlProvisioning(
+      fixtureRequest("workspace-a", "payment-location-create-throw-after-write"),
+      dependencies,
+    );
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(createDispatchCalls, 1, "location creation must dispatch exactly once");
+    assert.equal(createInput.snapshotManifest.providerSnapshotId, "fake-snapshot-1");
+    assert.match(createInput.snapshotManifestFingerprint, /^[a-f0-9]{64}$/);
+    assert.match(createInput.requestFingerprint, /^[a-f0-9]{64}$/);
+    assert.equal(run.state, "location_uncertain");
+    assert.equal(run.lastErrorCode, "ghl_location_create_dispatch_ambiguous");
+    assert.equal(repository.listOutbox()[0].status, "uncertain");
+    assert.equal(repository.listReceipts().length, 1);
+    assert.equal(repository.listReceipts()[0].outcome, "uncertain");
+    assert.equal(repository.listReceipts()[0].metadata.providerMutationAttempted, true);
+    assert.equal(repository.listReceipts()[0].metadata.providerSnapshotId, "fake-snapshot-1");
+    assert.equal(repository.listReceipts()[0].metadata.requestFingerprint, createInput.requestFingerprint);
   }
 
   {

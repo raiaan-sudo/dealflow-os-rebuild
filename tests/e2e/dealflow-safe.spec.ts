@@ -1,0 +1,731 @@
+import {
+  expect,
+  test,
+  type Page,
+  type Response,
+  type TestInfo,
+} from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+
+import {
+  ZERO_EXTERNAL_EFFECTS_ATTESTATION,
+  assertZeroExternalEffectsEnvironment,
+} from "../../src/lib/safety/zero-external-effects";
+
+const DEFAULT_BASE_URL = "http://127.0.0.1:3410";
+const BASE_URL = process.env.SAFE_E2E_BASE_URL?.trim() || DEFAULT_BASE_URL;
+const HOSTED_ACCEPTANCE = Boolean(process.env.SAFE_E2E_BASE_URL?.trim());
+const AUTHENTICATED_STAGING_PROOF_ENABLED = process.env.SAFE_E2E_QA_AUTH === "true";
+const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
+
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const PRODUCTION_HOSTS = new Set([
+  "agentdealflow.io",
+  "www.agentdealflow.io",
+  "app.agentdealflow.io",
+  "internal.agentdealflow.io",
+  "clicktoscale.agentdealflow.io",
+  "onboarding.agentdealflow.io",
+]);
+const PUBLIC_LINK_ALLOWLIST = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/privacy",
+  "/terms",
+  "/data-deletion",
+]);
+
+type BrowserDiagnostics = {
+  consoleErrors: string[];
+  hydrationFailures: string[];
+  pageErrors: string[];
+  requestFailures: string[];
+  serverFailures: string[];
+  forbiddenMutations: string[];
+  allowedDraftWrites: string[];
+  interceptedTelemetry: string[];
+};
+
+const diagnosticsByPage = new WeakMap<Page, BrowserDiagnostics>();
+
+function pathnameOf(rawUrl: string) {
+  try {
+    return new URL(rawUrl).pathname;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function isExpectedNavigationAbort(message: string) {
+  return /net::ERR_ABORTED/i.test(message);
+}
+
+function mutationDisposition(method: string, rawUrl: string) {
+  if (!MUTATING_METHODS.has(method)) return "read" as const;
+
+  const requestUrl = new URL(rawUrl);
+  const baseUrl = new URL(BASE_URL);
+  const sameOrigin = requestUrl.origin === baseUrl.origin;
+
+  if (
+    sameOrigin &&
+    method === "PUT" &&
+    requestUrl.pathname === "/api/onboarding/plan"
+  ) {
+    return "synthetic_staging_draft" as const;
+  }
+
+  if (
+    sameOrigin &&
+    method === "POST" &&
+    requestUrl.pathname === "/api/internal/qa-auth-session"
+  ) {
+    return "qa_session" as const;
+  }
+
+  if (
+    sameOrigin &&
+    method === "POST" &&
+    requestUrl.pathname === "/api/activation/events"
+  ) {
+    return "intercepted_telemetry" as const;
+  }
+
+  return "forbidden" as const;
+}
+
+async function installSafetyHarness(page: Page) {
+  const diagnostics: BrowserDiagnostics = {
+    consoleErrors: [],
+    hydrationFailures: [],
+    pageErrors: [],
+    requestFailures: [],
+    serverFailures: [],
+    forbiddenMutations: [],
+    allowedDraftWrites: [],
+    interceptedTelemetry: [],
+  };
+  diagnosticsByPage.set(page, diagnostics);
+
+  // Prevent side effects, not merely detect them after the fact. Only the
+  // exact isolated QA session and synthetic onboarding-draft paths may write;
+  // telemetry is fulfilled locally without reaching the application.
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const method = request.method().toUpperCase();
+    const disposition = mutationDisposition(method, request.url());
+    const record = `${method} ${request.url()}`;
+    if (disposition === "intercepted_telemetry") {
+      diagnostics.interceptedTelemetry.push(record);
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    if (disposition === "forbidden") {
+      diagnostics.forbiddenMutations.push(record);
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.continue();
+  });
+
+  page.on("console", (message) => {
+    const text = message.text();
+    if (/hydration|did not match|server rendered html/i.test(text)) {
+      diagnostics.hydrationFailures.push(`${message.type()}: ${text}`);
+    }
+    if (message.type() === "error") {
+      diagnostics.consoleErrors.push(text);
+    }
+  });
+
+  page.on("pageerror", (error) => {
+    diagnostics.pageErrors.push(error.message);
+  });
+
+  page.on("requestfailed", (request) => {
+    const message = `${request.method()} ${request.url()} ${
+      request.failure()?.errorText ?? "unknown request failure"
+    }`;
+    if (!isExpectedNavigationAbort(message)) {
+      diagnostics.requestFailures.push(message);
+    }
+  });
+
+  page.on("response", (response) => {
+    if (response.status() >= 500) {
+      diagnostics.serverFailures.push(
+        `${response.status()} ${response.request().method()} ${response.url()}`,
+      );
+    }
+  });
+
+  page.on("request", (request) => {
+    const method = request.method().toUpperCase();
+    const disposition = mutationDisposition(method, request.url());
+    const record = `${method} ${request.url()}`;
+
+    if (disposition === "synthetic_staging_draft") {
+      diagnostics.allowedDraftWrites.push(record);
+    }
+  });
+}
+
+function diagnosticsFor(page: Page) {
+  const diagnostics = diagnosticsByPage.get(page);
+  if (!diagnostics) throw new Error("Browser safety diagnostics were not installed.");
+  return diagnostics;
+}
+
+function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
+  const diagnostics = diagnosticsFor(page);
+  const failures = {
+    forbiddenMutations: diagnostics.forbiddenMutations,
+    hydrationFailures: diagnostics.hydrationFailures,
+    pageErrors: diagnostics.pageErrors,
+    consoleErrors: diagnostics.consoleErrors,
+    requestFailures: diagnostics.requestFailures,
+    serverFailures: diagnostics.serverFailures,
+  };
+  const failureCount = Object.values(failures).reduce(
+    (count, entries) => count + entries.length,
+    0,
+  );
+
+  expect(
+    failureCount,
+    `${testInfo.title}: browser diagnostics were not clean:\n${JSON.stringify(failures, null, 2)}`,
+  ).toBe(0);
+}
+
+async function gotoAndSettle(page: Page, path: string) {
+  const response = await page.goto(path, { waitUntil: "domcontentloaded" });
+  expect(response, `Navigation to ${path} returned no main document response.`).not.toBeNull();
+  expect(response!.status(), `Navigation to ${path} failed.`).toBeLessThan(400);
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+  return response!;
+}
+
+async function assertNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const viewportWidth = root.clientWidth;
+    const scrollWidth = Math.max(root.scrollWidth, body?.scrollWidth ?? 0);
+    const offenders = Array.from(document.querySelectorAll<HTMLElement>("body *"))
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && (rect.right > viewportWidth + 2 || rect.left < -2);
+      })
+      .slice(0, 10)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        id: element.id,
+        className: typeof element.className === "string" ? element.className.slice(0, 120) : "",
+        rect: element.getBoundingClientRect().toJSON(),
+      }));
+
+    return { viewportWidth, scrollWidth, offenders };
+  });
+
+  expect(
+    overflow.scrollWidth,
+    `Horizontal overflow detected: ${JSON.stringify(overflow, null, 2)}`,
+  ).toBeLessThanOrEqual(overflow.viewportWidth + 2);
+}
+
+async function assertNamedInteractiveControls(page: Page) {
+  const unnamed = await page
+    .locator("button:visible, a[href]:visible, input:visible, select:visible, textarea:visible")
+    .evaluateAll((elements) =>
+      elements.flatMap((element) => {
+        const htmlElement = element as HTMLElement;
+        const input = element as HTMLInputElement;
+        const labelledBy = element.getAttribute("aria-labelledby");
+        const labelledByText = labelledBy
+          ?.split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
+          .join(" ")
+          .trim();
+        const labels = "labels" in input
+          ? Array.from(input.labels ?? []).map((label) => label.textContent?.trim() ?? "").join(" ").trim()
+          : "";
+        const name = [
+          element.getAttribute("aria-label")?.trim(),
+          labelledByText,
+          labels,
+          htmlElement.innerText?.trim(),
+          element.getAttribute("title")?.trim(),
+          element.getAttribute("alt")?.trim(),
+        ].find(Boolean);
+
+        if (name) return [];
+
+        return [
+          `${element.tagName.toLowerCase()}#${htmlElement.id || "(no-id)"}.${
+            typeof htmlElement.className === "string" ? htmlElement.className.slice(0, 80) : ""
+          }`,
+        ];
+      }),
+    );
+
+  expect(unnamed, `Visible interactive controls need accessible names: ${unnamed.join(", ")}`).toEqual([]);
+}
+
+async function assertCoreAccessibility(page: Page) {
+  await expect(page.locator("main").first()).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+  await assertNamedInteractiveControls(page);
+  const title = (await page.title()).trim();
+  expect(title, "Every page must have a non-empty document title.").not.toBe("");
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    results.violations,
+    `Accessibility violations: ${JSON.stringify(results.violations, null, 2)}`,
+  ).toEqual([]);
+}
+
+async function assertSkipLinkAndReducedMotion(page: Page) {
+  const skipLink = page.locator('a[href^="#"]').filter({ hasText: /skip to/i }).first();
+  await expect(skipLink).toBeAttached();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const nonReducedAnimations = await page.locator("body *").evaluateAll((elements) =>
+    elements
+      .filter((element) => {
+        // Next.js injects its development status control into a `nextjs-portal`.
+        // It is framework instrumentation, is absent from production builds, and
+        // must not be mistaken for application-owned motion.
+        if (element.closest("nextjs-portal") || element.getRootNode() !== document) return false;
+        const style = getComputedStyle(element);
+        const animationMs = style.animationDuration
+          .split(",")
+          .map((value) => value.trim().endsWith("ms")
+            ? Number.parseFloat(value)
+            : Number.parseFloat(value) * 1000)
+          .some((value) => Number.isFinite(value) && value > 20);
+        const transitionMs = style.transitionDuration
+          .split(",")
+          .map((value) => value.trim().endsWith("ms")
+            ? Number.parseFloat(value)
+            : Number.parseFloat(value) * 1000)
+          .some((value) => Number.isFinite(value) && value > 20);
+        return animationMs || transitionMs;
+      })
+      .slice(0, 10)
+      .map((element) => `${element.tagName.toLowerCase()}#${(element as HTMLElement).id}`),
+  );
+  expect(
+    nonReducedAnimations,
+    `Reduced-motion mode left long animations/transitions enabled: ${nonReducedAnimations.join(", ")}`,
+  ).toEqual([]);
+}
+
+async function assertTwoHundredPercentZoom(page: Page) {
+  const viewport = page.viewportSize();
+  if (!viewport || viewport.width < 1_000) return;
+  await page.setViewportSize({
+    width: Math.floor(viewport.width / 2),
+    height: viewport.height,
+  });
+  await assertNoHorizontalOverflow(page);
+  await assertNamedInteractiveControls(page);
+  await page.setViewportSize(viewport);
+}
+
+async function assertKeyboardFocus(page: Page) {
+  await page.locator("body").click({ position: { x: 1, y: 1 } });
+  await page.keyboard.press("Tab");
+  const focus = await page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null;
+    return {
+      tag: active?.tagName.toLowerCase() ?? null,
+      text: active?.innerText?.trim().slice(0, 100) ?? "",
+      focusVisible: active?.matches(":focus-visible") ?? false,
+    };
+  });
+  expect(focus.tag, `Keyboard focus did not leave the document body: ${JSON.stringify(focus)}`).not.toBe("body");
+  expect(focus.tag).not.toBeNull();
+  expect(focus.focusVisible, `First keyboard target is not focus-visible: ${JSON.stringify(focus)}`).toBe(true);
+}
+
+async function assertPublicLinksResolve(page: Page) {
+  const hrefs = await page.locator("a[href]").evaluateAll((anchors) =>
+    anchors.map((anchor) => (anchor as HTMLAnchorElement).href),
+  );
+  const baseOrigin = new URL(BASE_URL).origin;
+  const safeUrls = Array.from(new Set(hrefs))
+    .map((href) => new URL(href))
+    .filter(
+      (url) =>
+        url.origin === baseOrigin &&
+        !url.hash &&
+        PUBLIC_LINK_ALLOWLIST.has(url.pathname),
+    );
+
+  expect(safeUrls.length, "No public same-origin links were available for broken-link proof.").toBeGreaterThan(0);
+
+  for (const url of safeUrls) {
+    const response = await page.request.get(url.toString(), {
+      failOnStatusCode: false,
+      maxRedirects: 3,
+    });
+    expect(response.status(), `Broken public link: ${url.toString()}`).toBeLessThan(400);
+  }
+}
+
+function assertAuthenticatedStagingPreconditions() {
+  const base = new URL(BASE_URL);
+  const target = process.env.DEALFLOW_DEPLOYMENT_TARGET?.trim().toLowerCase();
+  const qaProjectRef = process.env.QA_ISOLATED_SUPABASE_PROJECT_REF?.trim();
+  const qaEmail = process.env.QA_EMAIL?.trim();
+  const internalSecret = getInternalQaSecret();
+
+  expect(
+    process.env.SAFE_E2E_ZERO_EXTERNAL_EFFECTS_ATTESTATION,
+    "The exact isolated-staging zero-external-effects attestation is required.",
+  ).toBe(ZERO_EXTERNAL_EFFECTS_ATTESTATION);
+  expect(
+    ["staging", "preview", "test"],
+    "DEALFLOW_DEPLOYMENT_TARGET must explicitly attest a nonproduction target.",
+  ).toContain(target);
+  expect(PRODUCTION_HOSTS.has(base.hostname.toLowerCase()), "Authenticated proof is blocked on production hosts.").toBe(false);
+  expect(process.env.QA_AUTH_HARNESS_ENABLED, "The QA auth harness must be explicitly enabled.").toBe("true");
+  expect(qaProjectRef, "The exact isolated QA Supabase project ref is required.").toBeTruthy();
+  expect(
+    qaProjectRef?.endsWith(EXPECTED_STAGING_SAFE_SUFFIX),
+    "The configured QA Supabase project does not match the isolated staging safe suffix.",
+  ).toBe(true);
+  expect(qaEmail, "A pre-existing, non-admin synthetic QA email is required.").toBeTruthy();
+  expect(internalSecret, "A restricted internal QA harness secret is required.").toBeTruthy();
+}
+
+function getInternalQaSecret() {
+  return (
+    process.env.SAFE_E2E_INTERNAL_SECRET?.trim() ||
+    process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() ||
+    process.env.CRON_SECRET?.trim() ||
+    ""
+  );
+}
+
+async function establishQaSession(page: Page) {
+  const response = await page.request.post("/api/internal/qa-auth-session", {
+    headers: {
+      Authorization: `Bearer ${getInternalQaSecret()}`,
+      Accept: "application/json",
+    },
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        success?: boolean;
+        email?: string;
+        access?: string;
+        cookieCount?: number;
+        access_token?: unknown;
+        refresh_token?: unknown;
+      }
+    | null;
+
+  expect(response.status(), `QA session harness failed: ${JSON.stringify(payload)}`).toBe(200);
+  expect(payload?.success).toBe(true);
+  expect(payload?.access).toBe("non_admin_qa");
+  expect(payload?.email).toMatch(/\*\*\*@/);
+  expect(payload?.cookieCount).toBeGreaterThan(0);
+  expect(payload?.access_token, "QA harness must never return a raw access token.").toBeUndefined();
+  expect(payload?.refresh_token, "QA harness must never return a raw refresh token.").toBeUndefined();
+}
+
+async function waitForSuccessfulDraftWrite(
+  page: Page,
+  action: () => Promise<unknown>,
+) {
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === "/api/onboarding/plan",
+    { timeout: 10_000 },
+  );
+  await action();
+  const response = await responsePromise;
+  expect(response.status(), "Synthetic staging onboarding draft write failed.").toBeLessThan(300);
+  return response;
+}
+
+async function chooseDestination(page: Page, destination: "Website funnel" | "Meta Instant Form") {
+  const destinationButton = page.getByRole("button", { name: new RegExp(destination, "i") }).first();
+  await expect(destinationButton).toBeVisible();
+  await waitForSuccessfulDraftWrite(page, () => destinationButton.click());
+  await expect(destinationButton).toHaveAttribute("aria-pressed", "true");
+}
+
+async function goToReviewFromBudget(page: Page) {
+  const reviewProgressButton = page.getByRole("button", { name: /Review/i }).first();
+  await expect(reviewProgressButton).toBeEnabled();
+  await waitForSuccessfulDraftWrite(page, () => reviewProgressButton.click());
+  await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
+}
+
+async function returnToBudget(page: Page) {
+  const budgetProgressButton = page.getByRole("button", { name: /Budget/i }).first();
+  await expect(budgetProgressButton).toBeEnabled();
+  await waitForSuccessfulDraftWrite(page, () => budgetProgressButton.click());
+  await expect(page.getByRole("heading", { name: "Set budget and capture style" })).toBeVisible();
+}
+
+async function assertReviewDestination(page: Page, destination: "Website funnel" | "Meta Instant Form") {
+  const destinationLabel = page.getByText("Ad destination", { exact: true });
+  await expect(destinationLabel).toBeVisible();
+  await expect(destinationLabel.locator("xpath=following-sibling::*[1]")).toHaveText(destination);
+  await expect(page.getByText("Daily ad spend", { exact: true }).locator("xpath=following-sibling::*[1]")).toContainText("$30/day");
+  await expect(page.getByText("Lead capture", { exact: true }).locator("xpath=following-sibling::*[1]")).toContainText("Quality leads");
+  await expect(page.getByText("Launch access", { exact: true }).locator("xpath=following-sibling::*[1]")).toContainText(/Pro access|Only launch plan|Existing plan/);
+  await expect(page.getByTestId("prepaywall-campaign-preview")).toBeVisible();
+}
+
+async function progressFreshOnboardingToReview(page: Page) {
+  await gotoAndSettle(page, "/onboarding?new=1");
+  await expect(page.getByRole("heading", { name: "Choose campaign type" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Buyer leads.*Selected/i })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: /Continue to market/i }).click();
+  await expect(page.getByRole("heading", { name: "Pick the city or market" })).toBeVisible();
+  await page.getByRole("textbox", { name: "City or market" }).fill("Safe QA Market, ON");
+
+  await page.getByRole("button", { name: /Continue to property/i }).click();
+  await expect(page.getByRole("heading", { name: "Choose inventory focus" })).toBeVisible();
+  await page.getByRole("button", { name: /Continue to audience/i }).click();
+  await expect(page.getByRole("heading", { name: "Define audience and price" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Continue to budget/i }).click();
+  await expect(page.getByRole("heading", { name: "Set budget and capture style" })).toBeVisible();
+  await expect(page.getByLabel("Custom daily ad spend amount")).toHaveValue("30");
+  await expect(page.getByText("Estimated 30-day media spend:", { exact: false })).toContainText("$900");
+
+  await chooseDestination(page, "Meta Instant Form");
+  await gotoAndSettle(page, "/onboarding?resume=1");
+  await expect(page.getByRole("heading", { name: "Set budget and capture style" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Meta Instant Form/i }).first()).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: /Continue to setup/i }).click();
+  await expect(page.getByRole("heading", { name: "Configure capture path" })).toBeVisible();
+  await expect(page.getByText("Meta Instant Form questions", { exact: true })).toBeVisible();
+  await expect(page.getByText("One qualification question included", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: /Continue to offer/i }).click();
+  await expect(page.getByRole("heading", { name: "Choose offer or lead magnet" })).toBeVisible();
+  await page.getByRole("button", { name: /Continue to agent/i }).click();
+  await expect(page.getByRole("heading", { name: "Identify the agent" })).toBeVisible();
+
+  await page.getByRole("textbox", { name: "Agent first name" }).fill("Safe");
+  await page.getByRole("textbox", { name: "Agent last name" }).fill("Browserproof");
+  await page.getByRole("textbox", { name: "Company or brokerage" }).fill("Synthetic QA Realty");
+  await page.getByRole("textbox", { name: "SMS alert phone" }).fill("+14165550100");
+
+  const agentContinue = page.getByRole("button", { name: /Continue to (plan|review)/i });
+  await agentContinue.click();
+
+  if (await page.getByRole("heading", { name: "Confirm launch plan" }).isVisible().catch(() => false)) {
+    await expect(page.getByText("$297/mo", { exact: false }).first()).toBeVisible();
+    await waitForSuccessfulDraftWrite(page, () =>
+      page.getByRole("button", { name: /Continue to review/i }).click(),
+    );
+  } else {
+    await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
+    await waitForSuccessfulDraftWrite(page, async () => {
+      await page.getByRole("button", { name: /Review/i }).first().click();
+    });
+  }
+
+  await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
+  await expect(page.getByText("Safe Browserproof", { exact: true })).toBeVisible();
+}
+
+test.beforeAll(() => {
+  if (HOSTED_ACCEPTANCE) {
+    assertAuthenticatedStagingPreconditions();
+    return;
+  }
+
+  expect(assertZeroExternalEffectsEnvironment(process.env).ok).toBe(true);
+});
+
+test.beforeEach(async ({ page }) => {
+  await installSafetyHarness(page);
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  assertDiagnosticsClean(page, testInfo);
+});
+
+test.describe("public and unauthenticated route truth", () => {
+  const publicRoutes = [
+    { path: "/", heading: /Stop buying.*agency promises/i },
+    { path: "/login", heading: /Build, launch, and optimize your ads/i },
+    { path: "/privacy", heading: "Privacy Policy" },
+    { path: "/terms", heading: "Terms of Service" },
+  ];
+
+  for (const route of publicRoutes) {
+    test(`${route.path} renders without overflow, hydration, console, or accessibility failures`, async ({ page }) => {
+      await gotoAndSettle(page, route.path);
+      await expect(page.getByRole("heading", { level: 1, name: route.heading })).toBeVisible();
+      await assertNoHorizontalOverflow(page);
+      await assertCoreAccessibility(page);
+      await assertSkipLinkAndReducedMotion(page);
+    });
+  }
+
+  test("homepage keyboard focus and public links are usable and unbroken", async ({ page }) => {
+    await gotoAndSettle(page, "/");
+    await assertKeyboardFocus(page);
+    await assertPublicLinksResolve(page);
+    await assertTwoHundredPercentZoom(page);
+  });
+
+  test("login controls are keyboard reachable, named, and do not submit during proof", async ({ page }) => {
+    await gotoAndSettle(page, "/login");
+    await expect(page.getByRole("button", { name: "Sign in", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("textbox", { name: "Email" })).toBeVisible();
+    await expect(page.getByLabel("Password")).toBeVisible();
+    await assertKeyboardFocus(page);
+    await assertCoreAccessibility(page);
+  });
+
+  for (const protectedRoute of ["/dashboard", "/launch", "/admin/issues", "/admin/command-center"]) {
+    test(`${protectedRoute} redirects an unauthenticated visitor to sign in`, async ({ page }) => {
+      await gotoAndSettle(page, protectedRoute);
+      await expect(page).toHaveURL((url) => {
+        const redirectedFrom = url.searchParams.get("redirectedFrom");
+        return url.pathname === "/login" && redirectedFrom === protectedRoute;
+      });
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await assertNoHorizontalOverflow(page);
+    });
+  }
+});
+
+test.describe("authenticated isolated-staging product proof", () => {
+  test.skip(
+    !AUTHENTICATED_STAGING_PROOF_ENABLED,
+    "Set SAFE_E2E_QA_AUTH=true only for the explicitly attested isolated staging project.",
+  );
+
+  test.beforeAll(() => {
+    assertAuthenticatedStagingPreconditions();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await establishQaSession(page);
+  });
+
+  test("zero-external-effects precondition and paid activation truth are exact", async ({ page }) => {
+    expect(process.env.SAFE_E2E_ZERO_EXTERNAL_EFFECTS_ATTESTATION).toBe(
+      ZERO_EXTERNAL_EFFECTS_ATTESTATION,
+    );
+
+    const billingResponse = await page.request.get("/api/billing/status", {
+      headers: { Accept: "application/json" },
+    });
+    const billing = (await billingResponse.json()) as Record<string, unknown>;
+    expect(billingResponse.status()).toBe(200);
+    expect(billing.planTier).toBe("pro");
+    expect(billing.subscriptionStatus).toMatch(/^(active|trialing)$/);
+    expect(billing.commerciallyActivated).toBe(true);
+    expect(billing.launchAllowed).toBe(true);
+    expect(billing.launchOverride).toBe(false);
+    expect(billing.truthBoundary).toEqual({
+      activationIsHistorical: true,
+      entitlementIsCurrent: true,
+      setupReadinessIsSeparate: true,
+    });
+
+    const creditsResponse = await page.request.get("/api/billing/credits", {
+      headers: { Accept: "application/json" },
+    });
+    const credits = (await creditsResponse.json()) as Record<string, unknown>;
+    expect(creditsResponse.status()).toBe(200);
+    expect(credits.balance).toBe(1000);
+    expect(credits.formattedBalance).toBe("$10.00");
+    expect(credits.imageGenerationCostCents).toBe(100);
+    expect(credits.videoGenerationCostCents).toBe(500);
+
+    await gotoAndSettle(page, "/paywall");
+    await expect(page.getByRole("heading", { name: "Your campaign is ready" })).toBeVisible();
+    await expect(page.getByText("Pro · $297/mo", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Activate to launch" })).toBeVisible();
+    expect(diagnosticsFor(page).forbiddenMutations).toEqual([]);
+  });
+
+  test("website and Meta destinations persist and render correctly in review", async ({ page }) => {
+    await progressFreshOnboardingToReview(page);
+    await assertReviewDestination(page, "Meta Instant Form");
+
+    await returnToBudget(page);
+    await chooseDestination(page, "Website funnel");
+    await goToReviewFromBudget(page);
+    await assertReviewDestination(page, "Website funnel");
+    await gotoAndSettle(page, "/onboarding?resume=1");
+    await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
+    await assertReviewDestination(page, "Website funnel");
+
+    await returnToBudget(page);
+    await chooseDestination(page, "Meta Instant Form");
+    await goToReviewFromBudget(page);
+    await assertReviewDestination(page, "Meta Instant Form");
+    await gotoAndSettle(page, "/onboarding?resume=1");
+    await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
+    await assertReviewDestination(page, "Meta Instant Form");
+
+    expect(diagnosticsFor(page).allowedDraftWrites.length).toBeGreaterThanOrEqual(5);
+    expect(diagnosticsFor(page).interceptedTelemetry.length).toBeGreaterThan(0);
+    expect(diagnosticsFor(page).forbiddenMutations).toEqual([]);
+    await assertNoHorizontalOverflow(page);
+    await assertCoreAccessibility(page);
+    await assertSkipLinkAndReducedMotion(page);
+  });
+
+  test("dashboard renders synthetic truth and launch remains behind explicit safe gates", async ({ page }) => {
+    await gotoAndSettle(page, "/dashboard");
+    await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await assertCoreAccessibility(page);
+
+    const campaignLaunchLink = page.locator('a[href^="/launch?campaignId="]').first();
+    const launchLink = (await campaignLaunchLink.count()) > 0
+      ? campaignLaunchLink
+      : page.locator('a[href="/launch"]').first();
+    const campaignLaunchHref = await launchLink.getAttribute("href").catch(() => null);
+    await gotoAndSettle(page, campaignLaunchHref || "/launch");
+
+    const pageText = await page.locator("main").innerText();
+    expect(pageText).toMatch(
+      /Campaign plan not found|Selected creative required|Final review before launch/,
+    );
+
+    if (pageText.includes("Final review before launch")) {
+      const launchAttemptLink = page.getByRole("link", { name: "Ready to attempt launch" });
+      const disabledLaunchButton = page.getByRole("button", { name: "Ready to attempt launch" });
+      const activationLink = page.getByRole("link", { name: "Activate to launch" });
+      const safeGateCount =
+        (await launchAttemptLink.count()) +
+        (await disabledLaunchButton.count()) +
+        (await activationLink.count());
+      expect(safeGateCount, "Launch page exposed no explicit final gate state.").toBeGreaterThan(0);
+
+      if (await launchAttemptLink.count()) {
+        await expect(launchAttemptLink).toHaveAttribute("href", /\/launching\?campaignId=/);
+      }
+      if (await disabledLaunchButton.count()) {
+        await expect(disabledLaunchButton).toBeDisabled();
+      }
+    } else {
+      await expect(page.getByText(/Launch is blocked|Complete onboarding first/i).first()).toBeVisible();
+    }
+
+    expect(diagnosticsFor(page).forbiddenMutations).toEqual([]);
+    await assertNoHorizontalOverflow(page);
+  });
+});

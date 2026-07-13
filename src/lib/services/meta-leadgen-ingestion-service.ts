@@ -20,6 +20,7 @@ import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { createVerifiedProviderLeadAndStartConversation } from "@/lib/services/lead-handler-service";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
+import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
 import type { Json } from "@/lib/supabase/types";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
@@ -443,66 +444,33 @@ async function fetchProviderLeadAndAd(params: {
   return { providerLead: leadData, providerAd: adData };
 }
 
-async function queueSuppressedLeadEffects(params: {
-  admin: AdminClient;
+async function queueGhlOnlyLeadEffects(params: {
   requestId: string;
   organizationId: string;
   userId: string;
   campaignId: string;
   lead: Record<string, unknown> & { id: string };
 }) {
-  const idempotencyKey = `lead_side_effects:${params.lead.id}`;
-  const payload = {
-    requestId: params.requestId,
-    enabledEffects: [],
-    requiredEffects: [],
-    lead: {
-      ...params.lead,
-      organization_id: params.organizationId,
-      campaign_id: params.campaignId,
+  const job = await queueLeadSideEffectsJob({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    campaignId: params.campaignId,
+    payload: {
+      requestId: params.requestId,
+      // Native Meta forms do not contain DealFlow's SMS or advertising-event
+      // consent. CRM delivery is operational storage, so it is the only effect
+      // requested here and remains fenced by the exact GHL tenant gate.
+      enabledEffects: ["ghl_delivery"],
+      requiredEffects: ["ghl_delivery"],
+      advertisingConsent: null,
+      lead: {
+        ...params.lead,
+        organization_id: params.organizationId,
+        campaign_id: params.campaignId,
+      },
     },
-  };
-  const { data, error } = await params.admin
-    .from("system_jobs")
-    .insert({
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      campaign_id: params.campaignId,
-      kind: "lead_side_effects",
-      status: "pending",
-      payload: payload as unknown as Json,
-      idempotency_key: idempotencyKey,
-      max_attempts: 3,
-    } as never)
-    .select("id")
-    .single();
-
-  if (!error && data && typeof (data as { id?: unknown }).id === "string") {
-    return (data as { id: string }).id;
-  }
-
-  const errorCode = error && "code" in error ? String(error.code) : null;
-  if (errorCode === "23505") {
-    const { data: existing, error: existingError } = await params.admin
-      .from("system_jobs")
-      .select("id")
-      .eq("idempotency_key", idempotencyKey)
-      .eq("organization_id", params.organizationId)
-      .eq("user_id", params.userId)
-      .eq("campaign_id", params.campaignId)
-      .eq("kind", "lead_side_effects")
-      .maybeSingle();
-
-    if (!existingError && existing && typeof (existing as { id?: unknown }).id === "string") {
-      return (existing as { id: string }).id;
-    }
-  }
-
-  throw new ApiError(
-    503,
-    error?.message ?? "Suppressed lead side-effect truth could not be queued.",
-    "meta_leadgen_side_effect_outbox_failed",
-  );
+  });
+  return job.id;
 }
 
 function isRetryableLookupError(error: unknown) {
@@ -620,8 +588,7 @@ export async function reconcileMetaLeadgenEvent(params: {
         campaignId: claim.campaignId,
       },
     );
-    const sideEffectJobId = await queueSuppressedLeadEffects({
-      admin,
+    const sideEffectJobId = await queueGhlOnlyLeadEffects({
       requestId: params.requestId,
       organizationId: claim.organizationId,
       userId: claim.userId,
@@ -671,7 +638,8 @@ export async function reconcileMetaLeadgenEvent(params: {
       sideEffectJobId,
       communicationsEnabled: false,
       capiEnabled: false,
-      providerMutationEnabled: false,
+      ghlDeliveryRequested: true,
+      providerMutationPerformed: false,
     });
 
     return {

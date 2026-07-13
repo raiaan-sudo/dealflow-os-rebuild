@@ -31,6 +31,7 @@ import {
   buildOnboardingDraftEnvelope,
   buildOnboardingSubmission,
   onboardingDraftSchema,
+  type CampaignAdDestination,
   type CampaignMode,
   type FunnelLanguage,
   type LeadCaptureMode,
@@ -38,6 +39,7 @@ import {
   type OnboardingStepKey,
 } from "@/lib/onboarding-contract";
 import { normalizePhone } from "@/lib/phone";
+import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
 import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
@@ -183,6 +185,7 @@ const DEFAULT_DRAFT: DraftState = {
   dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
   funnelLanguage: "en",
+  adDestination: "website",
   leadCaptureMode: "quality_funnel",
   leadFormQuestions: [],
   leadFormQuestionDraft: "",
@@ -210,16 +213,32 @@ const MAX_DAILY_BUDGET_CENTS: number | null = null;
 
 const LEAD_CAPTURE_MODE_ORDER: LeadCaptureMode[] = ["volume_lead_form", "quality_funnel", "deep_qualification"];
 
+const AD_DESTINATIONS: Record<
+  CampaignAdDestination,
+  { title: string; label: string; body: string }
+> = {
+  website: {
+    title: "Website funnel",
+    label: "DealFlow or verified GHL URL",
+    body: "Send the ad to the selected hosted funnel and capture the lead through the website form.",
+  },
+  meta_instant_form: {
+    title: "Meta Instant Form",
+    label: "On-Facebook lead form",
+    body: "Collect the lead inside Meta, then persist, deduplicate, route to GHL, and report it in DealFlow.",
+  },
+};
+
 const LEAD_CAPTURE_MODES: Record<LeadCaptureMode, { title: string; label: string; body: string }> = {
   volume_lead_form: {
     title: "Volume leads",
-    label: "Fast website form",
-    body: "Use the shortest DealFlow-hosted form when budget is tight and consistent lead flow matters most.",
+    label: "Fastest conversion",
+    body: "Use name, email, and phone with minimal extra friction when consistent lead flow matters most.",
   },
   quality_funnel: {
     title: "Quality leads",
-    label: "Funnel",
-    body: "Use the winning funnel when the budget can support a stronger qualification path and warmer handoff.",
+    label: "Balanced qualification",
+    body: "Add one high-signal qualification question for a warmer handoff without making the form feel heavy.",
   },
   deep_qualification: {
     title: "Highest quality",
@@ -373,7 +392,10 @@ function recommendLeadCaptureMode(dailyBudgetCents: number | null): LeadCaptureM
   return "quality_funnel";
 }
 
-function getLeadCaptureRecommendation(dailyBudgetCents: number | null) {
+function getLeadCaptureRecommendation(
+  dailyBudgetCents: number | null,
+  adDestination: CampaignAdDestination,
+) {
   const mode = recommendLeadCaptureMode(dailyBudgetCents);
   const option = LEAD_CAPTURE_MODES[mode];
 
@@ -382,7 +404,10 @@ function getLeadCaptureRecommendation(dailyBudgetCents: number | null) {
       mode,
       title: "Recommended: Volume leads",
       label: option.label,
-      body: "Because this budget is under $30/day, keep friction low with the short DealFlow website form. Name, email, and phone are enough to start learning without depending on an unimplemented provider form.",
+      body:
+        adDestination === "meta_instant_form"
+          ? "Because this budget is under $30/day, keep the native Meta form to name, email, and phone so the campaign can learn with minimal friction."
+          : "Because this budget is under $30/day, keep the website form to name, email, and phone so the campaign can learn with minimal friction.",
     };
   }
 
@@ -739,8 +764,21 @@ export default function OnboardingPage() {
     [draft.campaignMode, draft.offer],
   );
   const dailyBudgetCents = dailyBudgetCentsFromDraft(draft);
-  const leadCaptureRecommendation = getLeadCaptureRecommendation(dailyBudgetCents);
-  const instantLeadFormSelected = draft.leadCaptureMode === "volume_lead_form";
+  const leadCaptureRecommendation = getLeadCaptureRecommendation(
+    dailyBudgetCents,
+    draft.adDestination,
+  );
+  const shortLeadFormSelected = draft.leadCaptureMode === "volume_lead_form";
+  const metaInstantFormSelected = draft.adDestination === "meta_instant_form";
+  const effectiveMetaQuestions = useMemo(
+    () =>
+      resolveMetaInstantFormQualificationQuestions({
+        leadCaptureMode: draft.leadCaptureMode,
+        language: draft.funnelLanguage,
+        customQuestions: draft.leadFormQuestions,
+      }),
+    [draft.funnelLanguage, draft.leadCaptureMode, draft.leadFormQuestions],
+  );
   const lowBudgetLeadForm = (dailyBudgetCents ?? 0) < 3000;
   const normalizedDraft = useMemo(
     () => ({ ...draft, offer: offerInsight.normalizedOffer }),
@@ -1273,7 +1311,7 @@ export default function OnboardingPage() {
                   />
                 </label>
                 <p className="mt-2 text-xs leading-5 text-white/52">
-                  Starter keeps you in control. This is a daily media budget input, not a monthly commitment.
+                  You stay in control. This is a daily media budget input, not a monthly commitment.
                 </p>
                 {formatMonthlyEstimateFromDraft(draft) ? (
                   <p className="mt-1 text-xs leading-5 text-white/42">{formatMonthlyEstimateFromDraft(draft)}</p>
@@ -1330,6 +1368,39 @@ export default function OnboardingPage() {
                     );
                   })}
                 </div>
+                <div className="mt-5 border-t border-white/10 pt-5">
+                  <p className="text-sm font-medium text-foreground">Ad destination</p>
+                  <p className="mt-1 text-xs leading-5 text-white/52">
+                    Choose where the prospect completes the first lead form. This is separate from qualification depth.
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {(Object.entries(AD_DESTINATIONS) as [CampaignAdDestination, (typeof AD_DESTINATIONS)[CampaignAdDestination]][]).map(
+                      ([destination, option]) => {
+                        const selected = draft.adDestination === destination;
+                        return (
+                          <button
+                            key={destination}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => updateDraft({ adDestination: destination })}
+                            className={cn(
+                              "rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5",
+                              selected
+                                ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                                : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                            )}
+                          >
+                            <span className="block text-sm font-semibold text-white">{option.title}</span>
+                            <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
+                              {option.label}
+                            </span>
+                            <span className="mt-2 block text-xs leading-5 text-white/58">{option.body}</span>
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1368,31 +1439,54 @@ export default function OnboardingPage() {
                   </div>
                 </div>
 
-                {instantLeadFormSelected ? (
+                {shortLeadFormSelected || metaInstantFormSelected ? (
                   <div>
-                    <p className="text-sm font-medium text-foreground">Fast website form questions</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {metaInstantFormSelected
+                        ? "Meta Instant Form questions"
+                        : "Fast website form questions"}
+                    </p>
                     <p className="mt-1 text-xs leading-5 text-white/52">
-                      The DealFlow form already collects full name, email, and phone number. Add up to 3 questions
-                      only when the budget can support more friction.
+                      {metaInstantFormSelected
+                        ? "Meta collects full name, email, and phone number. DealFlow applies the qualification depth you selected and lets you replace its defaults with up to 3 focused questions."
+                        : "The website form already collects full name, email, and phone number. Add up to 3 questions only when the budget can support more friction."}
                     </p>
                     <div
                       className={cn(
                         "mt-3 rounded-[18px] border p-4",
-                        lowBudgetLeadForm
+                        shortLeadFormSelected && lowBudgetLeadForm
                           ? "border-amber-300/20 bg-amber-300/[0.055]"
                           : "border-cyan-200/16 bg-cyan-300/[0.045]",
                       )}
                     >
-                      <p className={cn("text-sm font-semibold", lowBudgetLeadForm ? "text-amber-100" : "text-cyan-100")}>
-                        {lowBudgetLeadForm
-                          ? "Under $30/day: keep the form simple"
-                          : "Budget supports light qualification"}
+                      <p className={cn("text-sm font-semibold", shortLeadFormSelected && lowBudgetLeadForm ? "text-amber-100" : "text-cyan-100")}>
+                        {shortLeadFormSelected
+                          ? lowBudgetLeadForm
+                            ? "Under $30/day: keep the form simple"
+                            : "Volume path selected"
+                          : draft.leadCaptureMode === "deep_qualification"
+                            ? "Three qualification questions included"
+                            : "One qualification question included"}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-white/60">
-                        {lowBudgetLeadForm
-                          ? "We recommend no extra questions beyond name, email, and phone so the campaign can produce enough leads to learn."
-                          : "You can add 1-3 qualification questions to improve quality while keeping the form usable."}
+                        {shortLeadFormSelected
+                          ? lowBudgetLeadForm
+                            ? "We recommend no extra questions beyond name, email, and phone so the campaign can produce enough leads to learn."
+                            : "You can add focused questions, but the volume path works best with as little friction as possible."
+                          : "DealFlow fills any missing questions with safe real-estate defaults and preserves up to 3 custom questions you choose."}
                       </p>
+                      {metaInstantFormSelected && effectiveMetaQuestions.length > 0 ? (
+                        <div className="mt-3 grid gap-2">
+                          {effectiveMetaQuestions.map((question) => (
+                            <div
+                              key={question}
+                              className="rounded-2xl border border-white/10 bg-black/18 px-3 py-2 text-xs font-medium leading-5 text-white/74"
+                            >
+                              {question}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="mt-3 grid gap-2">
                       {LEAD_FORM_QUESTION_PRESETS.map((question) => {
@@ -1437,7 +1531,7 @@ export default function OnboardingPage() {
                       </Button>
                     </div>
                     <p className="mt-2 text-xs leading-5 text-white/48">
-                      Selected {draft.leadFormQuestions.length}/3. Standard fields are always included.
+                      Selected {draft.leadFormQuestions.length}/3 custom questions. Standard fields are always included.
                     </p>
                     {errors.leadFormQuestionDraft ? <p id="onboarding-lead-question-error" className="mt-2 text-sm text-rose-400">{errors.leadFormQuestionDraft}</p> : null}
                   </div>
@@ -1627,6 +1721,8 @@ export default function OnboardingPage() {
                   ["Daily ad spend", formatDailyBudgetFromDraft(draft)],
                   ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated 30-day media spend: ", "").replace(/\.$/, "") ?? "Not set"],
                   ["Offer", normalizedDraft.offer],
+                  ["Lead capture", LEAD_CAPTURE_MODES[draft.leadCaptureMode].title],
+                  ["Ad destination", AD_DESTINATIONS[draft.adDestination].title],
                   [
                     "Launch access",
                     canUseExistingLaunchAccess

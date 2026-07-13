@@ -1,6 +1,10 @@
 import Stripe from "stripe";
 import { ApiError } from "@/lib/api/route";
-import { getStripeEnv, validateStripeEnv } from "@/lib/env";
+import {
+  getStripeEnv,
+  isBillingCheckoutSafeModeEnabled,
+  validateStripeEnv,
+} from "@/lib/env";
 import type {
   ExecutionProvider,
   ProviderConfigValidation,
@@ -74,6 +78,31 @@ export interface StripeBillingProvider
       StripeBillingParsedResult
     > {
   getClient(): Stripe | null;
+}
+
+const STRIPE_EXTERNAL_MUTATION_ACTIONS = new Set<
+  StripeBillingExecuteRequest["action"]
+>([
+  "create_customer",
+  "update_customer",
+  "create_checkout_session",
+  "create_billing_portal_session",
+  "update_subscription",
+]);
+
+export function assertStripeExternalMutationAllowed(
+  action: StripeBillingExecuteRequest["action"],
+) {
+  if (
+    STRIPE_EXTERNAL_MUTATION_ACTIONS.has(action) &&
+    isBillingCheckoutSafeModeEnabled()
+  ) {
+    throw new ApiError(
+      503,
+      "Billing provider writes are disabled while billing safe mode is active.",
+      "billing_checkout_safe_mode",
+    );
+  }
 }
 
 function parseStripeFailure(error: unknown): ProviderFailure {
@@ -153,6 +182,7 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
   }
 
   async execute(request: StripeBillingExecuteRequest): Promise<StripeBillingRawResult> {
+    assertStripeExternalMutationAllowed(request.action);
     const { client, env } = this.getClientOrThrow();
 
     if (request.action === "create_customer") {

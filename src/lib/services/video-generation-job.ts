@@ -21,6 +21,14 @@ import {
   consumeSessionCostBudget,
   markSessionCostBudgetEvent,
 } from "@/lib/services/session-cost-guard";
+import {
+  beginPaidCreativeDispatch,
+  executePaidCreativeDispatch,
+  finalizePaidCreativeProjection,
+  fingerprintPaidCreativeRequest,
+  recordPaidCreativeProviderOutcome,
+  type PaidCreativeDispatchExecution,
+} from "@/lib/services/paid-creative-dispatch-service";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -349,12 +357,12 @@ export async function runVideoGenerationJob(params: {
     ? (savedDocument.videoAds as VideoCreativeAsset[])
     : [];
   const existingVideo = existingVideoAds[params.payload.creativeIndex] ?? null;
+  const providerUsageAttemptKey = `provider_usage_attempt:${params.providerUsageAttemptKey}:${params.payload.creativeIndex}`;
 
   if (
     params.payload.force !== true &&
     existingVideo &&
-    (existingVideo.videoGenerationState === "generated" ||
-      existingVideo.videoGenerationState === "generating")
+    existingVideo.videoGenerationState === "generated"
   ) {
     return {
       assetId: null,
@@ -368,6 +376,37 @@ export async function runVideoGenerationJob(params: {
         scenes: existingVideo.shotList,
       },
     };
+  }
+
+  if (params.payload.force !== true && existingVideo?.videoGenerationState === "generating") {
+    const matchingDispatch = await (params.supabase as any)
+      .from("paid_creative_dispatches")
+      .select("id")
+      .eq("organization_id", params.organizationId)
+      .eq("user_id", params.userId)
+      .eq("campaign_id", params.campaignId)
+      .eq("attempt_key", providerUsageAttemptKey)
+      .maybeSingle();
+    if (matchingDispatch.error) {
+      throw new ApiError(
+        500,
+        matchingDispatch.error.message ?? "Video dispatch recovery lookup failed.",
+        "paid_creative_dispatch_lookup_failed",
+      );
+    }
+    if (!matchingDispatch.data) {
+      return {
+        assetId: null,
+        providerAssetId: existingVideo.providerAssetId ?? null,
+        status: "processing",
+        video: {
+          url: existingVideo.videoUrl || "",
+          hook: existingVideo.hook,
+          script: existingVideo.script,
+          scenes: existingVideo.shotList,
+        },
+      };
+    }
   }
 
   const videoProvider = getDurableVideoProvider();
@@ -468,35 +507,162 @@ export async function runVideoGenerationJob(params: {
     organizationId: row.organization_id,
     campaignId: params.campaignId,
     idempotencyKey: `${videoProvider}_video_generation:${row.organization_id}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}:${params.providerUsageAttemptKey}`,
-    attemptKey: `provider_usage_attempt:${params.providerUsageAttemptKey}:${params.payload.creativeIndex}`,
+    attemptKey: providerUsageAttemptKey,
   });
 
-  let providerVideo;
-
-  try {
-    providerVideo = await createDurableVideoRender({
-      provider: videoProvider,
-      script: params.payload.scriptText,
-      inputImageUrl: params.payload.inputImageUrl,
-      avatarId: params.payload.avatarProfileId ?? undefined,
-      voiceId: params.payload.voiceProfile ?? undefined,
-      title: params.payload.title,
-    });
-  } catch (error) {
-    await markSessionCostBudgetEvent({
-      ...budgetReservation,
-      status: getDurableVideoProviderUsageOutcome(videoProvider, error),
-      metadata: {
-        operation: `${videoProvider}_video_generation`,
-        reason: error instanceof Error ? error.message : "Video generation failed to start.",
-      },
-    }).catch(() => null);
-    throw toVideoProviderApiError(error, "start");
+  if (!budgetReservation.eventId) {
+    throw new ApiError(
+      503,
+      "Paid video generation requires a durable provider usage event.",
+      "provider_usage_guard_unavailable",
+    );
   }
 
-  const { data: insertedAssetRaw, error } = await params.supabase
+  const providerRequest = {
+    provider: videoProvider,
+    script: params.payload.scriptText,
+    inputImageUrl: params.payload.inputImageUrl,
+    avatarId: params.payload.avatarProfileId ?? null,
+    voiceId: params.payload.voiceProfile ?? null,
+    title: params.payload.title,
+  };
+  let dispatchExecution: PaidCreativeDispatchExecution<
+    Awaited<ReturnType<typeof createDurableVideoRender>>
+  >;
+  try {
+    dispatchExecution = await executePaidCreativeDispatch({
+    begin: () =>
+      beginPaidCreativeDispatch({
+        supabase: params.supabase as any,
+        providerUsageEventId: budgetReservation.eventId as string,
+        organizationId: row.organization_id,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        provider: videoProvider,
+        operation: `${videoProvider}_video_generation`,
+        attemptKey: providerUsageAttemptKey,
+        requestFingerprint: fingerprintPaidCreativeRequest(providerRequest),
+        requestPayload: providerRequest,
+      }),
+    dispatch: () =>
+      createDurableVideoRender({
+        provider: videoProvider,
+        script: params.payload.scriptText,
+        inputImageUrl: params.payload.inputImageUrl,
+        avatarId: params.payload.avatarProfileId ?? undefined,
+        voiceId: params.payload.voiceProfile ?? undefined,
+        title: params.payload.title,
+      }),
+    classifyResult: (output) => ({
+      outcome: "accepted",
+      providerRequestId: output.providerAssetId,
+      errorCode: null,
+    }),
+    classifyError: (error) => {
+      const usageOutcome = getDurableVideoProviderUsageOutcome(videoProvider, error);
+      return {
+        outcome: usageOutcome === "operator_action_required" ? "uncertain" : "rejected",
+        errorCode:
+          usageOutcome === "operator_action_required"
+            ? "video_provider_dispatch_ambiguous"
+            : "video_provider_dispatch_rejected",
+      };
+    },
+    record: ({
+      handle,
+      outcome,
+      providerRequestId,
+      providerOutput,
+      errorCode,
+    }) =>
+      recordPaidCreativeProviderOutcome({
+        supabase: params.supabase as any,
+        handle,
+        organizationId: row.organization_id,
+        userId: params.userId,
+        outcome,
+        providerRequestId,
+        providerOutput,
+        errorCode,
+      }),
+    });
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      error.code === "paid_creative_dispatch_outcome_persist_failed"
+    ) {
+      await markSessionCostBudgetEvent({
+        ...budgetReservation,
+        status: "operator_action_required",
+        metadata: {
+          operation: `${videoProvider}_video_generation`,
+          reason: error.message,
+          providerOutcome: "ambiguous_after_dispatch",
+        },
+      }).catch(() => null);
+    }
+    throw error;
+  }
+
+  if (dispatchExecution.outcome !== "accepted" || !dispatchExecution.output) {
+    const liveDispatchPossiblyStillRunning =
+      dispatchExecution.recovered && dispatchExecution.dispatchState === "dispatching";
+    if (!liveDispatchPossiblyStillRunning) {
+      await markSessionCostBudgetEvent({
+        ...budgetReservation,
+        status:
+          dispatchExecution.outcome === "rejected"
+            ? "rejected"
+            : "operator_action_required",
+        metadata: {
+          operation: `${videoProvider}_video_generation`,
+          paidCreativeDispatchId: dispatchExecution.dispatchId,
+          reason:
+            dispatchExecution.error instanceof Error
+              ? dispatchExecution.error.message
+              : "Video provider dispatch requires reconciliation.",
+          providerOutcome: dispatchExecution.outcome,
+        },
+      }).catch(() => null);
+    }
+    if (dispatchExecution.error) {
+      throw toVideoProviderApiError(dispatchExecution.error, "start");
+    }
+    throw new ApiError(
+      409,
+      "Video provider dispatch is ambiguous and requires operator reconciliation before retry.",
+      "paid_creative_dispatch_operator_action_required",
+    );
+  }
+
+  const providerVideo = dispatchExecution.output as Awaited<
+    ReturnType<typeof createDurableVideoRender>
+  >;
+  if (!providerVideo.providerAssetId?.trim()) {
+    throw new ApiError(
+      500,
+      "Recovered video provider output is missing its request identity.",
+      "paid_creative_dispatch_output_invalid",
+    );
+  }
+
+  const existingAssetLookup = await (params.supabase as any)
     .from("creative_assets")
-    .insert({
+    .select("*")
+    .eq("paid_creative_dispatch_id", dispatchExecution.dispatchId)
+    .maybeSingle();
+  if (existingAssetLookup.error) {
+    throw new ApiError(
+      500,
+      existingAssetLookup.error.message ?? "Paid video asset recovery lookup failed.",
+      "creative_asset_lookup_failed",
+    );
+  }
+
+  let insertedAssetRaw = existingAssetLookup.data;
+  let error: { message?: string | null; code?: string | null } | null = null;
+  if (!insertedAssetRaw) {
+    const insertResult = await params.supabase.from("creative_assets").insert({
       user_id: params.userId,
       campaign_id: params.campaignId,
       creative_id: params.payload.creativeId,
@@ -507,6 +673,7 @@ export async function runVideoGenerationJob(params: {
       status: "generating",
       provider_name: videoProvider,
       provider_asset_id: providerVideo.providerAssetId,
+      paid_creative_dispatch_id: dispatchExecution.dispatchId,
       file_url: null,
       thumbnail_url: null,
       metadata: {
@@ -519,10 +686,23 @@ export async function runVideoGenerationJob(params: {
         videoProvider,
         providerStatus: providerVideo.status,
         providerMetadata: providerVideo.metadata,
+        paidCreativeDispatchId: dispatchExecution.dispatchId,
       } as Json,
     } as never)
     .select("*")
     .single();
+    insertedAssetRaw = insertResult.data;
+    error = insertResult.error;
+    if (error && (error as { code?: string }).code === "23505") {
+      const replayLookup = await (params.supabase as any)
+        .from("creative_assets")
+        .select("*")
+        .eq("paid_creative_dispatch_id", dispatchExecution.dispatchId)
+        .maybeSingle();
+      insertedAssetRaw = replayLookup.data;
+      error = replayLookup.error;
+    }
+  }
   const insertedAsset = insertedAssetRaw as CreativeAsset | null;
 
   if (error || !insertedAsset) {
@@ -532,31 +712,9 @@ export async function runVideoGenerationJob(params: {
     );
 
     if (schemaMessage) {
-      await markSessionCostBudgetEvent({
-        ...budgetReservation,
-        status: "consumed",
-        metadata: {
-          operation: `${videoProvider}_video_generation`,
-          providerAssetId: providerVideo.providerAssetId,
-          reason: schemaMessage,
-          providerAccepted: true,
-          localPersistenceFailed: true,
-        },
-      }).catch(() => null);
       throw new ApiError(500, schemaMessage, "creative_assets_schema_incompatible");
     }
 
-    await markSessionCostBudgetEvent({
-      ...budgetReservation,
-      status: "consumed",
-      metadata: {
-        operation: `${videoProvider}_video_generation`,
-        providerAssetId: providerVideo.providerAssetId,
-        reason: error?.message ?? "Video asset could not be created.",
-        providerAccepted: true,
-        localPersistenceFailed: true,
-      },
-    }).catch(() => null);
     throw new ApiError(
       500,
       error?.message ?? "Video asset could not be created.",
@@ -595,6 +753,21 @@ export async function runVideoGenerationJob(params: {
     providerUsageEventId: budgetReservation.eventId,
     providerUsageSettlementToken: budgetReservation.settlementToken,
     providerUsageSettlementGeneration: budgetReservation.settlementGeneration,
+  });
+
+  await finalizePaidCreativeProjection({
+    supabase: params.supabase as any,
+    dispatchId: dispatchExecution.dispatchId,
+    organizationId: row.organization_id,
+    userId: params.userId,
+    projectionReceipt: {
+      kind: "video_generation",
+      campaignId: params.campaignId,
+      creativeIndex: params.payload.creativeIndex,
+      creativeAssetId: insertedAsset.id,
+      providerAssetId: providerVideo.providerAssetId,
+      statusJobKey: `video_generation_status:${videoProvider}:${providerVideo.providerAssetId}`,
+    },
   });
 
   return {

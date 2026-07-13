@@ -100,6 +100,67 @@ create table if not exists public.ghl_location_personalizations (
 comment on table public.ghl_location_personalizations is
   'Supported GHL model: an owner-preinstalled template is personalized only through documented custom-value APIs and exact preinstalled form IDs. It never claims API funnel or form publication.';
 
+-- Appointment lifecycle truth is projected into the existing canonical
+-- appointments table. Legacy rows remain readable; every new GHL projection is
+-- fenced to an exact workspace, lead, campaign, user, and location mapping.
+alter table public.appointments
+  add column if not exists user_id uuid null,
+  add column if not exists campaign_id uuid null,
+  add column if not exists ghl_location_mapping_id uuid null,
+  add column if not exists ghl_appointment_id text null,
+  add column if not exists ghl_contact_id text null,
+  add column if not exists ghl_calendar_id text null,
+  add column if not exists ghl_provider_updated_at timestamptz null,
+  add column if not exists ghl_ends_at timestamptz null,
+  add column if not exists ghl_deleted_at timestamptz null,
+  add column if not exists ghl_last_event_id text null,
+  add column if not exists ghl_last_payload_fingerprint text null;
+
+create unique index if not exists appointments_id_organization_unique
+  on public.appointments (id, organization_id);
+
+create unique index if not exists appointments_ghl_provider_identity_unique
+  on public.appointments (ghl_location_mapping_id, ghl_appointment_id)
+  where ghl_location_mapping_id is not null and ghl_appointment_id is not null;
+
+do $dealflow_ghl_appointment_constraints$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.appointments'::regclass
+      and conname = 'appointments_ghl_mapping_tenant_fk'
+  ) then
+    alter table public.appointments
+      add constraint appointments_ghl_mapping_tenant_fk
+      foreign key (ghl_location_mapping_id, organization_id)
+      references public.ghl_location_mappings(id, organization_id)
+      on update restrict on delete restrict not valid;
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.appointments'::regclass
+      and conname = 'appointments_lead_tenant_fk'
+  ) then
+    alter table public.appointments
+      add constraint appointments_lead_tenant_fk
+      foreign key (lead_id, organization_id)
+      references public.leads(id, organization_id)
+      on update restrict on delete restrict not valid;
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.appointments'::regclass
+      and conname = 'appointments_campaign_tenant_user_fk'
+  ) then
+    alter table public.appointments
+      add constraint appointments_campaign_tenant_user_fk
+      foreign key (campaign_id, organization_id, user_id)
+      references public.campaign_plans(id, organization_id, user_id)
+      on update restrict on delete restrict not valid;
+  end if;
+end;
+$dealflow_ghl_appointment_constraints$;
+
 create table if not exists public.ghl_lifecycle_webhook_events (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.ghl_workspace_tenants(organization_id) on delete restrict,
@@ -115,6 +176,11 @@ create table if not exists public.ghl_lifecycle_webhook_events (
   provider_updated_at timestamptz null,
   signature_algorithm text not null,
   payload_fingerprint text not null,
+  projection_status text not null default 'received',
+  projection_code text null,
+  resolved_lead_id uuid null,
+  canonical_appointment_id uuid null,
+  projected_at timestamptz null,
   received_at timestamptz not null default timezone('utc', now()),
   constraint ghl_lifecycle_webhook_mapping_tenant_fk foreign key (location_mapping_id, organization_id)
     references public.ghl_location_mappings(id, organization_id) on delete restrict,
@@ -123,8 +189,99 @@ create table if not exists public.ghl_lifecycle_webhook_events (
     'OpportunityStatusUpdate', 'OutboundMessage'
   )),
   constraint ghl_lifecycle_webhook_signature_check check (signature_algorithm = 'ed25519'),
-  constraint ghl_lifecycle_webhook_event_unique unique (location_mapping_id, provider_event_id)
+  constraint ghl_lifecycle_webhook_projection_check check (
+    projection_status in ('received', 'reconciled', 'operator_action_required')
+  ),
+  constraint ghl_lifecycle_webhook_event_unique unique (location_mapping_id, provider_event_id),
+  constraint ghl_lifecycle_webhook_id_organization_unique unique (id, organization_id),
+  constraint ghl_lifecycle_webhook_lead_tenant_fk
+    foreign key (resolved_lead_id, organization_id)
+    references public.leads(id, organization_id) on update restrict on delete restrict,
+  constraint ghl_lifecycle_webhook_appointment_tenant_fk
+    foreign key (canonical_appointment_id, organization_id)
+    references public.appointments(id, organization_id) on update restrict on delete restrict
 );
+
+-- One tenant-fenced current-state row per provider object. This is the
+-- canonical DealFlow binding for contacts, opportunities, appointments, and
+-- outbound-message outcomes; raw webhook bodies and provider credentials are
+-- intentionally never stored here.
+create table if not exists public.ghl_lifecycle_object_states (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.ghl_workspace_tenants(organization_id) on delete restrict,
+  location_mapping_id uuid not null,
+  lead_id uuid not null,
+  object_kind text not null,
+  provider_object_id text not null,
+  provider_contact_id text null,
+  provider_status text null,
+  canonical_appointment_id uuid null,
+  last_event_id text not null,
+  last_event_type text not null,
+  last_provider_updated_at timestamptz not null,
+  last_received_at timestamptz not null,
+  last_payload_fingerprint text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint ghl_lifecycle_object_states_kind_check check (
+    object_kind in ('appointment', 'contact', 'opportunity', 'outbound_message')
+  ),
+  constraint ghl_lifecycle_object_states_mapping_tenant_fk
+    foreign key (location_mapping_id, organization_id)
+    references public.ghl_location_mappings(id, organization_id) on update restrict on delete restrict,
+  constraint ghl_lifecycle_object_states_lead_tenant_fk
+    foreign key (lead_id, organization_id)
+    references public.leads(id, organization_id) on update restrict on delete restrict,
+  constraint ghl_lifecycle_object_states_appointment_tenant_fk
+    foreign key (canonical_appointment_id, organization_id)
+    references public.appointments(id, organization_id) on update restrict on delete restrict,
+  constraint ghl_lifecycle_object_states_provider_unique
+    unique (location_mapping_id, object_kind, provider_object_id),
+  constraint ghl_lifecycle_object_states_id_organization_unique
+    unique (id, organization_id)
+);
+
+create index if not exists ghl_lifecycle_object_states_lead_idx
+  on public.ghl_lifecycle_object_states (organization_id, lead_id, object_kind, updated_at desc);
+
+-- Existing operator work can now point at an exact immutable lifecycle receipt.
+alter table public.ghl_operator_requests
+  add column if not exists lifecycle_event_id uuid null;
+
+alter table public.ghl_operator_requests
+  drop constraint if exists ghl_operator_requests_kind_check,
+  add constraint ghl_operator_requests_kind_check
+    check (request_kind in (
+      'location_reconciliation',
+      'snapshot_verification',
+      'required_object_repair',
+      'funnel_publication',
+      'lead_effect_reconciliation',
+      'lifecycle_reconciliation'
+    )),
+  drop constraint if exists ghl_operator_requests_target_check,
+  add constraint ghl_operator_requests_target_check
+    check (
+      provisioning_run_id is not null
+      or lead_effect_event_id is not null
+      or lifecycle_event_id is not null
+    );
+
+do $dealflow_ghl_lifecycle_operator_fk$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.ghl_operator_requests'::regclass
+      and conname = 'ghl_operator_requests_lifecycle_tenant_fk'
+  ) then
+    alter table public.ghl_operator_requests
+      add constraint ghl_operator_requests_lifecycle_tenant_fk
+      foreign key (lifecycle_event_id, organization_id)
+      references public.ghl_lifecycle_webhook_events(id, organization_id)
+      on update restrict on delete restrict;
+  end if;
+end;
+$dealflow_ghl_lifecycle_operator_fk$;
 
 alter table public.ghl_runtime_controls enable row level security;
 alter table public.ghl_runtime_controls force row level security;
@@ -134,6 +291,13 @@ alter table public.ghl_location_personalizations enable row level security;
 alter table public.ghl_location_personalizations force row level security;
 alter table public.ghl_lifecycle_webhook_events enable row level security;
 alter table public.ghl_lifecycle_webhook_events force row level security;
+alter table public.ghl_lifecycle_object_states enable row level security;
+alter table public.ghl_lifecycle_object_states force row level security;
+
+drop trigger if exists set_ghl_lifecycle_object_states_updated_at on public.ghl_lifecycle_object_states;
+create trigger set_ghl_lifecycle_object_states_updated_at
+before update on public.ghl_lifecycle_object_states
+for each row execute function public.set_ghl_updated_at();
 
 create or replace function public.request_ghl_provisioning_from_billing_activation_v1(
   p_organization_id uuid,
@@ -552,6 +716,67 @@ as $$
   limit 1
 $$;
 
+create schema if not exists private;
+revoke all on schema private from public, anon;
+
+create or replace function private.record_ghl_lifecycle_operator_action_v1(
+  p_event_id uuid,
+  p_blocker_code text,
+  p_object_kind text,
+  p_now timestamptz
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, private
+as $$
+declare event_record public.ghl_lifecycle_webhook_events%rowtype;
+begin
+  if nullif(trim(p_blocker_code), '') is null
+     or p_object_kind not in ('appointment', 'contact', 'opportunity', 'outbound_message') then
+    raise exception 'Invalid GHL lifecycle operator-action identity.';
+  end if;
+
+  select * into strict event_record
+  from public.ghl_lifecycle_webhook_events
+  where id = p_event_id
+  for update;
+
+  update public.ghl_lifecycle_webhook_events
+  set projection_status = 'operator_action_required',
+      projection_code = trim(p_blocker_code),
+      projected_at = p_now
+  where id = event_record.id;
+
+  insert into public.ghl_operator_requests (
+    organization_id,
+    lifecycle_event_id,
+    request_kind,
+    blocker_code,
+    idempotency_key,
+    status,
+    details,
+    requested_at,
+    updated_at
+  ) values (
+    event_record.organization_id,
+    event_record.id,
+    'lifecycle_reconciliation',
+    trim(p_blocker_code),
+    'ghl-lifecycle:' || event_record.id::text || ':' || trim(p_blocker_code),
+    'open',
+    jsonb_build_object(
+      'lifecycle_event_id', event_record.id,
+      'event_type', event_record.event_type,
+      'object_kind', p_object_kind,
+      'location_mapping_id', event_record.location_mapping_id
+    ),
+    p_now,
+    p_now
+  ) on conflict (idempotency_key) do nothing;
+end;
+$$;
+
 create or replace function public.ingest_ghl_lifecycle_webhook_v1(
   p_provider_location_id text,
   p_provider_event_id text,
@@ -571,14 +796,41 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare mapping_record public.ghl_location_mappings%rowtype;
-declare result_record public.ghl_lifecycle_webhook_events%rowtype;
+declare
+  mapping_record public.ghl_location_mappings%rowtype;
+  result_record public.ghl_lifecycle_webhook_events%rowtype;
+  state_record public.ghl_lifecycle_object_states%rowtype;
+  appointment_record public.appointments%rowtype;
+  lead_record public.leads%rowtype;
+  candidate_lead_ids uuid[];
+  candidate_count integer := 0;
+  resolved_lead_id_value uuid;
+  object_kind_value text;
+  provider_contact_value text;
+  provider_status_value text;
+  provider_time_value timestamptz;
+  canonical_status_value text;
+  canonical_appointment_id_value uuid;
+  state_found boolean := false;
+  appointment_found boolean := false;
 begin
   if p_event_type not in (
     'AppointmentCreate', 'AppointmentUpdate', 'AppointmentDelete', 'ContactUpdate',
     'OpportunityStatusUpdate', 'OutboundMessage'
   ) then
     raise exception 'Unsupported GHL lifecycle event.';
+  end if;
+  if nullif(trim(p_provider_location_id), '') is null
+     or length(trim(p_provider_location_id)) > 180
+     or nullif(trim(p_provider_event_id), '') is null
+     or length(trim(p_provider_event_id)) > 240
+     or nullif(trim(p_provider_object_id), '') is null
+     or length(trim(p_provider_object_id)) > 180
+     or p_payload_fingerprint !~ '^[0-9a-f]{64}$'
+     or length(coalesce(p_provider_contact_id, '')) > 180
+     or length(coalesce(p_provider_calendar_id, '')) > 180
+     or length(coalesce(p_appointment_status, '')) > 180 then
+    raise exception 'Invalid GHL lifecycle webhook identity.';
   end if;
   if not exists (
     select 1 from public.ghl_runtime_controls
@@ -587,23 +839,324 @@ begin
     raise exception 'GHL lifecycle webhook database kill switch is closed.';
   end if;
   select * into strict mapping_record from public.ghl_location_mappings
-  where environment = 'production' and provider_location_id = p_provider_location_id and status = 'active';
+  where environment = 'production'
+    and provider_location_id = trim(p_provider_location_id)
+    and status = 'active';
   insert into public.ghl_lifecycle_webhook_events (
     organization_id, location_mapping_id, provider_event_id, event_type, provider_object_id,
     provider_contact_id, provider_calendar_id, appointment_status, starts_at, ends_at,
     provider_updated_at, signature_algorithm, payload_fingerprint, received_at
   ) values (
-    mapping_record.organization_id, mapping_record.id, p_provider_event_id, p_event_type, p_provider_object_id,
-    nullif(p_provider_contact_id, ''), nullif(p_provider_calendar_id, ''), nullif(p_appointment_status, ''), p_starts_at, p_ends_at,
+    mapping_record.organization_id, mapping_record.id, trim(p_provider_event_id), p_event_type, trim(p_provider_object_id),
+    nullif(trim(p_provider_contact_id), ''), nullif(trim(p_provider_calendar_id), ''), nullif(trim(p_appointment_status), ''), p_starts_at, p_ends_at,
     p_provider_updated_at, 'ed25519', p_payload_fingerprint, p_received_at
   ) on conflict (location_mapping_id, provider_event_id) do nothing;
   select * into strict result_record from public.ghl_lifecycle_webhook_events
-  where location_mapping_id = mapping_record.id and provider_event_id = p_provider_event_id;
+  where location_mapping_id = mapping_record.id and provider_event_id = trim(p_provider_event_id)
+  for update;
   if result_record.payload_fingerprint is distinct from p_payload_fingerprint
      or result_record.event_type is distinct from p_event_type
-     or result_record.provider_object_id is distinct from p_provider_object_id then
+     or result_record.provider_object_id is distinct from trim(p_provider_object_id)
+     or result_record.provider_contact_id is distinct from nullif(trim(p_provider_contact_id), '')
+     or result_record.provider_calendar_id is distinct from nullif(trim(p_provider_calendar_id), '')
+     or result_record.appointment_status is distinct from nullif(trim(p_appointment_status), '')
+     or result_record.starts_at is distinct from p_starts_at
+     or result_record.ends_at is distinct from p_ends_at
+     or result_record.provider_updated_at is distinct from p_provider_updated_at then
     raise exception 'GHL lifecycle webhook idempotency conflict.';
   end if;
+
+  -- A duplicate provider delivery observes the exact durable result and cannot
+  -- re-run application transitions or create a second operator request.
+  if result_record.projection_status <> 'received' then
+    return result_record;
+  end if;
+
+  object_kind_value := case
+    when p_event_type like 'Appointment%' then 'appointment'
+    when p_event_type = 'ContactUpdate' then 'contact'
+    when p_event_type = 'OpportunityStatusUpdate' then 'opportunity'
+    else 'outbound_message'
+  end;
+  provider_contact_value := case
+    when p_event_type = 'ContactUpdate' then trim(p_provider_object_id)
+    else nullif(trim(p_provider_contact_id), '')
+  end;
+  provider_status_value := nullif(lower(trim(p_appointment_status)), '');
+  provider_time_value := coalesce(p_provider_updated_at, p_received_at);
+
+  -- Serialize all events for one exact provider object before inspecting its
+  -- current version. This closes concurrent create/update/delete races.
+  perform pg_advisory_xact_lock(hashtextextended(
+    mapping_record.id::text || ':' || object_kind_value || ':' || trim(p_provider_object_id),
+    0
+  ));
+
+  select * into state_record
+  from public.ghl_lifecycle_object_states
+  where location_mapping_id = mapping_record.id
+    and object_kind = object_kind_value
+    and provider_object_id = trim(p_provider_object_id)
+  for update;
+  state_found := found;
+
+  if state_found and p_provider_updated_at is null
+     and state_record.last_payload_fingerprint is distinct from p_payload_fingerprint then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_provider_timestamp_missing', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  end if;
+  if state_found and provider_time_value < state_record.last_provider_updated_at then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_out_of_order_event', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  end if;
+  if state_found and provider_time_value = state_record.last_provider_updated_at
+     and state_record.last_payload_fingerprint is distinct from p_payload_fingerprint then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_same_version_conflict', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  end if;
+  if state_found and state_record.last_payload_fingerprint = p_payload_fingerprint then
+    update public.ghl_lifecycle_webhook_events
+    set projection_status = 'reconciled',
+        projection_code = 'idempotent_provider_object_delivery',
+        resolved_lead_id = state_record.lead_id,
+        canonical_appointment_id = state_record.canonical_appointment_id,
+        projected_at = p_received_at
+    where id = result_record.id
+    returning * into strict result_record;
+    return result_record;
+  end if;
+
+  select array_agg(distinct effect.lead_id order by effect.lead_id),
+         count(distinct effect.lead_id)::integer
+  into candidate_lead_ids, candidate_count
+  from public.ghl_lead_effect_events effect
+  where effect.organization_id = mapping_record.organization_id
+    and effect.location_mapping_id = mapping_record.id
+    and effect.status = 'succeeded'
+    and (
+      (provider_contact_value is not null and effect.provider_contact_id = provider_contact_value)
+      or (
+        object_kind_value = 'opportunity'
+        and effect.provider_opportunity_id = trim(p_provider_object_id)
+      )
+    );
+  candidate_count := coalesce(candidate_count, 0);
+
+  if state_found then
+    if candidate_count > 1
+       or (candidate_count = 1 and candidate_lead_ids[1] is distinct from state_record.lead_id) then
+      perform private.record_ghl_lifecycle_operator_action_v1(
+        result_record.id, 'ghl_lifecycle_ambiguous_lead_binding', object_kind_value, p_received_at
+      );
+      select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+      return result_record;
+    end if;
+    resolved_lead_id_value := state_record.lead_id;
+  elsif candidate_count = 0 then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_unknown_lead_binding', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  elsif candidate_count > 1 then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_ambiguous_lead_binding', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  else
+    resolved_lead_id_value := candidate_lead_ids[1];
+  end if;
+
+  select * into lead_record
+  from public.leads
+  where id = resolved_lead_id_value
+    and organization_id = mapping_record.organization_id
+  for update;
+  if not found then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_lead_tenant_conflict', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  end if;
+
+  if object_kind_value = 'appointment' then
+    select * into appointment_record
+    from public.appointments
+    where ghl_location_mapping_id = mapping_record.id
+      and ghl_appointment_id = trim(p_provider_object_id)
+    for update;
+    appointment_found := found;
+
+    if appointment_found and (
+      appointment_record.organization_id is distinct from mapping_record.organization_id
+      or appointment_record.lead_id is distinct from resolved_lead_id_value
+    ) then
+      perform private.record_ghl_lifecycle_operator_action_v1(
+        result_record.id, 'ghl_lifecycle_appointment_binding_conflict', object_kind_value, p_received_at
+      );
+      select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+      return result_record;
+    end if;
+    if p_event_type = 'AppointmentDelete' and not appointment_found then
+      perform private.record_ghl_lifecycle_operator_action_v1(
+        result_record.id, 'ghl_lifecycle_appointment_delete_without_binding', object_kind_value, p_received_at
+      );
+      select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+      return result_record;
+    end if;
+    if p_event_type <> 'AppointmentDelete' and p_starts_at is null then
+      perform private.record_ghl_lifecycle_operator_action_v1(
+        result_record.id, 'ghl_lifecycle_appointment_start_missing', object_kind_value, p_received_at
+      );
+      select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+      return result_record;
+    end if;
+    if p_event_type <> 'AppointmentDelete'
+       and (lead_record.user_id is null or lead_record.campaign_id is null) then
+      perform private.record_ghl_lifecycle_operator_action_v1(
+        result_record.id, 'ghl_lifecycle_lead_campaign_identity_missing', object_kind_value, p_received_at
+      );
+      select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+      return result_record;
+    end if;
+
+    if p_event_type <> 'AppointmentDelete'
+       and (
+         provider_status_value is null
+         or provider_status_value not in (
+           'new', 'confirmed', 'active', 'showed', 'completed', 'cancelled', 'noshow'
+         )
+       ) then
+      perform private.record_ghl_lifecycle_operator_action_v1(
+        result_record.id, 'ghl_lifecycle_appointment_status_unknown', object_kind_value, p_received_at
+      );
+      select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+      return result_record;
+    end if;
+
+    canonical_status_value := case
+      when p_event_type = 'AppointmentDelete' or provider_status_value = 'cancelled' then 'canceled'
+      when provider_status_value = 'noshow' then 'no_show'
+      when provider_status_value in ('completed', 'showed') then 'completed'
+      when provider_status_value in ('new', 'confirmed', 'active') then 'booked'
+    end;
+
+    if appointment_found then
+      update public.appointments
+      set user_id = coalesce(user_id, lead_record.user_id),
+          campaign_id = coalesce(campaign_id, lead_record.campaign_id),
+          scheduled_at = coalesce(p_starts_at, scheduled_at),
+          status = canonical_status_value,
+          appointment_type = coalesce(appointment_type, 'ghl'),
+          ghl_contact_id = coalesce(provider_contact_value, ghl_contact_id),
+          ghl_calendar_id = coalesce(nullif(trim(p_provider_calendar_id), ''), ghl_calendar_id),
+          ghl_provider_updated_at = provider_time_value,
+          ghl_ends_at = coalesce(p_ends_at, ghl_ends_at),
+          ghl_deleted_at = case when p_event_type = 'AppointmentDelete' then p_received_at else null end,
+          ghl_last_event_id = trim(p_provider_event_id),
+          ghl_last_payload_fingerprint = p_payload_fingerprint,
+          updated_at = p_received_at
+      where id = appointment_record.id
+      returning id into strict canonical_appointment_id_value;
+    else
+      insert into public.appointments (
+        organization_id, user_id, campaign_id, lead_id, scheduled_at, status,
+        appointment_type, ghl_location_mapping_id, ghl_appointment_id,
+        ghl_contact_id, ghl_calendar_id, ghl_provider_updated_at, ghl_ends_at,
+        ghl_last_event_id, ghl_last_payload_fingerprint, created_at, updated_at
+      ) values (
+        mapping_record.organization_id, lead_record.user_id, lead_record.campaign_id,
+        resolved_lead_id_value, p_starts_at, canonical_status_value, 'ghl',
+        mapping_record.id, trim(p_provider_object_id), provider_contact_value,
+        nullif(trim(p_provider_calendar_id), ''), provider_time_value, p_ends_at,
+        trim(p_provider_event_id), p_payload_fingerprint, p_received_at, p_received_at
+      ) returning id into strict canonical_appointment_id_value;
+    end if;
+
+    if canonical_status_value in ('booked', 'completed') then
+      update public.leads
+      set status = 'booked', updated_at = p_received_at
+      where id = resolved_lead_id_value and organization_id = mapping_record.organization_id;
+    elsif canonical_status_value in ('canceled', 'no_show')
+       and not exists (
+         select 1 from public.appointments other_appointment
+         where other_appointment.organization_id = mapping_record.organization_id
+           and other_appointment.lead_id = resolved_lead_id_value
+           and other_appointment.id <> canonical_appointment_id_value
+           and other_appointment.status in ('scheduled', 'booked', 'completed')
+       ) then
+      update public.leads
+      set status = 'qualified', updated_at = p_received_at
+      where id = resolved_lead_id_value
+        and organization_id = mapping_record.organization_id
+        and status = 'booked';
+    end if;
+  elsif object_kind_value = 'opportunity' then
+    if provider_status_value in ('lost', 'abandoned') then
+      update public.leads set status = 'lost', updated_at = p_received_at
+      where id = resolved_lead_id_value and organization_id = mapping_record.organization_id;
+    elsif provider_status_value = 'won' then
+      update public.leads set status = 'booked', updated_at = p_received_at
+      where id = resolved_lead_id_value and organization_id = mapping_record.organization_id;
+    elsif provider_status_value = 'open' then
+      update public.leads set status = 'qualified', updated_at = p_received_at
+      where id = resolved_lead_id_value
+        and organization_id = mapping_record.organization_id
+        and status in ('new', 'engaged');
+    end if;
+  end if;
+
+  insert into public.ghl_lifecycle_object_states (
+    organization_id, location_mapping_id, lead_id, object_kind,
+    provider_object_id, provider_contact_id, provider_status,
+    canonical_appointment_id, last_event_id, last_event_type,
+    last_provider_updated_at, last_received_at, last_payload_fingerprint,
+    created_at, updated_at
+  ) values (
+    mapping_record.organization_id, mapping_record.id, resolved_lead_id_value,
+    object_kind_value, trim(p_provider_object_id), provider_contact_value,
+    provider_status_value, canonical_appointment_id_value,
+    trim(p_provider_event_id), p_event_type, provider_time_value, p_received_at,
+    p_payload_fingerprint, p_received_at, p_received_at
+  ) on conflict (location_mapping_id, object_kind, provider_object_id) do update set
+    provider_contact_id = excluded.provider_contact_id,
+    provider_status = excluded.provider_status,
+    canonical_appointment_id = coalesce(excluded.canonical_appointment_id, public.ghl_lifecycle_object_states.canonical_appointment_id),
+    last_event_id = excluded.last_event_id,
+    last_event_type = excluded.last_event_type,
+    last_provider_updated_at = excluded.last_provider_updated_at,
+    last_received_at = excluded.last_received_at,
+    last_payload_fingerprint = excluded.last_payload_fingerprint,
+    updated_at = excluded.updated_at
+  where public.ghl_lifecycle_object_states.organization_id = excluded.organization_id
+    and public.ghl_lifecycle_object_states.lead_id = excluded.lead_id;
+  if not found then
+    perform private.record_ghl_lifecycle_operator_action_v1(
+      result_record.id, 'ghl_lifecycle_object_binding_conflict', object_kind_value, p_received_at
+    );
+    select * into strict result_record from public.ghl_lifecycle_webhook_events where id = result_record.id;
+    return result_record;
+  end if;
+
+  update public.ghl_lifecycle_webhook_events
+  set projection_status = 'reconciled',
+      projection_code = 'canonical_state_projected',
+      resolved_lead_id = resolved_lead_id_value,
+      canonical_appointment_id = canonical_appointment_id_value,
+      projected_at = p_received_at
+  where id = result_record.id
+  returning * into strict result_record;
   return result_record;
 end;
 $$;
@@ -665,11 +1218,13 @@ $dealflow_clone_ghl_production_lead_protocol$;
 revoke all on table public.ghl_runtime_controls from anon, authenticated;
 revoke all on table public.ghl_billing_activation_requests from anon, authenticated;
 revoke all on table public.ghl_location_personalizations from anon, authenticated;
-revoke all on table public.ghl_lifecycle_webhook_events from anon, authenticated;
+revoke all on table public.ghl_lifecycle_webhook_events from public, anon, authenticated, service_role;
+revoke all on table public.ghl_lifecycle_object_states from public, anon, authenticated, service_role;
 grant select on table public.ghl_runtime_controls to service_role;
 grant select, insert, update on table public.ghl_billing_activation_requests to service_role;
 grant select, insert, update on table public.ghl_location_personalizations to service_role;
-grant select, insert on table public.ghl_lifecycle_webhook_events to service_role;
+grant select on table public.ghl_lifecycle_webhook_events to service_role;
+grant select on table public.ghl_lifecycle_object_states to service_role;
 revoke all on function public.request_ghl_provisioning_from_billing_activation_v1(uuid, uuid, text, uuid, text, timestamptz) from public, anon, authenticated;
 grant execute on function public.request_ghl_provisioning_from_billing_activation_v1(uuid, uuid, text, uuid, text, timestamptz) to service_role;
 revoke all on function public.claim_next_ghl_provisioning_run_v1(text, text, timestamptz, integer) from public, anon, authenticated;
@@ -686,6 +1241,7 @@ revoke all on function public.resolve_ghl_ready_destination_v1(uuid, text) from 
 grant execute on function public.resolve_ghl_ready_destination_v1(uuid, text) to service_role;
 revoke all on function public.ingest_ghl_lifecycle_webhook_v1(text, text, text, text, text, text, text, timestamptz, timestamptz, timestamptz, text, timestamptz) from public, anon, authenticated;
 grant execute on function public.ingest_ghl_lifecycle_webhook_v1(text, text, text, text, text, text, text, timestamptz, timestamptz, timestamptz, text, timestamptz) to service_role;
+revoke all on function private.record_ghl_lifecycle_operator_action_v1(uuid, text, text, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.enqueue_ghl_production_lead_effects(uuid, uuid, timestamptz) from public, anon, authenticated;
 grant execute on function public.enqueue_ghl_production_lead_effects(uuid, uuid, timestamptz) to service_role;
 revoke all on function public.claim_next_ghl_production_lead_outbox(text, timestamptz, integer) from public, anon, authenticated;

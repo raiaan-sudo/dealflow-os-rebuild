@@ -29,6 +29,17 @@ export type GhlSandboxAuthority = {
   requiredObjects: GhlRequiredObject[];
 };
 
+export type GhlInboundFormsReadAuthority = {
+  environment: "sandbox" | "production";
+  organizationId: string;
+  mappingId: string;
+  providerLocationId: string;
+  providerAgencyId: string;
+  credentialRef: string;
+  capabilities: string[];
+  scopeAttestedAt: string;
+};
+
 export class GhlSandboxAuthorityError extends Error {
   readonly code: string;
 
@@ -65,6 +76,13 @@ function parseRequiredObjects(value: unknown): GhlRequiredObject[] {
         : {}),
     }];
   });
+}
+
+function parseCapabilities(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string =>
+    typeof item === "string" && /^[a-z][a-z0-9._:-]{1,79}$/.test(item)
+  ))].sort();
 }
 
 async function one(query: any, code: string) {
@@ -233,4 +251,67 @@ export function requiredGhlProviderObject(
   if (!object) return null;
   if (kind === "tag") return object.providerObjectId ?? object.key;
   return object.providerObjectId ?? null;
+}
+
+/**
+ * Resolves the independent, location-scoped Sub-Account credential used only
+ * for GET /forms/submissions. It never falls back to the installation's agency
+ * credential and requires an explicit forms.readonly capability attestation.
+ */
+export async function resolveGhlInboundFormsReadAuthority(input: {
+  client: GhlSandboxAuthorityClient;
+  authority: GhlSandboxAuthority;
+}): Promise<GhlInboundFormsReadAuthority> {
+  const prefix = input.authority.environment === "production" ? "ghl_production" : "ghl_sandbox";
+  const mapping = await one(
+    input.client.from("ghl_location_mappings")
+      .select("id,organization_id,environment,provider_location_id,status,forms_readonly_credential_ref,forms_readonly_capabilities,forms_readonly_scope_attested_at")
+      .eq("id", input.authority.mappingId)
+      .eq("organization_id", input.authority.organizationId)
+      .eq("environment", input.authority.environment)
+      .eq("status", "active"),
+    `${prefix}_forms_readonly_authority_lookup_failed`,
+  );
+  if (!mapping) {
+    throw new GhlSandboxAuthorityError(
+      `${prefix}_forms_readonly_authority_missing`,
+      "The exact active GHL mapping has no form-submission read authority.",
+    );
+  }
+  if (asString(mapping.provider_location_id) !== input.authority.providerLocationId) {
+    throw new GhlSandboxAuthorityError(
+      `${prefix}_forms_readonly_location_mismatch`,
+      "The GHL form-submission read authority is not bound to the canonical location.",
+    );
+  }
+
+  const credentialRef = asString(mapping.forms_readonly_credential_ref).trim();
+  const expectedCredentialPattern = input.authority.environment === "production"
+    ? /^env:GHL_PRODUCTION_[A-Z0-9_]*_TOKEN$/
+    : /^env:GHL_SANDBOX_[A-Z0-9_]*_TOKEN$/;
+  const capabilities = parseCapabilities(mapping.forms_readonly_capabilities);
+  const scopeAttestedAt = asString(mapping.forms_readonly_scope_attested_at);
+  const attestationTimestamp = Date.parse(scopeAttestedAt);
+  if (
+    !expectedCredentialPattern.test(credentialRef)
+    || !capabilities.includes("forms.readonly")
+    || !Number.isFinite(attestationTimestamp)
+    || attestationTimestamp > Date.now() + 300_000
+  ) {
+    throw new GhlSandboxAuthorityError(
+      `${prefix}_forms_readonly_scope_unproven`,
+      "A location-scoped GHL Sub-Account credential with forms.readonly scope is not attested.",
+    );
+  }
+
+  return {
+    environment: input.authority.environment,
+    organizationId: input.authority.organizationId,
+    mappingId: input.authority.mappingId,
+    providerLocationId: input.authority.providerLocationId,
+    providerAgencyId: input.authority.providerAgencyId,
+    credentialRef,
+    capabilities,
+    scopeAttestedAt: new Date(attestationTimestamp).toISOString(),
+  };
 }

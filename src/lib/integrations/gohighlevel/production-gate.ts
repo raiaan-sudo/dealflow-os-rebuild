@@ -1,9 +1,17 @@
-import { getDeploymentTarget, type DeploymentTarget } from "../../deployment-target";
+import {
+  getDeploymentTarget,
+  isExactProductionVercelHost,
+  type DeploymentTarget,
+} from "../../deployment-target";
 import { extractSupabaseProjectRef, GHL_PROVIDER_BASE_URL } from "./sandbox-gate";
 
 export const GHL_PRODUCTION_PROVIDER_ATTESTATION = "DEALFLOW_GHL_PRODUCTION_EXACT_V1";
 
-export type GhlProductionOperation = "provisioning" | "lead_delivery" | "lifecycle_webhook";
+export type GhlProductionOperation =
+  | "provisioning"
+  | "lead_delivery"
+  | "lifecycle_webhook"
+  | "form_submissions_read";
 
 export type GhlProductionGateInput = {
   enabled: boolean;
@@ -12,6 +20,7 @@ export type GhlProductionGateInput = {
   providerEnvironment: string | undefined;
   deploymentTarget?: DeploymentTarget;
   vercelEnv: string | undefined;
+  exactProductionHost?: boolean;
   actualProjectRef: string | undefined;
   expectedProjectRef: string | undefined;
   providerAttestation: string | undefined;
@@ -25,6 +34,7 @@ export type GhlProductionGateDecision = {
     | "production_gate_closed"
     | "operation_kill_switch_closed"
     | "production_deployment_required"
+    | "production_host_attestation_required"
     | "production_provider_environment_required"
     | "production_project_mismatch"
     | "production_attestation_required"
@@ -35,6 +45,13 @@ export type GhlProductionGateDecision = {
 export function evaluateGhlProductionGate(input: GhlProductionGateInput): GhlProductionGateDecision {
   if (input.deploymentTarget !== "production" || input.vercelEnv !== "production") {
     return { allowed: false, code: "production_deployment_required", reason: "GHL production writes require exact production deployment authority." };
+  }
+  if (input.exactProductionHost !== true) {
+    return {
+      allowed: false,
+      code: "production_host_attestation_required",
+      reason: "GHL production writes require the exact attested production Vercel project.",
+    };
   }
   if (input.providerEnvironment !== "production") {
     return { allowed: false, code: "production_provider_environment_required", reason: "GHL production writes require the production provider environment." };
@@ -83,6 +100,7 @@ export function ghlProductionGateFromEnvironment(
     provisioning: "GHL_PRODUCTION_PROVISIONING_ENABLED",
     lead_delivery: "GHL_PRODUCTION_LEAD_DELIVERY_ENABLED",
     lifecycle_webhook: "GHL_PRODUCTION_LIFECYCLE_WEBHOOK_ENABLED",
+    form_submissions_read: "GHL_PRODUCTION_FORM_SUBMISSIONS_READ_ENABLED",
   }[operation];
   return {
     enabled: environment.GHL_PRODUCTION_WRITES_ENABLED === "true",
@@ -91,6 +109,9 @@ export function ghlProductionGateFromEnvironment(
     providerEnvironment: environment.GHL_PROVIDER_ENVIRONMENT,
     deploymentTarget: getDeploymentTarget(environment as Record<string, string | undefined>),
     vercelEnv: environment.VERCEL_ENV,
+    exactProductionHost: isExactProductionVercelHost(
+      environment as Record<string, string | undefined>,
+    ),
     actualProjectRef: extractSupabaseProjectRef(environment.NEXT_PUBLIC_SUPABASE_URL),
     expectedProjectRef: environment.GHL_PRODUCTION_SUPABASE_PROJECT_REF?.trim(),
     providerAttestation: environment.GHL_PRODUCTION_PROVIDER_ATTESTATION,

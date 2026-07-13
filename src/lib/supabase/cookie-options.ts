@@ -7,5 +7,6 @@ export function getSupabaseAuthCookieOptions(): CookieOptionsWithName {
     path: "/",
     sameSite: isProduction ? "none" : "lax",
     secure: isProduction,
+    partitioned: isProduction,
   };
 }

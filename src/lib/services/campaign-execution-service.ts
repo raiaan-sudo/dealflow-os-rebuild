@@ -48,6 +48,7 @@ import type {
   MetaLaunchPayload,
   ValidatedLaunchConfig,
 } from "@/lib/types/campaign-execution";
+import { customerApprovedMetaBudgetCentsFromDollars } from "@/lib/integrations/meta/budget-safety";
 
 export type CampaignObjectStatus = "draft" | "ready" | "published" | "paused";
 
@@ -367,15 +368,6 @@ async function requireExecutionContext(expectedUserId?: string) {
     userId: context.user.id,
     organizationId: context.organization.id,
   };
-}
-
-function toMinorUnits(value: number) {
-  return Math.round(value * 100);
-}
-
-function getMetaBudgetCapCents() {
-  const configured = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
-  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 100) : 100;
 }
 
 function getMetadataString(row: MarketingAccountRow | MetaConnectionRecord | null, key: string) {
@@ -786,22 +778,13 @@ export async function validateCampaignForLaunch(
   const lifetimeBudget =
     budgetType === "lifetime" ? Number(launchInput.lifetime_budget ?? 0) : null;
 
-  if (budgetType === "daily" && (!dailyBudget || dailyBudget <= 0)) {
-    errors.push("Daily budget must be greater than zero.");
-  }
-
-  if (budgetType === "lifetime" && (!lifetimeBudget || lifetimeBudget <= 0)) {
-    errors.push("Lifetime budget must be greater than zero.");
-  }
-
-  const budgetCapCents = getMetaBudgetCapCents();
-
-  if (budgetType === "daily" && dailyBudget && toMinorUnits(dailyBudget) > budgetCapCents) {
-    errors.push(`Daily budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
-  }
-
-  if (budgetType === "lifetime" && lifetimeBudget && toMinorUnits(lifetimeBudget) > budgetCapCents) {
-    errors.push(`Lifetime budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
+  try {
+    customerApprovedMetaBudgetCentsFromDollars(
+      budgetType === "daily" ? dailyBudget ?? Number.NaN : lifetimeBudget ?? Number.NaN,
+      budgetType,
+    );
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : `${budgetType} budget is invalid.`);
   }
 
   const selectedPixelId = launchInput.pixel_id?.trim() || getMetaAccountPixelId(metaAccount);
@@ -924,8 +907,18 @@ export function buildMetaAdSetPayloads(
       optimization_goal: normalizeOptimizationGoal(config),
       bid_strategy: "LOWEST_COST_WITHOUT_CAP",
       ...(config.budgetType === "daily"
-        ? { daily_budget: toMinorUnits(config.dailyBudget ?? 0) }
-        : { lifetime_budget: toMinorUnits(config.lifetimeBudget ?? 0) }),
+        ? {
+            daily_budget: customerApprovedMetaBudgetCentsFromDollars(
+              config.dailyBudget ?? Number.NaN,
+              "daily",
+            ),
+          }
+        : {
+            lifetime_budget: customerApprovedMetaBudgetCentsFromDollars(
+              config.lifetimeBudget ?? Number.NaN,
+              "lifetime",
+            ),
+          }),
       targeting: {
         geo_locations: {
           countries: [inferCountryCode(campaignRecord.strategy.location)],

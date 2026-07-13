@@ -6,6 +6,7 @@ import type {
   GhlSnapshotInstallResult,
   GhlSnapshotStatusResult,
 } from "./types";
+import { isExactGhlLocationCreateContract } from "./snapshot-create-contract";
 
 export type FakeGhlCreateOutcome =
   | "success"
@@ -31,6 +32,8 @@ export type FakeGhlCall = {
     | "required_objects_verify";
   idempotencyKey: string | null;
   providerLocationId: string | null;
+  providerSnapshotId?: string | null;
+  requestFingerprint?: string | null;
 };
 
 export class FakeGhlAdapter implements GhlProviderAdapter {
@@ -80,8 +83,23 @@ export class FakeGhlAdapter implements GhlProviderAdapter {
       operation: "location_create",
       idempotencyKey: input.idempotencyKey,
       providerLocationId: null,
+      providerSnapshotId: input.snapshotManifest.providerSnapshotId,
+      requestFingerprint: input.requestFingerprint,
     });
     const requestId = this.nextRequestId();
+    if (
+      input.snapshotManifest.environment !== input.environment
+      || input.snapshotManifest.status !== "approved"
+      || !isExactGhlLocationCreateContract(input)
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "fake_location_snapshot_contract_mismatch",
+        safeMessage: "The fake location request did not match its approved snapshot fingerprint.",
+        providerRequestId: requestId,
+        httpStatus: null,
+      };
+    }
     const existing = this.locationsByIdempotencyKey.get(input.idempotencyKey);
 
     if (existing) {

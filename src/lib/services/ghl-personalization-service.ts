@@ -95,6 +95,7 @@ export async function processGhlPersonalizationWorkerBatch(input: {
 
     const id = text(claimed.id);
     const organizationId = text(claimed.organization_id);
+    const campaignId = text(claimed.campaign_id);
     const mappingId = text(claimed.location_mapping_id);
     const step = text(claimed.current_step);
     let outcome: "succeeded" | "retryable_failure" | "uncertain" | "operator_action_required";
@@ -102,60 +103,70 @@ export async function processGhlPersonalizationWorkerBatch(input: {
     let errorCode: string | null = null;
     let providerMutationAttempted = false;
 
-    const controlOpen = await assertProvisioningControl({
-      client: input.client,
-      environment: input.environment,
-    });
-    if (!controlOpen) {
-      outcome = "retryable_failure";
-      errorCode = `ghl_${input.environment}_personalization_control_closed`;
+    if (!campaignId) {
+      outcome = "operator_action_required";
+      errorCode = `ghl_${input.environment}_personalization_campaign_missing`;
       receipt = { providerMutationAttempted: false, reason: errorCode };
     } else {
-      const authority = input.environment === "production"
-        ? await resolveGhlProductionAuthority({
-            client: input.client,
-            organizationId,
-            gate: input.productionGate!,
-          })
-        : await resolveGhlSandboxAuthority({
-            client: input.client,
-            organizationId,
-            gate: input.sandboxGate!,
-          });
-      if (!authority || authority.mappingId !== mappingId) {
-        outcome = "operator_action_required";
-        errorCode = `ghl_${input.environment}_personalization_authority_changed`;
+      const controlOpen = await assertProvisioningControl({
+        client: input.client,
+        environment: input.environment,
+      });
+      if (!controlOpen) {
+        outcome = "retryable_failure";
+        errorCode = `ghl_${input.environment}_personalization_control_closed`;
         receipt = { providerMutationAttempted: false, reason: errorCode };
       } else {
-        const provider = input.providerFactory(authority);
-        const result = step === "custom_values"
-          ? await provider.applyCustomValues({
-              providerLocationId: authority.providerLocationId,
-              values: stringRecord(claimed.custom_values),
+        const authority = input.environment === "production"
+          ? await resolveGhlProductionAuthority({
+              client: input.client,
+              organizationId,
+              gate: input.productionGate!,
             })
-          : step === "forms"
-            ? await provider.verifyPreinstalledForms({
+          : await resolveGhlSandboxAuthority({
+              client: input.client,
+              organizationId,
+              gate: input.sandboxGate!,
+            });
+        if (!authority || authority.mappingId !== mappingId) {
+          outcome = "operator_action_required";
+          errorCode = `ghl_${input.environment}_personalization_authority_changed`;
+          receipt = { providerMutationAttempted: false, reason: errorCode };
+        } else {
+          const provider = input.providerFactory(authority);
+          const result = step === "custom_values"
+            ? await provider.applyCustomValues({
                 providerLocationId: authority.providerLocationId,
-                requiredFormIds: stringArray(claimed.required_form_ids),
+                values: stringRecord(claimed.custom_values),
               })
-            : {
-                outcome: "operator_action_required" as const,
-                errorCode: "ghl_personalization_step_invalid",
-                safeMessage: "The claimed GHL personalization step is invalid.",
-                providerRequestId: null,
-                responseFingerprint: null,
-                providerMutationAttempted: false,
-              };
-        outcome = result.outcome;
-        providerMutationAttempted = result.providerMutationAttempted;
-        errorCode = result.outcome === "succeeded" ? null : result.errorCode;
-        receipt = {
-          outcome: result.outcome,
-          providerRequestId: result.providerRequestId,
-          responseFingerprint: result.responseFingerprint,
-          verifiedReferenceCount: result.outcome === "succeeded" ? result.verifiedReferences.length : 0,
-          providerMutationAttempted,
-        };
+            : step === "forms"
+              ? await provider.verifyPreinstalledForms({
+                  providerLocationId: authority.providerLocationId,
+                  requiredFormIds: stringArray(claimed.required_form_ids),
+                })
+              : {
+                  outcome: "operator_action_required" as const,
+                  errorCode: "ghl_personalization_step_invalid",
+                  safeMessage: "The claimed GHL personalization step is invalid.",
+                  providerRequestId: null,
+                  responseFingerprint: null,
+                  providerMutationAttempted: false,
+                };
+          outcome = result.outcome;
+          providerMutationAttempted = result.providerMutationAttempted;
+          errorCode = result.outcome === "succeeded" ? null : result.errorCode;
+          receipt = {
+            outcome: result.outcome,
+            providerRequestId: result.providerRequestId,
+            responseFingerprint: result.responseFingerprint,
+            verifiedReferenceCount: result.outcome === "succeeded" ? result.verifiedReferences.length : 0,
+            campaignId,
+            valuesFingerprint: text(claimed.values_fingerprint),
+            sourcePlanFingerprint: text(claimed.source_plan_fingerprint),
+            destinationContractFingerprint: text(claimed.destination_contract_fingerprint),
+            providerMutationAttempted,
+          };
+        }
       }
     }
 
@@ -179,13 +190,44 @@ export async function processGhlPersonalizationWorkerBatch(input: {
   return { status: "complete" as const, processed: results.length, results };
 }
 
+export async function prepareGhlCampaignPersonalization(input: {
+  client: Client;
+  organizationId: string;
+  campaignId: string;
+  environment: "sandbox" | "production";
+}) {
+  const { data, error } = await input.client.rpc("prepare_ghl_campaign_personalization_v2", {
+    p_organization_id: input.organizationId,
+    p_campaign_id: input.campaignId,
+    p_environment: input.environment,
+    p_now: new Date().toISOString(),
+  });
+  if (error) throw new Error(`GHL campaign personalization preparation failed: ${error.message}`);
+  const prepared = row(data);
+  return prepared
+    ? {
+        personalizationId: text(prepared.id),
+        campaignId: text(prepared.campaign_id),
+        locationMappingId: text(prepared.location_mapping_id),
+        slotKey: text(prepared.slot_key),
+        status: text(prepared.status),
+        currentStep: text(prepared.current_step),
+        valuesFingerprint: text(prepared.values_fingerprint),
+        sourcePlanFingerprint: text(prepared.source_plan_fingerprint),
+        destinationContractFingerprint: text(prepared.destination_contract_fingerprint),
+      }
+    : null;
+}
+
 export async function resolveReadyGhlDestination(input: {
   client: Client;
   organizationId: string;
+  campaignId: string;
   environment: "sandbox" | "production";
 }) {
-  const { data, error } = await input.client.rpc("resolve_ghl_ready_destination_v1", {
+  const { data, error } = await input.client.rpc("resolve_ghl_ready_campaign_destination_v2", {
     p_organization_id: input.organizationId,
+    p_campaign_id: input.campaignId,
     p_environment: input.environment,
   });
   if (error) throw new Error(`GHL destination resolution failed: ${error.message}`);
@@ -193,8 +235,11 @@ export async function resolveReadyGhlDestination(input: {
   return resolved
     ? {
         personalizationId: text(resolved.personalization_id),
+        campaignId: text(resolved.campaign_id),
         locationMappingId: text(resolved.location_mapping_id),
+        slotKey: text(resolved.slot_key),
         destinationUrl: text(resolved.destination_url),
+        destinationContractFingerprint: text(resolved.destination_contract_fingerprint),
       }
     : null;
 }

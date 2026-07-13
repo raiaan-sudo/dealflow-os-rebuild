@@ -294,6 +294,17 @@ const route = loadTsModuleWithMocks(
     "@/lib/services/meta-instant-form-route-service": {
       provisionCompletedMetaInstantFormRoute: async () => null,
     },
+    "@/lib/services/meta-campaign-activation-authority-service": {
+      finalizeMetaActivationPreauthorizationAfterPausedLaunch: async () => ({
+        status: "not_authorized",
+        authorizationId: null,
+        activationIntentId: null,
+        errorCode: null,
+      }),
+    },
+    "@/lib/scheduled-launch-gate": {
+      getScheduledLaunchExecutionGate: () => ({ allowed: true, reason: null }),
+    },
     "@/lib/supabase/admin": { createAdminClient: () => null },
     "@/lib/supabase/route-handler": { createRouteHandlerClient: async () => null },
   },

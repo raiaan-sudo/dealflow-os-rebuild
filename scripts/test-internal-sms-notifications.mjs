@@ -13,6 +13,10 @@ const systemJobSource = readFileSync("src/lib/services/system-job-service.ts", "
 const migrationSource = readFileSync("supabase/migrations/20260429230000_internal_sms_lead_notifications.sql", "utf8");
 const hardeningMigrationSource = readFileSync("supabase/migrations/20260430010000_public_launch_final_hardening.sql", "utf8");
 const receiptMigrationSource = readFileSync("supabase/migrations/20260710235600_harden_sms_delivery_receipts.sql", "utf8");
+const atomicLeadMigrationSource = readFileSync(
+  "supabase/migrations/20260713019000_capture_public_lead_and_outbox_atomically.sql",
+  "utf8",
+);
 
 function normalizePhone(input, defaultCountry = "US") {
   const raw = typeof input === "string" ? input.trim() : "";
@@ -75,7 +79,9 @@ assert.match(notificationSource, /params\.agent\.phone_e164/);
 assert.match(notificationSource, /new Set\(\["sent", "delivered"\]\)/);
 assert.doesNotMatch(notificationSource, /new Set\(\["queued"/);
 assert.doesNotMatch(notificationSource, /lead\.phone_e164\)\s*;/);
-assert.match(leadCaptureSource, /queueLeadSideEffectsJob/);
+assert.match(leadCaptureSource, /createPublicLeadAndQueueSideEffectsAtomically/);
+assert.match(atomicLeadMigrationSource, /'lead_side_effects:'/);
+assert.match(atomicLeadMigrationSource, /capture_public_lead_with_side_effects_v1/);
 assert.match(systemJobSource, /kind:\s*"lead_side_effects"/);
 assert.match(systemJobSource, /safeNotifyAssignedAgentOfNewLead/);
 assert.match(systemJobSource, /safeSendMetaLeadConversion/);

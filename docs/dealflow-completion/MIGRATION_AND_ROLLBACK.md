@@ -1,141 +1,163 @@
-# Migration, drain, and forward-recovery contract
+# DealFlow migration, drain, and forward-recovery contract
 
-Status: `NO_GO / 14 OF 14 LOCAL SCHEMA GATES PASS / EXTERNAL RELEASE AUTHORITY ABSENT`
+Overall verdict: `NO_GO`
+Frozen foundation: `80 MIGRATIONS / HISTORICAL_PASS`
+Integrated candidate: `99 MIGRATIONS / PENDING_FINAL_SEAL`
+Exact clean-seal 99-chain proof: `NOT_YET_RUN`
+Isolated hosted staging application: `NOT_YET_RUN`
+Production migration: `NOT_YET_RUN`
 
-No shared/production database change, deployment, provider action, flag change,
-or rollback is authorized by this document.
+No shared or production database change, deployment, provider action, flag
+change, destructive rollback, or production release is authorized by this
+document.
 
-## Superseded historical blocker and current proof
+## Historical foundation versus current candidate
 
-The original disposable replay stopped at the first tracked baseline migration:
+The original tracked replay failed before `public.campaign_plans` existed. The
+raw failing-before artifact remains immutable at
+`evidence/migration/fresh-replay-result.json`. The recovered authority later
+produced a frozen 80-migration foundation and retained PostgreSQL 17.6 evidence
+for 14 foundation/adoption/collision/RLS/recovery gates. That evidence is a
+`HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions.
 
-- file: `20260426110000_add_campaign_plan_critical_fields.sql`
-- statement: `0`
-- SQLSTATE: `42P01`
-- error: `public.campaign_plans does not exist`
+The current source tree contains exactly 99 ordered SQL migrations. The nineteen
+additive extensions after the frozen foundation are:
 
-That raw evidence remains unchanged at
-`docs/dealflow-completion/evidence/migration/fresh-replay-result.json` as
-superseded failing-before evidence. It is not current candidate status.
+81. `20260712213000_create_ghl_sandbox_provider_path.sql`
+82. `20260712214000_create_continuous_reporting_and_safe_optimizer.sql`
+83. `20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql`
+84. `20260712235991_create_meta_instant_form_provisioning.sql`
+85. `20260713010000_harden_support_external_delivery.sql`
+86. `20260713011000_create_customer_authorized_meta_activation.sql`
+87. `20260713012000_require_meta_activation_preauthorization.sql`
+88. `20260713012100_harden_meta_activation_delivery_and_recovery.sql`
+89. `20260713013000_create_customer_authorized_meta_optimizer_executor.sql`
+90. `20260713014000_scope_ghl_personalization_to_campaign.sql`
+91. `20260713015000_bind_verified_partner_attribution_atomically.sql`
+92. `20260713016000_terminalize_ambiguous_ghl_dispatches.sql`
+93. `20260713017000_make_paid_creative_dispatch_recoverable.sql`
+94. `20260713018000_harden_meta_reporting_and_leadgen_integrity.sql`
+95. `20260713019000_capture_public_lead_and_outbox_atomically.sql`
+96. `20260713020000_add_fair_reporting_worker_claim.sql`
+97. `20260713021000_require_paid_activation_for_campaign_creation.sql`
+98. `20260713022000_reconcile_native_ghl_form_submissions.sql`
+99. `20260713024000_add_durable_ghl_periodic_form_sweeps.sql`
 
-The recovered authority now drives an 80-migration portfolio and all 14 local
-schema gates pass on PostgreSQL 17.6. The proof covers fresh replay,
-authoritative-current adoption, May-2 upgrade, legacy and partial-collision
-rejection before mutation, idempotent replay, safe and unsafe sentinel paths,
-integrated RLS/private-schema shape, mixed-version safety, two deterministic
-final databases, zero-residue cleanup, and forward recovery. The local schema
-blocker is cleared. Staging, production, provider acceptance, signed drain, and
-exact-environment/release authority remain unproven and unauthorized.
+Migrations 90-99 are not cosmetic. They prevent location-global GHL personalization
+from allowing one website campaign to overwrite another. Readiness becomes an
+exact organization + campaign + environment + manifest-slot + source-plan
+fingerprint fact. Legacy root-only personalization can serve one campaign only;
+a second campaign fails closed until an approved non-overlapping slot exists.
+They also atomically bind verified partner attribution, terminalize ambiguous
+GHL writes instead of replaying them, recover paid creative provider output
+without a second charge or provider POST, fence Meta reporting and attribution
+to immutable launch identity, commit public leads and their side-effect job in
+one transaction, provide fair leased reporting-worker claims, and keep campaign
+creation preview-limited until eligible billing has durable paid activation or
+explicit legacy reconciliation.
+Migration 98 adds signed native GHL form-submission reconciliation, exact
+campaign consent/question contracts, location-scoped read authority, bounded
+polling, tenant-safe lead idempotency, fenced rotation/retirement, and audited
+operator replay while leaving provider execution default-off.
+Migration 99 adds a durable, leased, GET-only periodic recovery sweep for GHL
+native-form submissions. It binds each claim and scope proof to the exact
+mapping credential generation and form set, preserves a bounded no-loss
+backfill anchor, revalidates both runtime gates immediately before every
+provider read, fences credential rotation and retirement, isolates
+retry/operator outcomes, and preserves immutable generation-scoped replay
+audits while resetting each proven generation's bounded retry/replay budget.
+Both reconciliation and sweep execution remain independently default-off.
 
-## Migration portfolio and candidate inventory
+The final manifest must derive count, order, per-file digest, and aggregate
+digest from the exact clean commit. Those values are `PENDING_FINAL_SEAL` and
+must not be copied from a working tree.
 
-The full local portfolio contains 80 migrations: 51 sealed tracked migrations
-plus 29 explicitly labeled forward-reconstruction files. The generated lineage
-never claims that unavailable historical SQL bodies were recovered. Four
-tenant-specific data-only identities are preserved as tenant-neutral no-ops
-rather than inventing customer, credential, partner, provider, or branding data.
+## Required local 99-chain proof
 
-The application-hardening subset below currently adds or hardens:
+Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prove:
 
-1. `20260710170000_create_ghl_tenant_provisioning_foundation.sql`
-2. `20260710180000_activation_onboarding_contract.sql`
-3. `20260710234500_harden_jobs_lead_effects_meta_deletion.sql`
-4. `20260710235000_create_launch_receipts_optimizer_support.sql`
-5. `20260710235500_schedule_launch_claim_fencing.sql`
-6. `20260710235600_harden_sms_delivery_receipts.sql`
-7. `20260710235700_protect_creative_asset_storage_identity.sql`
-8. `20260710235750_fence_lead_campaign_tenant_identity.sql`
-9. `20260710235800_harden_meta_oauth_state.sql`
-10. `20260710235900_fence_stripe_webhook_processing.sql`
-11. `20260710235950_gate_campaign_creation_entitlement.sql`
-12. `20260710235960_harden_campaign_tenant_authority.sql`
-13. `20260710235970_harden_stripe_protocol_and_credit_intents.sql`
-14. `20260710235980_harden_sms_protocol_and_tenant_fk.sql`
-15. `20260710235990_create_meta_leadgen_ingestion.sql`
-16. `20260710235991_harden_financial_integrity.sql`
-17. `20260710235992_harden_access_key_reveal_claim.sql`
-18. `20260710235993_harden_access_key_claim_delivery.sql`
+1. all 99 migrations apply in order to a fresh disposable database;
+2. frozen foundation followed by extensions converges to the same semantic
+   public/private schema as the direct fresh chain;
+3. exact migration history replay performs zero structural mutation;
+4. known foundation, partial, metadata, column, index, policy, privilege, and
+   campaign-personalization collisions fail before mutation;
+5. RLS, force-RLS, grants/revocations, default ACLs, relation/routine/sequence
+   ownership, function search paths, and direct-DML denials match the oracle;
+6. old-worker/new-schema and new-worker/old-schema boundaries fail safely;
+7. injected transactional failure leaves no migration-history or schema
+   partials and succeeds through reviewed forward completion;
+8. tenant/campaign/provider receipts, activation, billing, lead, support, GHL,
+   Meta, and optimizer invariants survive idempotent replay;
+9. two independent final databases produce the same normalized digest; and
+10. all disposable roles/databases/processes are removed after proof.
 
-The final manifest must derive file count, order, and aggregate SHA-256 from the
-exact committed target. This narrative list is not a digest or release proof.
+Current result for the exact final 99-migration seal: `NOT_YET_RUN`.
 
-## Read-only preflight and post-verification
+## Isolated staging application contract
 
-1. Prove exact target/baseline ancestry and migration digests outside the DB.
-2. Run
-   `docs/dealflow-completion/evidence/migration/read-only-preflight.sql` before
-   candidate migrations. It references established schema only and returns
-   booleans/aggregate counts; it performs no repair, remap, delete, or first-match
-   coercion.
-3. Stop on any missing foundational relation or nonzero blocker count.
-4. The complete local disposable proof has passed. Apply the complete chain to
-   staging only when that isolated target is separately authorized.
-5. Run
-   `docs/dealflow-completion/evidence/migration/read-only-post-migration-verification.sql`
-   after the chain completes. It must cover candidate relations, constraints,
-   RLS/force-RLS, grants/revocations, v2-only RPCs, direct-DML negatives,
-   migration blockers, immutable identity, and terminal/replay invariants.
-6. Local representative prior-schema and idempotent replay have passed. Repeat
-   them against the authorized exact staging target before release consideration.
+The staging broker may run only after two passing final summaries bind the same
+clean seal. It must independently verify:
 
-No preflight script may reference a relation that only the candidate creates.
+- exact 99-file inventory and final filename;
+- exact repository commit/tree/content/lock/migration digests;
+- exact isolated Supabase fingerprint and safe suffix;
+- exact staging Vercel project and host with no production alias;
+- owner-only database authority and an empty supported platform baseline;
+- PostgreSQL runtime compatibility;
+- one transaction per migration plus its history receipt;
+- post-application schema/ACL/RLS digest and idempotent replay; and
+- sanitized external evidence with no credential or customer payload.
 
-## Mandatory two-phase old-worker and provider-protocol drain
+The database password may be borrowed only through the approved ephemeral
+secret path. It must not enter arguments, environment dumps, logs, evidence,
+repository files, or chat. Hosted staging application is `NOT_YET_RUN`.
 
-### Phase 1 — compatible drain
+## Read-only production preflight
 
-Deploying drain code is a separate future authorization. Before any contract
-migration, stop new v0/v1 dispatch and positively prove zero active work for:
+Before any production mutation is considered, capture and compare, read-only:
 
-- `campaign_plan_v0_writers`
-- `meta_launch_v0_workers`
-- `sms_delivery_v0_workers`
-- `stripe_webhook_v1_workers`
-- `system_job_v1_workers`
+1. exact production project/account/host and current deployment identity;
+2. migration history, extension versions, schema/ACL/RLS/function digests, and
+   row-count-only collision/sentinel checks;
+3. backup recency, restore target, PITR window, and restore-test authority;
+4. active/leased/armed/ambiguous jobs across every superseded protocol; and
+5. current provider/runtime flags as signed booleans, never raw secrets.
 
-The evidence must be fresh, exact-target and exact-deployment bound,
-Ed25519-signed by an authority pinned in a protected external policy whose path
-and independently authorized digest come from the out-of-band runner, and
-contain exactly zero for every class. Target-declared keys, logs, elapsed
-timeout, caller-authored JSON, or absence of traffic are not proof.
+Any missing foundation object, unexpected migration, collision, nonzero unsafe
+sentinel, incompatible active worker, stale backup, or identity mismatch is an
+immediate `NO_GO`. Production preflight is `NOT_YET_RUN`.
 
-The provider cutover must also account for all five externally consequential
-classes—Meta launch/CAPI, GHL provisioning/lead effects, Twilio SMS/compliance,
-Stripe webhook/billing/provider usage, and creative generation/storage—so no
-old worker can pass its last fence and issue a late provider request.
+## Mandatory old-worker and provider-protocol drain
 
-### Phase 2 — contract and verify
+Before the contract boundary, signed exact-deployment evidence must prove zero
+old or in-flight unsafe work for all superseded application and provider paths,
+including Meta launch/activation/optimizer/CAPI, GHL provisioning/
+personalization/lead effects, Stripe billing/provider usage, Twilio/support
+communications, creative generation/storage, and system-job protocol versions.
 
-1. Reconfirm signed zero counts immediately before the boundary.
-2. Apply reviewed protocol-contract migrations.
-3. Deploy only the exact v2-only commit bound to the evidence.
-4. Run post-migration counts, RLS/privilege negatives, claim/heartbeat/settle,
-   stale-generation, ambiguity, direct-DML, and release-guard probes.
-5. Keep all live provider gates off pending a separately authorized canary.
+The proof must be fresh, independently signed under the protected external
+release trust, exact-deployment bound, and regenerated immediately before
+migration. Logs, a quiet interval, caller-authored JSON, or target-added keys are
+not evidence. Signed drain proof is `NOT_YET_RUN`.
 
-If an old worker appears after the boundary, stop new v2 dispatch and treat it
-as an incident. Never restore an incompatible binary against contracted schema.
+## Forward recovery, not destructive rollback
 
-## Forward recovery, not historical rollback
+Before any contract migration, stop and correct the candidate or procedure.
+After the boundary changes RPCs, direct-write authority, leases, receipts,
+billing, tenant, activation, or terminal-state semantics, the historical
+baseline is not a safe automatic application rollback target.
 
-Before the contract boundary, stop and correct the candidate/drain procedure.
-After a migration removes old RPCs, revokes old direct writes, or changes lease,
-receipt, billing, tenant, or terminal-state semantics, the production baseline
-is not a valid application rollback target.
-
-Recovery is a reviewed forward application patch and/or additive
-forward-recovery migration that preserves durable job, receipt, billing, credit,
-lead, support, deletion, and provider evidence. Do not:
+Recovery must be a reviewed additive patch/migration that preserves migration
+history and every durable job, receipt, payment, credit, lead, support,
+deletion, consent, GHL, Meta, and provider record. Never:
 
 - run destructive down migrations;
-- delete candidate columns/tables or evidence rows;
-- rewrite tenant ownership or first-match ambiguous records;
-- erase receipts, claims, consent, or audit history; or
-- switch to an older checkout merely because it predates the failure.
+- delete candidate tables/columns/evidence rows to force compatibility;
+- rewrite tenant/campaign ownership or first-match ambiguous mappings;
+- erase claims, leases, receipts, consent, payments, or audit history; or
+- deploy an older checkout merely because it predates the failure.
 
-The local injected-failure forward-recovery drill passed with zero partial
-mutation and successful forward completion. Destructive down rollback remains
-intentionally unattempted because the historical baseline is not claimed safe
-after the contract boundary. Release remains `NO_GO` because staging,
-production, signed drain/environment authority, and live-provider acceptance
-are still absent.
+The retained 80-migration foundation includes a historical local
+forward-recovery drill. A final-seal 99-chain local drill, hosted staging drill,
+and production-bound recovery exercise are all `NOT_YET_RUN`.

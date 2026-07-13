@@ -34,6 +34,8 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { provisionCompletedMetaInstantFormRoute } from "@/lib/services/meta-instant-form-route-service";
+import { finalizeMetaActivationPreauthorizationAfterPausedLaunch } from "@/lib/services/meta-campaign-activation-authority-service";
+import { getScheduledLaunchExecutionGate } from "@/lib/scheduled-launch-gate";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -278,6 +280,14 @@ export async function POST(
 
   try {
     assertSameOriginRequest(request);
+    const executionGate = getScheduledLaunchExecutionGate();
+    if (!executionGate.allowed) {
+      throw new ApiError(
+        503,
+        "Meta launch execution is not authorized for this exact deployment.",
+        executionGate.reason ?? "meta_paused_launch_execution_blocked",
+      );
+    }
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const record = await getCampaignById(id);
 
@@ -440,6 +450,14 @@ export async function POST(
       const assertClaimAndLocks = async () => {
         if (heartbeatFailure) {
           throw heartbeatFailure;
+        }
+        const currentExecutionGate = getScheduledLaunchExecutionGate();
+        if (!currentExecutionGate.allowed) {
+          throw new ApiError(
+            503,
+            "Meta launch execution authorization was withdrawn.",
+            currentExecutionGate.reason ?? "meta_paused_launch_execution_blocked",
+          );
         }
         await renewManualCampaignLaunchClaim({
           claim: launchClaim!,
@@ -609,6 +627,12 @@ export async function POST(
         },
       });
       launchCompletionCommitted = true;
+      const activationFinalization = await finalizeMetaActivationPreauthorizationAfterPausedLaunch({
+        organizationId: record.campaign.organization_id,
+        userId: record.campaign.user_id,
+        campaignId: id,
+        launchRecordId: launchClaim!.id,
+      });
 
       if (persistedContract.destinationContract.adDestination === "meta_instant_form") {
         await provisionCompletedMetaInstantFormRoute({
@@ -624,6 +648,8 @@ export async function POST(
         ad_id: data.ad_id,
         creative_id: data.creative_id,
         already_launched: persistedLaunchState?.status === "completed" || undefined,
+        activation_authorization_status: activationFinalization.status,
+        activation_intent_id: activationFinalization.activationIntentId ?? undefined,
         stage: "ad" as const,
       };
       } finally {

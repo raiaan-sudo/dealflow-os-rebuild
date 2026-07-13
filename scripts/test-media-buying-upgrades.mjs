@@ -77,7 +77,7 @@ assert.equal(killCtr.action, "kill");
 assert.ok(killCtr.reasons.some((reason) => /CTR/.test(reason)));
 
 const killFrequency = evaluateMediaBuyingDecision({
-  ctr: 1.2,
+  ctr: 0.012,
   cpc: 1,
   cpl: 45,
   frequency: 4.1,
@@ -88,7 +88,7 @@ const killFrequency = evaluateMediaBuyingDecision({
 assert.equal(killFrequency.action, "kill");
 
 const killNoLeads = evaluateMediaBuyingDecision({
-  ctr: 1,
+  ctr: 0.01,
   cpc: 1,
   cpl: 0,
   frequency: 1,
@@ -100,7 +100,7 @@ const killNoLeads = evaluateMediaBuyingDecision({
 assert.equal(killNoLeads.action, "kill");
 
 const scaleDecision = evaluateMediaBuyingDecision({
-  ctr: 2.4,
+  ctr: 0.024,
   cpc: 0.8,
   cpl: 42,
   frequency: 2,

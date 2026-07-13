@@ -1,0 +1,284 @@
+#!/usr/bin/env node
+
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
+const runner = readFileSync(runnerPath, "utf8");
+const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
+const seedContract = readFileSync(join(root, "scripts", "test-isolated-staging-seed-contract.mjs"), "utf8");
+const browserConfig = readFileSync(join(root, "playwright.staging.config.ts"), "utf8");
+const browserSpec = readFileSync(
+  join(root, "tests", "e2e", "dealflow-staging-acceptance.spec.ts"),
+  "utf8",
+);
+const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const envExample = readFileSync(join(root, ".env.example"), "utf8");
+const completionSuite = readFileSync(join(root, "scripts", "test-dealflow-completion.mjs"), "utf8");
+const zeroEffectsSource = readFileSync(
+  join(root, "src", "lib", "safety", "zero-external-effects.ts"),
+  "utf8",
+);
+
+function extractStringArray(source, name) {
+  const body = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\](?: as const)?;`).exec(source)?.[1];
+  assert.ok(body, `missing statically inspectable ${name} array`);
+  return [...body.matchAll(/"([A-Z0-9_]+)"/g)].map((match) => match[1]).sort();
+}
+
+function extractStringObject(source, name) {
+  const body = new RegExp(
+    `const ${name} = (?:Object\\.freeze\\()?\\{([\\s\\S]*?)\\}\\)?(?: as const)?;`,
+  ).exec(source)?.[1];
+  assert.ok(body, `missing statically inspectable ${name} object`);
+  return Object.fromEntries(
+    [...body.matchAll(/([A-Z0-9_]+):\s*"([^"]+)"/g)]
+      .map((match) => [match[1], match[2]])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+assert.match(runner, /EXPECTED_REPO = "\/private\/tmp\/dealflow-overnight-release-20260712"/);
+assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-overnight-release-20260712"/);
+assert.match(runner, /EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean\.vercel\.app"/);
+assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
+assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);
+assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
+assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 99/);
+assert.match(runner, /20260713024000_add_durable_ghl_periodic_form_sweeps\.sql/);
+assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
+
+const authoritativeFalseControls = extractStringArray(zeroEffectsSource, "MUST_BE_FALSE");
+const authoritativeEqualControls = extractStringObject(zeroEffectsSource, "MUST_EQUAL");
+const authoritativeDisabledControls = extractStringArray(
+  zeroEffectsSource,
+  "MUST_BE_DISABLED_OR_EMPTY",
+);
+assert.deepEqual(
+  extractStringArray(runner, "REQUIRED_FALSE_CONTROLS"),
+  authoritativeFalseControls,
+  "staging false controls must exactly match the central zero-effects contract",
+);
+assert.deepEqual(
+  extractStringObject(runner, "REQUIRED_EQUAL_CONTROLS"),
+  authoritativeEqualControls,
+  "staging exact-value controls must exactly match the central zero-effects contract",
+);
+assert.deepEqual(
+  extractStringArray(runner, "REQUIRED_DISABLED_OR_EMPTY_CONTROLS"),
+  authoritativeDisabledControls,
+  "staging disabled-or-empty controls must exactly match the central zero-effects contract",
+);
+const authoritativeZeroEffectControlCount =
+  authoritativeFalseControls.length +
+  Object.keys(authoritativeEqualControls).length +
+  authoritativeDisabledControls.length;
+assert.equal(authoritativeZeroEffectControlCount, 56);
+assert.match(runner, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56/);
+assert.match(
+  runner,
+  /Number\(payload\.checkedControlCount\) !== EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT/,
+);
+assert.match(browserSpec, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56/);
+assert.match(
+  browserSpec,
+  /Number\(body\?\.checkedControlCount\)\)\.toBe\(EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT\)/,
+);
+
+const flagGate = runner.indexOf("!options.execute || !options.applyMigrations || !options.deploy");
+const releaseCapture = runner.indexOf("const identity = captureExactReleaseIdentity()");
+assert.ok(flagGate >= 0 && releaseCapture > flagGate, "all execution flags must gate any release or remote work");
+assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
+assert.match(runner, /Staging acceptance requires Node 20/);
+assert.match(runner, /requires a completely clean release worktree/);
+assert.match(runner, /requires the exact release branch/);
+assert.match(runner, /Tracked staging source must be a regular file/);
+assert.match(runner, /The exact \$\{EXPECTED_MIGRATION_COUNT\}-migration portfolio is required/);
+
+assert.match(runner, /dealflow\.final-verification\.v3/);
+assert.match(runner, /NO_GO_AUTHENTICATED_PROOF_DEFERRED/);
+for (const deferred of [
+  "npm run rls:cross-tenant",
+  "npm run rls:fixture-smoke",
+  "npm run operator:debt",
+]) {
+  assert.match(runner, new RegExp(deferred.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+}
+assert.match(runner, /parsed\.blockedCount !== EXPECTED_HOSTED_DEFERRALS\.length/);
+assert.match(runner, /item\.status !== "authenticated_deferred"/);
+assert.match(runner, /record\.status !== "passed" \|\| record\.postCommandRepositoryInvariant !== "passed"/);
+
+for (const control of [
+  "ALLOW_BILLING_ADMIN_OVERRIDE",
+  "ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE",
+  "STRIPE_FORCE_TEST_MODE",
+  "NEXT_PUBLIC_ENABLE_GOOGLE_AUTH",
+  "ENABLE_STRUCTURED_INFO_LOGS",
+  "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED",
+  "LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE",
+]) {
+  assert.match(runner, new RegExp(`"${control}"`), `missing zero-effects control ${control}`);
+}
+for (const exactControl of [
+  "NEXT_TELEMETRY_DISABLED",
+  "TWILIO_EXECUTION_MODE",
+  "META_EXECUTION_MODE",
+  "META_OPTIMIZATION_EXECUTION_MODE",
+  "SUPPORT_NOTIFICATION_DELIVERY_MODE",
+  "BILLING_CHECKOUT_SAFE_MODE",
+  "UI_DIRECTION_PREVIEW",
+]) {
+  assert.match(runner, new RegExp(`${exactControl}:`), `missing exact control ${exactControl}`);
+}
+assert.match(runner, /DEALFLOW_STAGING_VERCEL_PROJECT_ID: vercelProjectId/);
+assert.match(runner, /DEALFLOW_STAGING_HOST_ATTESTATION: "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1"/);
+assert.match(runner, /QA_AUTH_HARNESS_ENABLED: "true"/);
+assert.match(runner, /INTERNAL_SYSTEM_JOBS_SECRET/);
+assert.doesNotMatch(runner, /STAGING_ACCEPTANCE_INTERNAL_SECRET", 32/);
+assert.doesNotMatch(runner, /STRIPE_FORCE_TEST_MODE !== "true"/);
+assert.match(runner, /Provider credentials must be absent from the acceptance process/);
+assert.match(runner, /function protectedRuntimeValues\(\)/);
+for (const protectedName of [
+  "VERCEL_TOKEN",
+  "VERCEL_ORG_ID",
+  "VERCEL_PROJECT_ID",
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "STAGING_QA_PASSWORD",
+  "PARTNER_ATTRIBUTION_SIGNING_SECRET",
+  "INTERNAL_SYSTEM_JOBS_SECRET",
+]) {
+  assert.match(
+    runner,
+    new RegExp(`process\\.env\\.${protectedName}`),
+    `missing failure-path redaction for ${protectedName}`,
+  );
+}
+assert.match(
+  runner,
+  /sanitize\(error instanceof Error \? error\.message : String\(error\), protectedRuntimeValues\(\)\)/,
+);
+
+const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
+const migrationIndex = runner.indexOf('label: "atomic fresh isolated-staging migration broker"');
+const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
+const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl)");
+assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
+assert.ok(migrationIndex > configureIndex, "migration apply must follow exact hosted config provisioning");
+assert.ok(deployIndex > migrationIndex, "deployment must follow exact migration proof");
+assert.ok(seedIndex > deployIndex, "deployment-specific partner host must exist before seeding");
+assert.match(runner, /"env", "list", "production", "--format=json"/);
+assert.match(runner, /"env",\s*"add"/);
+assert.match(runner, /input: `\$\{value\}\\n`/);
+assert.match(runner, /HOSTED_SECRET_ENV_NAMES\.has\(name\).*--sensitive/s);
+assert.match(runner, /isolated Vercel staging environment inventory is not exact after provisioning/);
+assert.match(runner, /"deploy",\s*"--prod"/);
+assert.match(runner, /dealflowEnvironment=isolated-staging-qibh/);
+assert.match(runner, /"inspect", uniqueDeploymentUrl\.origin, "--format=json"/);
+assert.match(runner, /metadata\.dealflowCommit !== identity\.commit/);
+assert.match(runner, /metadata\.dealflowTree !== identity\.tree/);
+assert.match(runner, /function proveStableAliasTargetsExactDeployment/);
+assert.match(runner, /deploymentId !== deployment\.deploymentId/);
+assert.match(runner, /stable isolated-staging alias does not target the exact candidate deployment/);
+
+assert.equal((runner.match(/runSeed\(deployment\.deploymentUrl\)/g) ?? []).length, 2);
+assert.match(runner, /assertSeedReplayIsIdempotent\(seedOne, seedTwo\)/);
+assert.match(seed, /admin\.rpc\("bind_verified_partner_attribution_v1"/);
+assert.doesNotMatch(seed, /upsert\(admin, "workspace_partner_attribution"/);
+assert.match(seedContract, /attributionBoundAtomically: true/);
+assert.match(runner, /closesHostedDeferrals: \["npm run rls:cross-tenant", "npm run rls:fixture-smoke"\]/);
+assert.match(runner, /\["run", "rls:cross-tenant"\]/);
+assert.match(runner, /\["run", "rls:fixture-smoke"\]/);
+assert.match(runner, /exactZeroResidue/);
+assert.match(runner, /\["run", "operator:debt"\]/);
+
+const loadBody = /async function runHostedLoadProof\(baseUrl\) \{([\s\S]*?)\n\}/.exec(runner)?.[1];
+assert.ok(loadBody, "hosted load proof must remain statically inspectable");
+assert.match(loadBody, /methods: \["GET"\]/);
+assert.match(loadBody, /leadCapturePostAttempted: false/);
+assert.doesNotMatch(loadBody, /method:\s*"POST"/);
+assert.doesNotMatch(loadBody, /\/api\/lead-capture/);
+assert.match(runner, /JSON\.stringify\(countsBefore\) !== JSON\.stringify\(countsAfter\)/);
+
+assert.match(browserConfig, /retries: 0/);
+assert.match(browserConfig, /forbidOnly: true/);
+for (const project of ["desktop-chromium", "mobile-chromium", "desktop-firefox", "desktop-webkit"]) {
+  assert.match(browserConfig, new RegExp(`name: "${project}"`));
+}
+assert.doesNotMatch(browserSpec, /test\.(?:skip|fixme)\s*\(/);
+assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 7);
+for (const role of [
+  "newDirect",
+  "paidDirect",
+  "legacy",
+  "partnerAdmin",
+  "partnerChild",
+  "operator",
+  "attacker",
+]) {
+  assert.match(browserSpec, new RegExp(`${role}:`));
+}
+assert.match(browserSpec, /sha256\(projectRef\).*EXPECTED_SUPABASE_FINGERPRINT/s);
+assert.match(browserSpec, /url\.hostname === `\$\{exactProjectRef\}\.supabase\.co`/);
+assert.match(browserSpec, /blockedMutations/);
+assert.match(browserSpec, /forbiddenHosts/);
+
+assert.match(runner, /status: "NO_GO"/);
+assert.match(runner, /verdict: "NO_GO_PRODUCTION_ACCEPTANCE_NOT_PROVEN"/);
+assert.match(runner, /providerAbsenceTreatedAsSuccess: false/);
+assert.match(runner, /seededEndStatesTreatedAsJourneyProof: false/);
+assert.match(runner, /ghlSandboxProvisioningFunnelsAndLeadDelivery: "NOT_PROVEN"/);
+assert.match(runner, /metaSandboxLaunchLeadgenReportingAndOptimization: "NOT_PROVEN"/);
+assert.match(runner, /stripeTestCheckoutWebhookAndLifecycle: "NOT_PROVEN"/);
+assert.match(runner, /productionReleaseAuthorized: false/);
+
+assert.match(runner, /function assertEvidenceSanitized/);
+assert.match(runner, /Evidence sanitization rejected an exact protected value/);
+assert.match(runner, /evidence-manifest\.json/);
+assert.match(runner, /SHA256SUMS/);
+assert.match(runner, /containsSecrets: false/);
+assert.match(runner, /containsRealCustomerData: false/);
+assert.match(runner, /productionMutationPerformed: false/);
+assert.match(runner, /providerMutationPerformed: false/);
+assert.match(runner, /chmodSync\(path, 0o600\)/);
+assert.match(runner, /chmodSync\(path, 0o700\)/);
+
+assert.equal(
+  packageJson.scripts["staging:acceptance"],
+  "node ./scripts/staging/run-isolated-staging-acceptance.mjs",
+);
+assert.equal(
+  packageJson.scripts["test:staging-acceptance-contract"],
+  "node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+);
+assert.match(completionSuite, /"staging\/test-isolated-staging-acceptance-contract\.mjs"/);
+assert.match(envExample, /^STAGING_PARTNER_APP_URL=$/m);
+assert.match(envExample, /^DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=$/m);
+
+const help = spawnSync(process.execPath, [runnerPath, "--help"], {
+  cwd: root,
+  env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/private/tmp" },
+  encoding: "utf8",
+  timeout: 10_000,
+});
+assert.equal(help.status, 0, help.stderr);
+assert.match(help.stdout, /Without all three execution flags this script performs no remote operation/);
+
+const refused = spawnSync(process.execPath, [runnerPath], {
+  cwd: root,
+  env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/private/tmp" },
+  encoding: "utf8",
+  timeout: 10_000,
+});
+assert.notEqual(refused.status, 0);
+assert.match(refused.stderr, /No remote work was authorized/);
+
+console.log(
+  "isolated staging acceptance contract: PASS (triple authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 99-migration atomic broker; deployment-bound white-label seed; authenticated RLS cleanup; seven-role four-browser zero-skip proof; read-only load; explicit provider NOT_PROVEN; production NO_GO; sanitized sealed evidence)",
+);

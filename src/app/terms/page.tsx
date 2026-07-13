@@ -5,7 +5,15 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-16 text-slate-100">
+    <>
+      <a className="df-skip-link" href="#terms-content">
+        Skip to terms of service
+      </a>
+      <main
+        id="terms-content"
+        tabIndex={-1}
+        className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-16 text-slate-100"
+      >
       <section className="space-y-4">
         <p className="text-sm uppercase tracking-[0.3em] text-sky-300">DealFlow OS</p>
         <h1 className="text-4xl font-semibold tracking-tight">Terms of Service</h1>
@@ -100,6 +108,7 @@ export default function TermsPage() {
           your workspace support channel.
         </p>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

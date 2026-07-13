@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api/route";
 import {
   getStripeEnv,
   isBillingAdminOverrideEnabled,
+  isBillingCheckoutSafeModeEnabled,
   isInternalAdminEmail,
 } from "@/lib/env";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
@@ -107,6 +108,16 @@ async function requestGhlProvisioningForQualifyingBillingActivation(input: {
     providerMutationAttempted: false,
   });
   return result;
+}
+
+function assertBillingCheckoutWritesAllowed() {
+  if (isBillingCheckoutSafeModeEnabled()) {
+    throw new ApiError(
+      503,
+      "Billing checkout is temporarily unavailable while billing safe mode is active.",
+      "billing_checkout_safe_mode",
+    );
+  }
 }
 
 export type BillingSummary = {
@@ -654,6 +665,7 @@ export async function createBillingCheckoutSession(params: {
   customerName?: string;
   customerEmail?: string;
 }) {
+  assertBillingCheckoutWritesAllowed();
   if (params.planTier !== NEW_CHECKOUT_PLAN_TIER) {
     throw new ApiError(
       400,
@@ -862,6 +874,7 @@ export async function createCreditTopUpCheckoutSession(params: {
   customerName?: string;
   customerEmail?: string;
 }) {
+  assertBillingCheckoutWritesAllowed();
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
   const stripeProvider = getStripeBillingProvider();
 
@@ -1114,6 +1127,7 @@ export async function reconcileBillingCheckoutSuccess(sessionId: string) {
 }
 
 export async function createBillingPortalSession() {
+  assertBillingCheckoutWritesAllowed();
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
   const stripeProvider = getStripeBillingProvider();
 

@@ -116,6 +116,19 @@ export async function consumeSessionCostBudget(params: {
     const eventStatus =
       typeof reservation.event_status === "string" ? reservation.event_status : null;
 
+    const existingEventId =
+      typeof reservation.event_id === "string" && reservation.event_id.trim().length > 0
+        ? reservation.event_id
+        : null;
+    const existingSettlementToken =
+      typeof reservation.settlement_token === "string"
+        ? reservation.settlement_token
+        : null;
+    const existingSettlementGeneration =
+      typeof reservation.settlement_generation === "number"
+        ? reservation.settlement_generation
+        : null;
+
     if (reservation.allowed !== true) {
       logWarn("Provider usage guard blocked generation request", {
         bucket: params.bucket,
@@ -136,20 +149,28 @@ export async function consumeSessionCostBudget(params: {
         );
       }
 
-      if (blockReason === "attempt_consumed") {
-        throw new ApiError(
-          409,
-          "This paid generation attempt was already consumed and cannot be replayed.",
-          "provider_usage_idempotency_consumed",
-        );
-      }
-
-      if (blockReason === "attempt_in_progress") {
-        throw new ApiError(
-          409,
-          "This paid generation attempt is already reserved or in progress.",
-          "provider_usage_idempotency_in_progress",
-        );
+      if (
+        (blockReason === "attempt_consumed" || blockReason === "attempt_in_progress") &&
+        existingEventId &&
+        existingSettlementGeneration &&
+        existingSettlementGeneration >= 1
+      ) {
+        // A paid creative job reuses its logical attempt identity after a
+        // worker crash. The separate durable dispatch ledger decides whether
+        // the provider output can be recovered or the attempt is ambiguous;
+        // returning this receipt never authorizes a second provider POST.
+        return {
+          currentCount: Number(reservation.current_count ?? 0),
+          nextCount: Number(reservation.next_count ?? 0),
+          limit,
+          eventId: existingEventId,
+          organizationId: params.organizationId,
+          userId: params.userId,
+          settlementToken: existingSettlementToken,
+          settlementGeneration: existingSettlementGeneration,
+          reusedExisting: true,
+          eventStatus,
+        };
       }
 
       if (blockReason === "operator_action_required") {

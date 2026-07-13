@@ -9,6 +9,7 @@ import type {
   OptimizationSourceStatus,
 } from "@/lib/optimization-engine/safety-policy";
 import { OPTIMIZATION_POLICY_CONTRACT_VERSION } from "@/lib/optimization-engine/safety-policy";
+import type { MetaReportingWindow } from "@/lib/integrations/meta/reporting-contract";
 import { getAppContext } from "@/lib/services/app-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/types";
@@ -44,6 +45,7 @@ export async function recordOptimizationDecision(params: {
   approvedPolicy: ApprovedOptimizationPolicy | null;
   lastProviderMutationAt?: string | null;
   proposedActions: string[];
+  reportingWindow?: MetaReportingWindow | null;
   internalActor?: { organizationId: string; userId: string };
 }) {
   const admin = createAdminClient();
@@ -75,6 +77,7 @@ export async function recordOptimizationDecision(params: {
   const inputSnapshot = {
     sourceTimestamp: params.sourceTimestamp,
     metrics: params.metrics,
+    reportingWindow: params.reportingWindow ?? null,
   };
   const policyDigest = digest(policyContract);
   const idempotencyKey = `optimization:${params.campaignId}:${digest({

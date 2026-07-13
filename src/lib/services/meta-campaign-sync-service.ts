@@ -17,6 +17,7 @@ import type {
   MetaSyncError,
 } from "@/lib/integrations/meta/types";
 import { getMetaAccessToken } from "@/lib/integrations/meta/execution";
+import { buildMetaReportingWindow } from "@/lib/integrations/meta/reporting-contract";
 import { getAppContext } from "@/lib/services/app-context";
 import { refreshCampaignActionSuggestions } from "@/lib/services/campaign-action-service";
 import { refreshCampaignDraftActions } from "@/lib/services/campaign-draft-action-service";
@@ -126,6 +127,8 @@ function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncS
 
   return {
     id: String(row.id),
+    internalCampaignId:
+      typeof row.campaign_id === "string" ? row.campaign_id : null,
     campaignName: String(row.campaign_name ?? ""),
     accountName: typeof row.account_name === "string" ? row.account_name : null,
     launchMode: String(row.launch_mode ?? ""),
@@ -155,8 +158,32 @@ function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncS
     deliveryMetrics,
     syncMetadata,
     syncErrors: mapSyncErrors(row.sync_errors),
+    deliveryMetricsConfirmed: row.delivery_metrics_confirmed === true,
     syncedAt: String(row.synced_at ?? row.created_at ?? new Date().toISOString()),
   };
+}
+
+function attachLatestMetaSyncAttempt(
+  confirmed: MetaCampaignSyncSnapshot | null,
+  attemptRow: Record<string, unknown> | null,
+) {
+  if (!confirmed || !attemptRow || String(attemptRow.id ?? "") === confirmed.id) {
+    return confirmed;
+  }
+
+  const attempt = mapSyncSnapshot(attemptRow);
+  if (!attempt) {
+    return confirmed;
+  }
+
+  return {
+    ...confirmed,
+    latestAttemptAt: attempt.syncedAt ?? null,
+    latestAttemptResult: attempt.syncResult ?? null,
+    latestAttemptDeliveryMetricsConfirmed:
+      attempt.deliveryMetricsConfirmed ?? false,
+    latestAttemptErrors: attempt.syncErrors ?? [],
+  } satisfies MetaCampaignSyncSnapshot;
 }
 
 async function getMetaSyncContext() {
@@ -219,25 +246,7 @@ function resolveLaunchIds(params: {
 
 export async function getLatestMetaCampaignSyncSnapshot() {
   const { context, supabase } = await getMetaSyncContext();
-  const { data } = await supabase
-    .from("campaign_sync_snapshots")
-    .select("*")
-    .eq("organization_id", context.organization.id)
-    .eq("user_id", context.user.id)
-    .order("synced_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return mapSyncSnapshot((data as Record<string, unknown> | null) ?? null);
-}
-
-export async function getMetaCampaignSyncSnapshotForCampaign(params: {
-  campaignName: string;
-  metaCampaignId?: string | null;
-}) {
-  const { context, supabase } = await getMetaSyncContext();
-
-  const buildQuery = () =>
+  const baseQuery = () =>
     supabase
       .from("campaign_sync_snapshots")
       .select("*")
@@ -245,14 +254,67 @@ export async function getMetaCampaignSyncSnapshotForCampaign(params: {
       .eq("user_id", context.user.id)
       .order("synced_at", { ascending: false })
       .limit(1);
-
-  if (params.metaCampaignId) {
-    const { data } = await buildQuery().eq("meta_campaign_id", params.metaCampaignId).maybeSingle();
-    return mapSyncSnapshot((data as Record<string, unknown> | null) ?? null);
+  const [confirmedResult, attemptResult] = await Promise.all([
+    baseQuery().eq("delivery_metrics_confirmed", true).maybeSingle(),
+    baseQuery().maybeSingle(),
+  ]);
+  if (confirmedResult.error || attemptResult.error) {
+    throw new ApiError(
+      500,
+      confirmedResult.error?.message ?? attemptResult.error?.message ?? "Meta reporting history could not be loaded.",
+      "campaign_sync_snapshot_lookup_failed",
+    );
   }
 
-  const { data } = await buildQuery().eq("campaign_name", params.campaignName).maybeSingle();
-  return mapSyncSnapshot((data as Record<string, unknown> | null) ?? null);
+  return attachLatestMetaSyncAttempt(
+    mapSyncSnapshot((confirmedResult.data as Record<string, unknown> | null) ?? null),
+    (attemptResult.data as Record<string, unknown> | null) ?? null,
+  );
+}
+
+export async function getMetaCampaignSyncSnapshotForCampaign(params: {
+  campaignId?: string | null;
+  campaignName: string;
+  metaCampaignId?: string | null;
+}) {
+  const { context, supabase } = await getMetaSyncContext();
+
+  const buildQuery = (confirmedOnly: boolean) => {
+    let query = supabase
+      .from("campaign_sync_snapshots")
+      .select("*")
+      .eq("organization_id", context.organization.id)
+      .eq("user_id", context.user.id)
+      .order("synced_at", { ascending: false })
+      .limit(1);
+    if (confirmedOnly) {
+      query = query.eq("delivery_metrics_confirmed", true);
+    }
+    if (params.campaignId) {
+      return query.eq("campaign_id", params.campaignId);
+    }
+    if (params.metaCampaignId) {
+      return query.eq("meta_campaign_id", params.metaCampaignId);
+    }
+    return query.eq("campaign_name", params.campaignName);
+  };
+
+  const [confirmedResult, attemptResult] = await Promise.all([
+    buildQuery(true).maybeSingle(),
+    buildQuery(false).maybeSingle(),
+  ]);
+  if (confirmedResult.error || attemptResult.error) {
+    throw new ApiError(
+      500,
+      confirmedResult.error?.message ?? attemptResult.error?.message ?? "Meta campaign reporting history could not be loaded.",
+      "campaign_sync_snapshot_lookup_failed",
+    );
+  }
+
+  return attachLatestMetaSyncAttempt(
+    mapSyncSnapshot((confirmedResult.data as Record<string, unknown> | null) ?? null),
+    (attemptResult.data as Record<string, unknown> | null) ?? null,
+  );
 }
 
 export async function syncMetaCampaignStatus(params?: {
@@ -344,6 +406,7 @@ export async function syncMetaCampaignStatus(params?: {
   }
 
   const errors: MetaSyncError[] = [];
+  const reportingWindow = buildMetaReportingWindow();
   let campaignStatus: MetaEntityStatus | null = null;
   let adSetStatuses: MetaEntityStatus[] = [];
   let adStatuses: MetaEntityStatus[] = [];
@@ -360,6 +423,7 @@ export async function syncMetaCampaignStatus(params?: {
     frequency: 0,
     reach: 0,
   };
+  let deliveryMetricsConfirmed = false;
   let adInsights: ReturnType<typeof fetchAdInsights> extends Promise<infer T> ? T : never = [];
 
   try {
@@ -423,7 +487,9 @@ export async function syncMetaCampaignStatus(params?: {
       accessToken,
       mode,
       campaignStatus: campaignStatus?.status ?? null,
+      reportingWindow,
     });
+    deliveryMetricsConfirmed = true;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Delivery metrics could not be loaded.";
@@ -441,6 +507,7 @@ export async function syncMetaCampaignStatus(params?: {
         accessToken,
         mode,
         adIds: ids.adIds,
+        reportingWindow,
       });
     } catch (error) {
       const message =
@@ -455,10 +522,16 @@ export async function syncMetaCampaignStatus(params?: {
 
   const syncResult = getMetaSyncStatus(campaignStatus, errors);
   const syncedAt = new Date().toISOString();
+  const internalCampaignId =
+    scopedRecord?.campaign.id ??
+    requestedCampaignId ??
+    launchRecord?.campaignId ??
+    (typeof plan.id === "string" ? plan.id : null);
 
   const insertPayload = {
     organization_id: context.organization.id,
     user_id: context.user.id,
+    campaign_id: internalCampaignId,
     campaign_name: launchRecord?.campaignName ?? plan.businessName,
     account_name: connection.account_name,
     launch_mode: plan.runtime.launchMode ?? "test",
@@ -470,13 +543,16 @@ export async function syncMetaCampaignStatus(params?: {
     ad_set_statuses: adSetStatuses as unknown as Json,
     ad_statuses: adStatuses as unknown as Json,
     delivery_metrics: deliveryMetrics as unknown as Json,
+    delivery_metrics_confirmed: deliveryMetricsConfirmed,
     sync_metadata: {
       mode,
+      delivery_metrics_confirmed: deliveryMetricsConfirmed,
       launch_id_source: ids.source,
       campaign_entity_id: campaignStatus?.id ?? null,
       campaign_configured_status: campaignStatus?.configuredStatus ?? null,
       campaign_effective_status: campaignStatus?.effectiveStatus ?? null,
       ad_insights: adInsights,
+      reporting_window: reportingWindow,
       synced_from_runtime: {
         campaignId: plan.runtime.campaignId,
         metaPushStatus: plan.runtime.metaPushStatus,
@@ -486,43 +562,40 @@ export async function syncMetaCampaignStatus(params?: {
     synced_at: syncedAt,
   };
 
-  const { error: insertError } = await supabase
+  const { data: insertedSnapshotRow, error: insertError } = await supabase
     .from("campaign_sync_snapshots")
-    .insert(insertPayload as never);
+    .insert(insertPayload as never)
+    .select("*")
+    .single();
 
   if (insertError) {
     throw new ApiError(500, insertError.message, "campaign_sync_snapshot_insert_failed");
   }
 
-  if (typeof connection.id !== "string" || connection.id.length === 0) {
+  if (deliveryMetricsConfirmed && (typeof connection.id !== "string" || connection.id.length === 0)) {
     throw new ApiError(500, "Meta account record is missing its internal ID.", "meta_account_id_missing");
   }
 
-  const { error: accountUpdateError } = await supabase
-    .from("marketing_accounts")
-    .update({ last_sync_at: syncedAt } as never)
-    .eq("id", connection.id);
+  if (deliveryMetricsConfirmed) {
+    const { error: accountUpdateError } = await supabase
+      .from("marketing_accounts")
+      .update({ last_sync_at: syncedAt } as never)
+      .eq("id", connection.id);
 
-  if (accountUpdateError) {
-    throw new ApiError(500, accountUpdateError.message, "meta_account_sync_timestamp_failed");
+    if (accountUpdateError) {
+      throw new ApiError(500, accountUpdateError.message, "meta_account_sync_timestamp_failed");
+    }
   }
-
-  const { data: snapshotRow, error: snapshotError } = await (supabase as any)
-    .from("campaign_sync_snapshots")
-    .select("*")
-    .eq("organization_id", context.organization.id)
-    .eq("user_id", context.user.id)
-    .eq("meta_campaign_id", ids.campaignId)
-    .order("synced_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (snapshotError) {
-    throw new ApiError(500, snapshotError.message, "campaign_sync_snapshot_lookup_failed");
-  }
-  const snapshot = mapSyncSnapshot((snapshotRow as Record<string, unknown> | null) ?? null);
+  const snapshot = mapSyncSnapshot(
+    (insertedSnapshotRow as Record<string, unknown> | null) ?? null,
+  );
 
   if (!snapshot) {
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");
+  }
+
+  if (!deliveryMetricsConfirmed) {
+    return snapshot;
   }
 
   await recordLeadTrackingEvent({
@@ -544,7 +617,7 @@ export async function syncMetaCampaignStatus(params?: {
     organization_id: context.organization.id,
     user_id: context.user.id,
     source_snapshot_id: snapshot.id,
-    campaign_id: snapshot.metaCampaignId ?? snapshot.campaignName,
+    campaign_id: internalCampaignId ?? snapshot.metaCampaignId ?? snapshot.campaignName,
     spend: deliveryMetrics.spend,
     impressions: deliveryMetrics.impressions,
     clicks: deliveryMetrics.clicks,

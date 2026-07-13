@@ -16,6 +16,10 @@ const tenantAuthorityMigrationPath = path.join(
   root,
   "supabase/migrations/20260710235960_harden_campaign_tenant_authority.sql",
 );
+const paidActivationMigrationPath = path.join(
+  root,
+  "supabase/migrations/20260713021000_require_paid_activation_for_campaign_creation.sql",
+);
 const containerName = `dealflow-campaign-entitlement-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
 const password = randomBytes(24).toString("hex");
@@ -155,6 +159,10 @@ try {
     fs.existsSync(tenantAuthorityMigrationPath),
     `Required migration is missing: ${tenantAuthorityMigrationPath}`,
   );
+  assert.ok(
+    fs.existsSync(paidActivationMigrationPath),
+    `Required migration is missing: ${paidActivationMigrationPath}`,
+  );
   const campaignPersistenceSource = fs.readFileSync(
     path.join(root, "src/lib/services/campaign-persistence.ts"),
     "utf8",
@@ -171,12 +179,20 @@ try {
     path.join(root, "src/lib/services/campaign-creation-entitlement-service.ts"),
     "utf8",
   );
+  const paidActivationMigrationSource = fs.readFileSync(paidActivationMigrationPath, "utf8");
+  const billingStatusRouteSource = fs.readFileSync(
+    path.join(root, "src/app/api/billing/status/route.ts"),
+    "utf8",
+  );
   assert.match(campaignPersistenceSource, /createCampaignPlanWithEntitlement\(/);
   assert.match(campaignPersistenceSource, /\.eq\("organization_id", organizationId\)/);
   assert.doesNotMatch(campaignPersistenceSource, /\.or\(`user_id\.eq\./);
   assert.match(planPersistenceSource, /createCampaignPlanWithEntitlement\(/);
   assert.match(onboardingRouteSource, /createOnly:\s*true/);
   assert.match(creationServiceSource, /create_campaign_plan_with_entitlement_v1/);
+  assert.match(paidActivationMigrationSource, /commercial_activations/);
+  assert.match(paidActivationMigrationSource, /legacy_commercial_activation_reconciled/);
+  assert.match(billingStatusRouteSource, /billing\.commerciallyActivated/);
   assert.doesNotMatch(
     `${campaignPersistenceSource}\n${planPersistenceSource}`,
     /\.from\("campaign_plans"\)[\s\S]{0,180}\.insert\(/,
@@ -254,7 +270,17 @@ try {
       status text not null default 'inactive',
       current_period_end timestamptz null,
       cancel_at_period_end boolean not null default false,
+      metadata jsonb not null default '{}'::jsonb,
       constraint billing_subscriptions_organization_unique unique (organization_id)
+    );
+
+    create table public.commercial_activations (
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null references public.organizations(id),
+      user_id uuid not null,
+      amount_paid_cents integer not null,
+      constraint commercial_activations_organization_unique unique (organization_id),
+      constraint commercial_activations_amount_positive check (amount_paid_cents > 0)
     );
 
     create table public.campaign_plans (
@@ -311,11 +337,12 @@ try {
       ('${orgOther}', '${userOther}');
 
     insert into public.billing_subscriptions (
-      organization_id, plan_tier, status, current_period_end, cancel_at_period_end
+      organization_id, plan_tier, status, current_period_end, cancel_at_period_end, metadata
     ) values
-      ('${orgPaid}', 'pro', 'active', now() + interval '30 days', false),
-      ('${orgStarter}', 'starter', 'active', now() + interval '30 days', false),
-      ('${orgOther}', 'growth', 'active', now() + interval '30 days', false);
+      ('${orgPaid}', 'pro', 'active', now() + interval '30 days', false, '{}'::jsonb),
+      ('${orgStarter}', 'starter', 'active', now() + interval '30 days', false, '{}'::jsonb),
+      ('${orgOther}', 'growth', 'active', now() + interval '30 days', false,
+        '{"legacy_commercial_activation_reconciled":true}'::jsonb);
   `, "Synthetic prerequisite schema failed");
 
   psql(
@@ -325,6 +352,10 @@ try {
   psql(
     fs.readFileSync(tenantAuthorityMigrationPath, "utf8"),
     `Candidate migration failed: ${path.basename(tenantAuthorityMigrationPath)}`,
+  );
+  psql(
+    fs.readFileSync(paidActivationMigrationPath, "utf8"),
+    `Candidate migration failed: ${path.basename(paidActivationMigrationPath)}`,
   );
 
   assert.equal(
@@ -437,18 +468,48 @@ try {
     "Concurrent unpaid requests created more than one campaign",
   );
 
-  for (const [suffix, marker] of [["21", "paid-one"], ["22", "paid-two"]]) {
+  const paidCampaignOne = "30000000-0000-4000-8000-000000000021";
+  psql(createSql({
+    campaignId: paidCampaignOne,
+    organizationId: orgPaid,
+    userId: userPaid,
+    marker: "paid-one",
+  }), "Active Pro first preview failed before commercial activation");
+  psqlMustFail(
+    createSql({
+      campaignId: "30000000-0000-4000-8000-000000000022",
+      organizationId: orgPaid,
+      userId: userPaid,
+      marker: "active-without-payment",
+    }),
+    /campaign_preview_limit_reached/i,
+    "Active Pro without durable commercial activation must remain preview-limited",
+  );
+  assert.equal(
+    psql(createSql({
+      campaignId: paidCampaignOne,
+      organizationId: orgPaid,
+      userId: userPaid,
+      marker: "must-not-overwrite-before-payment",
+    }), "Exact replay before commercial activation failed"),
+    `${paidCampaignOne}|${orgPaid}|${userPaid}|paid-one`,
+    "Exact replay must remain allowed while new creation is payment-blocked",
+  );
+  psql(`insert into public.commercial_activations (
+      organization_id, user_id, amount_paid_cents
+    ) values ('${orgPaid}', '${userPaid}', 29700);`, "Record qualifying paid activation");
+  for (const [suffix, marker] of [["22", "paid-two"], ["26", "paid-three"]]) {
     psql(createSql({
       campaignId: `30000000-0000-4000-8000-0000000000${suffix}`,
       organizationId: orgPaid,
       userId: userPaid,
       marker,
-    }), `Paid campaign ${marker} failed`);
+    }), `Commercially activated campaign ${marker} failed`);
   }
   assert.equal(
     psql(`select count(*) from public.campaign_plans where organization_id = '${orgPaid}';`, "Read paid campaign count"),
-    "2",
-    "Eligible active Pro workspace did not receive unlimited creation",
+    "3",
+    "Commercially activated active Pro workspace did not receive unlimited creation",
   );
 
   for (const [status, suffix] of [
@@ -475,6 +536,27 @@ try {
     );
   }
 
+  psql(`
+    update public.billing_subscriptions
+    set status = 'active',
+        cancel_at_period_end = true,
+        current_period_end = now() - interval '1 second'
+    where organization_id = '${orgPaid}';
+  `, "Set expired active cancellation boundary");
+  psqlMustFail(
+    createSql({
+      campaignId: "30000000-0000-4000-8000-000000000027",
+      organizationId: orgPaid,
+      userId: userPaid,
+      marker: "expired-active-cancellation",
+    }),
+    /campaign_preview_limit_reached/i,
+    "Expired cancel-at-period-end billing must not grant unlimited campaign creation",
+  );
+
+  psql(`insert into public.commercial_activations (
+      organization_id, user_id, amount_paid_cents
+    ) values ('${orgStarter}', '${userStarter}', 9700);`, "Record paid legacy Starter activation");
   psql(createSql({
     campaignId: "30000000-0000-4000-8000-000000000031",
     organizationId: orgStarter,

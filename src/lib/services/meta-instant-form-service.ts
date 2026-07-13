@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/api/route";
-import { getPublicAppUrl } from "@/lib/env";
+import { getMetaEnvOrThrow, getPublicAppUrl } from "@/lib/env";
 import {
   buildMetaGraphUrl,
   isMetaLiveWriteAllowed,
@@ -13,6 +13,7 @@ import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
+import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
 
 type ProvisioningClaim = {
   provisioning_id: string;
@@ -37,9 +38,6 @@ type MetaInstantFormListResponse = {
   error?: { message?: string };
 };
 
-const PROTECTED_HOUSING_QUESTION_PATTERN =
-  /\b(age|birthday|birth date|race|ethnic|religion|faith|disab|medical|pregnan|children|family status|married|citizenship|national origin|gender|sex|sexual orientation)\b/i;
-
 function selectedPageId(connection: MetaConnectionRecord | undefined, explicitPageId?: string) {
   const value = explicitPageId ?? connection?.connection_metadata?.selected_page_id;
   return typeof value === "string" && /^\d{5,40}$/.test(value.trim())
@@ -51,18 +49,17 @@ function safeCustomQuestions(campaign: FullCampaignRecord) {
   const questions = Array.isArray(campaign.funnel?.customLeadFormQuestions)
     ? campaign.funnel.customLeadFormQuestions
     : [];
+  const effectiveQuestions = resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: campaign.plan.lead_capture_mode,
+    language: campaign.plan.language,
+    customQuestions: questions,
+  });
   return Array.from(
     new Set(
-      questions
-        .map((question) => question.trim().replace(/\s+/g, " "))
-        .filter(
-          (question) =>
-            question.length >= 5 &&
-            question.length <= 120 &&
-            !PROTECTED_HOUSING_QUESTION_PATTERN.test(question),
-        ),
+      effectiveQuestions
+        .map((question) => question.trim().replace(/\s+/g, " ")),
     ),
-  ).slice(0, 3);
+  );
 }
 
 export function buildMetaInstantFormDefinition(campaign: FullCampaignRecord) {
@@ -130,7 +127,7 @@ async function findExactForm(params: {
   pageAccessToken: string;
   formName: string;
 }) {
-  const matches = new Set<string>();
+  const matches = new Map<string, { id: string; status: string }>();
   const seenCursors = new Set<string>();
   let after: string | null = null;
 
@@ -156,8 +153,9 @@ async function findExactForm(params: {
       );
     }
     for (const form of data?.data ?? []) {
-      if (form.name === params.formName && /^\d{5,40}$/.test(form.id ?? "")) {
-        matches.add(form.id!);
+      const id = form.id?.trim() ?? "";
+      if (form.name === params.formName && /^\d{5,40}$/.test(id)) {
+        matches.set(id, { id, status: form.status?.trim().toUpperCase() ?? "" });
       }
     }
     if (matches.size > 1) {
@@ -170,7 +168,15 @@ async function findExactForm(params: {
 
     const nextAfter: unknown = data?.paging?.cursors?.after;
     if (typeof nextAfter !== "string" || !/^[\x21-\x7e]{1,500}$/.test(nextAfter)) {
-      return Array.from(matches)[0] ?? null;
+      const match = Array.from(matches.values())[0] ?? null;
+      if (match && match.status !== "ACTIVE") {
+        throw new ApiError(
+          409,
+          "The exact Meta Instant Form is no longer active and cannot receive leads.",
+          "meta_instant_form_not_active",
+        );
+      }
+      return match?.id ?? null;
     }
     if (seenCursors.has(nextAfter)) {
       throw new ApiError(
@@ -190,10 +196,103 @@ async function findExactForm(params: {
   );
 }
 
+async function readPageLeadgenSubscription(params: {
+  pageId: string;
+  pageAccessToken: string;
+  appId: string;
+}) {
+  const observedAppIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  let after: string | null = null;
+  for (let page = 0; page < 20; page += 1) {
+    const result = await fetchMetaJson<{
+      data?: Array<{ id?: string }>;
+      paging?: { cursors?: { after?: unknown } };
+      error?: { message?: string };
+    }>(buildMetaGraphUrl(`${params.pageId}/subscribed_apps`, {
+      fields: "id",
+      limit: 100,
+      ...(after ? { after } : {}),
+    }), {
+      purpose: "launch_lookup",
+      ...withMetaBearerToken(params.pageAccessToken),
+    });
+    const response = result.response;
+    const data: {
+      data?: Array<{ id?: string }>;
+      paging?: { cursors?: { after?: unknown } };
+      error?: { message?: string };
+    } | null = result.data;
+    if (!response.ok) {
+      throw new ApiError(
+        response.status >= 500 || response.status === 429 ? 503 : 502,
+        data?.error?.message ?? "Meta Page subscription state could not be verified.",
+        response.status >= 500 || response.status === 429
+          ? "meta_instant_form_subscription_lookup_ambiguous"
+          : "meta_instant_form_subscription_lookup_rejected",
+      );
+    }
+    for (const item of data?.data ?? []) {
+      const id = item.id?.trim() ?? "";
+      if (/^\d{5,40}$/.test(id)) observedAppIds.add(id);
+    }
+    const nextAfter: unknown = data?.paging?.cursors?.after;
+    if (typeof nextAfter !== "string" || !/^[\x21-\x7e]{1,500}$/.test(nextAfter)) break;
+    if (seenCursors.has(nextAfter)) {
+      throw new ApiError(
+        502,
+        "Meta Page subscription pagination returned a repeated cursor.",
+        "meta_instant_form_subscription_pagination_invalid",
+      );
+    }
+    seenCursors.add(nextAfter);
+    after = nextAfter;
+    if (page === 19) {
+      throw new ApiError(
+        502,
+        "Meta Page subscription lookup exceeded the bounded pagination window.",
+        "meta_instant_form_subscription_pagination_limit",
+      );
+    }
+  }
+  const sortedObservedAppIds = Array.from(observedAppIds).sort();
+  const subscribed = sortedObservedAppIds.includes(params.appId);
+  return {
+    subscribed,
+    evidenceDigest: createHash("sha256").update(JSON.stringify({
+      pageId: params.pageId,
+      appId: params.appId,
+      subscribed,
+      observedAppIds: sortedObservedAppIds,
+    })).digest("hex"),
+  };
+}
+
 async function subscribePageLeadgen(params: {
   pageId: string;
   pageAccessToken: string;
+  appId: string;
+  claim: ProvisioningClaim;
+  token: string;
 }) {
+  const before = await readPageLeadgenSubscription(params);
+  if (before.subscribed) {
+    await recordSubscriptionReceipt({
+      claim: params.claim,
+      token: params.token,
+      evidenceDigest: before.evidenceDigest,
+      source: "reconciled",
+    });
+    return;
+  }
+  if (params.claim.subscription_state === "armed") {
+    throw new ApiError(
+      503,
+      "A prior Page subscription write has an ambiguous outcome and requires reconciliation.",
+      "meta_instant_form_subscription_ambiguous",
+    );
+  }
+  await armSubscriptionMutation(params.claim, params.token);
   const { response, data } = await fetchMetaJson<{
     success?: boolean;
     error?: { message?: string };
@@ -214,6 +313,20 @@ async function subscribePageLeadgen(params: {
         : "meta_instant_form_subscription_rejected",
     );
   }
+  const after = await readPageLeadgenSubscription(params);
+  if (!after.subscribed) {
+    throw new ApiError(
+      503,
+      "Meta accepted the Page subscription request but readback did not confirm the DealFlow app.",
+      "meta_instant_form_subscription_ambiguous",
+    );
+  }
+  await recordSubscriptionReceipt({
+    claim: params.claim,
+    token: params.token,
+    evidenceDigest: after.evidenceDigest,
+    source: "provider_response",
+  });
 }
 
 async function assertClaimRpc(params: {
@@ -222,7 +335,9 @@ async function assertClaimRpc(params: {
   rpc:
     | "renew_meta_instant_form_provisioning"
     | "arm_meta_instant_form_provider_mutation"
-    | "record_meta_instant_form_provider_receipt";
+    | "record_meta_instant_form_provider_receipt"
+    | "arm_meta_instant_form_subscription_mutation"
+    | "record_meta_instant_form_subscription_receipt";
   extra?: Record<string, unknown>;
   errorCode: string;
   errorMessage: string;
@@ -260,6 +375,35 @@ async function armProviderMutation(claim: ProvisioningClaim, token: string) {
     rpc: "arm_meta_instant_form_provider_mutation",
     errorCode: "meta_instant_form_provider_arm_failed",
     errorMessage: "Instant Form provider mutation could not be durably armed.",
+  });
+}
+
+async function armSubscriptionMutation(claim: ProvisioningClaim, token: string) {
+  await assertClaimRpc({
+    claim,
+    token,
+    rpc: "arm_meta_instant_form_subscription_mutation",
+    errorCode: "meta_instant_form_subscription_arm_failed",
+    errorMessage: "The Page subscription provider mutation could not be durably armed.",
+  });
+}
+
+async function recordSubscriptionReceipt(params: {
+  claim: ProvisioningClaim;
+  token: string;
+  evidenceDigest: string;
+  source: "provider_response" | "reconciled";
+}) {
+  await assertClaimRpc({
+    claim: params.claim,
+    token: params.token,
+    rpc: "record_meta_instant_form_subscription_receipt",
+    extra: {
+      p_evidence_digest: params.evidenceDigest,
+      p_receipt_source: params.source,
+    },
+    errorCode: "meta_instant_form_subscription_receipt_lost",
+    errorMessage: "The Page subscription receipt could not be fenced to this claim.",
   });
 }
 
@@ -325,6 +469,7 @@ export async function ensureMetaInstantForm(params: {
   marketingAccountId?: string;
   pageId?: string;
   userAccessToken?: string;
+  expectedDefinitionDigest?: string;
   assertProviderMutationAllowed?: () => void | Promise<void>;
 }) {
   if (!isMetaLiveWriteAllowed()) {
@@ -346,7 +491,21 @@ export async function ensureMetaInstantForm(params: {
   }
 
   const definition = buildMetaInstantFormDefinition(params.campaign);
+  if (
+    params.expectedDefinitionDigest &&
+    params.expectedDefinitionDigest !== definition.digest
+  ) {
+    throw new ApiError(
+      409,
+      "The Meta Instant Form definition changed after customer approval.",
+      "meta_instant_form_definition_drift",
+    );
+  }
   const processingToken = crypto.randomUUID();
+  const appId = getMetaEnvOrThrow().appId.trim();
+  if (!/^\d{5,40}$/.test(appId)) {
+    throw new ApiError(503, "Meta application identity is invalid.", "meta_instant_form_config_incomplete");
+  }
   const { data: claimData, error: claimError } = await (admin as any).rpc(
     "claim_meta_instant_form_provisioning",
     {
@@ -361,7 +520,7 @@ export async function ensureMetaInstantForm(params: {
       p_lease_seconds: 300,
     },
   );
-  const claim = (Array.isArray(claimData) ? claimData[0] : claimData) as
+  let claim = (Array.isArray(claimData) ? claimData[0] : claimData) as
     | ProvisioningClaim
     | null;
   if (claimError || !claim) {
@@ -371,22 +530,50 @@ export async function ensureMetaInstantForm(params: {
       "meta_instant_form_claim_failed",
     );
   }
-  if (claim.provisioning_status === "created" && claim.provider_form_id) {
-    return { providerFormId: claim.provider_form_id, reused: true, definition };
+  if (
+    !claim.acquired &&
+    claim.provisioning_status === "created" &&
+    claim.provider_form_id
+  ) {
+    const { data: verificationData, error: verificationError } = await (admin as any).rpc(
+      "reacquire_meta_instant_form_verification",
+      {
+        p_provisioning_id: claim.provisioning_id,
+        p_processing_token: processingToken,
+        p_lease_seconds: 300,
+      },
+    );
+    const verificationClaim = (
+      Array.isArray(verificationData) ? verificationData[0] : verificationData
+    ) as ProvisioningClaim | null;
+    if (verificationError || !verificationClaim?.acquired) {
+      throw new ApiError(
+        409,
+        verificationError?.message ??
+          "Meta Instant Form live-state revalidation could not acquire its fenced claim.",
+        "meta_instant_form_revalidation_claim_required",
+      );
+    }
+    claim = verificationClaim;
   }
   if (!claim.acquired) {
     throw new ApiError(
       409,
       claim.provisioning_status === "operator_required"
         ? "Meta Instant Form provisioning requires operator reconciliation before retry."
+        : claim.provisioning_status === "created"
+          ? "Meta Instant Form live-state revalidation could not acquire its fenced claim."
         : "Meta Instant Form provisioning is already in progress.",
       claim.provisioning_status === "operator_required"
         ? "meta_instant_form_operator_required"
+        : claim.provisioning_status === "created"
+          ? "meta_instant_form_revalidation_claim_required"
         : "meta_instant_form_in_progress",
     );
   }
 
   let providerFormId = claim.provider_form_id;
+  const reusedProviderForm = Boolean(providerFormId);
   try {
     const userAccessToken =
       params.userAccessToken?.trim() ||
@@ -401,13 +588,26 @@ export async function ensureMetaInstantForm(params: {
     await renewClaim(claim, processingToken);
     const pageAccessToken = await resolvePageAccessToken({ pageId, userAccessToken });
     await renewClaim(claim, processingToken);
-    providerFormId =
-      providerFormId ??
-      (await findExactForm({
-        pageId,
-        pageAccessToken,
-        formName: definition.formName,
-      }));
+    const exactLiveFormId = await findExactForm({
+      pageId,
+      pageAccessToken,
+      formName: definition.formName,
+    });
+    if (providerFormId && !exactLiveFormId) {
+      throw new ApiError(
+        409,
+        "The receipted Meta Instant Form no longer exists on the selected Page.",
+        "meta_instant_form_missing",
+      );
+    }
+    if (providerFormId && exactLiveFormId && providerFormId !== exactLiveFormId) {
+      throw new ApiError(
+        409,
+        "The live Meta Instant Form identity conflicts with its durable provider receipt.",
+        "meta_instant_form_identity_conflict",
+      );
+    }
+    providerFormId = providerFormId ?? exactLiveFormId;
     await renewClaim(claim, processingToken);
 
     if (providerFormId && claim.provider_form_id !== providerFormId) {
@@ -483,7 +683,13 @@ export async function ensureMetaInstantForm(params: {
 
     await renewClaim(claim, processingToken);
     await params.assertProviderMutationAllowed?.();
-    await subscribePageLeadgen({ pageId, pageAccessToken });
+    await subscribePageLeadgen({
+      pageId,
+      pageAccessToken,
+      appId,
+      claim,
+      token: processingToken,
+    });
     await params.assertProviderMutationAllowed?.();
     await settle({
       claim,
@@ -491,7 +697,7 @@ export async function ensureMetaInstantForm(params: {
       outcome: "created",
       providerFormId,
     });
-    return { providerFormId, reused: false, definition };
+    return { providerFormId, reused: reusedProviderForm, definition };
   } catch (error) {
     if (
       error instanceof ApiError &&

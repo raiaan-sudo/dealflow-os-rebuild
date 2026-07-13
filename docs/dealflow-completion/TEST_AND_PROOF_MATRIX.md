@@ -1,113 +1,120 @@
 # DealFlow test and proof matrix
 
 Overall verdict: `NO_GO`
-Status: `LOCAL COMPLETION CANDIDATE PASSING / CONTROLLED STAGING AND LIVE-PROVIDER ACCEPTANCE STILL REQUIRED`
+Candidate seal: `PENDING_FINAL_SEAL`
+Current migration inventory: `99`
+Two final exact-seal rounds: `NOT_YET_RUN`
+Isolated hosted staging acceptance: `NOT_YET_RUN`
+Production release proof: `NOT_YET_RUN`
 
-## Proof profiles
+This matrix intentionally distinguishes retained historical evidence, targeted
+working-tree checks, the required final clean-seal portfolio, isolated staging,
+and production. A pass in one column never implies a pass in a later column.
 
-- `STATIC_OFFLINE`: source/decision/contract checks; no network.
-- `LOCAL_MOCK`: synthetic adapters with live-host rejection.
-- `LOCAL_DB`: disposable local PostgreSQL/Supabase only; synthetic tenants;
-  Docker remains the default, with an explicit Unix-socket-only PostgreSQL 17.6
-  adapter documented in `NATIVE_POSTGRES_DISPOSABLE_TESTS.md` for environments
-  where the Docker daemon is unavailable;
-  network disabled.
-- `READ_ONLY_PUBLIC`: anonymous GET/navigation/screenshot only.
-- `BLOCKED_EXTERNAL`: needs separately authorized provider, deployed environment,
-  staging, shared schema, or owner/legal authority.
-- `SKIPPED_SAFETY`: would mutate production/customer/provider/shared data, send a
-  communication, or spend money.
+## Status vocabulary
 
-## Immutable baseline proof
+- `HISTORICAL_PASS`: immutable evidence for an earlier exact source state.
+- `WORKING_TREE_PASS`: a targeted check observed before the final clean seal;
+  it must be repeated by the final runner.
+- `PENDING_FINAL_SEAL`: identity cannot exist until all candidate changes are
+  committed and the worktree is clean.
+- `NOT_YET_RUN`: no qualifying proof has been executed for this candidate and
+  environment.
+- `BLOCKED_OWNER_AUTHORITY`: a policy/credential/ownership decision cannot be
+  fabricated by code.
+- `SKIPPED_SAFETY`: intentionally omitted because it would communicate, spend,
+  charge, or mutate an unauthorized provider/production system.
 
-| Command/evidence | Result |
-|---|---|
-| `npm ci` | pass; 426 packages; zero reported vulnerabilities at baseline |
-| `npm run lint` | pass |
-| `npm run typecheck` | pass |
-| `npm run build` | pass in fully materialized checkout; 47 static pages |
-| registered baseline offline suites | pass |
-| legacy internal-SMS direct script | baseline stale lexical assertion failed; later candidate test was updated and passed |
-| canonical production source/deployment ancestry | pass for core domains at baseline SHA/deployment |
-| independent subdomain source ancestry | blocked for three surfaces |
+## Historical proof, preserved without reinterpretation
 
-## Candidate targeted proof already observed
-
-These results are local implementation-commit evidence, not production
-acceptance. The external bundle runner repeats the complete portfolio twice on
-the clean docs/bundle-only descendant seal and retains the exact command logs.
-
-| Portfolio | Representative commands | Current local result | Limit |
-|---|---|---|---|
-| Type/lint | `npm run typecheck`; `npm run lint`; targeted ESLint | pass on the implementation commit | exact-seal repeat is external bundle evidence |
-| Completion contracts | `npm run test:dealflow-completion`; reliability/security/accessibility/onboarding suites | 28/28 pass on this branch | exact-seal repeat is external bundle evidence |
-| Meta OAuth/contract/tenant | `node scripts/test-meta-contract-hardening.mjs`; `npm run test:meta-tenant-fencing` | pass, including the exact native-lead permission set and zero-retry code exchange; no network | no real OAuth/provider acceptance |
-| Manual/scheduled launch | `npm run test:manual-launch-fencing`; `npm run test:manual-launch-reachability`; `npm run test:scheduler-disposable-db`; launch truth suite | pass including immutable input lineage, four-stage pre-POST mutation arming, expired-manual-crash route-to-SQL terminalizer reachability with zero provider dispatch, receipt/settlement failure terminalization, explicit-rejection-only retry, and stale-generation negatives | no Meta object created |
-| GHL | tenant contract and `npm run test:ghl-disposable-db` | fake-only/disposable proof pass | no real adapter/provider action |
-| Stripe/billing | onboarding/billing contract, `npm run test:stripe-runtime-mode`, `npm run test:stripe-webhook-disposable-db` | pass | no live Stripe read/webhook/checkout |
-| Financial integrity | `npm run test:financial-integrity-disposable-db` | pass | no live billing/provider acceptance |
-| Access-key security | checkout/activation, `npm run test:access-key-binding`, plus `npm run test:access-key-security-disposable-db` | pass, including invalid partner 404, invalid stored tier, configured tier-price mismatch, stale expanded checkout refresh, exact Stripe identity/price/plan/cardinality negatives, verified+available / verified+unavailable / unverified UI truth states, all-null-only recovery CAS, and two-phase reveal recovery | no live purchase/reveal |
-| Campaign entitlement | `npm run test:campaign-entitlement-disposable-db` | pass | no staged mixed-worker release proof |
-| Jobs/lead effects | reliability plus `npm run test:lead-effect-fencing-db` | pass | provider idempotency not live-tested |
-| Creative/lead tenant scope | creative storage/retry and creative-lead disposable suites | pass | no paid creative provider execution |
-| SMS | internal SMS plus `npm run test:sms-receipts` | pass | no Twilio callback/SMS |
-| Support | support contract and `npm run test:support-outbox-disposable-db` | pass | no mailbox communication |
-| Continuous reporting | `npm run test:continuous-reporting-optimizer`; `npm run test:continuous-reporting-optimizer-db` | pass; due-window replay, active-run suppression, retry/backoff contract, lease exclusion/reclaim, stale-worker denial, freshness and alert settlement | no hosted repeated Meta sync acceptance |
-| Optimizer | `node scripts/test-optimization-evidence-safety.mjs`; `npm run test:continuous-reporting-optimizer` | pass; every recovered rule boundary, provisional shadow policy, production gate, idempotent sandbox action, reconciliation mismatch, CAS rollback and ambiguous rollback simulated | no owner-approved live policy or Meta sandbox action |
-| Release evidence | `npm run test:release-guard` | pass; target self-authorization, unsigned/self-signed evidence, external digest mismatch, and unauthorized rotation rejected; protected external runtime test authority/rotation accepted | production external trust root/env/drain absent |
-| Native Meta leadgen | `npm run test:meta-leadgen` (contract plus disposable DB) | pass, including owner/active campaign-owner/exact-admin allow, ordinary/removed/cross-tenant deny, and actor-less RPC removal | no live page/form subscription/event |
-| Client IP/rate-limit authority | `npm run test:client-ip-contract`; `npm run routes:security` | pass for normalized Vercel-controlled identity and unknown-production fail-closed fallback | a future non-Vercel proxy needs its own explicit trusted-hop contract |
-
-## Fresh migration and recovery proof
-
-| Required check | Result | Release effect |
+| Evidence | Status | Exact limit |
 |---|---|---|
-| Full fresh chain | Frozen authority proof: all 80 foundation migrations pass on PostgreSQL 17.6 and match the 11,407-row oracle; the two additive candidate migrations have focused PostgreSQL 17.6 proofs, while an exact combined 82-chain hosted replay remains required | foundation blocker cleared; combined staging replay still required |
-| Authoritative-current adoption | `PASS`: foundation history adopted exactly once, then candidate migrations converged to the fresh-chain digest | local adoption proof complete |
-| Representative May-2 schema upgrade | `PASS`: recovered project-bound structural fixture upgraded to the same semantic digest | local upgrade proof complete |
-| Legacy and partial-collision rejection | `PASS`: foundation collisions plus malformed later table, table-metadata, column, and index collisions rejected before mutation | fail-closed local proof complete |
-| Idempotent full replay | `PASS`: all 80 history entries skipped and zero structural mutation occurred | local idempotency proof complete |
-| Sentinel preservation and unsafe conversion | `PASS`: supported sentinel converted/preserved; unsupported conversion rejected without mutation | local data-safety proof complete |
-| Integrated RLS/private-schema/ACL proof | `PASS`: the pinned rowset/digest includes relation ownership/options/replica/partition metadata, schema/relation/sequence/routine/default privileges, type and column null/explicit/grant ACL states, and dense live-column order; mutation-sensitivity probes passed | local authorization-shape proof complete |
-| Mixed old/new worker compatibility | `PASS`: old worker/new schema rejected safely; new worker/old schema path absent | signed deployed-worker drain still required before release |
-| Forward-recovery drill | `PASS`: injected failure left zero partial mutation and forward recovery succeeded | local recovery proof complete |
-| Two independent final databases | `PASS`: both matched every row of the frozen 11,407-row oracle and its independently recomputed semantic digest | deterministic local proof complete |
-| Cleanup | `PASS`: zero disposable databases remained; remote-equivalent owner created/removed once | zero local proof residue |
-| Destructive down rollback | intentionally not attempted | historical baseline is not claimed safe after contract boundary |
+| Production baseline source/deployment ancestry for the canonical core domains | `HISTORICAL_PASS` | Does not cover three independent subdomains and does not identify the current candidate |
+| Frozen recovered 80-migration PostgreSQL 17.6 foundation portfolio | `HISTORICAL_PASS` | Proves the recovered foundation and its retained oracle; it is not proof of extensions 81-99 |
+| Earlier 82/87/89/90/91/98 migration and tranche tests | `HISTORICAL_PASS` where retained | Intermediate milestones only; none is the exact current 99-migration seal |
+| Earlier anonymous screenshot and accessibility tranches | `HISTORICAL_PASS` where retained | Earlier source/runtime/viewports only; not hosted authenticated acceptance |
 
-## Browser/accessibility/visual proof
+Files under `docs/dealflow-completion/evidence/` keep their original counts and
+wording as historical artifacts. Current operational documents must not quote
+those counts as the current candidate inventory.
 
-- Fresh production-built loopback proof captured seven anonymous routes at
-  `1440×900` and `390×844` (14 screenshots total): root, login, onboarding,
-  privacy, terms, data deletion, and UI direction.
-- All 14 route/viewport checks had a main landmark, zero horizontal overflow,
-  and zero browser console errors/warnings. Onboarding failed closed to the
-  setup-reason login route at both viewports.
-- Invalid tiled full-page captures were excluded and recorded, not counted.
-- Authenticated browser proof remains assigned to controlled staging because
-  this checkout has no isolated Supabase Auth/PostgREST fixture; raw PostgreSQL
-  alone cannot create a truthful signed-in browser session.
-- Screen-reader, 200% zoom, reduced motion, Firefox/WebKit, customer roles,
-  degraded workers, billing, support, workspace switching, and provider journeys
-  remain not proven.
+## Current local exact-seal requirements
 
-## Final exact-commit portfolio still required
+Every row below must bind to the same clean commit, tree, tracked-file digest,
+lockfile digest, migration digest, Node 20 runtime, PostgreSQL 17.6 runtime, and
+final runner version. The authoritative result is currently `NOT_YET_RUN`.
 
-1. Clean install plus `lint`, `typecheck`, and production `build` twice where
-   reproducibility is claimed.
-2. Every registered offline and disposable-database candidate suite, including
-   native leadgen, Stripe mode, financial integrity, access reveal, release
-   evidence, and legacy safe regressions.
-3. Ledger/status/ID/proof-field validation and JSON/JSONL/CSV/PNG parse checks.
-4. Exact commit/tree/lockfile/migration/build/test/visual hashes.
-5. Independent security/launch review against the final diff.
+| Portfolio | Required proof | Current exact-seal result |
+|---|---|---|
+| Install and supply chain | clean `npm ci`; production and full dependency audit; release secret scan; no unexpected lock drift | `NOT_YET_RUN` |
+| Static quality | `npm run lint`; `npm run typecheck`; `git diff --check`; repository/schema/route/operator checks | `NOT_YET_RUN` |
+| Production build | deterministic production build; route inventory; safe local smoke | `NOT_YET_RUN` |
+| Commercial/activation | Pro-only `$297` acquisition, qualifying positive payment, exact-once `$10` credit, legacy-plan reconciliation and zero-dollar negatives | `NOT_YET_RUN` |
+| Onboarding/campaign | explicit persistence, full field propagation, destination/qualification independence, single-primary creative, scheduling at 9 a.m. Eastern | `NOT_YET_RUN` |
+| Multilingual | EN/FR/ES normalization, campaign/funnel/form/consent/thank-you/metadata propagation, invalid fallback | `NOT_YET_RUN` |
+| White-label | verified-domain lookup, signed exact-host attribution, safe branding, iframe allowlist, auth continuation, attacker/disabled/ambiguous negatives | `NOT_YET_RUN` |
+| GHL | sandbox/production gate contracts, integrated campaign-slot/periodic-sweep chain, endpoint write-ambiguity proof, provisioning/lifecycle/personalization, bounded typed launch-readiness polling, lead idempotency, location-scoped form reads, rotation/replay/retirement, stale lease and ambiguity recovery | `NOT_YET_RUN` |
+| Meta OAuth/launch | exact scope/state/return contract, immutable launch input, PAUSED receipt lineage, manual/scheduled lease and ambiguity fencing | `NOT_YET_RUN` |
+| Meta activation | customer preauthorization, exact budget/account/object binding, ACTIVE evidence, ordered activation, stale lease/replay/terminal recovery | `NOT_YET_RUN` |
+| Meta Instant Forms/leads | durable provisioning, exact form route, signature/dedupe, tenant denial, reconciliation, canonical GHL delivery | `NOT_YET_RUN` |
+| Reporting/optimizer | freshness, incomplete-evidence HOLD, owner policy binding, launch/primary-object/ACTIVE reread, one-use dispatch, scale ceiling/cooldown, stale-worker and ambiguity recovery | `NOT_YET_RUN` |
+| Billing/credits/provider use | Stripe mode, webhook claims, financial integrity, top-up intent, reserve/settle/compensate, ambiguous paid attempt | `NOT_YET_RUN` |
+| Creative integrity | Higgsfield/creative host gates, SSRF/size/content checks, immutable storage identity, exactly one primary asset | `NOT_YET_RUN` |
+| Support/SMS | atomic ticket/outbox, external exact-host gate, zero-communication sink, Twilio test/live boundary, monotonic receipts | `NOT_YET_RUN` |
+| Security | route authority, client IP, Turnstile, consent suppression, strong-secret policy, release guard, centralized zero-external-effects evaluator | `NOT_YET_RUN` |
+| Integrated database | exact 99 migrations fresh and history replay, foundation+extensions equality, ACL/RLS/default-ACL oracle, idempotency, atomic failure, forward recovery, zero residue | `NOT_YET_RUN` |
+| Browser/accessibility | public cross-browser desktop/mobile, keyboard, skip links, reduced motion, 200% zoom, Axe, no console/page/request errors | `NOT_YET_RUN` |
+| Safe load | centralized server attestation plus bounded loopback route load; no credentials, provider writes, or communications | `NOT_YET_RUN` |
 
-Even a fully passing local final portfolio cannot override the migration,
-signed drain/environment, live-provider, staging/domain, or owner/legal
-blockers. The final verdict remains `NO_GO`.
+The canonical runner is:
 
-## Safety exclusions
+```bash
+node scripts/run-dealflow-final-verification.mjs <external-round-directory> <round-number>
+```
 
-No production/shared database write, provider record, CRM/customer record,
-Stripe object, SMS/email, Meta/GHL/Twilio/creative action, deployment, config
-change, or spend was performed for test proof.
+Rounds 1 and 2 must each pass with zero failures and must report identical seal
+identity. Any source, migration, lockfile, configuration-contract, or test-runner
+change after round 1 invalidates both rounds.
+
+## Isolated hosted staging matrix
+
+The staging broker and acceptance runner may begin only after the two exact-seal
+rounds pass. Staging must remain isolated, synthetic, test-mode, no-spend, and
+zero-communication.
+
+| Staging proof | Required acceptance | Current result |
+|---|---|---|
+| Authority and identity | exact isolated Supabase fingerprint/suffix, exact Vercel project/host, exact sealed commit/tree, no production alias | `NOT_YET_RUN` |
+| Database | empty-platform preflight; transactional 99-migration application; migration history; post-schema/ACL/RLS digest; idempotent replay | `NOT_YET_RUN` |
+| Synthetic fixture | direct unpaid, direct paid, legacy reconciled, partner, partner-child, admin/operator, attacker/removed member, failure/recovery records; deterministic exact counts | `NOT_YET_RUN` |
+| Deployment | exact sealed build deployed only to the attested staging target; zero-external-effects endpoint proves every safety control | `NOT_YET_RUN` |
+| Authenticated browser | direct/partner/admin/attacker journeys across desktop/mobile Chromium, Firefox, and WebKit; no skipped authenticated tests | `NOT_YET_RUN` |
+| Golden journey | onboarding -> payment activation fixture -> GHL readiness -> campaign review -> explicit launch intent -> PAUSED truth -> results/support | `NOT_YET_RUN` |
+| EN/FR/ES | public funnel, form, consent, metadata, thank-you, and Meta form configuration in all three languages | `NOT_YET_RUN` |
+| GHL/Meta/provider boundaries | safely isolated test/sandbox paths only; exact kill switches; stale/duplicate/timeout/ambiguity/reconciliation cases | `NOT_YET_RUN` |
+| Lead load/reliability | bounded synthetic no-write/public funnel load, canonical lead idempotency, repeated system jobs, zero old/stuck workers | `NOT_YET_RUN` |
+| Evidence | machine-readable command/browser/provider ledgers, screenshots/traces on failure, manifest, checksums, zero-secret/customer-data scan | `NOT_YET_RUN` |
+
+Hosted Playwright acceptance must fail when any authenticated test is skipped,
+when the zero-external-effects preflight is absent, or when a request resolves
+outside the exact staging host/project.
+
+## Production release proof
+
+Production remains `NO_GO` unless every item is present for the exact sealed and
+staging-accepted candidate:
+
+1. authoritative production schema inventory, backup and PITR evidence;
+2. externally signed zero-old-worker/provider-protocol drain;
+3. protected release trust and exact-deployment environment attestation;
+4. owner-approved provider credentials, consent/policy, support destination,
+   GHL lifecycle/offboarding, and optimizer rulebook;
+5. pre-mutation read-only production preflight and additive forward plan;
+6. separately authorized canary with monitoring and forward-recovery trigger;
+7. post-release domain, schema, app, job, lead, billing, GHL, Meta, results,
+   support, accessibility, error, and rollback/forward-recovery evidence; and
+8. zero unresolved P0/P1 findings, warnings, secret leaks, customer-data leaks,
+   skipped mandatory checks, or unexplained drift.
+
+No live Meta ad, real communication, live Stripe charge, paid creative call, or
+production provider/database mutation is claimed in this matrix.

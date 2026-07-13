@@ -25,6 +25,18 @@ const expectedPublicApiRoutes = new Map([
   ["/api/access-keys/checkout", new Set(["POST"])],
   ["/api/access-keys/preclaim", new Set(["POST"])],
   ["/api/access-keys/reveal-ack", new Set(["POST"])],
+  ["/api/integrations/ghl/embed-context", new Set(["GET", "POST"])],
+  ["/api/integrations/ghl/webhook", new Set(["POST"])],
+]);
+
+const expectedPublicApiMethodGuards = new Map([
+  ["/api/integrations/ghl/embed-context", new Map([
+    ["GET", ["verifyGhlEmbedCapability"]],
+    ["POST", ["isExactVerifiedPartnerRequestOrigin", "decryptGhlSignedUserContext"]],
+  ])],
+  ["/api/integrations/ghl/webhook", new Map([
+    ["POST", ["resolveGhlLifecycleEnvironment", "verifyGhlWebhookSignature"]],
+  ])],
 ]);
 
 const expectedInternalApiRoutes = new Map([
@@ -41,6 +53,11 @@ const expectedInternalApiRoutes = new Map([
   ["/api/internal/system-jobs", {
     methods: new Set(["GET", "POST"]),
     requiredCalls: ["assertInternalSystemRequest", "runSystemJobWorkerBatch"],
+    requiredEnv: [],
+  }],
+  ["/api/internal/ghl-form-sweep", {
+    methods: new Set(["GET", "POST"]),
+    requiredCalls: ["assertInternalSystemRequest", "processGhlPeriodicFormSweepFromEnvironment"],
     requiredEnv: [],
   }],
 ]);
@@ -326,6 +343,17 @@ function checkPublicAllowlist(publicApiRoutes, routeAnalyses) {
     }
 
     compareMethodSurface("Public API method surface", route, analysis.methods, expectedPublicApiRoutes.get(route));
+
+    const guardedMethods = expectedPublicApiMethodGuards.get(route);
+    for (const [method, requiredCalls] of guardedMethods ?? []) {
+      const facts = analysis.handlerFacts.get(method) ?? emptyFacts();
+      const missingCalls = requiredCalls.filter((name) => !facts.calls.has(name));
+      if (missingCalls.length === 0) {
+        pass("Public API route guard", `${route} ${method} reaches ${requiredCalls.join(", ")}`);
+      } else {
+        fail("Public API route guard", `${route} ${method} missing ${missingCalls.join(", ")}`);
+      }
+    }
   }
 
   const unexpectedAllowlistedRoutes = [...publicApiRoutes].filter((route) => !expectedPublicApiRoutes.has(route));

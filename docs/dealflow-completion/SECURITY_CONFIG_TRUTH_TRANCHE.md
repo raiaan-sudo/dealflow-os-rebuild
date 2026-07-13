@@ -102,5 +102,7 @@ replay/fence cases, and fabricated/self-signed release evidence.
   authorized isolated project.
 - Workspace-selection UX, consent/retention/deletion policy, operator SLA, and
   provider ownership/offboarding require owner/legal decisions.
-- Full migration-chain/RLS integration is blocked by the missing foundational
-  schema (`NEW-001`).
+- The original missing-foundation blocker (`NEW-001`) is superseded by the
+  retained 80-migration foundation recovery. Exact clean-seal 98-chain
+  security/RLS proof, isolated hosted staging attestation, secret scan, and
+  production environment/drain authority are `NOT_YET_RUN`.

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
+import { normalizePublicFunnelLanguage } from "@/lib/public-funnel-language";
 
 type LeadCaptureFormProps = {
   campaignId: string;
@@ -30,8 +31,10 @@ const FORM_COPY = {
     validationEmail: "Please provide your email",
     validationPhone: "Please provide your phone number",
     validationConsent: "Please check the SMS consent box so we can text you about this request.",
+    validationQuestions: "Please answer every qualification question.",
     delayed: "Lead capture is temporarily delayed. Please try again shortly.",
     failed: "Lead capture failed.",
+    humanVerification: "Human verification",
     disclaimerPrefix:
       "By submitting, you agree to be contacted about this request. SMS is only sent when you explicitly consent above. See our",
     privacy: "Privacy Policy",
@@ -51,8 +54,10 @@ const FORM_COPY = {
     validationEmail: "Veuillez inscrire votre courriel",
     validationPhone: "Veuillez inscrire votre numéro de téléphone",
     validationConsent: "Veuillez cocher la case de consentement SMS afin que nous puissions vous texter au sujet de cette demande.",
+    validationQuestions: "Veuillez répondre à chaque question de qualification.",
     delayed: "La demande est temporairement retardée. Veuillez réessayer sous peu.",
     failed: "La demande n'a pas pu être envoyée.",
+    humanVerification: "Vérification humaine",
     disclaimerPrefix:
       "En soumettant ce formulaire, vous acceptez d'être contacté au sujet de cette demande. Les SMS sont envoyés seulement lorsque vous y consentez explicitement ci-dessus. Consultez notre",
     privacy: "Politique de confidentialité",
@@ -61,33 +66,31 @@ const FORM_COPY = {
   },
   es: {
     eyebrow: "Comenzar",
-    title: "Dinos donde enviarte tus opciones",
+    title: "Díganos dónde enviarle sus opciones",
     name: "Nombre",
-    email: "Correo electronico",
-    phone: "Numero de telefono",
+    email: "Correo electrónico",
+    phone: "Número de teléfono",
     consent:
-      "Al marcar esta casilla, acepto recibir mensajes SMS de DealFlow OS y/o de la empresa que opera esta campana sobre mi solicitud, seguimientos y coordinacion de citas. Pueden aplicarse tarifas de mensajes y datos. La frecuencia puede variar. Responde STOP para cancelar o HELP para obtener ayuda. El consentimiento no es condicion de compra.",
+      "Al marcar esta casilla, acepto recibir mensajes SMS de DealFlow OS y/o de la empresa que opera esta campaña sobre mi solicitud, seguimientos y coordinación de citas. Pueden aplicarse tarifas de mensajes y datos. La frecuencia puede variar. Responda STOP para cancelar o HELP para obtener ayuda. El consentimiento no es condición de compra.",
     submitting: "Enviando...",
-    validationName: "Indica tu nombre",
-    validationEmail: "Indica tu correo electronico",
-    validationPhone: "Indica tu numero de telefono",
-    validationConsent: "Marca la casilla de consentimiento SMS para que podamos escribirte sobre esta solicitud.",
-    delayed: "La captura del lead esta temporalmente demorada. Intentalo nuevamente en breve.",
+    validationName: "Indique su nombre",
+    validationEmail: "Indique su correo electrónico",
+    validationPhone: "Indique su número de teléfono",
+    validationConsent: "Marque la casilla de consentimiento SMS para que podamos escribirle sobre esta solicitud.",
+    validationQuestions: "Responda todas las preguntas de calificación.",
+    delayed: "La solicitud está temporalmente demorada. Inténtelo nuevamente en breve.",
     failed: "No se pudo enviar la solicitud.",
+    humanVerification: "Verificación humana",
     disclaimerPrefix:
-      "Al enviar, aceptas que te contacten sobre esta solicitud. Los SMS solo se envian cuando das tu consentimiento explicito arriba. Consulta nuestra",
-    privacy: "Politica de privacidad",
+      "Al enviar, acepta que se comuniquen con usted sobre esta solicitud. Los SMS solo se envían cuando da su consentimiento explícito arriba. Consulte nuestra",
+    privacy: "Política de privacidad",
     and: "y",
-    terms: "Terminos",
+    terms: "Términos",
   },
 } as const;
 
 function getFormCopy(language?: string | null) {
-  if (language === "fr" || language === "es") {
-    return FORM_COPY[language];
-  }
-
-  return FORM_COPY.en;
+  return FORM_COPY[normalizePublicFunnelLanguage(language)];
 }
 
 declare global {
@@ -167,7 +170,8 @@ export function LeadCaptureForm({
   const [formStartedAt] = useState(() => Date.now());
   const pageViewTrackedRef = useRef(false);
   const submitInFlightRef = useRef(false);
-  const copy = getFormCopy(language);
+  const normalizedLanguage = normalizePublicFunnelLanguage(language);
+  const copy = getFormCopy(normalizedLanguage);
 
   const normalizedFields = useMemo(
     () => formFields.map((field) => field.trim()).filter(Boolean),
@@ -251,7 +255,7 @@ export function LeadCaptureForm({
       )
     ) {
       setStatus("error");
-      setMessage("Please answer every qualification question.");
+      setMessage(copy.validationQuestions);
       return;
     }
 
@@ -297,7 +301,7 @@ export function LeadCaptureForm({
         | null;
 
       if (!response.ok) {
-        throw new Error(data?.error ?? "Lead capture failed.");
+        throw new Error(data?.message ?? copy.failed);
       }
 
       if (data?.success !== true || data?.ok !== true) {
@@ -362,6 +366,7 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
         aria-busy={status === "submitting"}
         aria-describedby={message ? "lead-capture-status" : undefined}
         className="space-y-4 rounded-[26px] border border-[#dfd5c8] bg-[#fffdf9] p-5 text-left shadow-[0_24px_80px_-54px_rgba(28,43,58,0.48)] sm:p-6"
+        lang={normalizedLanguage}
         onSubmit={handleSubmit}
       >
       <div>
@@ -489,7 +494,7 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
       ) : null}
 
       {TURNSTILE_SITE_KEY ? (
-        <div aria-label="Human verification" className="flex min-h-[65px] justify-center">
+        <div aria-label={copy.humanVerification} className="flex min-h-[65px] justify-center">
           <div
             className="cf-turnstile"
             data-action="lead_capture"

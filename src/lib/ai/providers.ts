@@ -4,6 +4,10 @@ import { getImageGenerationEnv, getVideoGenerationEnv } from "@/lib/env";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { logWarn } from "@/lib/logging";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
+import {
+  executePaidCreativeDispatch,
+  fingerprintPaidCreativeRequest,
+} from "@/lib/services/paid-creative-dispatch-service";
 
 export type AvatarProfile = {
   id: "young_agent" | "trusted_expert" | "ugc_casual";
@@ -31,6 +35,7 @@ export type ImageAdResult = {
   generationState: "generated" | "unavailable" | "failed";
   generationMessage: string | null;
   generationModel: string | null;
+  providerDispatchId: string | null;
 };
 
 export type ImageProviderUsageContext = {
@@ -50,6 +55,18 @@ export type ImageProviderUsageContext = {
     status: "consumed" | "released" | "rejected" | "operator_action_required";
     metadata?: Record<string, unknown>;
   }) => Promise<void>;
+  beginDispatch: (params: {
+    reservation: Awaited<ReturnType<ImageProviderUsageContext["reserve"]>>;
+    requestFingerprint: string;
+    requestPayload: Record<string, unknown>;
+  }) => Promise<import("@/lib/services/paid-creative-dispatch-service").PaidCreativeDispatchHandle>;
+  recordDispatchOutcome: (params: {
+    handle: import("@/lib/services/paid-creative-dispatch-service").PaidCreativeDispatchHandle;
+    outcome: import("@/lib/services/paid-creative-dispatch-service").PaidCreativeDispatchOutcome;
+    providerRequestId: string | null;
+    providerOutput: Record<string, unknown> | null;
+    errorCode: string | null;
+  }) => Promise<unknown>;
 };
 
 export type VideoScene = {
@@ -257,6 +274,7 @@ export async function createImageAd(
   let generationState: ImageAdResult["generationState"] = "unavailable";
   let generationMessage: string | null = null;
   let generationModel: string | null = null;
+  let providerDispatchId: string | null = null;
   const imageProvider = getImageGenerationProvider();
 
   if (imageProvider.isConfigured()) {
@@ -269,9 +287,14 @@ export async function createImageAd(
       }
       if (process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true" && providerUsage) {
         budgetReservation = await providerUsage.reserve();
+        if (!budgetReservation?.eventId) {
+          throw new Error(
+            "provider_usage_guard_unavailable: Paid image generation requires a durable provider event and dispatch intent.",
+          );
+        }
       }
 
-      const result = await imageProvider.execute({
+      const providerRequest = {
         aspectRatio: staticAsset?.imagePromptConfig?.aspectRatio ?? "1:1",
         model: staticAsset?.preferredImageModel ?? getImageGenerationEnv()?.model ?? "gpt-image-1.5",
         prompt:
@@ -279,46 +302,88 @@ export async function createImageAd(
           staticAsset?.imagePrompt ??
           `A modern real estate ad image for ${audience} in ${market}. Scene: ${creativeBrief.visualDirection}. Style: clean, bright, premium, realistic. No text in image.`,
         negativePrompt: staticAsset?.imagePromptConfig?.negativePrompt ?? null,
-      });
+      };
+
+      const dispatchExecution =
+        providerUsage && budgetReservation?.eventId
+          ? await executePaidCreativeDispatch({
+              begin: () =>
+                providerUsage.beginDispatch({
+                  reservation: budgetReservation,
+                  requestFingerprint: fingerprintPaidCreativeRequest(providerRequest),
+                  requestPayload: providerRequest,
+                }),
+              dispatch: async (handle) =>
+                imageProvider.execute({
+                  ...providerRequest,
+                  metadata: { paidCreativeDispatchId: handle.dispatchId },
+                }),
+              classifyResult: (output) => {
+                const providerOutcome = output.metadata?.providerOutcome;
+                return {
+                  outcome:
+                    output.fileUrl && providerOutcome === "accepted"
+                      ? "accepted"
+                      : providerOutcome === "rejected" || providerOutcome === "not_dispatched"
+                        ? "rejected"
+                        : "uncertain",
+                  providerRequestId:
+                    typeof output.metadata?.providerRequestId === "string"
+                      ? output.metadata.providerRequestId
+                      : null,
+                  errorCode: output.fileUrl ? null : "openai_image_generation_failed",
+                };
+              },
+              classifyError: () => ({
+                outcome: "uncertain",
+                errorCode: "openai_image_generation_dispatch_error",
+              }),
+              record: providerUsage.recordDispatchOutcome,
+            })
+          : null;
+
+      const result = dispatchExecution?.output ?? (await imageProvider.execute(providerRequest));
       const parsed = imageProvider.parseResult(result);
 
-      if (parsed.fileUrl) {
+      if (dispatchExecution?.outcome === "accepted") {
+        providerDispatchId = dispatchExecution.dispatchId;
+      }
+
+      if (parsed.fileUrl && (!dispatchExecution || dispatchExecution.outcome === "accepted")) {
         imageUrl = parsed.fileUrl;
         generationState = "generated";
         generationModel =
           typeof parsed.metadata?.model === "string" ? parsed.metadata.model : null;
-        if (providerUsage && budgetReservation) {
-          await providerUsage.mark({
-            ...budgetReservation,
-            status: "consumed",
-            metadata: {
-              operation: "openai_image_generation",
-              assetId: staticAsset?.hook ?? null,
-              model: generationModel,
-            },
-          });
-        }
       } else {
         generationState = parsed.status === "unsupported" ? "unavailable" : "failed";
-        generationMessage = parsed.error ?? "Image generation did not return a usable asset.";
+        generationMessage =
+          dispatchExecution?.error instanceof Error
+            ? dispatchExecution.error.message
+            : parsed.error ?? "Image generation did not return a usable asset.";
         if (providerUsage && budgetReservation) {
           const providerOutcome = parsed.metadata?.providerOutcome;
-          await providerUsage.mark({
-            ...budgetReservation,
-            status:
-              parsed.status === "unsupported"
-                ? "released"
-                : providerOutcome === "rejected"
-                  ? "rejected"
-                  : "operator_action_required",
-            metadata: {
-              operation: "openai_image_generation",
-              assetId: staticAsset?.hook ?? null,
-              reason: generationMessage,
-              providerOutcome:
-                typeof providerOutcome === "string" ? providerOutcome : "ambiguous",
-            },
-          });
+          const isLiveDispatchPossiblyStillRunning =
+            dispatchExecution?.recovered === true &&
+            dispatchExecution.dispatchState === "dispatching";
+          if (!isLiveDispatchPossiblyStillRunning) {
+            await providerUsage.mark({
+              ...budgetReservation,
+              status:
+                parsed.status === "unsupported" || providerOutcome === "not_dispatched"
+                  ? "released"
+                  : dispatchExecution?.outcome === "rejected" || providerOutcome === "rejected"
+                    ? "rejected"
+                    : "operator_action_required",
+              metadata: {
+                operation: "openai_image_generation",
+                assetId: staticAsset?.hook ?? null,
+                paidCreativeDispatchId: dispatchExecution?.dispatchId ?? null,
+                reason: generationMessage,
+                providerOutcome:
+                  typeof providerOutcome === "string" ? providerOutcome : "ambiguous",
+              },
+            });
+          }
         }
       }
     } catch (error) {
@@ -359,6 +424,7 @@ export async function createImageAd(
     generationState,
     generationMessage,
     generationModel,
+    providerDispatchId,
   };
 }
 

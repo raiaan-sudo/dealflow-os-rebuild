@@ -5,6 +5,7 @@ import type {
   GhlProviderReceipt,
   GhlProvisioningRepository,
   GhlProvisioningRun,
+  GhlSnapshotPersonalizationContract,
   GhlSnapshotManifest,
 } from "@/lib/integrations/gohighlevel";
 import type { Database } from "@/lib/supabase/types";
@@ -92,6 +93,12 @@ function mapManifest(row: JsonRecord): GhlSnapshotManifest {
     })
     : [];
 
+  const personalizationContract = row.personalization_contract
+    && typeof row.personalization_contract === "object"
+    && !Array.isArray(row.personalization_contract)
+      ? row.personalization_contract as GhlSnapshotPersonalizationContract
+      : null;
+
   return {
     id: asString(row.id),
     environment: asString(row.environment) as GhlSnapshotManifest["environment"],
@@ -101,6 +108,7 @@ function mapManifest(row: JsonRecord): GhlSnapshotManifest {
     installationMode: asString(row.installation_mode) === "preinstalled"
       ? "preinstalled"
       : "provider_api",
+    ...(personalizationContract ? { personalizationContract } : {}),
     requiredObjects,
     status: asString(row.status) as GhlSnapshotManifest["status"],
   };
@@ -202,6 +210,8 @@ function manifestMatchesRequest(
     && stored.installationMode === (requested.installationMode ?? "provider_api")
     && stored.status === "approved"
     && requested.status === "approved"
+    && canonicalJson(stored.personalizationContract ?? null)
+      === canonicalJson(requested.personalizationContract ?? null)
     && canonicalJson(stored.requiredObjects) === canonicalJson(requested.requiredObjects);
 }
 

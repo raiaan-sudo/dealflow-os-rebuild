@@ -34,6 +34,9 @@ function check(name, operation) {
 }
 
 const onboarding = loadTypeScriptModule("src/lib/onboarding-contract.ts");
+const metaQualification = loadTypeScriptModule(
+  "src/lib/meta-instant-form-qualification.ts",
+);
 const activation = loadTypeScriptModule("src/lib/commercial-activation-policy.ts");
 const billingPlans = loadTypeScriptModule("src/lib/billing/plans.ts");
 const stripePlanResolution = loadTypeScriptModule(
@@ -54,6 +57,7 @@ const draft = {
   dailyBudget: "30",
   offer: "Private listings and a buyer strategy call",
   funnelLanguage: "en",
+  adDestination: "website",
   leadCaptureMode: "quality_funnel",
   leadFormQuestions: ["When are you hoping to move?"],
   leadFormQuestionDraft: "",
@@ -107,6 +111,59 @@ check("server draft envelope round-trips every draft field", () => {
   });
   assert.deepEqual(envelope.draft, draft);
   assert.equal(envelope.currentStep, "review");
+});
+
+check("Meta destination survives submission and draft persistence", () => {
+  const metaDraft = {
+    ...draft,
+    adDestination: "meta_instant_form",
+    leadCaptureMode: "deep_qualification",
+  };
+  const submission = onboarding.buildOnboardingSubmission(metaDraft);
+  const envelope = onboarding.buildOnboardingDraftEnvelope({
+    draft: metaDraft,
+    currentStep: "review",
+    furthestStepIndex: 9,
+  });
+  assert.equal(submission.adDestination, "meta_instant_form");
+  assert.equal(submission.leadCaptureMode, "deep_qualification");
+  assert.equal(envelope.draft.adDestination, "meta_instant_form");
+});
+
+check("all Meta qualification depths resolve to the intended question count", () => {
+  assert.deepEqual(
+    metaQualification.resolveMetaInstantFormQualificationQuestions({
+      leadCaptureMode: "volume_lead_form",
+      language: "en",
+      customQuestions: [],
+    }),
+    [],
+  );
+  assert.equal(
+    metaQualification.resolveMetaInstantFormQualificationQuestions({
+      leadCaptureMode: "quality_funnel",
+      language: "en",
+      customQuestions: [],
+    }).length,
+    1,
+  );
+  assert.equal(
+    metaQualification.resolveMetaInstantFormQualificationQuestions({
+      leadCaptureMode: "deep_qualification",
+      language: "fr",
+      customQuestions: [],
+    }).length,
+    3,
+  );
+});
+
+check("decimal daily budgets remain exact in the onboarding contract", () => {
+  const submission = onboarding.buildOnboardingSubmission({
+    ...draft,
+    dailyBudget: "30.50",
+  });
+  assert.equal(submission.dailyBudgetCents, 3_050);
+  assert.equal(submission.monthlyBudget, 915);
 });
 
 check("navigation pointers expire deterministically", () => {
@@ -380,6 +437,8 @@ check("campaign persistence materializes the complete onboarding contract", () =
     "daily_budget_cents",
     "monthly_budget",
     "language",
+    "capture_experience",
+    "ad_destination",
     "lead_capture_mode",
     "lead_form_questions",
     "theme",
@@ -391,13 +450,21 @@ check("campaign persistence materializes the complete onboarding contract", () =
   }
   assert.match(onboardingContractSource, /businessType: z\.literal\("real_estate_realtor"\)/);
   assert.match(routeSource, /buildWinningFunnel\(\{/);
-  assert.match(routeSource, /customLeadFormQuestions: submission\.leadFormQuestions/);
+  assert.match(routeSource, /customLeadFormQuestions: effectiveLeadFormQuestions/);
+  assert.match(routeSource, /submission\.adDestination === "meta_instant_form"/);
   assert.match(routeSource, /campaign_payload:/);
   assert.match(routeSource, /campaignIdFromOnboardingIdempotencyKey/);
   assert.match(routeSource, /campaignId: deterministicCampaignId/);
   assert.match(routeSource, /createOnly: true/);
   assert.match(routeSource, /onboarding_idempotency_key: idempotencyKey/);
   assert.match(routeSource, /organizationId\}\|\$\{userId\}\|/);
+});
+
+check("onboarding review and copy reflect the selected destination", () => {
+  assert.match(pageSource, /\["Lead capture", LEAD_CAPTURE_MODES\[draft\.leadCaptureMode\]\.title\]/);
+  assert.match(pageSource, /\["Ad destination", AD_DESTINATIONS\[draft\.adDestination\]\.title\]/);
+  assert.match(pageSource, /Meta Instant Form questions/);
+  assert.doesNotMatch(pageSource, /unimplemented provider form/i);
 });
 
 check("database contract serializes activation and initial credit atomically", () => {

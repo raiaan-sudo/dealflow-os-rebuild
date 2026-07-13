@@ -7,6 +7,7 @@ import {
 } from "@/lib/campaign-intent";
 import { Card } from "@/components/ui/card";
 import { MetaSyncRefreshButton } from "@/components/dashboard/meta-sync-refresh-button";
+import { MetaOptimizationPolicyControl } from "@/components/dashboard/meta-optimization-policy-control";
 import type { MetaConnectionState } from "@/lib/integrations/meta/types";
 import type { Database } from "@/lib/supabase/types";
 import type {
@@ -20,6 +21,11 @@ import type { CampaignLaunchRecord } from "@/lib/services/campaign-launch-audit-
 import type { AutonomySnapshot } from "@/lib/services/autonomy-engine";
 import type { DashboardMetrics } from "@/lib/services/dashboard-service";
 import type { FirstWeekSuccessState } from "@/lib/services/first-week-success-service";
+import { resolveCampaignDeliveryMetricTruth } from "@/lib/dashboard/campaign-delivery-metrics";
+import {
+  formatMetaCurrency,
+  resolveSelectedMetaAccountCurrency,
+} from "@/lib/dashboard/meta-account-currency";
 
 type AppointmentSummary = Pick<
   Database["public"]["Tables"]["appointments"]["Row"],
@@ -74,14 +80,6 @@ type Props = {
   firstWeekSuccess?: FirstWeekSuccessState | null;
   renderedAt?: string;
 };
-
-function currency(value: number) {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("en-CA", {
@@ -235,15 +233,17 @@ export function CampaignDashboardView({
         Number(liveMetrics?.leads ?? 0) <= 0 &&
         Number(liveMetrics?.impressions ?? 0) <= 0 &&
         Number(liveMetrics?.clicks ?? 0) <= 0));
-  const displayedLeads = hasLivePerformance
-    ? Number(liveMetrics?.leads ?? 0)
-    : Number(workspaceMetrics.totalLeads ?? 0);
+  const deliveryMetricTruth = resolveCampaignDeliveryMetricTruth({
+    campaignDeliveryMetrics: liveMetrics,
+    workspaceMetrics,
+  });
+  const selectedMetaCurrency = resolveSelectedMetaAccountCurrency(metaConnection);
+  const currency = (value: number) =>
+    formatMetaCurrency(value, selectedMetaCurrency);
+  const displayedLeads = deliveryMetricTruth.leads;
   const displayedAppointments = Number(workspaceMetrics.appointmentsBooked ?? 0);
-  const displayedSpend = hasLivePerformance
-    ? Number(liveMetrics?.spend ?? 0)
-    : Number(workspaceMetrics.totalSpend ?? 0);
-  const displayedCpl =
-    displayedLeads > 0 ? displayedSpend / Math.max(displayedLeads, 1) : 0;
+  const displayedSpend = deliveryMetricTruth.spend;
+  const displayedCpl = deliveryMetricTruth.cpl;
   const displayedAppointmentRate = `${Math.round(
     Number(workspaceMetrics.leadToAppointmentRate ?? 0) * 100,
   )}%`;
@@ -310,11 +310,11 @@ export function CampaignDashboardView({
       description: "Recommendation: shift more budget into the best current performer while results stay efficient.",
       active:
         includesRecommendation(optimizerCopy, [/scale budget/, /increase budget/, /winner/, /winning ad/]) ||
-        Boolean(rankedTopCreative && rankedTopCreative.ctr >= 1.5),
+        Boolean(rankedTopCreative && rankedTopCreative.ctr >= 0.015),
       priority: 4,
       sourceLabel:
-        rankedTopCreative && rankedTopCreative.ctr >= 1.5
-          ? `Live data: top CTR ${rankedTopCreative.ctr.toFixed(2)}%`
+        rankedTopCreative && rankedTopCreative.ctr >= 0.015
+          ? `Live data: top CTR ${(rankedTopCreative.ctr * 100).toFixed(2)}%`
           : "Recommendation",
     },
   ];
@@ -364,13 +364,33 @@ export function CampaignDashboardView({
         ? syncSnapshot.lastSyncedAt
         : null;
   const syncIsStale = isStaleSync(syncedAt, stableNowMs);
+  const latestAttemptAt =
+    typeof syncSnapshot?.latestAttemptAt === "string"
+      ? syncSnapshot.latestAttemptAt
+      : null;
+  const latestAttemptFailed = Boolean(
+    latestAttemptAt &&
+      syncSnapshot?.latestAttemptDeliveryMetricsConfirmed === false &&
+      (!syncedAt || Date.parse(latestAttemptAt) > Date.parse(syncedAt)),
+  );
+  const confirmedSnapshotDegraded = Boolean(
+    syncedAt && syncSnapshot?.syncResult !== "success",
+  );
   const syncStateLabel = !syncedAt
     ? "Estimated state only"
+    : latestAttemptFailed
+      ? "Showing last confirmed Meta data"
+    : confirmedSnapshotDegraded
+      ? "Meta delivery confirmed; status degraded"
     : syncIsStale
       ? "Confirmed state is stale"
       : "Confirmed in Meta";
   const syncStateDescription = !syncedAt
     ? "Local launch records exist, but no fresh Meta sync has confirmed the live state yet."
+    : latestAttemptFailed
+      ? "The latest Meta refresh failed safely. DealFlow kept the prior confirmed metrics instead of replacing them with false zeros."
+    : confirmedSnapshotDegraded
+      ? "Meta confirmed the delivery metrics, but one or more campaign-status checks were incomplete. Automated optimization remains fail-closed."
     : syncIsStale
       ? "A prior Meta sync exists, but it is stale. Treat current delivery and status as estimated until a fresh sync completes."
       : "Recent Meta sync data is available. Campaign status and delivery details below are confirmed from Meta.";
@@ -533,6 +553,15 @@ export function CampaignDashboardView({
     <div className="space-y-6">
       <p className="text-sm font-medium text-muted-foreground">{statusText}</p>
 
+      {metaConnection.hasAccessToken && !selectedMetaCurrency ? (
+        <Card className="rounded-[24px] border-amber-400/30 bg-amber-400/10 p-5">
+          <p className="text-sm font-semibold text-amber-100">Meta account currency unavailable</p>
+          <p className="mt-2 text-sm leading-6 text-amber-50/80">
+            Re-select or reconnect the Meta ad account before trusting spend, CPL, pipeline, or revenue amounts.
+          </p>
+        </Card>
+      ) : null}
+
       <Card className="rounded-[24px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -560,13 +589,24 @@ export function CampaignDashboardView({
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">State type</p>
             <p className="mt-3 text-sm leading-6">
-              {syncIsStale ? "Estimated until refreshed" : "Confirmed from live Meta sync"}
+              {latestAttemptFailed
+                ? "Prior confirmed snapshot retained"
+                : confirmedSnapshotDegraded
+                  ? "Confirmed delivery; partial state"
+                : syncIsStale
+                  ? "Estimated until refreshed"
+                  : "Confirmed from live Meta sync"}
             </p>
           </div>
         </div>
         {syncIsStale ? (
           <p className="mt-4 rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
             Meta sync is stale. Launch status and delivery metrics may lag behind the actual account until you refresh.
+          </p>
+        ) : null}
+        {latestAttemptFailed ? (
+          <p className="mt-4 rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            The latest Meta reporting attempt did not confirm delivery data. No zero-value replacement was accepted; refresh again after the provider recovers.
           </p>
         ) : null}
       </Card>
@@ -1008,6 +1048,12 @@ export function CampaignDashboardView({
         </Card>
       ) : null}
 
+      <Card className="rounded-[24px] p-6">
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Automation safety</p>
+        <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Optimization authority</h3>
+        <MetaOptimizationPolicyControl campaignId={plan.id} />
+      </Card>
+
       {hasLivePerformance && topPerformer ? (
         <Card className="rounded-[24px] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1039,7 +1085,7 @@ export function CampaignDashboardView({
                     Combined {rankedTopCreative.combinedScore.toFixed(1)}
                   </span>
                   <span className="rounded-full border border-white/10 px-3 py-1">
-                    CTR {rankedTopCreative.ctr.toFixed(2)}%
+                    CTR {(rankedTopCreative.ctr * 100).toFixed(2)}%
                   </span>
                   <span className="rounded-full border border-white/10 px-3 py-1">
                     CPL {rankedTopCreative.cpl !== null ? currency(rankedTopCreative.cpl) : "—"}

@@ -249,7 +249,7 @@ function deriveCreativeStatus(plan: Record<string, unknown>) {
   const staticAds = Array.isArray(plan.staticAds) ? plan.staticAds : [];
 
   if (selectedAdId || selectedAdIds.length > 0) {
-    return selectedAdIds.length > 1 ? `${selectedAdIds.length} selected` : "selected";
+    return "selected";
   }
 
   if (staticAds.length > 0) {

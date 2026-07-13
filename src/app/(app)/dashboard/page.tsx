@@ -299,6 +299,7 @@ async function loadDashboardStateForCampaign(
       record
         ? withTimeout(
             getMetaCampaignSyncSnapshotForCampaign({
+              campaignId: resolvedCampaignId,
               campaignName: record.businessName,
               metaCampaignId,
             }).catch(() => null),

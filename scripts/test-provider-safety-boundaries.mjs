@@ -98,6 +98,22 @@ const twilioTransport = loadTypeScriptModule(
     ["@/lib/integrations/provider-endpoint-policy", endpointPolicy],
   ]),
 );
+const disabledTwilio = twilioTransport.getTwilioTransportConfig({});
+assert.equal(disabledTwilio.mode, "disabled");
+assert.equal(disabledTwilio.accountSid, null);
+assert.equal(
+  twilioTransport.getTwilioExecutionMode({ TWILIO_EXECUTION_MODE: "unexpected" }),
+  "disabled",
+  "an unknown Twilio mode must fail closed instead of becoming live",
+);
+assert.throws(
+  () => twilioTransport.assertTwilioRecipientAllowed({
+    mode: "disabled",
+    to: "+15005550006",
+    allowedTestRecipient: null,
+  }),
+  (error) => error.code === "twilio_transport_disabled",
+);
 const loopbackTwilio = twilioTransport.getTwilioTransportConfig({
   DEALFLOW_DEPLOYMENT_TARGET: "test",
   ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT: "true",
@@ -128,6 +144,14 @@ assert.throws(
     TWILIO_EXECUTION_MODE: "test",
   }),
   (error) => error.code === "twilio_test_target_blocked",
+);
+assert.throws(
+  () => twilioTransport.getTwilioTransportConfig({
+    DEALFLOW_DEPLOYMENT_TARGET: "production",
+    VERCEL_ENV: "production",
+    TWILIO_EXECUTION_MODE: "live",
+  }),
+  (error) => error.code === "twilio_live_target_blocked",
 );
 
 const supportAdapter = loadTypeScriptModule(
