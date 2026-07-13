@@ -1,8 +1,11 @@
 import type { Json } from "@/lib/supabase/types";
 import {
+  evaluateGhlProductionGate,
   evaluateGhlSandboxGate,
+  ghlProductionGateFromEnvironment,
   ghlSandboxGateFromEnvironment,
 } from "@/lib/integrations/gohighlevel";
+import { getDeploymentTarget } from "@/lib/deployment-target";
 
 export type LeadEffectKey = "agent_notification" | "meta_conversion" | "ghl_delivery";
 export type LeadEffectStatus = "succeeded" | "failed";
@@ -68,7 +71,14 @@ export function resolveLeadEffectPolicy(
     enabledEffects.push("meta_conversion");
   }
 
-  if (evaluateGhlSandboxGate(ghlSandboxGateFromEnvironment(env)).allowed) {
+  const deploymentTarget = getDeploymentTarget(env);
+  const ghlDeliveryAllowed = deploymentTarget === "production"
+    ? evaluateGhlProductionGate(
+        ghlProductionGateFromEnvironment("lead_delivery", env),
+      ).allowed
+    : evaluateGhlSandboxGate(ghlSandboxGateFromEnvironment(env)).allowed;
+
+  if (ghlDeliveryAllowed) {
     enabledEffects.push("ghl_delivery");
   }
 
@@ -203,6 +213,7 @@ export function evaluateGhlDeliveryResult(result: unknown): EffectEvaluation {
     retryable: reason === "ghl_delivery_enqueue_retryable",
     reason,
     operatorRequired: reason === "ghl_sandbox_mapping_not_ready"
+      || reason === "ghl_production_mapping_not_ready"
       || reason === "ghl_mapping_authority_conflict",
   };
 }

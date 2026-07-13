@@ -9,6 +9,7 @@ import { logOperationalEvent } from "@/lib/logging";
 import { runSystemJobWorkerBatch } from "@/lib/services/system-job-service";
 import { processSupportNotificationOutbox } from "@/lib/services/support-ticket-service";
 import { processScheduledCampaignLaunchBatch } from "@/lib/services/scheduled-campaign-launch-service";
+import { processGhlProviderWorkerFromEnvironment } from "@/lib/services/ghl-provider-worker-service";
 import {
   enqueueDueMetaReportingSyncJobs,
   refreshMetaReportingFreshnessAlerts,
@@ -75,13 +76,17 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     enqueueDueMetaReportingSyncJobs(25),
     refreshMetaReportingFreshnessAlerts(),
   ]);
-  const [result, supportOutbox, scheduledLaunches] = await Promise.all([
+  const [result, supportOutbox, scheduledLaunches, ghlProvider] = await Promise.all([
     runSystemJobWorkerBatch({
       maxCycles: input.maxCycles ?? 5,
       staleAfterMs: input.staleAfterMs,
     }),
     processSupportNotificationOutbox(25),
     processScheduledCampaignLaunchBatch({ maxClaims: 5 }),
+    processGhlProviderWorkerFromEnvironment({
+      maxProvisioningSteps: 5,
+      maxLeadItems: 10,
+    }),
   ]);
   const durationMs = Date.now() - startedAt;
 
@@ -99,6 +104,19 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     scheduledLaunchesCompleted: scheduledLaunches.completedIds.length,
     reportingJobsEnqueued: reportingEnqueue.enqueuedCount,
     reportingFreshnessRows,
+    ghlEnvironment: ghlProvider.environment,
+    ghlProvisioningProcessed: ghlProvider.provisioning.processed,
+    ghlProvisioningBlockedReason: "blockedReason" in ghlProvider.provisioning
+      ? ghlProvider.provisioning.blockedReason
+      : null,
+    ghlPersonalizationProcessed: ghlProvider.personalization.processed,
+    ghlPersonalizationBlockedReason: "blockedReason" in ghlProvider.personalization
+      ? ghlProvider.personalization.blockedReason
+      : null,
+    ghlDeliveryProcessed: ghlProvider.delivery.processed,
+    ghlDeliveryBlockedReason: "blockedReason" in ghlProvider.delivery
+      ? ghlProvider.delivery.blockedReason
+      : null,
     durationMs,
   });
 
@@ -114,6 +132,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
         ...reportingEnqueue,
         freshnessRows: reportingFreshnessRows,
       },
+      ghlProvider,
     },
     {
       headers: {

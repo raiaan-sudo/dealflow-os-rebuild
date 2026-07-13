@@ -1,4 +1,10 @@
-import { assertGhlSandboxAllowed, type GhlRequiredObject, type GhlSandboxGateInput } from "../integrations/gohighlevel";
+import {
+  assertGhlProductionAllowed,
+  assertGhlSandboxAllowed,
+  type GhlProductionGateInput,
+  type GhlRequiredObject,
+  type GhlSandboxGateInput,
+} from "../integrations/gohighlevel";
 
 type JsonRecord = Record<string, unknown>;
 type QueryResult = Promise<{ data: unknown; error: { message: string } | null }>;
@@ -10,6 +16,7 @@ export type GhlSandboxAuthorityClient = {
 };
 
 export type GhlSandboxAuthority = {
+  environment: "sandbox" | "production";
   organizationId: string;
   partnerId: string | null;
   mappingId: string;
@@ -72,12 +79,38 @@ export async function resolveGhlSandboxAuthority(input: {
   gate: GhlSandboxGateInput;
 }): Promise<GhlSandboxAuthority | null> {
   assertGhlSandboxAllowed(input.gate);
+  return resolveGhlProviderAuthority({
+    client: input.client,
+    organizationId: input.organizationId,
+    environment: "sandbox",
+  });
+}
+
+export async function resolveGhlProductionAuthority(input: {
+  client: GhlSandboxAuthorityClient;
+  organizationId: string;
+  gate: GhlProductionGateInput;
+}): Promise<GhlSandboxAuthority | null> {
+  assertGhlProductionAllowed(input.gate);
+  return resolveGhlProviderAuthority({
+    client: input.client,
+    organizationId: input.organizationId,
+    environment: "production",
+  });
+}
+
+async function resolveGhlProviderAuthority(input: {
+  client: GhlSandboxAuthorityClient;
+  organizationId: string;
+  environment: "sandbox" | "production";
+}): Promise<GhlSandboxAuthority | null> {
+  const prefix = input.environment === "sandbox" ? "ghl_sandbox" : "ghl_production";
   const tenant = await one(
     input.client.from("ghl_workspace_tenants")
       .select("organization_id,tenant_kind,partner_id,status")
       .eq("organization_id", input.organizationId)
       .eq("status", "active"),
-    "ghl_sandbox_tenant_lookup_failed",
+    `${prefix}_tenant_lookup_failed`,
   );
   if (!tenant) return null;
 
@@ -85,11 +118,11 @@ export async function resolveGhlSandboxAuthority(input: {
     input.client.from("ghl_location_mappings")
       .select("id,organization_id,installation_id,environment,provider_location_id,snapshot_manifest_id,status,snapshot_verified_at,required_objects_verified_at")
       .eq("organization_id", input.organizationId)
-      .eq("environment", "sandbox")
+      .eq("environment", input.environment)
       .eq("status", "active")
       .not("snapshot_verified_at", "is", null)
       .not("required_objects_verified_at", "is", null),
-    "ghl_sandbox_mapping_lookup_failed",
+    `${prefix}_mapping_lookup_failed`,
   );
   if (!mapping) return null;
 
@@ -97,28 +130,34 @@ export async function resolveGhlSandboxAuthority(input: {
     input.client.from("ghl_installations")
       .select("id,environment,provider_agency_id,encrypted_credential_ref,status")
       .eq("id", asString(mapping.installation_id))
-      .eq("environment", "sandbox")
+      .eq("environment", input.environment)
       .eq("status", "active"),
-    "ghl_sandbox_installation_lookup_failed",
+    `${prefix}_installation_lookup_failed`,
   );
   const manifest = await one(
     input.client.from("ghl_snapshot_manifests")
-      .select("id,environment,provider_snapshot_id,required_objects,installation_mode,status")
+      .select("id,environment,installation_id,provider_snapshot_id,required_objects,installation_mode,status")
       .eq("id", asString(mapping.snapshot_manifest_id))
-      .eq("environment", "sandbox")
+      .eq("environment", input.environment)
       .eq("status", "approved"),
-    "ghl_sandbox_manifest_lookup_failed",
+    `${prefix}_manifest_lookup_failed`,
   );
   if (!installation || !manifest) {
     throw new GhlSandboxAuthorityError(
-      "ghl_sandbox_authority_incomplete",
-      "The canonical GHL sandbox mapping is missing an active installation or approved manifest.",
+      `${prefix}_authority_incomplete`,
+      `The canonical GHL ${input.environment} mapping is missing an active installation or approved manifest.`,
+    );
+  }
+  if (asString(manifest.installation_id) !== asString(installation.id)) {
+    throw new GhlSandboxAuthorityError(
+      `${prefix}_manifest_installation_mismatch`,
+      `The approved GHL ${input.environment} manifest is not owned by the canonical installation.`,
     );
   }
   if (asString(manifest.installation_mode) !== "preinstalled") {
     throw new GhlSandboxAuthorityError(
-      "ghl_sandbox_snapshot_not_preinstalled",
-      "The approved GHL sandbox manifest is not attested as preinstalled.",
+      `${prefix}_snapshot_not_preinstalled`,
+      `The approved GHL ${input.environment} manifest is not attested as preinstalled.`,
     );
   }
 
@@ -166,12 +205,13 @@ export async function resolveGhlSandboxAuthority(input: {
   const requiredObjects = parseRequiredObjects(manifest.required_objects);
   if (!credentialRef || !providerAgencyId || !providerLocationId || requiredObjects.length === 0) {
     throw new GhlSandboxAuthorityError(
-      "ghl_sandbox_authority_incomplete",
-      "The canonical GHL sandbox authority is missing its credential reference or provider manifest.",
+      `${prefix}_authority_incomplete`,
+      `The canonical GHL ${input.environment} authority is missing its credential reference or provider manifest.`,
     );
   }
 
   return {
+    environment: input.environment,
     organizationId: input.organizationId,
     partnerId,
     mappingId: asString(mapping.id),

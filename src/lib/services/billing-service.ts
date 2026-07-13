@@ -38,6 +38,7 @@ import {
   type CommercialActivationCandidate,
 } from "@/lib/commercial-activation-policy";
 import type { Database, Json } from "@/lib/supabase/types";
+import { getDeploymentTarget } from "@/lib/deployment-target";
 
 type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
 type BillingInsert = Database["public"]["Tables"]["billing_subscriptions"]["Insert"];
@@ -48,6 +49,63 @@ type BillingSubscriptionWebhookApplyResult = {
   ignored_reason: string | null;
   latest_event_created: number | null;
 };
+
+type GhlBillingActivationResult = {
+  request_id: string;
+  request_status: "received" | "provisioning_requested" | "blocked_configuration";
+  provisioning_run_id: string | null;
+  blocker_code: string | null;
+};
+
+function getGhlActivationEnvironment() {
+  const target = getDeploymentTarget();
+  if (target === "production") return "production" as const;
+  if (target === "staging" || target === "preview") return "sandbox" as const;
+  if (target === "test" || target === "development") return "test" as const;
+  return null;
+}
+
+async function requestGhlProvisioningForQualifyingBillingActivation(input: {
+  admin: NonNullable<ReturnType<typeof createAdminClient>>;
+  organizationId: string;
+  userId: string;
+  commercialActivationId: string;
+  stripeSubscriptionId: string;
+}) {
+  const environment = getGhlActivationEnvironment();
+  if (!environment) {
+    logError("ghl_billing_activation_identity_incomplete", {
+      organizationId: input.organizationId,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      commercialActivationId: input.commercialActivationId,
+      deploymentTargetProven: Boolean(environment),
+    });
+    return null;
+  }
+  const { data, error } = await (input.admin as any).rpc(
+    "request_ghl_provisioning_from_billing_activation_v1",
+    {
+      p_organization_id: input.organizationId,
+      p_user_id: input.userId,
+      p_environment: environment,
+      p_commercial_activation_id: input.commercialActivationId,
+      p_stripe_subscription_id: input.stripeSubscriptionId,
+    },
+  );
+  if (error) throw new ApiError(500, error.message, "ghl_billing_activation_request_failed");
+  const result = (Array.isArray(data) ? data[0] : data) as GhlBillingActivationResult | null;
+  if (!result) throw new ApiError(500, "GHL activation request returned no durable receipt.", "ghl_billing_activation_receipt_missing");
+  logOperationalEvent("ghl_billing_activation_recorded", {
+    organizationId: input.organizationId,
+    userId: input.userId,
+    requestId: result.request_id,
+    requestStatus: result.request_status,
+    provisioningRunId: result.provisioning_run_id,
+    blockerCode: result.blocker_code,
+    providerMutationAttempted: false,
+  });
+  return result;
+}
 
 export type BillingSummary = {
   billingState: BillingLifecycleState;
@@ -1417,6 +1475,25 @@ async function applyCommercialActivationFromStripePayment(
       livemode: event.livemode,
       qualification: decision.reason,
     },
+  });
+
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+  if (!candidate.sourceSubscriptionId) {
+    throw new ApiError(
+      409,
+      "Qualifying commercial activation is missing its Stripe subscription identity.",
+      "commercial_activation_subscription_missing",
+    );
+  }
+  await requestGhlProvisioningForQualifyingBillingActivation({
+    admin,
+    organizationId: candidate.organizationId as string,
+    userId: candidate.userId as string,
+    commercialActivationId: result.activationId,
+    stripeSubscriptionId: candidate.sourceSubscriptionId,
   });
 
   logOperationalEvent("commercial_activation_payment_applied", {

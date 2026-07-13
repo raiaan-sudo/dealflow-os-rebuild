@@ -1,6 +1,8 @@
 import type {
   GhlLeadProviderAdapter,
   GhlLeadProviderResult,
+  GhlPersonalizationProviderAdapter,
+  GhlPersonalizationResult,
   GhlLocationCreateResult,
   GhlLocationReconcileResult,
   GhlProviderAdapter,
@@ -15,6 +17,7 @@ import {
 } from "./credential-resolver";
 import { GhlHttpClient, GhlHttpTransportError, type GhlHttpResponse } from "./http-client";
 import { assertGhlSandboxAllowed, type GhlSandboxGateInput } from "./sandbox-gate";
+import { assertGhlProductionAllowed, type GhlProductionGateInput } from "./production-gate";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -57,8 +60,8 @@ function requestFailure(
     outcome: retryable ? "retryable_failure" : "operator_action_required",
     errorCode: `${prefix}_${response.status}`,
     safeMessage: retryable
-      ? "The GHL sandbox provider is temporarily unavailable or rate limited."
-      : "The GHL sandbox provider rejected the bounded request.",
+      ? "The GHL provider is temporarily unavailable or rate limited."
+      : "The GHL provider rejected the bounded request.",
     providerRequestId: response.providerRequestId,
     httpStatus: response.status,
     responseFingerprint: response.responseFingerprint,
@@ -96,7 +99,7 @@ function transportFailure(
   return {
     outcome: "operator_action_required",
     errorCode: `${prefix}_unexpected_response`,
-    safeMessage: "The GHL sandbox provider returned an unexpected result.",
+    safeMessage: "The GHL provider returned an unexpected result.",
     providerRequestId: null,
     httpStatus: null,
     responseFingerprint: null,
@@ -110,42 +113,55 @@ export type GhlSandboxAdapterOptions = {
   gate: GhlSandboxGateInput;
   httpClient?: GhlHttpClient;
   companyId: string;
+  authority?:
+    | { kind: "sandbox"; gate: GhlSandboxGateInput }
+    | { kind: "production"; gate: GhlProductionGateInput };
 };
 
-export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAdapter {
-  readonly kind = "sandbox" as const;
+export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAdapter, GhlPersonalizationProviderAdapter {
+  readonly kind: "sandbox" | "production";
   readonly networkAccess = "https" as const;
   private readonly credentialRef: string;
   private readonly resolver: GhlCredentialResolver;
-  private readonly gate: GhlSandboxGateInput;
   private readonly http: GhlHttpClient;
   private readonly companyId: string;
+  private readonly providerEnvironment: "sandbox" | "production";
+  private readonly assertAuthority: () => void;
 
   constructor(options: GhlSandboxAdapterOptions) {
-    assertGhlSandboxAllowed(options.gate);
+    const authority = options.authority ?? { kind: "sandbox" as const, gate: options.gate };
+    if (authority.kind === "production") {
+      assertGhlProductionAllowed(authority.gate);
+    } else {
+      assertGhlSandboxAllowed(authority.gate);
+    }
     if (!safeProviderId(options.companyId)) {
-      throw new Error("A valid GHL sandbox company id is required.");
+      throw new Error("A valid GHL company id is required.");
     }
     this.credentialRef = options.credentialRef;
     this.resolver = options.credentialResolver;
-    this.gate = { ...options.gate };
+    this.kind = authority.kind;
+    this.providerEnvironment = authority.kind;
+    this.assertAuthority = authority.kind === "production"
+      ? () => { assertGhlProductionAllowed(authority.gate); }
+      : () => { assertGhlSandboxAllowed(authority.gate); };
     this.http = options.httpClient ?? new GhlHttpClient({ baseUrl: options.gate.baseUrl });
     this.companyId = options.companyId;
   }
 
   private withCredential<T>(operation: (credential: string) => Promise<T>) {
-    assertGhlSandboxAllowed(this.gate);
+    this.assertAuthority();
     return this.resolver.withCredential(this.credentialRef, operation);
   }
 
   async createLocation(
     input: Parameters<GhlProviderAdapter["createLocation"]>[0],
   ): Promise<GhlLocationCreateResult> {
-    if (input.environment !== "sandbox") {
+    if (input.environment !== this.providerEnvironment) {
       return {
         outcome: "operator_action_required",
         errorCode: "ghl_location_environment_forbidden",
-        safeMessage: "The real GHL adapter accepts only sandbox locations.",
+        safeMessage: `The GHL adapter accepts only ${this.providerEnvironment} locations.`,
         providerRequestId: null,
         httpStatus: null,
       };
@@ -162,7 +178,9 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
           country: input.profile.country,
           timezone: input.profile.timezone,
           prospectInfo: {
-            source: "DealFlow isolated sandbox",
+            source: this.providerEnvironment === "production"
+              ? "DealFlow production"
+              : "DealFlow isolated sandbox",
             id: input.idempotencyKey,
           },
         },
@@ -218,7 +236,7 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
       return {
         outcome: "operator_action_required",
         errorCode: "ghl_snapshot_push_api_unavailable",
-        safeMessage: "GHL exposes snapshot status but no sanctioned snapshot-push API. A preinstalled sandbox snapshot is required.",
+        safeMessage: `GHL exposes snapshot status but no sanctioned snapshot-push API. A preinstalled ${this.providerEnvironment} snapshot is required.`,
         providerRequestId: null,
         httpStatus: null,
       };
@@ -504,5 +522,123 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         ?? safeProviderId(asRecord(body.appointment).id)
         ?? safeProviderId(body.id),
     });
+  }
+
+  async applyCustomValues(input: {
+    providerLocationId: string;
+    values: Record<string, string>;
+  }): Promise<GhlPersonalizationResult> {
+    const entries = Object.entries(input.values).sort(([left], [right]) => left.localeCompare(right));
+    if (entries.length === 0 || entries.length > 50 || entries.some(([name, value]) =>
+      !name.trim() || name.length > 120 || typeof value !== "string" || value.length > 5_000
+    )) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_custom_values_contract_invalid",
+        safeMessage: "The bounded GHL custom-value personalization contract is invalid.",
+        providerRequestId: null,
+        responseFingerprint: null,
+        providerMutationAttempted: false,
+      };
+    }
+    try {
+      return await this.withCredential(async (credential) => {
+        const listed = await this.http.request<JsonRecord>({
+          method: "GET",
+          path: `/locations/${encodeURIComponent(input.providerLocationId)}/customValues`,
+          credential,
+          retryMode: "safe-read",
+        });
+        if (!listed.ok) {
+          const failure = requestFailure(listed, "ghl_custom_values_list");
+          return { ...failure, responseFingerprint: listed.responseFingerprint, providerMutationAttempted: false };
+        }
+        const existingRows = asRows(listed.data, ["customValues", "custom_values"]);
+        const references: string[] = [];
+        let lastRequestId = listed.providerRequestId;
+        let lastFingerprint = listed.responseFingerprint;
+        let mutationAttempted = false;
+        for (const [rawName, value] of entries) {
+          const name = rawName.trim();
+          const existing = existingRows.find((candidate) => stringValue(candidate, ["name"]) === name);
+          const existingId = safeProviderId(existing?.id);
+          if (existingId && stringValue(existing!, ["value"]) === value) {
+            references.push(existingId);
+            continue;
+          }
+          mutationAttempted = true;
+          const response = await this.http.request<JsonRecord>({
+            method: existingId ? "PUT" : "POST",
+            path: existingId
+              ? `/locations/${encodeURIComponent(input.providerLocationId)}/customValues/${encodeURIComponent(existingId)}`
+              : `/locations/${encodeURIComponent(input.providerLocationId)}/customValues`,
+            credential,
+            retryMode: "no-retry",
+            body: { name, value },
+          });
+          lastRequestId = response.providerRequestId ?? lastRequestId;
+          lastFingerprint = response.responseFingerprint;
+          if (!response.ok) {
+            const failure = requestFailure(response, "ghl_custom_value_write");
+            return { ...failure, responseFingerprint: response.responseFingerprint, providerMutationAttempted: true };
+          }
+          const responseBody = asRecord(response.data);
+          const reference = safeProviderId(asRecord(responseBody.customValue).id) ?? safeProviderId(responseBody.id);
+          if (!reference) {
+            return {
+              outcome: "operator_action_required",
+              errorCode: "ghl_custom_value_receipt_invalid",
+              safeMessage: "GHL accepted custom-value personalization without a durable object id.",
+              providerRequestId: response.providerRequestId,
+              responseFingerprint: response.responseFingerprint,
+              providerMutationAttempted: true,
+            };
+          }
+          references.push(reference);
+        }
+        return {
+          outcome: "succeeded",
+          verifiedReferences: references,
+          providerRequestId: lastRequestId,
+          responseFingerprint: lastFingerprint,
+          providerMutationAttempted: mutationAttempted,
+        };
+      });
+    } catch (error) {
+      const failure = transportFailure(error, "ghl_custom_values");
+      return { ...failure, providerMutationAttempted: true };
+    }
+  }
+
+  async verifyPreinstalledForms(input: {
+    providerLocationId: string;
+    requiredFormIds: string[];
+  }): Promise<GhlPersonalizationResult> {
+    if (input.requiredFormIds.length === 0 || input.requiredFormIds.some((id) => !safeProviderId(id))) {
+      return { outcome: "operator_action_required", errorCode: "ghl_required_forms_invalid", safeMessage: "Exact preinstalled GHL form IDs are required.", providerRequestId: null, responseFingerprint: null, providerMutationAttempted: false };
+    }
+    try {
+      return await this.withCredential(async (credential) => {
+        const response = await this.http.request<JsonRecord>({
+          method: "GET",
+          path: `/forms/?locationId=${encodeURIComponent(input.providerLocationId)}`,
+          credential,
+          retryMode: "safe-read",
+        });
+        if (!response.ok) {
+          const failure = requestFailure(response, "ghl_forms_verify");
+          return { ...failure, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+        }
+        const observed = new Set(asRows(response.data, ["forms"]).map((item) => safeProviderId(item.id)).filter(Boolean));
+        const missing = input.requiredFormIds.filter((id) => !observed.has(id));
+        if (missing.length > 0) {
+          return { outcome: "operator_action_required", errorCode: "ghl_preinstalled_forms_missing", safeMessage: "One or more exact preinstalled GHL forms are missing.", providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+        }
+        return { outcome: "succeeded", verifiedReferences: [...input.requiredFormIds], providerRequestId: response.providerRequestId, responseFingerprint: response.responseFingerprint, providerMutationAttempted: false };
+      });
+    } catch (error) {
+      const failure = transportFailure(error, "ghl_forms_verify");
+      return { ...failure, providerMutationAttempted: false };
+    }
   }
 }

@@ -265,7 +265,7 @@ export type GhlRequiredObjectsResult =
     };
 
 export interface GhlProviderAdapter {
-  readonly kind: "fake" | "sandbox";
+  readonly kind: "fake" | "sandbox" | "production";
   readonly networkAccess: "none" | "https";
   createLocation(input: {
     idempotencyKey: string;
@@ -326,7 +326,7 @@ export type GhlLeadProviderResult =
     };
 
 export interface GhlLeadProviderAdapter {
-  readonly kind: "sandbox";
+  readonly kind: "sandbox" | "production";
   readonly networkAccess: "https";
   upsertContact(input: {
     idempotencyKey: string;
@@ -362,6 +362,34 @@ export interface GhlLeadProviderAdapter {
     endTime: string;
     title: string;
   }): Promise<GhlLeadProviderResult>;
+}
+
+export type GhlPersonalizationResult =
+  | {
+      outcome: "succeeded";
+      verifiedReferences: string[];
+      providerRequestId: string | null;
+      responseFingerprint: string;
+      providerMutationAttempted: boolean;
+    }
+  | {
+      outcome: "uncertain" | "retryable_failure" | "operator_action_required";
+      errorCode: string;
+      safeMessage: string;
+      providerRequestId: string | null;
+      responseFingerprint: string | null;
+      providerMutationAttempted: boolean;
+    };
+
+export interface GhlPersonalizationProviderAdapter {
+  applyCustomValues(input: {
+    providerLocationId: string;
+    values: Record<string, string>;
+  }): Promise<GhlPersonalizationResult>;
+  verifyPreinstalledForms(input: {
+    providerLocationId: string;
+    requiredFormIds: string[];
+  }): Promise<GhlPersonalizationResult>;
 }
 
 export interface GhlProvisioningRepository {

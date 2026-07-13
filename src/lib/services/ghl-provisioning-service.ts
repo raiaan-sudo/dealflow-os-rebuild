@@ -1,6 +1,7 @@
 import {
   assertGhlFakeWritesAllowed,
   assertGhlSandboxAllowed,
+  assertGhlProductionAllowed,
   assertGhlReplayDue,
   GHL_CAPABILITY_MATRIX,
   GhlProvisioningInvariantError,
@@ -19,6 +20,7 @@ import type {
   GhlRetryResumeState,
   GhlWriteGateInput,
   GhlSandboxGateInput,
+  GhlProductionGateInput,
 } from "../integrations/gohighlevel";
 
 export type GhlProvisioningDependencies = {
@@ -31,6 +33,7 @@ export type GhlProvisioningDependencies = {
   isolatedDatabase?: boolean;
   databaseUrl?: string;
   sandboxGate?: GhlSandboxGateInput;
+  productionGate?: GhlProductionGateInput;
 };
 
 function isLoopbackDatabaseUrl(value: string | undefined) {
@@ -1061,6 +1064,40 @@ export async function executeNextGhlSandboxProvisioningStep(
     throw new GhlProvisioningInvariantError(
       "ghl_sandbox_run_environment_required",
       "Real GHL sandbox provisioning accepts only sandbox-environment runs.",
+    );
+  }
+  return executeProvisioningState(run, dependencies);
+}
+
+export async function executeNextGhlProductionProvisioningStep(
+  runId: string,
+  dependencies: GhlProvisioningDependencies,
+) {
+  if (!dependencies.productionGate) {
+    throw new GhlProvisioningInvariantError(
+      "ghl_production_gate_missing",
+      "Real GHL production provisioning requires the complete exact-deployment gate.",
+    );
+  }
+  assertGhlProductionAllowed(dependencies.productionGate);
+  if (dependencies.productionGate.operation !== "provisioning") {
+    throw new GhlProvisioningInvariantError(
+      "ghl_production_operation_mismatch",
+      "The GHL production gate is not scoped to provisioning.",
+    );
+  }
+  if (dependencies.provider.kind !== "production" || dependencies.provider.networkAccess !== "https") {
+    throw new GhlProvisioningInvariantError(
+      "ghl_production_adapter_required",
+      "Real GHL production provisioning requires the fenced HTTPS production adapter.",
+    );
+  }
+  const run = await dependencies.repository.getRun(runId);
+  if (!run) throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
+  if (run.environment !== "production") {
+    throw new GhlProvisioningInvariantError(
+      "ghl_production_run_environment_required",
+      "Real GHL production provisioning accepts only production-environment runs.",
     );
   }
   return executeProvisioningState(run, dependencies);

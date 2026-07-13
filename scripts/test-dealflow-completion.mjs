@@ -10,6 +10,7 @@ const tests = [
   "test-creative-storage-and-lead-retry-scope.mjs",
   "test-onboarding-activation-billing-contract.mjs",
   "test-ghl-tenant-provisioning.mjs",
+  "test-ghl-production-contract.mjs",
   "test-launch-truth-and-schedule.mjs",
   "test-optimization-evidence-safety.mjs",
   "test-continuous-reporting-optimizer.mjs",

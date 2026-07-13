@@ -46,3 +46,27 @@ export function createEnvironmentGhlCredentialResolver(
     },
   };
 }
+
+export function createProductionEnvironmentGhlCredentialResolver(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): GhlCredentialResolver {
+  return {
+    async withCredential<T>(credentialRef: string, consumeCredential: (credential: string) => Promise<T>) {
+      const match = /^env:(GHL_PRODUCTION_[A-Z0-9_]*_TOKEN)$/.exec(credentialRef.trim());
+      if (!match) {
+        throw new GhlCredentialResolutionError(
+          "ghl_production_credential_reference_invalid",
+          "The GHL credential reference is not an approved production secret reference.",
+        );
+      }
+      const credential = environment[match[1]]?.trim() ?? "";
+      if (credential.length < 20) {
+        throw new GhlCredentialResolutionError(
+          "ghl_production_credential_unavailable",
+          "The referenced GHL production credential is unavailable.",
+        );
+      }
+      return consumeCredential(credential);
+    },
+  };
+}

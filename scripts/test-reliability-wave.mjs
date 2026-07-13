@@ -203,8 +203,18 @@ const leadEffects = loadTypeScriptModule(
   (specifier) => {
     if (specifier === "@/lib/integrations/gohighlevel") {
       return {
+        evaluateGhlProductionGate: () => ({ allowed: false }),
         evaluateGhlSandboxGate: () => ({ allowed: false }),
+        ghlProductionGateFromEnvironment: () => ({}),
         ghlSandboxGateFromEnvironment: () => ({}),
+      };
+    }
+    if (specifier === "@/lib/deployment-target") {
+      return {
+        getDeploymentTarget: (env = {}) =>
+          env.VERCEL_ENV === "production" || env.DEALFLOW_DEPLOYMENT_TARGET === "production"
+            ? "production"
+            : "unknown",
       };
     }
     throw new Error(`Unexpected runtime import: ${specifier}`);

@@ -231,11 +231,37 @@ try {
       in role service_role;
 
     create table public.organizations (
-      id uuid primary key
+      id uuid primary key,
+      owner_user_id uuid null,
+      name text not null default 'Synthetic Realty',
+      partner_id uuid null
     );
 
     create table public.partners (
       id uuid primary key
+    );
+
+    create table public.users (
+      id uuid primary key,
+      email text not null
+    );
+
+    create table public.organization_memberships (
+      organization_id uuid not null references public.organizations(id),
+      user_id uuid not null references public.users(id),
+      role text not null,
+      primary key (organization_id, user_id)
+    );
+
+    create table public.commercial_activations (
+      id uuid primary key,
+      organization_id uuid not null references public.organizations(id),
+      user_id uuid not null references public.users(id),
+      source_provider text not null,
+      source_event_id text not null,
+      source_event_type text not null,
+      source_subscription_id text null,
+      amount_paid_cents integer not null
     );
 
     create table public.leads (
@@ -846,8 +872,197 @@ try {
     );
   `, /check constraint|required objects/i, "Empty approved snapshot manifest was not rejected");
 
+  const productionMigrationPath = path.join(
+    repoRoot,
+    "supabase/migrations/20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql",
+  );
+  psql(`
+    alter table public.ghl_snapshot_manifests
+      add column if not exists installation_mode text not null default 'provider_api';
+
+    create or replace function public.enqueue_ghl_sandbox_lead_effects(
+      p_organization_id uuid,
+      p_lead_id uuid,
+      p_now timestamptz default timezone('utc', now())
+    ) returns setof public.ghl_lead_effect_events
+    language plpgsql security definer set search_path = public as $$
+    begin
+      if not exists (
+        select 1 from public.ghl_location_mappings
+        where organization_id = p_organization_id and environment = 'sandbox'
+      ) then return; end if;
+      perform jsonb_build_object('provider_mode', 'sandbox');
+      return query select * from public.ghl_lead_effect_events where false;
+    end;
+    $$;
+
+    create or replace function public.claim_next_ghl_sandbox_lead_outbox(
+      p_worker_id text,
+      p_now timestamptz default timezone('utc', now()),
+      p_lease_ms integer default 300000
+    ) returns setof public.ghl_provider_outbox
+    language plpgsql security definer set search_path = public as $$
+    begin
+      if p_worker_id is null then raise exception 'p_worker_id is required'; end if;
+      perform 1 from public.ghl_location_mappings where environment = 'sandbox';
+      return query select * from public.ghl_provider_outbox
+      where request_payload @> '{"provider_mode":"sandbox"}'::jsonb and false;
+    end;
+    $$;
+  `, "Synthetic predecessor GHL sandbox protocol failed");
+  psql(fs.readFileSync(productionMigrationPath, "utf8"), "GHL production/personalization migration failed");
+
+  const paidOrganizationId = "50000000-0000-4000-8000-000000000001";
+  const paidUserId = "50000000-0000-4000-8000-000000000002";
+  const activationId = "50000000-0000-4000-8000-000000000003";
+  const sandboxInstallationId = "50000000-0000-4000-8000-000000000004";
+  const sandboxManifestId = "50000000-0000-4000-8000-000000000005";
+  psql(`
+    insert into public.users (id, email) values ('${paidUserId}', 'paid-synthetic@example.test');
+    insert into public.organizations (id, owner_user_id, name)
+    values ('${paidOrganizationId}', '${paidUserId}', 'Paid Synthetic Realty');
+    insert into public.organization_memberships (organization_id, user_id, role)
+    values ('${paidOrganizationId}', '${paidUserId}', 'owner');
+    insert into public.commercial_activations (
+      id, organization_id, user_id, source_provider, source_event_id,
+      source_event_type, source_subscription_id, amount_paid_cents
+    ) values (
+      '${activationId}', '${paidOrganizationId}', '${paidUserId}', 'stripe', 'evt_paid_synthetic',
+      'checkout.session.completed', 'sub_paid_synthetic', 29700
+    );
+    insert into public.ghl_installations (
+      id, environment, owner_kind, provider_agency_id, encrypted_credential_ref,
+      status, capability_manifest
+    ) values (
+      '${sandboxInstallationId}', 'sandbox', 'platform', 'sandbox-paid-agency',
+      'env:GHL_SANDBOX_AGENCY_TOKEN', 'active',
+      '{"defaultCountry":"CA","defaultTimezone":"America/Toronto"}'::jsonb
+    );
+    insert into public.ghl_snapshot_manifests (
+      id, environment, snapshot_key, snapshot_version, provider_snapshot_id,
+      required_objects, installation_mode, installation_id, personalization_contract, status, approved_at
+    ) values (
+      '${sandboxManifestId}', 'sandbox', 'paid-snapshot', '1.0.0', 'paid-provider-snapshot',
+      '[{"kind":"pipeline","key":"new-lead","providerObjectId":"pipeline-paid"}]'::jsonb,
+      'preinstalled', '${sandboxInstallationId}',
+      '{"customValues":{"DealFlow Offer":"Free valuation"},"requiredFormIds":["form-paid"],"destinationUrl":"https://funnels.example.test/paid"}'::jsonb,
+      'approved', timezone('utc', now())
+    );
+  `, "Paid GHL activation fixture failed");
+
+  psqlMustFail(`
+    select count(*) from public.request_ghl_provisioning_from_billing_activation_v1(
+      '${paidOrganizationId}', '${paidUserId}', 'sandbox',
+      '50000000-0000-4000-8000-000000000099', 'sub_paid_synthetic', timezone('utc', now())
+    );
+  `, /no data found|query returned no rows/i, "Missing commercial activation was accepted");
+
+  const activationReceipt = psql(`
+    select concat_ws('|', request_id::text, request_status, provisioning_run_id::text)
+    from public.request_ghl_provisioning_from_billing_activation_v1(
+      '${paidOrganizationId}', '${paidUserId}', 'sandbox',
+      '${activationId}', 'sub_paid_synthetic', timezone('utc', now())
+    );
+  `, "Commercial-activation GHL request failed");
+  const replayedActivationReceipt = psql(`
+    select concat_ws('|', request_id::text, request_status, provisioning_run_id::text)
+    from public.request_ghl_provisioning_from_billing_activation_v1(
+      '${paidOrganizationId}', '${paidUserId}', 'sandbox',
+      '${activationId}', 'sub_paid_synthetic', timezone('utc', now())
+    );
+  `, "Commercial-activation GHL replay failed");
+  assert.equal(replayedActivationReceipt, activationReceipt, "Paid activation replay changed its durable request/run identity");
+  const [, activationStatus, provisioningRunId] = activationReceipt.split("|");
+  assert.equal(activationStatus, "provisioning_requested");
+  assert.match(provisioningRunId, /^[0-9a-f-]{36}$/i);
+
+  psqlMustFail(`
+    select count(*) from public.claim_next_ghl_provisioning_run_v1(
+      'sandbox', 'closed-control-worker', timezone('utc', now()), 60000
+    );
+  `, /database kill switch is closed/i, "Closed provisioning database control allowed a claim");
+  psql(`
+    update public.ghl_runtime_controls set provisioning_writes_enabled = true where environment = 'sandbox';
+  `, "Opening synthetic personalization control failed");
+
+  const paidMappingId = "50000000-0000-4000-8000-000000000006";
+  psql(`
+    insert into public.ghl_location_mappings (
+      id, organization_id, installation_id, environment, provider_location_id,
+      provisioning_owner, snapshot_manifest_id, status,
+      snapshot_verified_at, required_objects_verified_at
+    ) values (
+      '${paidMappingId}', '${paidOrganizationId}', '${sandboxInstallationId}', 'sandbox',
+      'paid-sandbox-location', 'platform', '${sandboxManifestId}', 'active',
+      timezone('utc', now()), timezone('utc', now())
+    );
+    begin;
+    set local session_replication_role = replica;
+    update public.ghl_provisioning_runs set
+      location_mapping_id = '${paidMappingId}', state = 'ready', ready_at = timezone('utc', now())
+    where id = '${provisioningRunId}';
+    commit;
+  `, "Ready provisioning fixture failed");
+
+  const personalizationId = psql(`
+    select id::text from public.prepare_ghl_location_personalization_v1(
+      '${provisioningRunId}', timezone('utc', now())
+    );
+  `, "Personalization preparation failed");
+  assert.match(personalizationId, /^[0-9a-f-]{36}$/i);
+
+  function claimPersonalization(workerId) {
+    const claim = psql(`
+      select concat_ws('|', id::text, lease_token::text, lease_generation::text, current_step)
+      from public.claim_next_ghl_location_personalization_v1(
+        'sandbox', '${workerId}', timezone('utc', now()), 60000
+      );
+    `, `Personalization ${workerId} claim failed`);
+    const [id, token, generation, step] = claim.split("|");
+    return { id, token, generation: Number(generation), step, workerId };
+  }
+  function settlePersonalization(claim, outcome) {
+    return psql(`
+      select concat_ws('|', status, current_step, coalesce(destination_url, ''))
+      from public.settle_ghl_location_personalization_v1(
+        '${claim.id}', '${claim.workerId}', '${claim.token}', ${claim.generation},
+        '${outcome}', '{"synthetic":true,"providerMutationAttempted":false}'::jsonb,
+        null, null, timezone('utc', now())
+      );
+    `, `Personalization ${claim.step} settlement failed`);
+  }
+  const customClaim = claimPersonalization("custom-worker");
+  assert.equal(customClaim.step, "custom_values");
+  assert.match(settlePersonalization(customClaim, "succeeded"), /^pending\|forms\|/);
+  const formsClaim = claimPersonalization("forms-worker");
+  assert.equal(formsClaim.step, "forms");
+  assert.equal(
+    settlePersonalization(formsClaim, "succeeded"),
+    "ready|ready|https://funnels.example.test/paid",
+  );
+  assert.equal(
+    psql(`
+      select destination_url from public.resolve_ghl_ready_destination_v1(
+        '${paidOrganizationId}', 'sandbox'
+      );
+    `, "Ready GHL destination resolution failed"),
+    "https://funnels.example.test/paid",
+  );
+
+  assert.equal(
+    psql(`
+      select concat(
+        has_function_privilege('authenticated', 'public.request_ghl_provisioning_from_billing_activation_v1(uuid,uuid,text,uuid,text,timestamptz)', 'EXECUTE'),
+        '|',
+        has_function_privilege('authenticated', 'public.resolve_ghl_ready_destination_v1(uuid,text)', 'EXECUTE')
+      );
+    `, "Production GHL internal RPC privilege lookup failed"),
+    "f|f",
+    "Authenticated callers retained GHL activation or destination RPC authority",
+  );
+
   console.log(
-    "GHL disposable database regression passed: migration, fake enqueue, tenant/environment gates, concurrent fencing, atomic settlement, max-attempt sweeping, RPC-only terminal mutation, manifest validation, and grants.",
+    "GHL disposable database regression passed: fake and production-path migrations, paid activation boundary, tenant/environment gates, concurrent fencing, atomic settlement, personalization/form/destination receipts, max-attempt sweeping, RPC-only mutation, manifest validation, and grants.",
   );
 } catch (error) {
   console.error(`GHL disposable database regression failed: ${sanitize(error?.message ?? error)}`);

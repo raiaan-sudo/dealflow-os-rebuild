@@ -1,12 +1,15 @@
 import {
+  assertGhlProductionAllowed,
   assertGhlSandboxAllowed,
   type GhlLeadIdentity,
   type GhlLeadProviderAdapter,
   type GhlLeadProviderResult,
   type GhlSandboxGateInput,
+  type GhlProductionGateInput,
 } from "../integrations/gohighlevel";
 import {
   requiredGhlProviderObject,
+  resolveGhlProductionAuthority,
   resolveGhlSandboxAuthority,
   type GhlSandboxAuthority,
 } from "./ghl-sandbox-authority-service";
@@ -27,6 +30,12 @@ export type GhlSandboxOutboxDependencies = {
   leaseMs?: number;
   now?: () => string;
 };
+
+export type GhlProductionOutboxDependencies = Omit<GhlSandboxOutboxDependencies, "gate"> & {
+  gate: GhlProductionGateInput;
+};
+
+type AnyOutboxDependencies = GhlSandboxOutboxDependencies | GhlProductionOutboxDependencies;
 
 export class GhlSandboxOutboxError extends Error {
   readonly code: string;
@@ -74,10 +83,11 @@ function retryAt(now: string, attemptCount: number, retryAfterMs?: number) {
 }
 
 async function settle(input: {
-  dependencies: GhlSandboxOutboxDependencies;
+  dependencies: AnyOutboxDependencies;
   claimed: JsonRecord;
   result: GhlLeadProviderResult;
   providerMutationAttempted: boolean;
+  mode: "sandbox" | "production";
 }) {
   const now = input.dependencies.now?.() ?? new Date().toISOString();
   const status = input.result.outcome === "succeeded"
@@ -102,7 +112,7 @@ async function settle(input: {
     p_http_status: input.result.httpStatus,
     p_response_fingerprint: input.result.responseFingerprint,
     p_receipt_metadata: {
-      provider_mode: "sandbox",
+      provider_mode: input.mode,
       provider_network_access: "https",
       provider_mutation_attempted: input.providerMutationAttempted,
     },
@@ -112,8 +122,8 @@ async function settle(input: {
   });
   if (error || rows(data).length !== 1) {
     throw new GhlSandboxOutboxError(
-      "ghl_sandbox_outbox_settlement_failed",
-      error?.message ?? "The GHL sandbox outbox lease was lost before settlement.",
+      `${input.mode === "production" ? "ghl_production" : "ghl_sandbox"}_outbox_settlement_failed`,
+      error?.message ?? `The GHL ${input.mode} outbox lease was lost before settlement.`,
     );
   }
   return { status, availableAt, providerReference };
@@ -121,8 +131,10 @@ async function settle(input: {
 
 async function executeClaimedEffect(
   claimed: JsonRecord,
-  dependencies: GhlSandboxOutboxDependencies,
+  dependencies: AnyOutboxDependencies,
+  mode: "sandbox" | "production",
 ) {
+  const errorPrefix = mode === "production" ? "ghl_production" : "ghl_sandbox";
   const payload = asRecord(claimed.request_payload);
   const organizationId = stringValue(claimed.organization_id);
   const leadId = stringValue(payload.lead_id);
@@ -130,7 +142,7 @@ async function executeClaimedEffect(
   const effectKind = stringValue(payload.effect_kind);
   const idempotencyKey = stringValue(claimed.idempotency_key);
   if (
-    payload.provider_mode !== "sandbox"
+    payload.provider_mode !== mode
     || !organizationId
     || !leadId
     || !mappingId
@@ -140,24 +152,30 @@ async function executeClaimedEffect(
     return {
       result: providerFailure({
         outcome: "operator_action_required",
-        errorCode: "ghl_sandbox_outbox_contract_invalid",
-        safeMessage: "The claimed GHL sandbox outbox contract is incomplete.",
+        errorCode: `${errorPrefix}_outbox_contract_invalid`,
+        safeMessage: `The claimed GHL ${mode} outbox contract is incomplete.`,
       }),
       providerMutationAttempted: false,
     };
   }
 
-  const authority = await resolveGhlSandboxAuthority({
-    client: dependencies.client,
-    organizationId,
-    gate: dependencies.gate,
-  });
+  const authority = mode === "production"
+    ? await resolveGhlProductionAuthority({
+      client: dependencies.client,
+      organizationId,
+      gate: dependencies.gate as GhlProductionGateInput,
+    })
+    : await resolveGhlSandboxAuthority({
+      client: dependencies.client,
+      organizationId,
+      gate: dependencies.gate as GhlSandboxGateInput,
+    });
   if (!authority || authority.mappingId !== mappingId) {
     return {
       result: providerFailure({
         outcome: "operator_action_required",
-        errorCode: "ghl_sandbox_mapping_authority_changed",
-        safeMessage: "The canonical GHL sandbox mapping changed after this effect was queued.",
+        errorCode: `${errorPrefix}_mapping_authority_changed`,
+        safeMessage: `The canonical GHL ${mode} mapping changed after this effect was queued.`,
       }),
       providerMutationAttempted: false,
     };
@@ -167,13 +185,13 @@ async function executeClaimedEffect(
       .select("id,organization_id,first_name,last_name,name,email,phone,source")
       .eq("id", leadId)
       .eq("organization_id", organizationId),
-    "ghl_sandbox_lead_lookup_failed",
+    `${errorPrefix}_lead_lookup_failed`,
   );
   if (!lead) {
     return {
       result: providerFailure({
         outcome: "operator_action_required",
-        errorCode: "ghl_sandbox_lead_missing",
+        errorCode: `${errorPrefix}_lead_missing`,
         safeMessage: "The canonical lead no longer exists in the expected tenant.",
       }),
       providerMutationAttempted: false,
@@ -189,6 +207,48 @@ async function executeClaimedEffect(
     phone: stringValue(lead.phone) || null,
     source: stringValue(lead.source) || null,
   };
+
+  const personalization = await maybeOne(
+    dependencies.client.from("ghl_location_personalizations")
+      .select("id,status,current_step,verified_at,destination_url")
+      .eq("organization_id", organizationId)
+      .eq("location_mapping_id", mappingId)
+      .eq("environment", mode)
+      .eq("status", "ready")
+      .eq("current_step", "ready")
+      .not("verified_at", "is", null),
+    `${errorPrefix}_personalization_lookup_failed`,
+  );
+  if (!personalization) {
+    return {
+      result: providerFailure({
+        outcome: "retryable_failure",
+        errorCode: `${errorPrefix}_personalization_not_ready`,
+        safeMessage: `The GHL ${mode} location is not personalized and form-verified yet.`,
+      }),
+      providerMutationAttempted: false,
+    };
+  }
+
+  // The claim function checks this switch atomically while leasing the row.
+  // Re-read it immediately before provider construction so a kill-switch flip
+  // after claim still guarantees zero provider calls.
+  const runtimeControl = await maybeOne(
+    dependencies.client.from("ghl_runtime_controls")
+      .select("environment,lead_writes_enabled")
+      .eq("environment", mode),
+    `${errorPrefix}_runtime_control_lookup_failed`,
+  );
+  if (runtimeControl?.lead_writes_enabled !== true) {
+    return {
+      result: providerFailure({
+        outcome: "retryable_failure",
+        errorCode: `${errorPrefix}_database_runtime_control_closed`,
+        safeMessage: `The GHL ${mode} lead-delivery database kill switch closed after claim.`,
+      }),
+      providerMutationAttempted: false,
+    };
+  }
   const provider = dependencies.providerFactory(authority);
 
   if (effectKind === "contact_upsert") {
@@ -211,14 +271,14 @@ async function executeClaimedEffect(
       .eq("location_mapping_id", mappingId)
       .eq("effect_kind", "contact_upsert")
       .eq("status", "succeeded"),
-    "ghl_sandbox_contact_receipt_lookup_failed",
+    `${errorPrefix}_contact_receipt_lookup_failed`,
   );
   const providerContactId = stringValue(contactEffect?.provider_contact_id);
   if (!providerContactId) {
     return {
       result: providerFailure({
         outcome: "retryable_failure",
-        errorCode: "ghl_sandbox_contact_dependency_pending",
+        errorCode: `${errorPrefix}_contact_dependency_pending`,
         safeMessage: "The GHL contact receipt must succeed before dependent effects run.",
       }),
       providerMutationAttempted: false,
@@ -232,7 +292,7 @@ async function executeClaimedEffect(
       return {
         result: providerFailure({
           outcome: "operator_action_required",
-          errorCode: "ghl_sandbox_opportunity_manifest_ids_missing",
+          errorCode: `${errorPrefix}_opportunity_manifest_ids_missing`,
           safeMessage: "The approved GHL manifest lacks exact pipeline or stage provider ids.",
         }),
         providerMutationAttempted: false,
@@ -254,7 +314,7 @@ async function executeClaimedEffect(
       return {
         result: providerFailure({
           outcome: "operator_action_required",
-          errorCode: "ghl_sandbox_tag_manifest_missing",
+          errorCode: `${errorPrefix}_tag_manifest_missing`,
           safeMessage: "The approved GHL manifest lacks the required lead tag.",
         }),
         providerMutationAttempted: false,
@@ -274,7 +334,7 @@ async function executeClaimedEffect(
       return {
         result: providerFailure({
           outcome: "operator_action_required",
-          errorCode: "ghl_sandbox_workflow_manifest_id_missing",
+          errorCode: `${errorPrefix}_workflow_manifest_id_missing`,
           safeMessage: "The approved GHL manifest lacks the exact workflow provider id.",
         }),
         providerMutationAttempted: false,
@@ -291,42 +351,50 @@ async function executeClaimedEffect(
   return {
     result: providerFailure({
       outcome: "operator_action_required",
-      errorCode: "ghl_sandbox_effect_kind_unsupported",
-      safeMessage: "The claimed GHL sandbox effect kind is not supported.",
+      errorCode: `${errorPrefix}_effect_kind_unsupported`,
+      safeMessage: `The claimed GHL ${mode} effect kind is not supported.`,
     }),
     providerMutationAttempted: false,
   };
 }
 
-export async function processNextGhlSandboxOutbox(
-  dependencies: GhlSandboxOutboxDependencies,
+async function processNextGhlProviderOutbox(
+  dependencies: AnyOutboxDependencies,
+  mode: "sandbox" | "production",
 ) {
-  assertGhlSandboxAllowed(dependencies.gate);
-  const workerId = dependencies.workerId?.trim() || "ghl-sandbox-worker";
+  if (mode === "production") {
+    const gate = dependencies.gate as GhlProductionGateInput;
+    assertGhlProductionAllowed(gate);
+    if (gate.operation !== "lead_delivery") throw new GhlSandboxOutboxError("ghl_production_operation_mismatch", "GHL production gate is not scoped to lead delivery.");
+  } else {
+    assertGhlSandboxAllowed(dependencies.gate as GhlSandboxGateInput);
+  }
+  const workerId = dependencies.workerId?.trim() || `ghl-${mode}-worker`;
   const now = dependencies.now?.() ?? new Date().toISOString();
-  const { data, error } = await dependencies.client.rpc("claim_next_ghl_sandbox_lead_outbox", {
+  const { data, error } = await dependencies.client.rpc(`claim_next_ghl_${mode}_lead_outbox`, {
     p_worker_id: workerId,
     p_now: now,
     p_lease_ms: dependencies.leaseMs ?? 300_000,
   });
-  if (error) throw new GhlSandboxOutboxError("ghl_sandbox_outbox_claim_failed", error.message);
+  const errorPrefix = mode === "production" ? "ghl_production" : "ghl_sandbox";
+  if (error) throw new GhlSandboxOutboxError(`${errorPrefix}_outbox_claim_failed`, error.message);
   const claimed = rows(data)[0] ?? null;
   if (!claimed) return { status: "idle" as const, providerMutationAttempted: false };
 
   let execution: Awaited<ReturnType<typeof executeClaimedEffect>>;
   try {
-    execution = await executeClaimedEffect(claimed, dependencies);
+    execution = await executeClaimedEffect(claimed, dependencies, mode);
   } catch (error) {
     execution = {
       result: providerFailure({
         outcome: "operator_action_required",
-        errorCode: error instanceof GhlSandboxOutboxError ? error.code : "ghl_sandbox_worker_failed",
-        safeMessage: "The GHL sandbox worker failed before a safe provider result was available.",
+        errorCode: error instanceof GhlSandboxOutboxError ? error.code : `${errorPrefix}_worker_failed`,
+        safeMessage: `The GHL ${mode} worker failed before a safe provider result was available.`,
       }),
       providerMutationAttempted: false,
     };
   }
-  const settlement = await settle({ dependencies, claimed, ...execution });
+  const settlement = await settle({ dependencies, claimed, ...execution, mode });
   return {
     status: settlement.status,
     outboxId: stringValue(claimed.id),
@@ -337,6 +405,14 @@ export async function processNextGhlSandboxOutbox(
   };
 }
 
+export function processNextGhlSandboxOutbox(dependencies: GhlSandboxOutboxDependencies) {
+  return processNextGhlProviderOutbox(dependencies, "sandbox");
+}
+
+export function processNextGhlProductionOutbox(dependencies: GhlProductionOutboxDependencies) {
+  return processNextGhlProviderOutbox(dependencies, "production");
+}
+
 export async function processGhlSandboxOutboxBatch(
   input: { maxItems?: number },
   dependencies: GhlSandboxOutboxDependencies,
@@ -345,6 +421,20 @@ export async function processGhlSandboxOutboxBatch(
   const results = [];
   for (let index = 0; index < maxItems; index += 1) {
     const result = await processNextGhlSandboxOutbox(dependencies);
+    if (result.status === "idle") break;
+    results.push(result);
+  }
+  return { status: "complete" as const, processed: results.length, results };
+}
+
+export async function processGhlProductionOutboxBatch(
+  input: { maxItems?: number },
+  dependencies: GhlProductionOutboxDependencies,
+) {
+  const maxItems = Math.min(Math.max(input.maxItems ?? 25, 1), 50);
+  const results = [];
+  for (let index = 0; index < maxItems; index += 1) {
+    const result = await processNextGhlProductionOutbox(dependencies);
     if (result.status === "idle") break;
     results.push(result);
   }

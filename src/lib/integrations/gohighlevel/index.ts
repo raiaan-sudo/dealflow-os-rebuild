@@ -3,6 +3,8 @@ export * from "./credential-resolver";
 export * from "./fake-adapter";
 export * from "./http-client";
 export * from "./memory-repository";
+export * from "./production-gate";
+export * from "./production-adapter";
 export * from "./sandbox-adapter";
 export * from "./sandbox-gate";
 export * from "./state-machine";

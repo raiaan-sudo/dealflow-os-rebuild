@@ -1,16 +1,16 @@
 # DealFlow GoHighLevel architecture
 
-Status: `CANDIDATE_FAKE_ONLY / DISPOSABLE_DB_VERIFIED / LIVE_PROVIDER_BLOCKED`
+Status: `PRODUCTION_CAPABLE_DEFAULT_OFF / DISPOSABLE_DB_VERIFIED / LIVE_PROVIDER_ACCEPTANCE_BLOCKED`
 Overall release verdict: `NO_GO`
 
 ## Baseline versus candidate
 
-The canonical production baseline contains no executable GHL client,
-provisioning service, tenant/location mapping, provider outbox/receipt protocol,
-or lead-effect delivery path. The isolated candidate now contains a locally
-testable foundation:
+The canonical production baseline had no executable GHL client, provisioning
+service, tenant/location mapping, provider outbox/receipt protocol, or durable
+lead-effect delivery path. The isolated candidate now contains:
 
-- fake-only adapter and explicit real-write denial;
+- fake, sandbox, and production-capable bounded adapters;
+- exact-deployment, project, provider-host, global, operation, and database kill switches;
 - workspace tenant/install/snapshot/location mapping schema;
 - provisioning runs, provider outbox, append-only receipts, lead-effect events,
   and operator requests;
@@ -18,13 +18,17 @@ testable foundation:
 - exact organization/workspace/location constraints and current-membership
   checks;
 - terminal sweeps for exhausted attempts;
-- PII-free fake lead processing; and
+- immutable paid-commercial-activation-to-provisioning receipts for exact direct and partner-owned tenants;
+- supported preinstalled-template custom-value/form personalization;
+- durable verified GHL destination resolution for campaign binding;
+- signed appointment/contact lifecycle webhook reconciliation;
+- PII-free provider outbox payloads; and
 - deterministic plus network-disabled PostgreSQL tests.
 
-This does not implement or imply a real GHL adapter, account creation, snapshot
-installation, funnel publication, contact/opportunity creation, workflow
-execution, appointment handling, or webhook acceptance. Production execution is
-blocked and fake execution is denied in production.
+Provider paths are implemented but default disabled. No live acceptance has
+occurred, so production execution remains blocked. Direct snapshot, funnel,
+page, or form publication is not claimed because no documented writable API was
+proven. See `GHL_PRODUCTION_OPERATING_CONTRACT.md`.
 
 ## Hidden hierarchy and mapping invariant
 
@@ -65,7 +69,7 @@ Real provider states:
   blocked_external -> never promoted to ready
 ```
 
-The intended future live provisioning model remains:
+The implemented provider provisioning model is:
 
 ```text
 location_create_requested
@@ -74,11 +78,15 @@ location_create_requested
   -> snapshot_installing
   -> snapshot_verifying
   -> required_objects_verifying
-  -> ready
+  -> provisioning_ready
+  -> custom_values
+  -> exact_form_verification
+  -> destination_ready
 ```
 
-`ready` must require the exact mapping, owner-approved snapshot version and
-required-object manifest, provider-confirmed installation status, and
+Lead-delivery readiness requires the exact mapping, owner-approved snapshot
+version and required-object manifest, provider-confirmed installation status,
+custom-value receipt, exact form verification, approved HTTPS destination, and
 reconciled receipts. A local request, queue row, fake receipt, HTTP `202`, or
 accepted job is not provider readiness.
 
@@ -91,10 +99,10 @@ Provider idempotency/object IDs and retry state are receipts, not inferred from 
 parent job.
 
 Direct programmable funnel/page publication sufficient for the approved owner
-model has not been proven. Until a sanctioned provider contract exists,
-GHL-hosted publication is `BLOCKED_EXTERNAL`. A versioned snapshot/template and
-custom-value flow is preferred if official capability, identity, rollback, and
-receipt requirements can be proven.
+model is not exposed by the documented API. The implemented supported boundary
+requires an owner-preinstalled versioned template, applies documented custom
+values, and verifies exact preinstalled forms and required objects. Publication
+outside that boundary remains `BLOCKED_EXTERNAL`.
 
 ## Provider/owner blockers
 

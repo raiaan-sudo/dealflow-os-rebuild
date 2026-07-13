@@ -15,6 +15,8 @@ const sourceFiles = [
   "src/lib/integrations/gohighlevel/capabilities.ts",
   "src/lib/integrations/gohighlevel/credential-resolver.ts",
   "src/lib/integrations/gohighlevel/sandbox-gate.ts",
+  "src/lib/integrations/gohighlevel/production-gate.ts",
+  "src/lib/integrations/gohighlevel/production-adapter.ts",
   "src/lib/integrations/gohighlevel/http-client.ts",
   "src/lib/integrations/gohighlevel/sandbox-adapter.ts",
   "src/lib/integrations/gohighlevel/fake-adapter.ts",
@@ -48,12 +50,34 @@ const enqueueService = require(path.join(buildDir, "lib", "services", "ghl-sandb
 const outboxService = require(path.join(buildDir, "lib", "services", "ghl-sandbox-outbox-service.js"));
 
 const {
+  GHL_PRODUCTION_PROVIDER_ATTESTATION,
   GHL_SANDBOX_PROVIDER_ATTESTATION,
   GhlHttpClient,
   GhlSandboxAdapter,
   createEnvironmentGhlCredentialResolver,
+  createGhlProductionAdapter,
+  createProductionEnvironmentGhlCredentialResolver,
+  evaluateGhlProductionGate,
   evaluateGhlSandboxGate,
 } = integration;
+
+const allowedProductionGate = {
+  enabled: true,
+  operation: "lead_delivery",
+  operationEnabled: true,
+  providerEnvironment: "production",
+  deploymentTarget: "production",
+  vercelEnv: "production",
+  actualProjectRef: "pppppppppppppppppppp",
+  expectedProjectRef: "pppppppppppppppppppp",
+  providerAttestation: GHL_PRODUCTION_PROVIDER_ATTESTATION,
+  baseUrl: "https://services.leadconnectorhq.com",
+};
+assert.equal(evaluateGhlProductionGate(allowedProductionGate).code, "allowed_production");
+assert.equal(evaluateGhlProductionGate({ ...allowedProductionGate, enabled: false }).code, "production_gate_closed");
+assert.equal(evaluateGhlProductionGate({ ...allowedProductionGate, operationEnabled: false }).code, "operation_kill_switch_closed");
+assert.equal(evaluateGhlProductionGate({ ...allowedProductionGate, deploymentTarget: "staging" }).code, "production_deployment_required");
+assert.equal(evaluateGhlProductionGate({ ...allowedProductionGate, actualProjectRef: "qqqqqqqqqqqqqqqqqqqq" }).code, "production_project_mismatch");
 
 const allowedGate = {
   enabled: true,
@@ -108,6 +132,27 @@ await assert.rejects(
   () => resolver.withCredential("env:PRODUCTION_GHL_TOKEN", async () => true),
   (error) => error.code === "ghl_credential_reference_invalid",
 );
+const productionToken = `pit-${"p".repeat(40)}`;
+const productionResolver = createProductionEnvironmentGhlCredentialResolver({
+  GHL_PRODUCTION_AGENCY_TOKEN: productionToken,
+});
+assert.equal(
+  await productionResolver.withCredential("env:GHL_PRODUCTION_AGENCY_TOKEN", async (token) => token.length),
+  productionToken.length,
+);
+await assert.rejects(
+  () => productionResolver.withCredential("env:GHL_SANDBOX_AGENCY_TOKEN", async () => true),
+  (error) => error.code === "ghl_production_credential_reference_invalid",
+);
+const productionAdapter = createGhlProductionAdapter({
+  credentialRef: "env:GHL_PRODUCTION_AGENCY_TOKEN",
+  credentialResolver: productionResolver,
+  gate: allowedProductionGate,
+  companyId: "production-company",
+  httpClient: new GhlHttpClient({ fetcher: async () => { throw new Error("unexpected network"); } }),
+});
+assert.equal(productionAdapter.kind, "production");
+assert.equal(productionAdapter.networkAccess, "https");
 
 let readCalls = 0;
 const readClient = new GhlHttpClient({
@@ -170,6 +215,15 @@ const adapter = new GhlSandboxAdapter({
       if (String(url).includes("/snapshots/snapshot-status/")) {
         return new Response('{"status":"completed"}', { status: 200 });
       }
+      if (String(url).includes("/customValues") && init.method === "GET") {
+        return new Response('{"customValues":[]}', { status: 200 });
+      }
+      if (String(url).includes("/customValues") && init.method === "POST") {
+        return new Response('{"customValue":{"id":"sandbox-custom-value"}}', { status: 200 });
+      }
+      if (String(url).includes("/forms/?locationId=")) {
+        return new Response('{"forms":[{"id":"sandbox-form"}]}', { status: 200 });
+      }
       throw new Error(`Unexpected adapter URL: ${url}`);
     },
     sleep: async () => {},
@@ -226,6 +280,18 @@ const preinstalledSnapshot = await adapter.installSnapshot({
   },
 });
 assert.equal(preinstalledSnapshot.outcome, "succeeded");
+const customValueResult = await adapter.applyCustomValues({
+  providerLocationId: "sandbox-location",
+  values: { "DealFlow Organization Name": "Synthetic Realty" },
+});
+assert.equal(customValueResult.outcome, "succeeded");
+assert.equal(customValueResult.providerMutationAttempted, true);
+const formResult = await adapter.verifyPreinstalledForms({
+  providerLocationId: "sandbox-location",
+  requiredFormIds: ["sandbox-form"],
+});
+assert.equal(formResult.outcome, "succeeded");
+assert.equal(formResult.providerMutationAttempted, false);
 
 function queryBuilder(rows, filters = []) {
   const apply = () => rows.filter((row) => filters.every(([column, operation, value]) => {
@@ -270,6 +336,7 @@ const tables = {
   ghl_snapshot_manifests: [{
     id: "00000000-0000-4000-8000-000000000105",
     environment: "sandbox",
+    installation_id: "00000000-0000-4000-8000-000000000104",
     provider_snapshot_id: "sandbox-snapshot",
     installation_mode: "preinstalled",
     status: "approved",
@@ -282,6 +349,22 @@ const tables = {
   }],
   workspace_ghl_mapping: [],
   partner_ghl_config: [],
+  ghl_runtime_controls: [{
+    environment: "sandbox",
+    provisioning_writes_enabled: true,
+    lead_writes_enabled: true,
+    lifecycle_webhook_enabled: false,
+  }],
+  ghl_location_personalizations: [{
+    id: "00000000-0000-4000-8000-000000000106",
+    organization_id: organizationId,
+    location_mapping_id: "00000000-0000-4000-8000-000000000103",
+    environment: "sandbox",
+    status: "ready",
+    current_step: "ready",
+    verified_at: "2026-07-12T00:00:00.000Z",
+    destination_url: "https://sandbox.example.test/funnel",
+  }],
   leads: [{
     id: leadId,
     organization_id: organizationId,
@@ -376,6 +459,53 @@ const processed = await outboxService.processNextGhlSandboxOutbox({
 assert.equal(processed.status, "succeeded");
 assert.equal(providerContactCalls, 1);
 assert.equal(processed.providerReference, "sandbox-contact");
+
+let blockedProviderCalls = 0;
+let blockedSettlement = null;
+const blockedTables = {
+  ...tables,
+  ghl_runtime_controls: [{
+    environment: "sandbox",
+    provisioning_writes_enabled: true,
+    lead_writes_enabled: false,
+    lifecycle_webhook_enabled: false,
+  }],
+};
+const blockedClaim = {
+  ...claimed,
+  id: "00000000-0000-4000-8000-000000000401",
+  lease_token: "00000000-0000-4000-8000-000000000402",
+};
+let blockedClaimReturned = false;
+const blockedDb = {
+  from: (table) => queryBuilder(blockedTables[table] ?? []),
+  rpc: async (name, params) => {
+    if (name === "claim_next_ghl_sandbox_lead_outbox") {
+      if (blockedClaimReturned) return { data: [], error: null };
+      blockedClaimReturned = true;
+      return { data: [blockedClaim], error: null };
+    }
+    if (name === "settle_ghl_provider_outbox") {
+      blockedSettlement = params;
+      return { data: [{ id: blockedClaim.id }], error: null };
+    }
+    throw new Error(`Unexpected blocked-control RPC ${name}`);
+  },
+};
+const blockedResult = await outboxService.processNextGhlSandboxOutbox({
+  client: blockedDb,
+  gate: allowedGate,
+  workerId: "sandbox-worker",
+  now: () => "2026-07-12T00:00:03.000Z",
+  providerFactory: () => {
+    blockedProviderCalls += 1;
+    throw new Error("provider factory must be fenced");
+  },
+});
+assert.equal(blockedProviderCalls, 0, "database control flip after claim must fence provider construction");
+assert.equal(blockedResult.providerMutationAttempted, false);
+assert.equal(blockedSettlement.p_receipt_outcome, "retryable_failure");
+assert.equal(blockedSettlement.p_last_error_code, "ghl_sandbox_database_runtime_control_closed");
 
 const migration = fs.readFileSync(
   path.join(repoRoot, "supabase/migrations/20260712213000_create_ghl_sandbox_provider_path.sql"),
