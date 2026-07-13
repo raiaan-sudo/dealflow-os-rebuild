@@ -6,6 +6,10 @@ import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
 import { isInternalAdminEmail } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
+import {
+  DEFAULT_WORKSPACE_BRANDING,
+  loadWorkspaceBranding,
+} from "@/lib/white-label/workspace-branding";
 
 function SkipToMainContent() {
   return (
@@ -27,6 +31,11 @@ export default async function AppLayout({
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/campaign-built");
   const appContext = await getAppContext().catch(() => null);
+  const branding = appContext
+    ? await loadWorkspaceBranding(appContext.organization.id).catch(
+        () => DEFAULT_WORKSPACE_BRANDING,
+      )
+    : DEFAULT_WORKSPACE_BRANDING;
   const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
   const organizationName =
     appContext?.organization.name?.trim() ||
@@ -88,6 +97,16 @@ export default async function AppLayout({
       <>
         <SkipToMainContent />
         <div className="relative min-h-screen w-screen overflow-hidden bg-transparent">
+          {branding.isWhiteLabel ? (
+            <div className="border-b border-white/8 px-5 py-3 text-sm sm:px-6 lg:px-8">
+              <span className="font-semibold" style={{ color: branding.primaryColor }}>
+                {branding.productName}
+              </span>
+              {branding.poweredByDealFlow ? (
+                <span className="ml-2 text-xs text-muted-foreground">Powered by DealFlow</span>
+              ) : null}
+            </div>
+          ) : null}
           <main
             id="main-content"
             tabIndex={-1}
@@ -104,12 +123,22 @@ export default async function AppLayout({
     <>
       <SkipToMainContent />
       <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
-        <AppSidebar isAdmin={isAdmin} organizationName={organizationName} stage="built" />
+        <AppSidebar
+          isAdmin={isAdmin}
+          organizationName={organizationName}
+          stage="built"
+          productName={branding.productName}
+          brandName={branding.brandName}
+          brandPrimaryColor={branding.primaryColor}
+          isWhiteLabel={branding.isWhiteLabel}
+          poweredByDealFlow={branding.poweredByDealFlow}
+        />
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <TopBar
             userName={userName}
             userEmail={userEmail}
             organizationName={organizationName}
+            productName={branding.productName}
           />
           <main id="main-content" tabIndex={-1} className="flex-1 overflow-hidden">
             <div className="flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">

@@ -10,7 +10,8 @@ reappearing in production.
 - The current campaign build experience is `/onboarding`.
 - `/builder` is a legacy compatibility route only. It must never render a page.
 - Public customer funnels stay on `/f/[slug]` and remain public.
-- ClickToScale app domains are allowed inside GoHighLevel iframes.
+- ClickToScale app domains allow only the explicitly enumerated realtor journey
+  inside GoHighLevel iframes, and only from exact configured HTTPS frame origins.
 - Marketing homepage behavior is allowed only on explicitly marketing-owned
   domains.
 
@@ -37,6 +38,11 @@ reappearing in production.
 | `/build/funnel` | Signed in with campaign | Review generated funnel artifacts | Render legacy builder editor |
 | `/build/creatives` | Signed in with campaign | Select generated creatives | Render legacy builder editor |
 | `/preview` | Signed in with campaign | Review final campaign package | Link back to `/builder` |
+| `/paywall` | Signed in | Offer only the canonical Pro plan | Offer Starter or Growth acquisition |
+| `/launch` | Signed in with campaign | Run launch readiness and scheduling | Bypass billing, tenant, or provider gates |
+| `/results` | Signed in | Show the authenticated results surface | Render a cross-tenant campaign |
+| `/settings` | Signed in | Show billing and credit truth | Permit unfenced top-ups |
+| `/support` | Signed in | Record a durable tenant-scoped support ticket | Send an unauthenticated notification |
 | `/dashboard` | Signed in | Show results/workspace state | Link back to `/builder` |
 | `/f/[slug]` | Public | Render public lead funnel | Require auth or Turnstile |
 | `/ui-direction` | Production | Hidden unless `UI_DIRECTION_PREVIEW=1` | Public product substitute |
@@ -58,6 +64,22 @@ The following legacy markers must not appear in production source:
 - `/api/builder/command`
 - `/api/builder/copy-assistant`
 - `/api/builder/section-assistant`
+
+## GoHighLevel Embed Contract
+
+The only embeddable paths are `/onboarding`, `/campaign-built`, `/paywall`,
+`/build/funnel`, `/build/creatives`, `/preview`, `/launch`, `/launching`,
+`/launch-success`, `/unlock`, `/results`, `/dashboard`, `/settings`, and
+`/support`. This set covers every route in the realtor build-to-results
+journey. Their exact embedded `/login` continuations are allowed only on
+ClickToScale app hosts. Every other route, including all admin routes, retains
+`frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+
+Embedding does not grant access. Supabase authentication, workspace membership,
+RLS, RPC tenant checks, and ordinary route authorization remain mandatory.
+`GHL_IFRAME_ALLOWED_FRAME_ANCESTORS` must contain exact HTTPS origins; shared
+GoHighLevel/LeadConnector origins, wildcards, paths, credentials, HTTP origins,
+and empty configuration are rejected.
 
 `Campaign Setup` can appear only as ordinary step naming in the current
 onboarding flow. It must not appear inside a standalone legacy builder route.

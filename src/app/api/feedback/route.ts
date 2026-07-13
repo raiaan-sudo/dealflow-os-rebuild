@@ -9,7 +9,6 @@ const feedbackSchema = z.object({
   requestId: z.string().uuid(),
   confusedText: z.string().max(4000).optional().default(""),
   blockerText: z.string().max(4000).optional().default(""),
-  email: z.string().email().optional().or(z.literal("")).default(""),
   page: z.string().max(500).optional().default(""),
 }).superRefine((value, context) => {
   if (!value.confusedText.trim() && !value.blockerText.trim()) {
@@ -44,7 +43,6 @@ export async function POST(request: Request) {
         confusedText: body.confusedText,
         blockerText: body.blockerText,
         page: body.page,
-        emailPresent: Boolean(body.email),
       },
     });
 
@@ -52,7 +50,7 @@ export async function POST(request: Request) {
       userId: auth.userId,
       organizationId: auth.organizationId,
       page: body.page || null,
-      emailPresent: Boolean(body.email),
+      replyRoute: "authenticated_account_email",
       confusedTextPresent: Boolean(body.confusedText.trim()),
       blockerTextPresent: Boolean(body.blockerText.trim()),
       ticketId: ticket.ticketId,

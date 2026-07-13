@@ -2,10 +2,10 @@ import { z } from "zod";
 import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createBillingCheckoutSession } from "@/lib/services/billing-service";
-import { normalizeBillingPlanTier } from "@/lib/billing/plans";
+import { NEW_CHECKOUT_PLAN_TIER } from "@/lib/billing/plans";
 
 const checkoutSchema = z.object({
-  planTier: z.enum(["starter", "pro", "growth"]).default("pro"),
+  planTier: z.literal(NEW_CHECKOUT_PLAN_TIER).default(NEW_CHECKOUT_PLAN_TIER),
 });
 
 export async function POST(request: Request) {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
     const body = await parseJsonBody(request, checkoutSchema);
     const session = await createBillingCheckoutSession({
-      planTier: normalizeBillingPlanTier(body.planTier),
+      planTier: body.planTier,
     });
 
     return Response.json(session);

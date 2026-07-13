@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
-import { normalizeBillingPlanTier } from "@/lib/billing/plans";
+import { NEW_CHECKOUT_PLAN_TIER } from "@/lib/billing/plans";
 import { createAccessKeyCheckoutSession } from "@/lib/services/access-key-service";
 import {
   ACCESS_KEY_REVEAL_COOKIE_MAX_AGE_SECONDS,
@@ -17,7 +17,7 @@ import {
 import { isAccessKeyPublicCheckoutEnabled, isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
-  planTier: z.enum(["performance", "starter", "pro", "growth"]).default("pro"),
+  planTier: z.literal(NEW_CHECKOUT_PLAN_TIER).default(NEW_CHECKOUT_PLAN_TIER),
   partnerSlug: z.string().trim().min(1).max(80).optional(),
   buyerEmail: z.string().trim().email().optional(),
   buyerName: z.string().trim().min(1).max(160).optional(),
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     }
 
     const session = await createAccessKeyCheckoutSession({
-      planTier: normalizeBillingPlanTier(body.planTier),
+      planTier: body.planTier,
       partnerSlug: body.partnerSlug,
       buyerEmail: body.buyerEmail,
       buyerName: body.buyerName,

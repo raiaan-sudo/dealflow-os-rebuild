@@ -50,7 +50,7 @@ export default async function UnlockPage({
               Verification status: Stripe has not confirmed this subscription for the workspace yet.
             </p>
           ) : null}
-          <p>Plan: {billing?.planTier ?? "starter"}</p>
+          <p>Plan: {billing?.commerciallyActivated ? billing.planTier : "Not activated"}</p>
           <p>Subscription status: {billing?.subscriptionStatus ?? "inactive"}</p>
           <p>
             Launch access: {launchAllowed ? "enabled" : "not enabled yet"}

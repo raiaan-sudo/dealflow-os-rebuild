@@ -34,14 +34,10 @@ function optionalText(value: unknown) {
 }
 
 function normalizeVisiblePlans(value: unknown): PartnerPricingPlanKey[] {
-  if (!Array.isArray(value)) {
-    return [...PARTNER_PLAN_KEYS];
-  }
-
-  const plans = value.filter((plan): plan is PartnerPricingPlanKey =>
-    PARTNER_PLAN_KEYS.includes(plan as PartnerPricingPlanKey),
-  );
-  return plans.length ? plans : [...PARTNER_PLAN_KEYS];
+  // Starter remains parseable as a legacy configuration record, but it is
+  // never exposed as a new public checkout choice.
+  void value;
+  return ["pro"];
 }
 
 function normalizePlanConfig(value: unknown): PartnerPricingPlanConfig {

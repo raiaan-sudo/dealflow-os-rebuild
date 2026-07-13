@@ -11,9 +11,10 @@ type TopBarProps = {
   userName: string;
   userEmail: string;
   organizationName: string;
+  productName?: string;
 };
 
-export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
+export function TopBar({ userName, userEmail, organizationName, productName = "DealFlow AI" }: TopBarProps) {
   const pathname = usePathname();
 
   if (pathname.startsWith("/preview")) {
@@ -29,7 +30,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
               {organizationName}
             </p>
             <p className="mt-1 truncate text-sm text-white/72">
-              Campaign workspace
+              {productName} workspace
             </p>
           </div>
         </div>
@@ -69,6 +70,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
           { href: "/preview", label: "Review" },
           { href: "/launch", label: "Go Live" },
           { href: "/dashboard", label: "Results" },
+          { href: "/support", label: "Support" },
         ].map((item) => {
           const active =
             item.href === "/onboarding"

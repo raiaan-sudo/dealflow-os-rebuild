@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
+import { createHash } from "node:crypto";
 
 function loadTypeScriptModule(file, dependencies = new Map()) {
   const output = ts.transpileModule(fs.readFileSync(file, "utf8"), {
@@ -131,7 +132,10 @@ assert.throws(
 
 const supportAdapter = loadTypeScriptModule(
   "src/lib/integrations/support/delivery-adapter.ts",
-  new Map([["@/lib/deployment-target", deployment]]),
+  new Map([
+    ["@/lib/deployment-target", deployment],
+    ["node:crypto", { createHash }],
+  ]),
 );
 let supportRpcCalls = 0;
 const supportAdmin = {

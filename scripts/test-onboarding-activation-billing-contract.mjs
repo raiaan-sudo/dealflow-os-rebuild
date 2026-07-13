@@ -243,19 +243,28 @@ const configuredPriceIds = {
   growth: "price_growth_current",
 };
 
-check("Stripe current price overrides stale upgrade or downgrade metadata", () => {
+check("Pro is the only current acquisition price and legacy prices require explicit authority", () => {
   assert.deepEqual(
     stripePlanResolution.resolveStripeSubscriptionPlanTier({
       items: [{ priceId: configuredPriceIds.starter, quantity: 1 }],
       configuredPriceIds,
       metadataPlanTier: "pro",
     }),
+    { ok: false, reason: "legacy_tier_authority_missing" },
+  );
+  assert.deepEqual(
+    stripePlanResolution.resolveStripeSubscriptionPlanTier({
+      items: [{ priceId: configuredPriceIds.starter, quantity: 1 }],
+      configuredPriceIds,
+      metadataPlanTier: "starter",
+      legacyTierReconciled: true,
+    }),
     {
       ok: true,
       planTier: "starter",
       priceId: configuredPriceIds.starter,
       itemIndex: 0,
-      source: "current_price",
+      source: "legacy_reconciled_metadata",
     },
   );
   assert.equal(
@@ -331,11 +340,11 @@ check("Stripe metadata fallback requires an explicit legacy reconciliation marke
   const resolution = stripePlanResolution.resolveStripeSubscriptionPlanTier({
     items: [{ priceId: "price_legacy", quantity: 1 }],
     configuredPriceIds,
-    metadataPlanTier: "pro",
+    metadataPlanTier: "growth",
     legacyTierReconciled: true,
   });
   assert.equal(resolution.ok, true);
-  assert.equal(resolution.planTier, "pro");
+  assert.equal(resolution.planTier, "growth");
   assert.equal(resolution.source, "legacy_reconciled_metadata");
 });
 

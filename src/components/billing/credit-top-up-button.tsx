@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 export function CreditTopUpButton({
   amountCents = 2500,
   label = "Add credits",
+  disabled = false,
 }: {
   amountCents?: number;
   label?: string;
+  disabled?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +45,10 @@ export function CreditTopUpButton({
 
   return (
     <div className="space-y-3">
-      <Button type="button" onClick={handleCheckout} disabled={loading}>
+      <Button type="button" onClick={handleCheckout} disabled={disabled || loading}>
         {loading ? "Opening checkout..." : label}
       </Button>
-      {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+      {error ? <p className="text-sm text-rose-300" role="alert">{error}</p> : null}
     </div>
   );
 }

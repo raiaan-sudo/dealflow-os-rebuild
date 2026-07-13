@@ -29,7 +29,11 @@ import {
 } from "@/lib/services/billing-service";
 import { evaluateCommercialActivationCandidate } from "@/lib/commercial-activation-policy";
 import { recordCommercialActivationWithInitialCredit } from "@/lib/services/credit-service";
-import { normalizeBillingPlanTier, type BillingPlanTier } from "@/lib/billing/plans";
+import {
+  type BillingPlanTier,
+  NEW_CHECKOUT_PLAN_TIER,
+  type NewCheckoutPlanTier,
+} from "@/lib/billing/plans";
 import {
   validateAccessKeyCheckoutSessionEnvelope,
   validateAccessKeyCheckoutSessionBinding,
@@ -614,11 +618,19 @@ export function hashAccessKey(rawKey: string) {
 }
 
 export async function createAccessKeyCheckoutSession(params: {
-  planTier: BillingPlanTier;
+  planTier: NewCheckoutPlanTier;
   partnerSlug?: string | null;
   buyerEmail?: string | null;
   buyerName?: string | null;
 }) {
+  if (params.planTier !== NEW_CHECKOUT_PLAN_TIER) {
+    throw new ApiError(
+      400,
+      "Pro is the only plan available for new DealFlow access keys.",
+      "new_checkout_plan_forbidden",
+    );
+  }
+
   requireAccessKeyFeature();
   const admin = requireAdminClient();
   const stripeProvider = getStripeBillingProvider();
@@ -627,7 +639,7 @@ export async function createAccessKeyCheckoutSession(params: {
     throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
   }
 
-  const planTier = normalizeBillingPlanTier(params.planTier);
+  const planTier = params.planTier;
   const partnerBilling = await loadPartnerBillingBundle(admin, params.partnerSlug);
   const priceId = getStripePriceId(planTier);
 

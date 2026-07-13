@@ -4,10 +4,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export function CheckoutButton({
-  planTier = "pro",
   label = "Activate to launch",
 }: {
-  planTier?: "starter" | "pro" | "growth";
   label?: string;
 }) {
   const [loading, setLoading] = useState(false);
@@ -23,7 +21,7 @@ export function CheckoutButton({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ planTier }),
+        body: JSON.stringify({ planTier: "pro" }),
       });
 
       const data = (await response.json().catch(() => null)) as

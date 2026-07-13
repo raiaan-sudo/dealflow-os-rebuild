@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, BarChart3, Eye, PanelLeft, Rocket, Wand2 } from "lucide-react";
+import { ChevronRight, BarChart3, Eye, Headphones, PanelLeft, Rocket, Wand2 } from "lucide-react";
 import { adminNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +13,23 @@ type AppSidebarProps = {
   organizationName: string;
   isAdmin: boolean;
   stage: CampaignExperienceStage;
+  productName?: string;
+  brandName?: string;
+  brandPrimaryColor?: string;
+  isWhiteLabel?: boolean;
+  poweredByDealFlow?: boolean;
 };
 
-export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps) {
+export function AppSidebar({
+  organizationName,
+  isAdmin,
+  stage,
+  productName = "DealFlow AI",
+  brandName = "DealFlow",
+  brandPrimaryColor = "#67e8f9",
+  isWhiteLabel = false,
+  poweredByDealFlow = false,
+}: AppSidebarProps) {
   const pathname = usePathname();
   const stageLabel =
     stage === "draft" || stage === "built" || stage === "paywall"
@@ -30,6 +44,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
     { href: "/preview", label: "Review", icon: Eye },
     { href: "/launch", label: "Go Live", icon: Rocket },
     { href: "/dashboard", label: "Results", icon: BarChart3 },
+    { href: "/support", label: "Support", icon: Headphones },
   ];
 
   return (
@@ -37,14 +52,29 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
       <div className="flex h-full w-full flex-col border-r border-white/6 bg-[linear-gradient(180deg,rgba(5,8,14,0.92),rgba(6,10,17,0.72))] px-3.5 py-4 backdrop-blur-2xl">
         <div className="surface-strong rounded-[22px] px-3.5 py-3.5">
           <div className="flex items-center gap-3">
-            <Logo size="small" iconOnly priority className="shrink-0" />
+            {isWhiteLabel ? (
+              <div
+                aria-hidden="true"
+                className="flex size-9 shrink-0 items-center justify-center rounded-xl border bg-white/[0.05] text-sm font-semibold"
+                style={{ borderColor: brandPrimaryColor, color: brandPrimaryColor }}
+              >
+                {brandName.slice(0, 1).toUpperCase()}
+              </div>
+            ) : (
+              <Logo size="small" iconOnly priority className="shrink-0" />
+            )}
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-[-0.02em]">DealFlow AI</p>
+              <p className="truncate text-sm font-semibold tracking-[-0.02em]">{productName}</p>
               <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 {stageLabel}
               </p>
             </div>
           </div>
+          {isWhiteLabel && poweredByDealFlow ? (
+            <p className="mt-2 px-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              Powered by DealFlow
+            </p>
+          ) : null}
           <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(188,236,255,0.08)]">
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
               Workspace

@@ -34,7 +34,9 @@ export async function GET() {
     }
 
     const campaignCount = typeof count === "number" ? count : 0;
-    const creationBillingActive = ["active", "trialing"].includes(billing.subscriptionStatus);
+    const creationBillingActive =
+      billing.commerciallyActivated &&
+      ["active", "trialing"].includes(billing.subscriptionStatus);
     const hasUnlimitedCampaigns =
       creationBillingActive && (billing.planTier === "pro" || billing.planTier === "growth");
     const canCreateAdditionalCampaign = campaignCount === 0 || hasUnlimitedCampaigns;
@@ -45,6 +47,7 @@ export async function GET() {
       subscriptionStatus: billing.subscriptionStatus,
       launchAllowed: billing.launchAllowed,
       launchOverride: billing.launchOverride,
+      commerciallyActivated: billing.commerciallyActivated,
       campaignCount,
       canCreateAdditionalCampaign,
       hasUnlimitedCampaigns,

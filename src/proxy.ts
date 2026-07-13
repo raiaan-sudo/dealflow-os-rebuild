@@ -117,7 +117,22 @@ const ROOT_APP_REDIRECT_HOSTS = new Set([
   "agentdealflow.io",
   "app.agentdealflow.io",
 ]);
-const GHL_EMBEDDABLE_PATHS = new Set(["/onboarding"]);
+const GHL_EMBEDDABLE_PATHS = new Set([
+  "/onboarding",
+  "/campaign-built",
+  "/paywall",
+  "/build/funnel",
+  "/build/creatives",
+  "/preview",
+  "/launch",
+  "/launching",
+  "/launch-success",
+  "/unlock",
+  "/results",
+  "/dashboard",
+  "/settings",
+  "/support",
+]);
 const SHARED_VENDOR_FRAME_HOSTS = new Set([
   "app.gohighlevel.com",
   "app.leadconnectorhq.com",
@@ -158,7 +173,7 @@ function getConfiguredFrameAncestors() {
     .filter((source): source is string => Boolean(source));
 }
 
-function hasEmbeddedOnboardingReturn(request: NextRequest) {
+function hasEmbeddedAppReturn(request: NextRequest) {
   if (
     request.nextUrl.pathname !== "/login" ||
     request.nextUrl.searchParams.get("embed") !== "1"
@@ -177,7 +192,9 @@ function hasEmbeddedOnboardingReturn(request: NextRequest) {
   }
 
   try {
-    return new URL(redirectedFrom, request.url).pathname === "/onboarding";
+    return GHL_EMBEDDABLE_PATHS.has(
+      new URL(redirectedFrom, request.url).pathname,
+    );
   } catch {
     return false;
   }
@@ -186,7 +203,7 @@ function hasEmbeddedOnboardingReturn(request: NextRequest) {
 function isGhlEmbeddableSurface(request: NextRequest) {
   return (
     GHL_EMBEDDABLE_PATHS.has(request.nextUrl.pathname) ||
-    hasEmbeddedOnboardingReturn(request)
+    hasEmbeddedAppReturn(request)
   );
 }
 

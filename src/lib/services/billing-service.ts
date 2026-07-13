@@ -18,8 +18,10 @@ import {
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
   hasFeatureAccess,
+  NEW_CHECKOUT_PLAN_TIER,
   type BillingFeature,
   type BillingPlanTier,
+  type NewCheckoutPlanTier,
 } from "@/lib/billing/plans";
 import {
   getStripeSubscriptionPersistenceDecision,
@@ -117,6 +119,7 @@ export type BillingSummary = {
   cancelAtPeriodEnd: boolean;
   launchAllowed: boolean;
   launchOverride: boolean;
+  commerciallyActivated: boolean;
 };
 
 const STRIPE_WEBHOOK_PROCESSING_STALE_MS = 5 * 60_000;
@@ -398,10 +401,36 @@ export async function claimStripeWebhookEvent(event: Stripe.Event): Promise<Stri
   );
 }
 
-function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): BillingSummary {
+function hasLegacyCommercialActivationAuthority(row: BillingRow | null) {
+  const metadata =
+    row?.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? row.metadata as Record<string, unknown>
+      : {};
+  return (
+    metadata.legacy_commercial_activation_reconciled === true ||
+    metadata.legacy_commercial_activation_reconciled === "true"
+  );
+}
+
+function hasCommercialActivationRecord(value: unknown) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "id" in value &&
+    typeof value.id === "string",
+  );
+}
+
+function mapBillingRow(
+  row: BillingRow | null,
+  fallbackPlanTier: string,
+  activationPresent: boolean,
+): BillingSummary {
+  const commerciallyActivated = activationPresent || hasLegacyCommercialActivationAuthority(row);
   const entitlements = evaluateCampaignEntitlements({
     row,
     fallbackPlanTier,
+    commerciallyActivated,
   });
 
   return {
@@ -414,6 +443,7 @@ function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): Billin
     cancelAtPeriodEnd: row?.cancel_at_period_end ?? false,
     launchAllowed: entitlements.canLaunch,
     launchOverride: false,
+    commerciallyActivated,
   };
 }
 
@@ -443,19 +473,31 @@ export async function getBillingSummary() {
   }
 
   const billingClient = createAdminClient() ?? supabase;
-  const { data, error } = await billingClient
-    .from("billing_subscriptions")
-    .select("*")
-    .eq("organization_id", context.organization.id)
-    .maybeSingle();
+  const [billingResult, activationResult] = await Promise.all([
+    billingClient
+      .from("billing_subscriptions")
+      .select("*")
+      .eq("organization_id", context.organization.id)
+      .maybeSingle(),
+    (billingClient as any)
+      .from("commercial_activations")
+      .select("id")
+      .eq("organization_id", context.organization.id)
+      .maybeSingle(),
+  ]);
+  const { data, error } = billingResult;
 
   if (error) {
     throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
+  }
+  if (activationResult.error) {
+    throw new ApiError(500, activationResult.error.message, "commercial_activation_fetch_failed");
   }
 
   const summary = mapBillingRow(
     (data as BillingRow | null) ?? null,
     context.organization.plan_tier ?? "starter",
+    hasCommercialActivationRecord(activationResult.data),
   );
 
   const launchOverrideEmail = getBillingAdminOverrideEmail(context);
@@ -487,17 +529,24 @@ export async function getBillingSummaryForOrganization(organizationId: string) {
     throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
   }
 
-  const { data, error } = await admin
-    .from("billing_subscriptions")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
+  const [billingResult, activationResult] = await Promise.all([
+    admin.from("billing_subscriptions").select("*").eq("organization_id", organizationId).maybeSingle(),
+    (admin as any).from("commercial_activations").select("id").eq("organization_id", organizationId).maybeSingle(),
+  ]);
+  const { data, error } = billingResult;
 
   if (error) {
     throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
   }
+  if (activationResult.error) {
+    throw new ApiError(500, activationResult.error.message, "commercial_activation_fetch_failed");
+  }
 
-  return mapBillingRow((data as BillingRow | null) ?? null, "starter");
+  return mapBillingRow(
+    (data as BillingRow | null) ?? null,
+    "starter",
+    hasCommercialActivationRecord(activationResult.data),
+  );
 }
 
 export async function assertBillingFeatureAccess(feature: BillingFeature) {
@@ -601,10 +650,18 @@ export async function assertMetaLaunchBillingAccessForOrganization(
 }
 
 export async function createBillingCheckoutSession(params: {
-  planTier: BillingPlanTier;
+  planTier: NewCheckoutPlanTier;
   customerName?: string;
   customerEmail?: string;
 }) {
+  if (params.planTier !== NEW_CHECKOUT_PLAN_TIER) {
+    throw new ApiError(
+      400,
+      "Pro is the only plan available for new DealFlow subscriptions.",
+      "new_checkout_plan_forbidden",
+    );
+  }
+
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
   const stripeProvider = getStripeBillingProvider();
 
@@ -842,18 +899,31 @@ export async function createCreditTopUpCheckoutSession(params: {
   }
 
   const existingBillingRow = (existingSubscription as BillingRow | null) ?? null;
-  let customerId = existingBillingRow?.stripe_customer_id ?? null;
-
-  if (!customerId) {
-    const customer = await createStripeCustomerForCheckout({
-      stripeProvider,
-      organizationId: context.organization.id,
-      userId: context.user.id,
-      email: params.customerEmail || context.user.email || undefined,
-      name: params.customerName || context.organization.name || undefined,
-    });
-    customerId = customer.id;
+  const { data: existingActivation, error: existingActivationError } = await (billingClient as any)
+    .from("commercial_activations")
+    .select("id")
+    .eq("organization_id", context.organization.id)
+    .maybeSingle();
+  if (existingActivationError) {
+    throw new ApiError(500, existingActivationError.message, "commercial_activation_fetch_failed");
   }
+  const existingBillingSummary = mapBillingRow(
+    existingBillingRow,
+    "starter",
+    hasCommercialActivationRecord(existingActivation),
+  );
+  if (
+    !existingBillingRow ||
+    !existingBillingSummary.launchAllowed ||
+    !existingBillingRow.stripe_customer_id
+  ) {
+    throw new ApiError(
+      402,
+      "An active paid subscription is required before generation credits can be added.",
+      "credit_top_up_active_subscription_required",
+    );
+  }
+  const customerId = existingBillingRow.stripe_customer_id;
 
   const creditTopUpIntentId = crypto.randomUUID();
   const { error: intentError } = await (billingClient as any).rpc(

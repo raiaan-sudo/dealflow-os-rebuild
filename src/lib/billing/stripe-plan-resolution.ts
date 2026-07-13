@@ -1,4 +1,5 @@
 import {
+  isGrandfatheredPlanTier,
   normalizeBillingPlanTier,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
@@ -29,7 +30,8 @@ export type StripePlanResolution =
         | "subscription_item_ambiguous"
         | "subscription_price_missing"
         | "subscription_price_unknown"
-        | "configured_price_ambiguous";
+        | "configured_price_ambiguous"
+        | "legacy_tier_authority_missing";
     };
 
 export type StripeSubscriptionPersistenceDecision = {
@@ -80,9 +82,27 @@ export function resolveStripeSubscriptionPlanTier(
     .map(([planTier]) => planTier);
 
   if (matchingTiers.length === 1) {
+    const matchedTier = matchingTiers[0];
+    if (isGrandfatheredPlanTier(matchedTier)) {
+      if (
+        input.legacyTierReconciled !== true ||
+        input.metadataPlanTier !== matchedTier
+      ) {
+        return { ok: false, reason: "legacy_tier_authority_missing" };
+      }
+
+      return {
+        ok: true,
+        planTier: matchedTier,
+        priceId: activeItem.priceId,
+        itemIndex: activeItem.index,
+        source: "legacy_reconciled_metadata",
+      };
+    }
+
     return {
       ok: true,
-      planTier: matchingTiers[0],
+      planTier: matchedTier,
       priceId: activeItem.priceId,
       itemIndex: activeItem.index,
       source: "current_price",
@@ -95,7 +115,10 @@ export function resolveStripeSubscriptionPlanTier(
 
   if (input.legacyTierReconciled === true) {
     const planTier = normalizeBillingPlanTier(input.metadataPlanTier);
-    if (input.metadataPlanTier === planTier) {
+    if (
+      input.metadataPlanTier === planTier &&
+      isGrandfatheredPlanTier(planTier)
+    ) {
       return {
         ok: true,
         planTier,

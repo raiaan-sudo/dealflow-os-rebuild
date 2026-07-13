@@ -104,6 +104,12 @@ type SupportOutboxRow = {
   locked_by: string | null;
 };
 
+const SUPPORT_DELIVERY_OPERATOR_ACTION_CODES = new Set([
+  "support_external_delivery_ambiguous",
+  "support_external_receipt_missing",
+  "support_reply_route_missing",
+]);
+
 export async function processSupportNotificationOutbox(maxRows = 25) {
   const admin = createAdminClient();
 
@@ -172,7 +178,11 @@ export async function processSupportNotificationOutbox(maxRows = 25) {
     }
 
     const exhausted = row.attempt_count >= row.max_attempts;
-    const nextStatus = exhausted ? "operator_action_required" : "retrying";
+    const requiresReconciliation = SUPPORT_DELIVERY_OPERATOR_ACTION_CODES.has(
+      deliveryError?.code ?? "",
+    );
+    const nextStatus =
+      exhausted || requiresReconciliation ? "operator_action_required" : "retrying";
     const nextAttemptAt = new Date(
       Date.now() + Math.min(60 * 60_000, Math.max(1, row.attempt_count) * 60_000),
     ).toISOString();

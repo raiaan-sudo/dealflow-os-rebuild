@@ -56,7 +56,7 @@ export default async function PaywallPage({
           ) : null}
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <CheckoutButton planTier="pro" />
+            <CheckoutButton />
             <Button asChild variant="secondary">
               <Link href={campaignId ? `/preview?campaignId=${encodeURIComponent(campaignId)}` : "/preview"}>
                 Back to preview

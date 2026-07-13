@@ -7,13 +7,28 @@ import ts from "typescript";
 const proxySource = fs.readFileSync("src/proxy.ts", "utf8");
 const nextConfigSource = fs.readFileSync("next.config.mjs", "utf8");
 const loginFormSource = fs.readFileSync("src/components/auth/login-form.tsx", "utf8");
+const supportPageSource = fs.readFileSync("src/app/(app)/support/page.tsx", "utf8");
+const supportFormSource = fs.readFileSync("src/components/support/support-ticket-form.tsx", "utf8");
 
 const requiredProxyMarkers = [
   "CLICK_TO_SCALE_IFRAME_HOSTS",
   "\"clicktoscale.io\"",
   "\"www.clicktoscale.io\"",
   "GHL_EMBEDDABLE_PATHS",
-  'new Set(["/onboarding"])',
+  '"/onboarding"',
+  '"/campaign-built"',
+  '"/paywall"',
+  '"/build/funnel"',
+  '"/build/creatives"',
+  '"/preview"',
+  '"/launch"',
+  '"/launching"',
+  '"/launch-success"',
+  '"/unlock"',
+  '"/results"',
+  '"/dashboard"',
+  '"/settings"',
+  '"/support"',
   "GHL_IFRAME_EMBED_ENABLED",
   "GHL_IFRAME_ALLOWED_FRAME_ANCESTORS",
   "SHARED_VENDOR_FRAME_HOSTS",
@@ -36,8 +51,8 @@ function loadProxySecurityHelpers() {
       "export function getFrameAncestors(request: NextRequest)",
     )
     .replace(
-      "function hasEmbeddedOnboardingReturn(request: NextRequest)",
-      "export function hasEmbeddedOnboardingReturn(request: NextRequest)",
+      "function hasEmbeddedAppReturn(request: NextRequest)",
+      "export function hasEmbeddedAppReturn(request: NextRequest)",
     )
     .replace(
       "function addEmbeddedAuthRedirectState(request: NextRequest, loginUrl: URL)",
@@ -92,6 +107,17 @@ if (!loginFormSource.includes("window.self !== window.top")) {
   failures.push("src/components/auth/login-form.tsx must detect embedded auth surfaces.");
 }
 
+if (!supportPageSource.includes("SupportTicketForm")) {
+  failures.push("The exact /support embed surface must render the tenant-scoped support form.");
+}
+if (!supportFormSource.includes('fetchWithRetry("/api/feedback"')) {
+  failures.push("The embedded support surface must use the authenticated durable support API.");
+}
+const publicPathBlock = proxySource.match(/const PUBLIC_PATHS = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+if (publicPathBlock.includes('"/support"')) {
+  failures.push("The embedded support surface must remain authenticated, not public.");
+}
+
 const { helpers, runtimeProcess } = loadProxySecurityHelpers();
 assert.equal(helpers.normalizeExactFrameAncestor("https://partner.example"), "https://partner.example");
 assert.equal(helpers.normalizeExactFrameAncestor("https://partner.example:8443"), "https://partner.example:8443");
@@ -128,7 +154,7 @@ runtimeProcess.env = {
 assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/onboarding")), "'none'");
 runtimeProcess.env.GHL_IFRAME_EMBED_ENABLED = "true";
 assert.equal(helpers.getFrameAncestors(request("app.agentdealflow.io", "/onboarding")), "'none'");
-assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/dashboard")), "'none'");
+assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/admin/issues")), "'none'");
 runtimeProcess.env.GHL_IFRAME_ALLOWED_FRAME_ANCESTORS = "";
 assert.equal(helpers.getFrameAncestors(request("clicktoscale.io", "/onboarding")), "'none'");
 runtimeProcess.env.GHL_IFRAME_ALLOWED_FRAME_ANCESTORS =
@@ -137,6 +163,39 @@ assert.equal(
   helpers.getFrameAncestors(request("clicktoscale.io", "/onboarding")),
   "https://partner.example https://second-partner.example",
 );
+for (const embeddedPath of [
+  "/onboarding",
+  "/campaign-built",
+  "/paywall",
+  "/build/funnel",
+  "/build/creatives",
+  "/preview",
+  "/launch",
+  "/launching",
+  "/launch-success",
+  "/unlock",
+  "/results",
+  "/dashboard",
+  "/settings",
+  "/support",
+]) {
+  assert.equal(
+    helpers.getFrameAncestors(request("clicktoscale.io", embeddedPath)),
+    "https://partner.example https://second-partner.example",
+    `${embeddedPath} must use only the exact configured partner origins`,
+  );
+  assert.equal(
+    helpers.getFrameAncestors(
+      request(
+        "clicktoscale.io",
+        "/login",
+        `?embed=1&redirectedFrom=${encodeURIComponent(embeddedPath)}`,
+      ),
+    ),
+    "https://partner.example https://second-partner.example",
+    `${embeddedPath} must retain exact frame policy through authentication`,
+  );
+}
 assert.equal(
   helpers.getFrameAncestors(
     request(
@@ -151,7 +210,7 @@ assert.equal(
 for (const unsafeLoginSearch of [
   "",
   "?embed=1",
-  "?embed=1&redirectedFrom=%2Fdashboard",
+  "?embed=1&redirectedFrom=%2Fadmin%2Fissues",
   "?embed=1&redirectedFrom=%2F%2Fevil.example%2Fonboarding",
 ]) {
   assert.equal(
@@ -173,9 +232,9 @@ helpers.addEmbeddedAuthRedirectState(
   embeddedLoginUrl,
 );
 assert.equal(embeddedLoginUrl.searchParams.get("embed"), "1");
-const normalLoginUrl = new URL("https://clicktoscale.io/login?redirectedFrom=%2Fdashboard");
+const normalLoginUrl = new URL("https://clicktoscale.io/login?redirectedFrom=%2Fadmin%2Fissues");
 helpers.addEmbeddedAuthRedirectState(
-  request("clicktoscale.io", "/dashboard"),
+  request("clicktoscale.io", "/admin/issues"),
   normalLoginUrl,
 );
 assert.equal(normalLoginUrl.searchParams.get("embed"), null);

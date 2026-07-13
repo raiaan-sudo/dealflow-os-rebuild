@@ -5,7 +5,6 @@ export type SupportTicketInput = {
   confusedText: string;
   blockerText: string;
   page: string;
-  emailPresent: boolean;
 };
 
 export class SupportTicketValidationError extends Error {
@@ -68,7 +67,7 @@ export function buildSupportTicketPayload(input: SupportTicketInput) {
     routePath: safeRoutePath(input.page),
     safeContext: {
       source: "in_app_feedback_widget",
-      emailProvided: input.emailPresent,
+      replyRoute: "authenticated_account_email",
       confusedTextProvided: Boolean(confusedText),
       blockerTextProvided: Boolean(blockerText),
     } satisfies Record<string, Json | undefined>,

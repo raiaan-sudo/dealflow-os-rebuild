@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
+import { BILLING_PLANS, NEW_CHECKOUT_PLAN_TIER } from "@/lib/billing/plans";
 
 type AccessKeyCheckoutFormProps = {
   partnerSlug?: string | null;
@@ -13,13 +13,11 @@ export function AccessKeyCheckoutForm({
   partnerSlug,
   brandName,
 }: AccessKeyCheckoutFormProps) {
-  const [planTier, setPlanTier] = useState<BillingPlanTier>("pro");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerName, setBuyerName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
-  const selectedPlan = BILLING_PLANS[planTier];
-  const selectablePlanTiers = Object.keys(BILLING_PLANS) as BillingPlanTier[];
+  const selectedPlan = BILLING_PLANS[NEW_CHECKOUT_PLAN_TIER];
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,7 +31,7 @@ export function AccessKeyCheckoutForm({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          planTier,
+          planTier: NEW_CHECKOUT_PLAN_TIER,
           partnerSlug: partnerSlug || undefined,
           buyerEmail: buyerEmail || undefined,
           buyerName: buyerName || undefined,
@@ -54,31 +52,12 @@ export function AccessKeyCheckoutForm({
 
   return (
     <form className="space-y-5" onSubmit={handleSubmit}>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {selectablePlanTiers.map((tier) => {
-          const plan = BILLING_PLANS[tier];
-          const selected = planTier === tier;
-          return (
-            <button
-              key={tier}
-              type="button"
-              onClick={() => setPlanTier(tier)}
-              className={[
-                "min-h-[150px] rounded-df-panel border p-4 text-left transition",
-                selected
-                  ? "border-cyan-300/60 bg-cyan-300/[0.09] text-white"
-                  : "border-white/10 bg-white/[0.035] text-white/75 hover:border-cyan-300/35",
-              ].join(" ")}
-              aria-pressed={selected}
-            >
-              <p className="text-sm font-semibold text-white">{plan.name}</p>
-              <p className="mt-1 text-sm text-cyan-100">{plan.priceLabel}</p>
-              <p className="mt-3 text-xs leading-5 text-white/58">
-                Paid access key for the {plan.name} workspace tier.
-              </p>
-            </button>
-          );
-        })}
+      <div className="rounded-df-panel border border-cyan-300/60 bg-cyan-300/[0.09] p-4 text-left text-white">
+        <p className="text-sm font-semibold text-white">{selectedPlan.name}</p>
+        <p className="mt-1 text-sm text-cyan-100">{selectedPlan.priceLabel}</p>
+        <p className="mt-3 text-xs leading-5 text-white/58">
+          One DealFlow plan for campaign creation, launch access, reporting, and autonomous operations.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

@@ -63,6 +63,7 @@ type EvaluationInput = {
   launchOverride?: boolean;
   launchOverrideSource?: BillingLaunchOverrideSource;
   launchOverrideMatchedBy?: string[];
+  commerciallyActivated?: boolean;
   now?: Date;
 };
 
@@ -97,6 +98,7 @@ export function evaluateCampaignEntitlements(input: EvaluationInput): CampaignEn
   const launchOverride = input.launchOverride === true;
   const launchOverrideSource = launchOverride ? input.launchOverrideSource ?? null : null;
   const launchOverrideMatchedBy = launchOverride ? input.launchOverrideMatchedBy ?? [] : [];
+  const commerciallyActivated = input.commerciallyActivated !== false;
 
   let billingState: BillingLifecycleState = "read_only";
   let suspensionReason: string | null = "subscription_inactive";
@@ -104,6 +106,9 @@ export function evaluateCampaignEntitlements(input: EvaluationInput): CampaignEn
   if (launchOverride) {
     billingState = "active";
     suspensionReason = null;
+  } else if (!commerciallyActivated) {
+    billingState = "read_only";
+    suspensionReason = "commercial_activation_required";
   } else if (ACTIVE_SUBSCRIPTION_STATUSES.has(subscriptionStatus)) {
     if (cancelAtPeriodEnd && periodEndMs !== null && periodEndMs <= now.getTime()) {
       billingState = "suspended";
@@ -215,18 +220,42 @@ export async function getCampaignEntitlementsForOrganization(params: {
     throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
   }
 
-  const { data, error } = await admin
-    .from("billing_subscriptions")
-    .select("plan_tier,status,current_period_end,cancel_at_period_end")
-    .eq("organization_id", params.organizationId)
-    .maybeSingle();
+  const [billingResult, activationResult] = await Promise.all([
+    admin
+      .from("billing_subscriptions")
+      .select("plan_tier,status,current_period_end,cancel_at_period_end,metadata")
+      .eq("organization_id", params.organizationId)
+      .maybeSingle(),
+    (admin as any)
+      .from("commercial_activations")
+      .select("id")
+      .eq("organization_id", params.organizationId)
+      .maybeSingle(),
+  ]);
+  const { data, error } = billingResult;
 
   if (error) {
     throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
   }
+  if (activationResult.error) {
+    throw new ApiError(500, activationResult.error.message, "commercial_activation_fetch_failed");
+  }
 
   const billingRow =
-    (data as Pick<BillingRow, "plan_tier" | "status" | "current_period_end" | "cancel_at_period_end"> | null) ?? null;
+    (data as (Pick<BillingRow, "plan_tier" | "status" | "current_period_end" | "cancel_at_period_end" | "metadata">) | null) ?? null;
+  const billingMetadata =
+    billingRow?.metadata && typeof billingRow.metadata === "object" && !Array.isArray(billingRow.metadata)
+      ? billingRow.metadata as Record<string, unknown>
+      : {};
+  const commerciallyActivated =
+    Boolean(
+      activationResult.data &&
+      typeof activationResult.data === "object" &&
+      "id" in activationResult.data &&
+      typeof activationResult.data.id === "string"
+    ) ||
+    billingMetadata.legacy_commercial_activation_reconciled === true ||
+    billingMetadata.legacy_commercial_activation_reconciled === "true";
   const qaOverride = getQaBillingAcceptanceOverrideMatch({
     email: params.email,
     userId: params.userId,
@@ -248,6 +277,7 @@ export async function getCampaignEntitlementsForOrganization(params: {
     launchOverride,
     launchOverrideSource,
     launchOverrideMatchedBy,
+    commerciallyActivated,
   });
 }
 

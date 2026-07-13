@@ -11,6 +11,10 @@ const migrationPath = path.join(
   root,
   "supabase/migrations/20260710235000_create_launch_receipts_optimizer_support.sql",
 );
+const externalDeliveryMigrationPath = path.join(
+  root,
+  "supabase/migrations/20260713010000_harden_support_external_delivery.sql",
+);
 const preflightPath = path.join(
   root,
   "docs/dealflow-completion/evidence/migration/read-only-preflight.sql",
@@ -122,6 +126,7 @@ async function waitForPostgres() {
 
 try {
   assert.ok(fs.existsSync(migrationPath), "Support migration is missing");
+  assert.ok(fs.existsSync(externalDeliveryMigrationPath), "External support delivery migration is missing");
   assert.ok(fs.existsSync(preflightPath), "Read-only pre-application migration check is missing");
   requireSuccess(
     docker(["image", "inspect", image], { timeout: 15_000 }),
@@ -275,9 +280,13 @@ try {
     fs.readFileSync(migrationPath, "utf8"),
     "Support migration failed against the disposable database",
   );
+  psql(
+    fs.readFileSync(externalDeliveryMigrationPath, "utf8"),
+    "External support delivery migration failed against the disposable database",
+  );
 
   psql(`
-    insert into auth.users(id) values ('${userId}');
+    insert into auth.users(id, email) values ('${userId}', 'signed-in@example.test');
     insert into public.organizations(id) values ('${organizationId}');
     insert into public.organization_memberships(organization_id, user_id)
     values ('${organizationId}', '${userId}');
@@ -382,6 +391,86 @@ try {
     `, "Support claim and max-attempt sweep failed"),
     `${duePendingOutboxId}|processing|1|support-worker`,
     "Support claim returned an exhausted row or failed to claim the due row",
+  );
+
+  assert.equal(
+    psql(`
+      begin;
+      set local role service_role;
+      set local request.jwt.claim.role = 'service_role';
+      select count(*)
+      from public.get_support_notification_delivery_payload_v1('${duePendingOutboxId}', 'wrong-worker');
+      commit;
+    `, "Wrong-worker support payload denial failed"),
+    "0",
+    "A worker without the exact lease could read support delivery content",
+  );
+
+  assert.equal(
+    psql(`
+      begin;
+      set local role service_role;
+      set local request.jwt.claim.role = 'service_role';
+      select concat_ws(':', outbox_id::text, ticket_id::text, organization_id::text, user_id::text, subject, reply_email)
+      from public.get_support_notification_delivery_payload_v1('${duePendingOutboxId}', 'support-worker');
+      commit;
+    `, "Support external payload lease proof failed"),
+    `${duePendingOutboxId}:40000000-0000-4000-8000-000000000003:${organizationId}:${userId}:Due pending notification:signed-in@example.test`,
+    "The external adapter could not load the exact leased ticket and user reference",
+  );
+
+  const destinationReference = `sha256:${"a".repeat(64)}`;
+  assert.equal(
+    psql(`
+      begin;
+      set local role service_role;
+      set local request.jwt.claim.role = 'service_role';
+      select public.settle_support_external_delivery_v1(
+        '${duePendingOutboxId}',
+        'wrong-worker',
+        'mail_sink',
+        'noncommunication_test',
+        '${destinationReference}',
+        'wrong-worker-receipt'
+      ) is null;
+      commit;
+    `, "Wrong-worker support settlement denial failed"),
+    "t",
+    "A worker without the exact lease could settle support delivery",
+  );
+  const deliveryReceiptId = psql(`
+    begin;
+    set local role service_role;
+    set local request.jwt.claim.role = 'service_role';
+    select public.settle_support_external_delivery_v1(
+      '${duePendingOutboxId}',
+      'support-worker',
+      'mail_sink',
+      'noncommunication_test',
+      '${destinationReference}',
+      'mail-sink-receipt-1'
+    );
+    commit;
+  `, "Support external receipt settlement failed");
+  assert.match(deliveryReceiptId, /^[0-9a-f-]{36}$/i);
+
+  assert.equal(
+    psql(`
+      select concat_ws(
+        ':',
+        queue.status,
+        (queue.locked_by is null)::text,
+        receipt.user_id::text,
+        receipt.delivery_scope,
+        receipt.destination_reference,
+        receipt.provider_receipt_id
+      )
+      from public.support_notification_outbox queue
+      join public.support_delivery_receipts receipt on receipt.outbox_id = queue.id
+      where queue.id = '${duePendingOutboxId}';
+    `, "Support external durable receipt verification failed"),
+    `delivered:true:${userId}:noncommunication_test:${destinationReference}:mail-sink-receipt-1`,
+    "Support external settlement did not atomically persist the user-scoped receipt and deliver the outbox",
   );
 
   assert.equal(

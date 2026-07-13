@@ -13,7 +13,6 @@ export function FeedbackWidget() {
   const [pending, setPending] = useState(false);
   const [confusedText, setConfusedText] = useState("");
   const [blockerText, setBlockerText] = useState("");
-  const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -99,7 +98,6 @@ export function FeedbackWidget() {
           requestId,
           confusedText,
           blockerText,
-          email,
           page: pathname,
         }),
         timeoutMs: 7000,
@@ -123,7 +121,6 @@ export function FeedbackWidget() {
       );
       setConfusedText("");
       setBlockerText("");
-      setEmail("");
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -220,19 +217,10 @@ export function FeedbackWidget() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm text-white/75" htmlFor="feedback-email">
-                  Email (optional)
-                </label>
-                <input
-                  id="feedback-email"
-                  type="email"
-                  className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-sm text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-cyan-200/10"
-                  placeholder="you@team.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
+              <p className="text-sm leading-6 text-white/58">
+                Replies use the verified email on your signed-in account. A second email address is
+                not copied into the support ticket.
+              </p>
             </div>
 
             {error ? (
