@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   lstatSync,
@@ -131,6 +132,10 @@ try {
   writeFileSync(join(fixture, "ignored.txt"), "tracked but not deployed\n");
   writeFileSync(join(fixture, "package.json"), "{\"name\":\"fixture\"}\n");
   writeFileSync(join(fixture, "src", "app.ts"), "export const exact = true;\n");
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
+  );
   writeFileSync(manifestPath, "{}\n");
   git(["init", "-b", "fixture"]);
   git(["add", "."]);
@@ -144,7 +149,7 @@ try {
   );
   assert.deepEqual(
     manifest.entries.map((entry) => entry.path),
-    [".vercelignore", "package.json", "src/app.ts"],
+    [".vercelignore", "package.json", "src/app.ts", "vercel.json"],
   );
   const manifestSha256 = sha256(readFileSync(manifestPath));
 
@@ -170,6 +175,125 @@ try {
   assert.equal(stagingArtifact.vercelDryRunSourceSha256, "f".repeat(64));
   assert.equal(stagingArtifact.vercelDryRunFileCount, manifest.entryCount + 1);
   assert.equal(stagingArtifact.manifestSha256, manifestSha256);
+  assert.equal(
+    stagingArtifact.vercelConfigurationNormalization.status,
+    "PASS",
+  );
+  assert.equal(
+    stagingArtifact.vercelConfigurationNormalization.transformation,
+    "exact_source_bytes",
+  );
+
+  const normalizedVercelConfiguration = {
+    ...vercelConfiguration,
+    name: "dealflow-os-rebuild-selfserve-clean",
+    version: 2,
+  };
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(normalizedVercelConfiguration)}\n`,
+  );
+  const normalizedStaging = run({
+    env: exactStagingEnvironment(manifest, manifestSha256),
+  });
+  assert.equal(
+    normalizedStaging.status,
+    0,
+    `${normalizedStaging.stderr}\n${normalizedStaging.stdout}`,
+  );
+  const normalizedStagingArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(normalizedStagingArtifact.status, "HOSTED_SOURCE_VERIFIED");
+  assert.equal(
+    normalizedStagingArtifact.deployableSourceSha256,
+    manifest.deployableSourceSha256,
+  );
+  assert.equal(
+    normalizedStagingArtifact.vercelConfigurationNormalization.status,
+    "PASS",
+  );
+  assert.equal(
+    normalizedStagingArtifact.vercelConfigurationNormalization.transformation,
+    "vercel_canonical_config_normalization_v1",
+  );
+  assert.equal(
+    normalizedStagingArtifact.vercelConfigurationNormalization.recoveredSourceSha256,
+    manifest.entries.find((entry) => entry.path === "vercel.json").sha256,
+  );
+
+  for (const invalidHostedConfiguration of [
+    { ...normalizedVercelConfiguration, name: "wrong-staging-project" },
+    { ...normalizedVercelConfiguration, version: 3 },
+    { ...normalizedVercelConfiguration, unexpected: true },
+    {
+      ...vercelConfiguration,
+      unexpected: true,
+      name: "dealflow-os-rebuild-selfserve-clean",
+      version: 2,
+    },
+    {
+      ...vercelConfiguration,
+      installCommand: "npm install",
+      name: "dealflow-os-rebuild-selfserve-clean",
+      version: 2,
+    },
+    {
+      crons: vercelConfiguration.crons,
+      installCommand: vercelConfiguration.installCommand,
+      name: "dealflow-os-rebuild-selfserve-clean",
+      version: 2,
+    },
+    {
+      ...vercelConfiguration,
+      version: 2,
+      name: "dealflow-os-rebuild-selfserve-clean",
+    },
+  ]) {
+    writeFileSync(
+      join(fixture, "vercel.json"),
+      `${JSON.stringify(invalidHostedConfiguration)}\n`,
+    );
+    const invalidNormalization = run({
+      env: exactStagingEnvironment(manifest, manifestSha256),
+    });
+    assert.notEqual(invalidNormalization.status, 0);
+    assert.match(
+      invalidNormalization.stderr,
+      /Deployable source file does not match its manifest: vercel.json/,
+    );
+  }
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    JSON.stringify(normalizedVercelConfiguration),
+  );
+  const nonCanonicalHostedBytes = run({
+    env: exactStagingEnvironment(manifest, manifestSha256),
+  });
+  assert.notEqual(nonCanonicalHostedBytes.status, 0);
+  assert.match(
+    nonCanonicalHostedBytes.stderr,
+    /Deployable source file does not match its manifest: vercel.json/,
+  );
+
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(normalizedVercelConfiguration)}\n`,
+  );
+  chmodSync(join(fixture, "vercel.json"), 0o600);
+  const hostedModeDrift = run({
+    env: exactStagingEnvironment(manifest, manifestSha256),
+  });
+  assert.notEqual(hostedModeDrift.status, 0);
+  assert.match(
+    hostedModeDrift.stderr,
+    /Deployable source file does not match its manifest: vercel.json/,
+  );
+  chmodSync(join(fixture, "vercel.json"), 0o644);
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
+  );
 
   const selfAssertedProduction = run({
     env: {
@@ -322,5 +446,5 @@ try {
 }
 
 console.log(
-  "hosted build identity generator: PASS (exact Git deployable path set, immutable staging binding, fail-closed production trust, self-matching spoof rejection, generic preview non-regression, tamper/omission/extra/symlink rejection, and predeploy path-proof binding)",
+  "hosted build identity generator: PASS (exact Git deployable path set, deterministic Vercel config normalization, immutable staging binding, fail-closed production trust, self-matching spoof rejection, generic preview non-regression, tamper/omission/extra/symlink rejection, and predeploy path-proof binding)",
 );

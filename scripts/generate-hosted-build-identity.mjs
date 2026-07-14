@@ -21,6 +21,7 @@ const ARTIFACT_RELATIVE_PATH =
   "public/.well-known/dealflow-hosted-build-identity.json";
 const STAGING_HOST_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1";
+const STAGING_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const STAGING_PROJECT_ID_SHA256 =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
 const VERCEL_DEFAULT_IGNORED_TRACKED_PATHS = new Set([".gitignore"]);
@@ -65,10 +66,77 @@ function readExactRegularFile(root, path) {
   return { contents: readFileSync(absolute), size: stat.size, mode: stat.mode };
 }
 
-function portfolioDigest(entries, root, { verifyDeclared = true } = {}) {
+function recoverVercelNormalizedConfiguration(entry, file, target) {
+  // Vercel parses the uploaded configuration, compacts it, and appends its
+  // project name plus `version: 2` before the hosted build starts. Recover the
+  // tracked canonical bytes only when that exact transformation is observed.
+  if (entry.path !== "vercel.json" || target?.hosted !== true) return null;
+  if (entry.mode !== file.mode) return null;
+
+  let configuration;
+  try {
+    configuration = JSON.parse(file.contents.toString("utf8"));
+  } catch {
+    return null;
+  }
+  if (
+    !configuration ||
+    Array.isArray(configuration) ||
+    typeof configuration !== "object" ||
+    configuration.version !== 2 ||
+    typeof configuration.name !== "string" ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name) ||
+    (target.kind === "exact_staging" &&
+      configuration.name !== STAGING_PROJECT_NAME)
+  ) {
+    return null;
+  }
+  const keys = Object.keys(configuration);
+  if (
+    keys.length < 2 ||
+    keys.at(-2) !== "name" ||
+    keys.at(-1) !== "version"
+  ) {
+    return null;
+  }
+  const canonicalHostedBytes = Buffer.from(`${JSON.stringify(configuration)}\n`);
+  if (!file.contents.equals(canonicalHostedBytes)) return null;
+
+  const originalConfiguration = { ...configuration };
+  delete originalConfiguration.name;
+  delete originalConfiguration.version;
+  const recoveredSourceBytes = Buffer.from(
+    `${JSON.stringify(originalConfiguration, null, 2)}\n`,
+  );
+  if (
+    entry.size !== recoveredSourceBytes.length ||
+    entry.sha256 !== sha256(recoveredSourceBytes)
+  ) {
+    return null;
+  }
+  return {
+    recoveredSourceBytes,
+    evidence: {
+      status: "PASS",
+      transformation: "vercel_canonical_config_normalization_v1",
+      injectedProjectNameMatched:
+        target.kind !== "exact_staging" || configuration.name === STAGING_PROJECT_NAME,
+      injectedVersion: configuration.version,
+      hostedBytesSha256: sha256(file.contents),
+      recoveredSourceSha256: sha256(recoveredSourceBytes),
+    },
+  };
+}
+
+function portfolioDigest(
+  entries,
+  root,
+  { verifyDeclared = true, target = { hosted: false, kind: "local" } } = {},
+) {
   const digest = createHash("sha256");
   let previous = "";
   const normalized = [];
+  let vercelConfigurationNormalization = null;
   for (const entry of entries) {
     const path = assertSafeRelativePath(entry?.path);
     if (path <= previous) {
@@ -76,21 +144,28 @@ function portfolioDigest(entries, root, { verifyDeclared = true } = {}) {
     }
     previous = path;
     const file = readExactRegularFile(root, path);
-    const fileSha256 = sha256(file.contents);
+    let sourceBytes = file.contents;
+    let fileSha256 = sha256(sourceBytes);
     if (
       verifyDeclared &&
       (entry.size !== file.size ||
         entry.mode !== file.mode ||
         entry.sha256 !== fileSha256)
     ) {
-      throw new Error(`Deployable source file does not match its manifest: ${path}`);
+      const recovered = recoverVercelNormalizedConfiguration(entry, file, target);
+      if (!recovered) {
+        throw new Error(`Deployable source file does not match its manifest: ${path}`);
+      }
+      sourceBytes = recovered.recoveredSourceBytes;
+      fileSha256 = sha256(sourceBytes);
+      vercelConfigurationNormalization = recovered.evidence;
     }
-    digest.update(`${path.length}\0${path}\0${file.size}\0`);
-    digest.update(file.contents);
+    digest.update(`${path.length}\0${path}\0${sourceBytes.length}\0`);
+    digest.update(sourceBytes);
     digest.update("\0");
     normalized.push({
       path,
-      size: file.size,
+      size: sourceBytes.length,
       mode: file.mode,
       sha256: fileSha256,
     });
@@ -98,6 +173,7 @@ function portfolioDigest(entries, root, { verifyDeclared = true } = {}) {
   return {
     entries: normalized,
     deployableSourceSha256: digest.digest("hex"),
+    vercelConfigurationNormalization,
   };
 }
 
@@ -298,12 +374,12 @@ function verifyAndGenerateArtifact(root) {
   ) {
     throw new Error("Deployable source manifest is malformed");
   }
-  const portfolio = portfolioDigest(manifest.entries, root);
+  const target = classifyBuildTarget();
+  const portfolio = portfolioDigest(manifest.entries, root, { target });
   if (portfolio.deployableSourceSha256 !== manifest.deployableSourceSha256) {
     throw new Error("Deployable source portfolio digest does not match its manifest");
   }
   const manifestSha256 = sha256(manifestBytes);
-  const target = classifyBuildTarget();
   if (!target.hosted) {
     assertExactDeployableSourcePathSet({
       manifestPaths: manifest.entries.map((entry) => entry.path),
@@ -336,6 +412,11 @@ function verifyAndGenerateArtifact(root) {
     expectedIdentityMatched: exactHostedRelease,
     deployablePathSetVerified: !target.hosted || exactHostedRelease,
     predeployPathSetProofBound: exactHostedRelease,
+    vercelConfigurationNormalization:
+      portfolio.vercelConfigurationNormalization ?? {
+        status: "PASS",
+        transformation: "exact_source_bytes",
+      },
     vercelDryRunSourceSha256:
       release?.vercelDryRunSourceSha256 ?? null,
     vercelDryRunFileCount: release?.vercelDryRunFileCount ?? null,

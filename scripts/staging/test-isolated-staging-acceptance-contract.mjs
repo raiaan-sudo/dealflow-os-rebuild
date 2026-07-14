@@ -561,6 +561,10 @@ assert.match(runner, /NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256:/);
 assert.match(runner, /NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT:/);
 assert.match(runner, /buildArtifact\?\.deployablePathSetVerified !== true/);
 assert.match(runner, /buildArtifact\?\.predeployPathSetProofBound !== true/);
+assert.match(
+  runner,
+  /buildArtifact\?\.vercelConfigurationNormalization\?\.status !== "PASS"/,
+);
 assert.match(runner, /vercel-dry-run-source-proof\.json/);
 assert.ok(
   predeployClosedSurfaceIndex > releaseCapture && predeployClosedSurfaceIndex < configureIndex,

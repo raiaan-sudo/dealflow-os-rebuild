@@ -2389,6 +2389,7 @@ async function proveHostedBuildReleaseIdentity(
     buildArtifact?.expectedIdentityMatched !== true ||
     buildArtifact?.deployablePathSetVerified !== true ||
     buildArtifact?.predeployPathSetProofBound !== true ||
+    buildArtifact?.vercelConfigurationNormalization?.status !== "PASS" ||
     buildArtifact?.manifestSha256 !== identity.deployableManifestSha256 ||
     buildArtifact?.deployableSourceSha256 !== identity.deployableSourceSha256 ||
     buildArtifact?.deployableFileCount !== identity.deployableFileCount ||
