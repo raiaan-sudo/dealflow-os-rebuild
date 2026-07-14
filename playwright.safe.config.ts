@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 
 import { assertZeroExternalEffectsEnvironment } from "./src/lib/safety/zero-external-effects";
 import { assertExactHostedSafeBrowserOrigin } from "./scripts/staging/safe-browser-host-contract.mjs";
+import { exactVercelAutomationProtectionPortfolio } from "./scripts/staging/browser-context-network-boundary.mjs";
 import { LOCAL_SAFE_SERVER_ENVIRONMENT } from "./tests/e2e/safe-browser-environment";
 
 const configuredBaseUrl = process.env.SAFE_E2E_BASE_URL?.trim();
@@ -12,6 +13,27 @@ const baseURL = configuredBaseUrl
   : "http://127.0.0.1:3410";
 const shouldStartServer = !configuredBaseUrl;
 const browserChannel = process.env.SAFE_E2E_BROWSER_CHANNEL?.trim();
+const vercelProtectionPortfolio = configuredBaseUrl
+  ? exactVercelAutomationProtectionPortfolio({
+      applicationOrigins: [baseURL],
+      serializedPortfolio:
+        process.env.VERCEL_AUTOMATION_PROTECTION_PORTFOLIO ?? "",
+    })
+  : [];
+const vercelAutomationBypassRequired = vercelProtectionPortfolio.some(
+  ({ vercelAutomationBypassRequired: required }) => required,
+);
+const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "";
+if (
+  configuredBaseUrl &&
+  (vercelAutomationBypassRequired
+    ? vercelAutomationBypassSecret.length < 32 ||
+      vercelAutomationBypassSecret.trim() !== vercelAutomationBypassSecret ||
+      !/^[\x21-\x7e]+$/.test(vercelAutomationBypassSecret)
+    : vercelAutomationBypassSecret !== "")
+) {
+  throw new Error("Hosted safe browser proof has inexact Vercel automation bypass authority");
+}
 const artifactRoot = process.env.SAFE_E2E_OUTPUT_DIR?.trim() ||
   join(tmpdir(), `dealflow-playwright-safe-${process.pid}`);
 process.env.SAFE_E2E_RESOLVED_OUTPUT_DIR = artifactRoot;
@@ -67,6 +89,9 @@ export default defineConfig({
     trace: configuredBaseUrl ? "off" : "retain-on-failure",
     video: "off",
     serviceWorkers: "block",
+    // Never place the Vercel bypass secret in global browser request headers.
+    // Each hosted BrowserContext primes one host-only cookie through the
+    // exact-origin, no-redirect boundary before any page navigation.
   },
   projects: [
     project("desktop-chromium", devices["Desktop Chrome"]),

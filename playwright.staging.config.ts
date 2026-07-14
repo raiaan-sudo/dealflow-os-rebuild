@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { exactVercelAutomationProtectionPortfolio } from "./scripts/staging/browser-context-network-boundary.mjs";
 
 const baseURL = process.env.STAGING_ACCEPTANCE_BASE_URL?.trim();
 if (!baseURL) {
@@ -44,6 +45,28 @@ if (
 ) {
   throw new Error("Second white-label staging proof requires the exact isolated partner-two alias");
 }
+const vercelProtectionPortfolio = exactVercelAutomationProtectionPortfolio({
+  applicationOrigins: [
+    parsedBaseUrl.origin,
+    parsedPartnerBaseUrl.origin,
+    parsedSecondPartnerBaseUrl.origin,
+  ],
+  serializedPortfolio:
+    process.env.VERCEL_AUTOMATION_PROTECTION_PORTFOLIO ?? "",
+});
+const vercelAutomationBypassRequired = vercelProtectionPortfolio.some(
+  ({ vercelAutomationBypassRequired: required }) => required,
+);
+const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "";
+if (
+  vercelAutomationBypassRequired
+    ? vercelAutomationBypassSecret.length < 32 ||
+      vercelAutomationBypassSecret.trim() !== vercelAutomationBypassSecret ||
+      !/^[\x21-\x7e]+$/.test(vercelAutomationBypassSecret)
+    : vercelAutomationBypassSecret !== ""
+) {
+  throw new Error("Staging browser proof has inexact Vercel automation bypass authority");
+}
 
 const outputRoot = process.env.STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR?.trim() ||
   join(tmpdir(), `dealflow-staging-acceptance-${process.pid}`);
@@ -73,6 +96,8 @@ export default defineConfig({
     trace: "off",
     video: "off",
     serviceWorkers: "block",
+    // The bypass secret belongs only on exact-origin, no-redirect
+    // cookie-priming requests in the test context, never global headers.
   },
   projects: [
     { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },

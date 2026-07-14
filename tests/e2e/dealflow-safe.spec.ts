@@ -23,8 +23,10 @@ import {
   assertExactHostedSafeBrowserOrigin,
 } from "../../scripts/staging/safe-browser-host-contract.mjs";
 import {
+  exactVercelAutomationProtectionPortfolio,
   installBrowserContextNetworkBoundary,
   isExactLocalNextDevelopmentWebSocket,
+  primeVercelAutomationBypassCookies,
   safeHttpEvidenceTarget,
   safeWebSocketEvidenceTarget,
   scopedStagingAccessHeaders,
@@ -93,6 +95,8 @@ function sanitizeBrowserDiagnostic(value: string) {
   return String(value)
     .replace(/(?:https?|wss?):\/\/[^\s"'`<>]+/gi, (url) => safeHttpEvidenceTarget(url))
     .replace(/Bearer\s+[^\s"'`<>]+/gi, "Bearer [REDACTED]")
+    .replace(/x-vercel-protection-bypass\s*[:=]\s*[^\s"'`<>]+/gi, "x-vercel-protection-bypass=[REDACTED]")
+    .replace(/_vercel_jwt=[^\s;"'`<>]+/gi, "_vercel_jwt=[REDACTED]")
     .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED_JWT]")
     .replace(/sb-[a-z0-9-]+-auth-token(?:\.\d+)?=[^\s;]+/gi, "sb-[REDACTED]-auth-token=[REDACTED]")
     .slice(0, 2_000);
@@ -102,6 +106,21 @@ function getStagingAccessGateSecret() {
   const secret = process.env.STAGING_ACCESS_GATE_SECRET?.trim() ?? "";
   if (HOSTED_ACCEPTANCE && secret.length < 43) {
     throw new Error("Hosted safe browser proof requires the isolated staging access gate");
+  }
+  return secret;
+}
+
+function getVercelAutomationBypassSecret(required: boolean) {
+  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "";
+  if (
+    HOSTED_ACCEPTANCE &&
+    (required
+      ? secret.length < 32 ||
+        secret.trim() !== secret ||
+        !/^[\x21-\x7e]+$/.test(secret)
+      : secret !== "")
+  ) {
+    throw new Error("Hosted safe browser proof has inexact Vercel automation bypass authority");
   }
   return secret;
 }
@@ -201,9 +220,27 @@ async function installSafetyHarness(page: Page) {
   diagnosticsByPage.set(page, diagnostics);
 
   if (HOSTED_ACCEPTANCE) {
+    const applicationOrigins = [new URL(BASE_URL).origin];
+    const serializedProtectionPortfolio =
+      process.env.VERCEL_AUTOMATION_PROTECTION_PORTFOLIO ?? "";
+    const protectionPortfolio = exactVercelAutomationProtectionPortfolio({
+      applicationOrigins,
+      serializedPortfolio: serializedProtectionPortfolio,
+    });
+    const vercelAutomationBypassRequired = protectionPortfolio.some(
+      ({ vercelAutomationBypassRequired: required }) => required,
+    );
+    await primeVercelAutomationBypassCookies({
+      context,
+      applicationOrigins,
+      serializedProtectionPortfolio,
+      vercelAutomationBypassSecret: getVercelAutomationBypassSecret(
+        vercelAutomationBypassRequired,
+      ),
+    });
     await context.addCookies(
       stagingAccessCookiesForOrigins({
-        applicationOrigins: [new URL(BASE_URL).origin],
+        applicationOrigins,
         stagingAccessGateSecret: getStagingAccessGateSecret(),
       }),
     );
@@ -559,6 +596,20 @@ function assertAuthenticatedStagingPreconditions() {
     "The configured QA Supabase project does not match the exact isolated staging fingerprint.",
   ).toBe(EXPECTED_STAGING_PROJECT_FINGERPRINT);
   expect(internalSecret, "A restricted internal QA harness secret is required.").toBeTruthy();
+  const protectionPortfolio = exactVercelAutomationProtectionPortfolio({
+    applicationOrigins: [exactBase.origin],
+    serializedPortfolio:
+      process.env.VERCEL_AUTOMATION_PROTECTION_PORTFOLIO ?? "",
+  });
+  const bypassRequired = protectionPortfolio.some(
+    ({ vercelAutomationBypassRequired: required }) => required,
+  );
+  const browserBypassSecret = getVercelAutomationBypassSecret(bypassRequired);
+  if (bypassRequired) {
+    expect(browserBypassSecret.length).toBeGreaterThanOrEqual(32);
+  } else {
+    expect(browserBypassSecret).toBe("");
+  }
   expect(getStagingAccessGateSecret().length).toBeGreaterThanOrEqual(43);
   expect(Object.keys(safeBrowserSessionBundle().roles)).toEqual(["paidDirect"]);
 }

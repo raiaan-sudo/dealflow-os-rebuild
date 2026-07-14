@@ -7,6 +7,10 @@ import {
   assertZeroExternalEffectsEnvironment,
 } from "../../src/lib/safety/zero-external-effects";
 import { assertExactHostedSafeBrowserOrigin } from "../../scripts/staging/safe-browser-host-contract.mjs";
+import {
+  exactVercelAutomationProtectionPortfolio,
+  vercelAutomationBypassHeadersForExactOrigin,
+} from "../../scripts/staging/browser-context-network-boundary.mjs";
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
 const EXPECTED_STAGING_PROJECT_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
@@ -90,14 +94,38 @@ async function proveHostedZeroExternalEffects(baseUrl: URL) {
     throw new Error("Hosted acceptance requires a restricted internal secret of at least 32 characters.");
   }
   const stagingAccessGateSecret = getStagingAccessGateSecret();
+  const [vercelProtection] = exactVercelAutomationProtectionPortfolio({
+    applicationOrigins: [exactBaseUrl.origin],
+    serializedPortfolio: requireValue(
+      "VERCEL_AUTOMATION_PROTECTION_PORTFOLIO",
+    ),
+  });
 
   const endpoint = new URL("/api/internal/zero-external-effects", exactBaseUrl);
+  const vercelAutomationBypassSecret =
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "";
+  if (
+    !vercelProtection.vercelAutomationBypassRequired &&
+    vercelAutomationBypassSecret !== ""
+  ) {
+    throw new Error(
+      "Hosted safe browser preflight received unnecessary Vercel bypass authority.",
+    );
+  }
+  const vercelBypassHeaders = vercelProtection.vercelAutomationBypassRequired
+    ? vercelAutomationBypassHeadersForExactOrigin({
+        rawUrl: endpoint.toString(),
+        applicationOrigin: exactBaseUrl.origin,
+        vercelAutomationBypassSecret,
+      })
+    : {};
   const response = await fetch(endpoint, {
     method: "GET",
     redirect: "manual",
     headers: {
       Authorization: `Bearer ${secret}`,
       [STAGING_ACCESS_HEADER]: stagingAccessGateSecret,
+      ...vercelBypassHeaders,
       Accept: "application/json",
     },
     signal: AbortSignal.timeout(20_000),

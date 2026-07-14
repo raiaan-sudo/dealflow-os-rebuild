@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 976,
-  "deployableSourceSha256": "6ff87524e33cc88e443c088aca4c2e59d3b4502c466df12dc13d7d07491442b2",
+  "deployableSourceSha256": "a8c08fc83576467bad3f99047c403d027bbd825e8f54a361fb7a0ee9aab7ccc6",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -120,9 +120,9 @@
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 7407,
+      "size": 8206,
       "mode": 33188,
-      "sha256": "2dd0282f6a521a65e838f07b946bbc7fe575fb4469064371a59167dc9aa8dd0f"
+      "sha256": "cff789533feaf95224617c80d5650c0fed3aa218c4065db5d97cc59ec3f0ee14"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -624,15 +624,15 @@
     },
     {
       "path": "playwright.safe.config.ts",
-      "size": 2917,
+      "size": 4116,
       "mode": 33188,
-      "sha256": "d88744a1d0867f8d7d710155a0eb16a950386dbdb69d2166a77f5279ce83d3f2"
+      "sha256": "03cbae0875d01db1627d35176e49a94736b35e9043193e4a9cb8ae03b9054675"
     },
     {
       "path": "playwright.staging.config.ts",
-      "size": 3165,
+      "size": 4302,
       "mode": 33188,
-      "sha256": "56058366c09babc22bb4e084b712d5cc1d56e249110bfc07682d2da2b609176c"
+      "sha256": "89f4868bfcdf6f7116768200d0e349b7aa54609a6e05798c5ea81b2965d9391b"
     },
     {
       "path": "postcss.config.js",
@@ -948,9 +948,9 @@
     },
     {
       "path": "scripts/staging/browser-context-network-boundary.mjs",
-      "size": 5761,
+      "size": 13848,
       "mode": 33188,
-      "sha256": "178542ce3b8bbe8e789066f8a508d8d096f718b98a292f4cc334354188afb955"
+      "sha256": "81c4fa575a0e19c68cc1bf8088fd4683983655468e7a80a3ad8c9a9079d4d8ea"
     },
     {
       "path": "scripts/staging/browser-session-bundle-contract.mjs",
@@ -1014,9 +1014,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 198213,
+      "size": 208867,
       "mode": 33188,
-      "sha256": "49fdaee750b3c3e5481cf25c33f5b231bae7279015332e8eacece18fbd96ed8e"
+      "sha256": "0a8867a09f0f9e009ae20736367db43f2a00efaa2864ee81e3e7557dae333aa6"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1056,9 +1056,9 @@
     },
     {
       "path": "scripts/staging/test-browser-context-network-boundary.mjs",
-      "size": 12298,
+      "size": 23967,
       "mode": 33188,
-      "sha256": "bfdc58aadc9f791bc6b9cd02b82996b07f80922aa883e108df136fba39e996c4"
+      "sha256": "95a7ef8661d26550d4b176d1eea15024d57848465e5e4134332139112ca40290"
     },
     {
       "path": "scripts/staging/test-browser-session-bundle-contract.mjs",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 75149,
+      "size": 83759,
       "mode": 33188,
-      "sha256": "0ca7a267f6b1ffab985abb6eec1d015647a54b76a0a168bc311ba33c6183227b"
+      "sha256": "f26e588d43112fd063b09d1e6362f89a9683364ea869432fe0862e90327ac097"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1146,9 +1146,9 @@
     },
     {
       "path": "scripts/staging/test-vercel-alias-propagation-contract.mjs",
-      "size": 13301,
+      "size": 17805,
       "mode": 33188,
-      "sha256": "313876c27e533900908ffe084227596db44143c44c8820ad685bd5ccb423d46e"
+      "sha256": "4dd36c48efad789f0e333671c0e03a0779c848239a5770850e325616f01b8ae0"
     },
     {
       "path": "scripts/staging/test-vercel-dry-run-source-contract.mjs",
@@ -1170,9 +1170,9 @@
     },
     {
       "path": "scripts/staging/vercel-alias-propagation-contract.mjs",
-      "size": 10037,
+      "size": 14927,
       "mode": 33188,
-      "sha256": "cf9eab8a295c298fd0f6c9018d5a1b246301f2f8ff257c2e757abfad5b4e0f0d"
+      "sha256": "4bede407c9057dba75d37aa80fc291825b3afd963c37e7ca67a3b72bbd2bca04"
     },
     {
       "path": "scripts/staging/vercel-dry-run-source-contract.mjs",
@@ -5730,21 +5730,21 @@
     },
     {
       "path": "tests/e2e/dealflow-safe.spec.ts",
-      "size": 38161,
+      "size": 40106,
       "mode": 33188,
-      "sha256": "ac9931115e60f0f7416dc5dc4ae9cb8175553a0dcc4cdd8b1ce993252aa18417"
+      "sha256": "169e78aaf7b09004a39d321c902a7e9a5afc26598a69dc03eeba8a5b0f36e710"
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
-      "size": 31348,
+      "size": 33363,
       "mode": 33188,
-      "sha256": "cec6ab4d704dcb2612b6b7936e32af5e3671bce79224d70e5d9121f0c78e3d47"
+      "sha256": "6b166577d33974799d2d55f0fec7ca94411935565c2373a7fbc938d8d7139dfc"
     },
     {
       "path": "tests/e2e/global-safety-preflight.ts",
-      "size": 6123,
+      "size": 7133,
       "mode": 33188,
-      "sha256": "5fea1b3ac462192bd96dc3970bccc5821670835f45f5e6ef9d01e36f2ed53d3d"
+      "sha256": "06c2b83a0e30a7e11bbe0b784708da7af76ff20a10b8d961962f3c2c94a0a0c2"
     },
     {
       "path": "tests/e2e/safe-acceptance-reporter.mjs",
@@ -5766,9 +5766,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 15203,
+      "size": 16292,
       "mode": 33188,
-      "sha256": "ab8a08242a9f20bf510391fa18fb5c708caf75a656842c6c3e0a4e848cb1a401"
+      "sha256": "3cbda90183d0692cdd2105c33105d708df411bda29a564573a638c7048bbbd19"
     },
     {
       "path": "tests/performance/README.md",

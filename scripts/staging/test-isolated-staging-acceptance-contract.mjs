@@ -3,9 +3,18 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
@@ -260,6 +269,22 @@ const safeEnvironmentSource = runner.slice(
   runner.indexOf("function safeProductBrowserEnvironment("),
   runner.indexOf("function percentile("),
 );
+const hostedEnvironmentSource = runner.slice(
+  runner.indexOf("function hostedStagingEnvironment("),
+  runner.indexOf("function prepareEvidenceDirectory("),
+);
+const hostedSecretNameSource = runner.slice(
+  runner.indexOf("const HOSTED_SECRET_ENV_NAMES"),
+  runner.indexOf("const PRODUCTION_OR_SHARED_HOSTS"),
+);
+const runPlaywrightSuiteSource = runner.slice(
+  runner.indexOf("async function runPlaywrightSuite("),
+  runner.indexOf("function multiRoleBrowserEnvironment("),
+);
+const browserBypassEnvironmentSource = runner.slice(
+  runner.indexOf("function browserVercelAutomationBypassEnvironment("),
+  runner.indexOf("function multiRoleBrowserEnvironment("),
+);
 assert.match(multiRoleEnvironmentSource, /STAGING_QA_PASSWORD/);
 assert.match(multiRoleEnvironmentSource, /SAFE_E2E_INTERNAL_SECRET/);
 assert.doesNotMatch(multiRoleEnvironmentSource, /STAGING_ACCEPTANCE_INTERNAL_SECRET/);
@@ -273,6 +298,116 @@ assert.doesNotMatch(safeEnvironmentSource, /STAGING_ACCEPTANCE_INTERNAL_SECRET/)
 assert.doesNotMatch(safeEnvironmentSource, /QA_EMAIL/);
 assert.match(multiRoleEnvironmentSource, /STAGING_ACCESS_GATE_SECRET/);
 assert.match(safeEnvironmentSource, /STAGING_ACCESS_GATE_SECRET/);
+assert.match(
+  multiRoleEnvironmentSource,
+  /\.\.\.browserVercelAutomationBypassEnvironment\(protectionPortfolio\)/,
+);
+assert.match(
+  safeEnvironmentSource,
+  /\.\.\.browserVercelAutomationBypassEnvironment\(protectionPortfolio\)/,
+);
+assert.match(
+  browserBypassEnvironmentSource,
+  /VERCEL_AUTOMATION_BYPASS_SECRET/,
+);
+let browserBypassSecretReadCount = 0;
+const browserBypassSandbox = {
+  requiredStrongStagingSecret(name, minimumLength) {
+    assert.equal(name, "VERCEL_AUTOMATION_BYPASS_SECRET");
+    assert.equal(minimumLength, 32);
+    browserBypassSecretReadCount += 1;
+    return "v".repeat(48);
+  },
+};
+runInNewContext(
+  `${browserBypassEnvironmentSource}\nthis.browserBypassEnvironmentForContract = browserVercelAutomationBypassEnvironment;`,
+  browserBypassSandbox,
+);
+const unprotectedBrowserEnvironment =
+  browserBypassSandbox.browserBypassEnvironmentForContract([{
+    origin: "https://stable.example.test",
+    vercelAutomationBypassRequired: false,
+  }]);
+assert.equal(JSON.stringify(unprotectedBrowserEnvironment), "{}");
+assert.equal(browserBypassSecretReadCount, 0);
+const protectedBrowserEnvironment =
+  browserBypassSandbox.browserBypassEnvironmentForContract([
+    {
+      origin: "https://stable.example.test",
+      vercelAutomationBypassRequired: false,
+    },
+    {
+      origin: "https://partner.example.test",
+      vercelAutomationBypassRequired: true,
+    },
+  ]);
+assert.equal(
+  protectedBrowserEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
+  "v".repeat(48),
+);
+assert.equal(browserBypassSecretReadCount, 1);
+assert.match(
+  multiRoleEnvironmentSource,
+  /VERCEL_AUTOMATION_PROTECTION_PORTFOLIO:\s*JSON\.stringify/,
+);
+assert.match(
+  multiRoleEnvironmentSource,
+  /exactAliasAccess\.map\([\s\S]*\(\{ url, vercelAutomationBypassRequired \}\)/,
+);
+assert.match(
+  safeEnvironmentSource,
+  /VERCEL_AUTOMATION_PROTECTION_PORTFOLIO:\s*JSON\.stringify/,
+);
+assert.match(safeEnvironmentSource, /origin: stableAliasAccess\.url/);
+assert.doesNotMatch(hostedEnvironmentSource, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+assert.doesNotMatch(
+  hostedEnvironmentSource,
+  /VERCEL_AUTOMATION_PROTECTION_PORTFOLIO/,
+);
+assert.doesNotMatch(hostedSecretNameSource, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+assert.ok(
+  (runPlaywrightSuiteSource.match(/process\.env\.VERCEL_AUTOMATION_BYPASS_SECRET/g) ?? [])
+    .length >= 2,
+  "the browser command and its artifact sanitizer must both protect the Vercel bypass secret",
+);
+assert.match(browserConfig, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+assert.match(safeBrowserConfig, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+assert.doesNotMatch(browserConfig, /extraHTTPHeaders/);
+assert.doesNotMatch(safeBrowserConfig, /extraHTTPHeaders/);
+assert.match(browserSpec, /primeVercelAutomationBypassCookies\(\{/);
+assert.match(safeBrowserSpec, /primeVercelAutomationBypassCookies\(\{/);
+assert.match(
+  browserSpec,
+  /serializedProtectionPortfolio = requiredEnvironment\([\s\S]*VERCEL_AUTOMATION_PROTECTION_PORTFOLIO/,
+);
+assert.match(browserSpec, /serializedProtectionPortfolio,/);
+assert.match(
+  safeBrowserSpec,
+  /serializedProtectionPortfolio =[\s\S]*VERCEL_AUTOMATION_PROTECTION_PORTFOLIO/,
+);
+assert.match(safeBrowserSpec, /serializedProtectionPortfolio,/);
+assert.match(globalSafetyPreflight, /vercelAutomationBypassHeadersForExactOrigin\(\{/);
+assert.match(
+  globalSafetyPreflight,
+  /vercelProtection\.vercelAutomationBypassRequired[\s\S]*\? vercelAutomationBypassHeadersForExactOrigin/,
+);
+assert.match(
+  browserContextBoundary,
+  /exactVercelAutomationProtectionPortfolio/,
+);
+assert.match(browserContextBoundary, /maxRedirects: 0/);
+assert.match(browserContextBoundary, /responseStatus !== 307/);
+assert.match(browserContextBoundary, /resolvedResponseLocation !== requestUrl/);
+assert.match(browserContextBoundary, /VERCEL_AUTOMATION_BYPASS_COOKIE = "_vercel_jwt"/);
+assert.match(browserContextBoundaryTest, /redirect-followed/);
+assert.match(browserContextBoundaryTest, /domain-cookie/);
+assert.match(browserContextBoundaryTest, /an inexact origin reached the priming transport/);
+assert.match(browserContextBoundaryTest, /mixedProtectionPortfolio/);
+assert.match(
+  browserContextBoundaryTest,
+  /the unprotected stable alias received a Vercel bypass request/,
+);
+assert.match(browserContextBoundaryTest, /partialFailureCookies\.size, 0/);
 assert.match(safeBrowserSpec, /page\.request\.fetch\(target\.toString\(\), \{/);
 assert.match(safeBrowserSpec, /target\.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN/);
 assert.match(safeBrowserSpec, /target\.pathname !== "\/api\/internal\/qa-auth-session"/);
@@ -535,7 +670,7 @@ const uniqueProtectionIndex = runner.indexOf(
   "await proveUniqueDeploymentProtectionRedirect(",
 );
 const stableGateIndex = runner.indexOf(
-  "await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0])",
+  "await proveExactPostDeployAppAliasGate(stableAliasAccess)",
 );
 const stablePropagationIndex = runner.indexOf(
   "const stableAliasPropagation =",
@@ -564,7 +699,7 @@ const partnerTwoIdentityIndex = runner.indexOf(
   "const secondPartnerIdentityImmediatelyAfterAlias =",
 );
 const firstReadinessIndex = runner.indexOf(
-  "const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL)",
+  "const stableReady = await waitForDeployment(",
 );
 const seedIndex = runner.indexOf("const seedOne = await runSeed(");
 assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
@@ -654,13 +789,39 @@ assert.match(runner, /EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS/);
 assert.match(runner, /EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS/);
 assert.match(runner, /alias-edge-propagation-\$\{alias\.label\}\.json/);
 assert.match(runner, /intermediateDispositionAllowed: "VERCEL_DEPLOYMENT_NOT_FOUND"/);
-assert.match(runner, /requiredFinalDisposition: "DEALFLOW_APPLICATION_GATE"/);
+assert.match(
+  runner,
+  /DEALFLOW_APPLICATION_GATE_OR_EXACT_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION/,
+);
 assert.match(runner, /gateCredentialSentDuringWait: false/);
+assert.match(runner, /VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass"/);
+assert.match(runner, /process\.env\.VERCEL_AUTOMATION_BYPASS_SECRET/);
+assert.match(
+  runner,
+  /requiredStrongStagingSecret\("VERCEL_AUTOMATION_BYPASS_SECRET", 32\)/,
+);
+assert.match(runner, /withVercelAutomationBypass\(\{\}, true\)/);
+assert.match(runner, /bypassReachedExactApplicationGate/);
+assert.match(runner, /protectionBypass\.status === 404/);
+assert.match(runner, /protectionBypass\.disposition === "DEALFLOW_APPLICATION_GATE"/);
+assert.match(runner, /vercelAutomationBypassSecretPersistedToEvidence: false/);
 assert.match(runner, /publicWindowObserved: false/);
 assert.match(runner, /threeAliasEdgePropagationPassed: true/);
 assert.match(vercelAliasPropagationContract, /EXACT_ALIAS_PROPAGATION_TIMEOUT_MS = 180_000/);
 assert.match(vercelAliasPropagationContract, /EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS = 2_000/);
-assert.match(vercelAliasPropagationContract, /observation\.status !== 404/);
+assert.match(
+  vercelAliasPropagationContract,
+  /classifyExactVercelAutomationProtectionRedirect/,
+);
+assert.match(vercelAliasPropagationContract, /status !== 302/);
+assert.match(vercelAliasPropagationContract, /location\.origin !== "https:\/\/vercel\.com"/);
+assert.match(vercelAliasPropagationContract, /location\.pathname !== "\/sso-api"/);
+assert.match(vercelAliasPropagationContract, /\^\[a-f0-9\]\{64\}\$/);
+assert.match(vercelAliasPropagationContract, /returnUrl !== endpoint\.toString\(\)/);
+assert.match(
+  vercelAliasPropagationContract,
+  /DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION/,
+);
 assert.match(vercelAliasPropagationContract, /observation\.redirected !== false/);
 assert.match(vercelAliasPropagationContract, /observation\.locationPresent !== false/);
 assert.match(vercelAliasPropagationContract, /observation\.responseUrlExact !== true/);
@@ -685,6 +846,9 @@ assert.match(vercelAliasPropagationTest, /requestTimeouts, \[5_000, 3_000, 1_000
 assert.match(vercelAliasPropagationTest, /probeAdvanceMs: 101/);
 assert.match(vercelAliasPropagationTest, /mappingAdvanceMs: 101/);
 assert.match(vercelAliasPropagationTest, /transientThenPublicError\.safeTerminalObservation\.status, 200/);
+assert.match(vercelAliasPropagationTest, /protectedImmediate\.state\.mappingCalls, 1/);
+assert.match(vercelAliasPropagationTest, /protectedPublicBypassError/);
+assert.match(vercelAliasPropagationTest, /evil\.example/);
 assert.match(vercelAliasPropagationTest, /rejectedSecretReads, 0/);
 assert.match(vercelAliasPropagationTest, /headerFailureHeaders, \[\{\}, \{ "x-test-gate": "test-secret" \}\]/);
 const propagationWaitSource = runner.slice(
@@ -692,8 +856,9 @@ const propagationWaitSource = runner.slice(
   runner.indexOf("async function proveClosedPreDeployAppAliasSurface("),
 );
 assert.doesNotMatch(propagationWaitSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
-assert.match(propagationWaitSource, /catch \(error\)[\s\S]+throw error/);
+assert.match(propagationWaitSource, /withVercelAutomationBypass\(\{\}, true\)/);
 assert.match(propagationWaitSource, /post-propagation alias/);
+assert.match(propagationWaitSource, /catch \(error\)[\s\S]+throw error/);
 assert.match(propagationWaitSource, /mapping\?\.deploymentId !== deployment\.deploymentId/);
 assert.match(propagationWaitSource, /allowDuringTermination: true/);
 assert.match(propagationWaitSource, /publicWindowProofStatus/);
@@ -867,7 +1032,11 @@ assert.match(runner, /postdeploy-static-asset-gate\.json/);
 assert.match(runner, /noGate\.status !== 404/);
 assert.match(runner, /headerGate\.status !== 200/);
 assert.match(runner, /cookieGate\.status !== 200/);
-assert.match(runner, /!\[301, 302, 303, 307, 308\]\.includes\(response\.status\)/);
+assert.match(
+  runner,
+  /protectionRedirect = classifyExactVercelAutomationProtectionRedirect\(\{/,
+);
+assert.match(runner, /protectionLocation: protectionRedirect\.locationOriginPath/);
 assert.doesNotMatch(runner, /const uniqueReady = await waitForDeployment/);
 assert.doesNotMatch(
   runner,
@@ -1013,7 +1182,10 @@ assert.doesNotMatch(rlsFixtureSmoke, /insertOne\(admin, "provider_usage_(?:event
 assert.doesNotMatch(rlsFixtureSmoke, /\["stripe_webhook_events",/);
 assert.doesNotMatch(rlsFixtureSmoke, /\["provider_usage_(?:events|limits)",/);
 
-const loadBody = /async function runHostedLoadProof\(baseUrl\) \{([\s\S]*?)\n\}/.exec(runner)?.[1];
+const loadBody =
+  /async function runHostedLoadProof\(baseUrl, vercelAutomationBypassRequired\) \{([\s\S]*?)\n\}/.exec(
+    runner,
+  )?.[1];
 assert.ok(loadBody, "hosted load proof must remain statically inspectable");
 assert.match(loadBody, /methods: \["GET"\]/);
 assert.match(loadBody, /leadCapturePostAttempted: false/);
@@ -1194,6 +1366,61 @@ assert.match(runner, /function assertEvidenceSanitized/);
 assert.match(runner, /Evidence sanitization rejected an exact protected value/);
 assert.match(runner, /REDACTED_SSR_AUTH_COOKIE/);
 assert.match(runner, /\\bbase64-\[A-Za-z0-9_-\]\{24,\}/);
+const protectedRuntimeValuesSource = runner.slice(
+  runner.indexOf("function protectedRuntimeValues()"),
+  runner.indexOf("function assertFailClosedExecutionEnvironment()"),
+);
+const successfulEvidenceSealSource = runner.slice(
+  runner.indexOf("const seal = sealEvidenceBundle(options.evidenceDir, summary, ["),
+  runner.indexOf("failureContext.sealCompleted = true;"),
+);
+assert.match(
+  protectedRuntimeValuesSource,
+  /process\.env\.VERCEL_AUTOMATION_BYPASS_SECRET/,
+  "the complete protected runtime portfolio must include the Vercel automation bypass secret",
+);
+assert.match(
+  successfulEvidenceSealSource,
+  /\.\.\.protectedRuntimeValues\(\)/,
+  "the final successful evidence seal must scan the complete protected runtime portfolio",
+);
+
+const sanitizationContractSource = runner.slice(
+  runner.indexOf("function listEvidenceFiles(root)"),
+  runner.indexOf("function sealEvidenceBundle("),
+);
+const sanitizationSandbox = {
+  Buffer,
+  join,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  relative,
+};
+runInNewContext(
+  `${sanitizationContractSource}\nthis.assertEvidenceSanitizedForContract = assertEvidenceSanitized;`,
+  sanitizationSandbox,
+);
+const exactBypassSecret = "vercel-automation-bypass-contract-secret-1234567890";
+const exactSecretEvidenceDir = mkdtempSync(
+  join(tmpdir(), "dealflow-exact-secret-sanitization-contract-"),
+);
+try {
+  writeFileSync(
+    join(exactSecretEvidenceDir, "proof.json"),
+    JSON.stringify({ accidentallyPersisted: exactBypassSecret }),
+  );
+  assert.throws(
+    () => sanitizationSandbox.assertEvidenceSanitizedForContract(
+      exactSecretEvidenceDir,
+      [exactBypassSecret],
+    ),
+    /Evidence sanitization rejected an exact protected value in proof\.json/,
+    "the runner's exact sanitizer must reject a persisted Vercel bypass secret",
+  );
+} finally {
+  rmSync(exactSecretEvidenceDir, { recursive: true, force: true });
+}
 assert.match(runner, /registerUnsealedPlaywrightArtifactDirectories/);
 assert.match(runner, /deleteAllRegisteredUnsealedPlaywrightArtifacts/);
 assert.match(runner, /UNSEALED_PLAYWRIGHT_FAILURE_POLICY/);

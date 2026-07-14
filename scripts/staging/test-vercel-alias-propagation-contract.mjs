@@ -9,6 +9,7 @@ import {
   ExactAliasPropagationHardFailureError,
   ExactAliasPropagationTimeoutError,
   classifyExactAliasPropagationObservation,
+  classifyExactVercelAutomationProtectionRedirect,
   proveSequentialExactApplicationGate,
   summarizeExactAliasPropagationFailure,
   waitForExactAliasPropagation,
@@ -18,10 +19,77 @@ const exactObservation = (overrides = {}) => ({
   status: 404,
   redirected: false,
   locationPresent: false,
+  protectionBypass: null,
+  protectionRedirect: null,
   responseUrlExact: true,
   disposition: "VERCEL_DEPLOYMENT_NOT_FOUND",
   ...overrides,
 });
+
+const protectionRedirect = Object.freeze({
+  locationOriginPath: "https://vercel.com/sso-api",
+  locationQueryShapeExact: true,
+  nonceFormatExact: true,
+  redirectFollowed: false,
+  returnUrlExact: true,
+});
+
+const protectedObservation = (bypassOverrides = {}, overrides = {}) => ({
+  status: 302,
+  redirected: false,
+  locationPresent: true,
+  protectionRedirect,
+  protectionBypass: {
+    status: 404,
+    redirected: false,
+    locationPresent: false,
+    responseUrlExact: true,
+    disposition: "DEALFLOW_APPLICATION_GATE",
+    ...bypassOverrides,
+  },
+  responseUrlExact: true,
+  disposition:
+    "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
+  ...overrides,
+});
+
+const endpointUrl = "https://partner.example.com/privacy";
+const nonce = "a".repeat(64);
+const classifiedProtectionRedirect =
+  classifyExactVercelAutomationProtectionRedirect({
+    endpointUrl,
+    responseUrl: endpointUrl,
+    status: 302,
+    redirected: false,
+    rawLocation:
+      `https://vercel.com/sso-api?url=${encodeURIComponent(endpointUrl)}&nonce=${nonce}`,
+  });
+assert.deepEqual(classifiedProtectionRedirect, protectionRedirect);
+assert.doesNotMatch(JSON.stringify(classifiedProtectionRedirect), new RegExp(nonce));
+assert.doesNotMatch(JSON.stringify(classifiedProtectionRedirect), /partner\.example\.com/);
+for (const invalidRedirect of [
+  { status: 307 },
+  { redirected: true },
+  { responseUrl: "https://other.example.com/privacy" },
+  { rawLocation: `https://evil.example/sso-api?url=${encodeURIComponent(endpointUrl)}&nonce=${nonce}` },
+  { rawLocation: `https://vercel.com/other?url=${encodeURIComponent(endpointUrl)}&nonce=${nonce}` },
+  { rawLocation: `https://vercel.com/sso-api?url=${encodeURIComponent("https://other.example.com/privacy")}&nonce=${nonce}` },
+  { rawLocation: `https://vercel.com/sso-api?url=${encodeURIComponent(endpointUrl)}&nonce=short` },
+  { rawLocation: `https://vercel.com/sso-api?url=${encodeURIComponent(endpointUrl)}&nonce=${nonce}&extra=1` },
+]) {
+  assert.throws(
+    () => classifyExactVercelAutomationProtectionRedirect({
+      endpointUrl,
+      responseUrl: endpointUrl,
+      status: 302,
+      redirected: false,
+      rawLocation:
+        `https://vercel.com/sso-api?url=${encodeURIComponent(endpointUrl)}&nonce=${nonce}`,
+      ...invalidRedirect,
+    }),
+    /not exact/,
+  );
+}
 
 assert.equal(EXACT_ALIAS_PROPAGATION_TIMEOUT_MS, 180_000);
 assert.equal(EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS, 2_000);
@@ -39,6 +107,10 @@ assert.equal(
   ),
   "READY_EXACT_DEALFLOW_GATE",
 );
+assert.equal(
+  classifyExactAliasPropagationObservation(protectedObservation()),
+  "READY_EXACT_DEALFLOW_GATE",
+);
 
 for (const observation of [
   null,
@@ -50,6 +122,8 @@ for (const observation of [
   exactObservation({ responseUrlExact: false }),
   exactObservation({ disposition: "UNRECOGNIZED" }),
   { ...exactObservation(), unexpected: true },
+  protectedObservation({ status: 200, disposition: "AUTHORIZED_HTTP_200" }),
+  protectedObservation({}, { protectionRedirect: null }),
 ]) {
   assert.throws(
     () => classifyExactAliasPropagationObservation(observation),
@@ -108,6 +182,51 @@ assert.equal(immediateResult.observations[0].classification, "READY_EXACT_DEALFL
 assert.equal(immediate.state.mappingCalls, 1);
 assert.deepEqual(immediate.state.delays, []);
 assert.deepEqual(immediate.state.mappingTimeouts, [180_000]);
+
+const protectedImmediate = createFakeRun([protectedObservation()]);
+const protectedImmediateResult = await protectedImmediate.run();
+assert.equal(protectedImmediateResult.observations.length, 1);
+assert.equal(
+  protectedImmediateResult.observations[0].classification,
+  "READY_EXACT_DEALFLOW_GATE",
+);
+assert.equal(
+  protectedImmediateResult.observations[0].disposition,
+  "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
+);
+assert.equal(protectedImmediateResult.observations[0].vercelAutomationBypassUsed, true);
+assert.equal(protectedImmediateResult.observations[0].protectionBypassStatus, 404);
+assert.equal(
+  protectedImmediateResult.observations[0].protectionBypassDisposition,
+  "DEALFLOW_APPLICATION_GATE",
+);
+assert.equal(protectedImmediate.state.mappingCalls, 1);
+assert.deepEqual(protectedImmediate.state.delays, []);
+
+const protectedPublicBypass = createFakeRun([
+  protectedObservation({ status: 200, disposition: "AUTHORIZED_HTTP_200" }, {
+    disposition: "VERCEL_AUTOMATION_PROTECTION",
+  }),
+]);
+let protectedPublicBypassError;
+try {
+  await protectedPublicBypass.run();
+} catch (error) {
+  protectedPublicBypassError = error;
+}
+assert.ok(protectedPublicBypassError instanceof ExactAliasPropagationHardFailureError);
+assert.equal(protectedPublicBypassError.phase, "CLASSIFICATION");
+assert.equal(protectedPublicBypassError.safeTerminalObservation.status, 302);
+assert.equal(
+  protectedPublicBypassError.safeTerminalObservation.protectionBypass.status,
+  200,
+);
+assert.equal(protectedPublicBypass.state.mappingCalls, 0);
+assert.equal(
+  summarizeExactAliasPropagationFailure(protectedPublicBypassError)
+    .publicWindowObserved,
+  false,
+);
 
 const eventual = createFakeRun([
   exactObservation(),
@@ -391,5 +510,5 @@ await assert.rejects(
 assert.deepEqual(headerFailureHeaders, [{}, { "x-test-gate": "test-secret" }]);
 
 console.log(
-  "Vercel alias propagation contract: PASS (hard deadline after probe and mapping; truthful typed failures; exact Vercel 404 transient; exact DealFlow 404 success; bounded post-wait mapping recheck; public, redirected, malformed, transport, drift, timeout, and termination paths fail closed; credentials load and transmit strictly after each preceding gate passes)",
+  "Vercel alias propagation contract: PASS (hard deadline after probe and mapping; truthful typed failures; exact Vercel 404 transient; exact public 302 Vercel SSO plus no-app-gate automation bypass reaches the DealFlow 404; persistent protected aliases complete without following redirects; bounded post-bypass mapping recheck; public 2xx, malformed protection, redirected, transport, drift, timeout, and termination paths fail closed; raw Location query and nonce never enter safe observations)",
 );

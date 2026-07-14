@@ -41,6 +41,7 @@ import {
   EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
   EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
   ExactAliasPropagationTimeoutError,
+  classifyExactVercelAutomationProtectionRedirect,
   proveSequentialExactApplicationGate,
   summarizeExactAliasPropagationFailure,
   waitForExactAliasPropagation,
@@ -111,6 +112,7 @@ const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
 const HOSTED_RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v2";
 const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";
+const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
 const STAGING_IMAGE_OPTIMIZER_SOURCE_PATH =
   "/staging-image-optimizer-proof.png";
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
@@ -817,6 +819,7 @@ function protectedRuntimeValues() {
     process.env.VERCEL_TOKEN,
     process.env.VERCEL_ORG_ID,
     process.env.VERCEL_PROJECT_ID,
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -866,6 +869,7 @@ function assertFailClosedExecutionEnvironment() {
   requiredStrongStagingSecret("STAGING_QA_PASSWORD", 16);
   requiredStrongStagingSecret("PARTNER_ATTRIBUTION_SIGNING_SECRET", 32);
   requiredStrongStagingSecret("INTERNAL_SYSTEM_JOBS_SECRET", 32);
+  requiredStrongStagingSecret("VERCEL_AUTOMATION_BYPASS_SECRET", 32);
   const admins = requiredEnvironment("INTERNAL_ADMIN_EMAILS")
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -900,6 +904,27 @@ function withStagingAccess(headers = {}) {
   return {
     ...headers,
     [STAGING_ACCESS_HEADER]: requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43),
+  };
+}
+
+function withVercelAutomationBypass(headers = {}, required = false) {
+  if (!required) return { ...headers };
+  if (
+    !headers ||
+    typeof headers !== "object" ||
+    Array.isArray(headers) ||
+    Object.keys(headers).some(
+      (name) => name.toLowerCase() === VERCEL_PROTECTION_BYPASS_HEADER,
+    )
+  ) {
+    throw new Error("Vercel automation bypass headers must be runner-owned");
+  }
+  return {
+    ...headers,
+    [VERCEL_PROTECTION_BYPASS_HEADER]: requiredStrongStagingSecret(
+      "VERCEL_AUTOMATION_BYPASS_SECRET",
+      32,
+    ),
   };
 }
 
@@ -1991,12 +2016,19 @@ async function requestExactAppAlias(
   const payload = contentType.toLowerCase().includes("application/json")
     ? await response.json().catch(() => null)
     : (await response.arrayBuffer(), null);
-  if (
-    response.url !== endpoint.toString() ||
-    response.redirected ||
-    response.headers.has("location")
-  ) {
+  if (response.url !== endpoint.toString() || response.redirected) {
     throw new Error(`${alias.label} application-gate request changed URL`);
+  }
+  const rawLocation = response.headers.get("location");
+  let protectionRedirect = null;
+  if (response.status === 302) {
+    protectionRedirect = classifyExactVercelAutomationProtectionRedirect({
+      endpointUrl: endpoint.toString(),
+      responseUrl: response.url,
+      status: response.status,
+      redirected: response.redirected,
+      rawLocation,
+    });
   }
   const vercelDeploymentNotFound =
     response.status === 404 &&
@@ -2011,9 +2043,13 @@ async function requestExactAppAlias(
   return {
     status: response.status,
     redirected: false,
-    locationPresent: false,
+    locationPresent: rawLocation !== null,
+    protectionBypass: null,
+    protectionRedirect,
     responseUrlExact: true,
-    disposition: vercelDeploymentNotFound
+    disposition: protectionRedirect
+      ? "VERCEL_AUTOMATION_PROTECTION"
+      : vercelDeploymentNotFound
       ? "VERCEL_DEPLOYMENT_NOT_FOUND"
       : dealflowApplicationGate
         ? "DEALFLOW_APPLICATION_GATE"
@@ -2032,7 +2068,51 @@ async function waitForExactAppAliasPropagation(
   let result;
   try {
     result = await waitForExactAliasPropagation({
-      probe: ({ timeoutMs }) => requestExactAppAlias(alias, {}, { timeoutMs }),
+      probe: async ({ timeoutMs }) => {
+        const startedAt = performance.now();
+        const publicObservation = await requestExactAppAlias(
+          alias,
+          {},
+          { timeoutMs },
+        );
+        if (publicObservation.disposition !== "VERCEL_AUTOMATION_PROTECTION") {
+          return publicObservation;
+        }
+        const remainingMs = Math.floor(timeoutMs - (performance.now() - startedAt));
+        if (remainingMs < 1) {
+          throw new Error("Vercel automation bypass probe exhausted its bounded timeout");
+        }
+        const bypassObservation = await requestExactAppAlias(
+          alias,
+          withVercelAutomationBypass({}, true),
+          {
+            timeoutMs: Math.min(
+              EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+              remainingMs,
+            ),
+          },
+        );
+        const protectionBypass = Object.freeze({
+          status: bypassObservation.status,
+          redirected: bypassObservation.redirected,
+          locationPresent: bypassObservation.locationPresent,
+          responseUrlExact: bypassObservation.responseUrlExact,
+          disposition: bypassObservation.disposition,
+        });
+        const bypassReachedExactApplicationGate =
+          protectionBypass.status === 404 &&
+          protectionBypass.redirected === false &&
+          protectionBypass.locationPresent === false &&
+          protectionBypass.responseUrlExact === true &&
+          protectionBypass.disposition === "DEALFLOW_APPLICATION_GATE";
+        return Object.freeze({
+          ...publicObservation,
+          disposition: bypassReachedExactApplicationGate
+            ? "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION"
+            : "VERCEL_AUTOMATION_PROTECTION",
+          protectionBypass,
+        });
+      },
       verifyMapping: async ({ timeoutMs }) => {
         const mapping = await fetchExactAliasMapping(
           vercel,
@@ -2078,12 +2158,15 @@ async function waitForExactAppAliasPropagation(
           sanitize(error instanceof Error ? error.message : String(error), protectedRuntimeValues()),
         ),
         intermediateDispositionAllowed: "VERCEL_DEPLOYMENT_NOT_FOUND",
-        requiredFinalDisposition: "DEALFLOW_APPLICATION_GATE",
+        requiredFinalDisposition:
+          "DEALFLOW_APPLICATION_GATE_OR_EXACT_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
         exactCandidateMappingProvenBeforeWait: true,
         exactCandidateMappingProvenAfterWait: false,
         redirectsFollowed: failureEvidence.redirectsFollowed,
         responseUrlExact: failureEvidence.responseUrlExact,
         gateCredentialSentDuringWait: false,
+        vercelAutomationBypassSecretSentOnlyToExactAlias: true,
+        vercelAutomationBypassSecretPersistedToEvidence: false,
         publicWindowObserved: failureEvidence.publicWindowObserved,
         publicWindowProofStatus: failureEvidence.publicWindowProofStatus,
         productionOrSharedAliasChanged: false,
@@ -2108,19 +2191,30 @@ async function waitForExactAppAliasPropagation(
     transientDeploymentNotFoundCount: result.observations.filter(
       ({ disposition }) => disposition === "VERCEL_DEPLOYMENT_NOT_FOUND",
     ).length,
+    vercelAutomationProtectionCount: result.observations.filter(
+      ({ disposition }) =>
+        disposition ===
+        "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
+    ).length,
+    vercelAutomationBypassRequired:
+      result.observations.at(-1)?.vercelAutomationBypassUsed === true,
     elapsedMs: result.elapsedMs,
     firstDisposition: result.observations[0]?.disposition ?? null,
     finalDisposition: result.observations.at(-1)?.disposition ?? null,
     finalStatus: result.observations.at(-1)?.status ?? null,
     observations: result.observations,
     intermediateDispositionAllowed: "VERCEL_DEPLOYMENT_NOT_FOUND",
-    requiredFinalDisposition: "DEALFLOW_APPLICATION_GATE",
+    requiredFinalDisposition:
+      "DEALFLOW_APPLICATION_GATE_OR_EXACT_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
+    persistentVercelProtectionAcceptedOnlyWithExactBypassGate: true,
     exactCandidateMappingProvenBeforeWait: true,
     exactCandidateMappingProvenAfterWait: true,
     postWaitMapping: result.mappingProof,
     redirectsFollowed: false,
     responseUrlExact: true,
     gateCredentialSentDuringWait: false,
+    vercelAutomationBypassSecretSentOnlyToExactAlias: true,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
     publicWindowObserved: false,
     productionOrSharedAliasChanged: false,
   });
@@ -2168,11 +2262,59 @@ async function proveClosedPreDeployAppAliasSurface() {
   });
 }
 
-async function proveExactPostDeployAppAliasGate(alias) {
+function exactAliasRuntimeAccess(alias, propagationProof) {
+  const exactAlias = EXPECTED_APP_ALIASES.find(
+    ({ label, host, url }) =>
+      label === alias?.label && host === alias?.host && url === alias?.url,
+  );
+  const bypassRequired = propagationProof?.vercelAutomationBypassRequired === true;
+  if (
+    !exactAlias ||
+    propagationProof?.status !== "PASS" ||
+    propagationProof.aliasLabel !== exactAlias.label ||
+    propagationProof.aliasHost !== exactAlias.host ||
+    (bypassRequired &&
+      propagationProof.finalDisposition !==
+        "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION") ||
+    (!bypassRequired &&
+      propagationProof.finalDisposition !== "DEALFLOW_APPLICATION_GATE")
+  ) {
+    throw new Error("Alias runtime access requirement is not bound to exact propagation proof");
+  }
+  return Object.freeze({
+    ...exactAlias,
+    vercelAutomationBypassRequired: bypassRequired,
+  });
+}
+
+function assertExactAliasRuntimeAccessPortfolio(aliasAccessRequirements) {
+  if (
+    !Array.isArray(aliasAccessRequirements) ||
+    aliasAccessRequirements.length !== EXPECTED_APP_ALIASES.length ||
+    aliasAccessRequirements.some((access, index) =>
+      access?.label !== EXPECTED_APP_ALIASES[index].label ||
+      access?.host !== EXPECTED_APP_ALIASES[index].host ||
+      access?.url !== EXPECTED_APP_ALIASES[index].url ||
+      typeof access.vercelAutomationBypassRequired !== "boolean"
+    )
+  ) {
+    throw new Error("Alias runtime access portfolio is not exact");
+  }
+  return aliasAccessRequirements;
+}
+
+async function proveExactPostDeployAppAliasGate(aliasAccess) {
+  const alias = aliasAccess;
   const { noGate, headerGate, cookieGate } =
     await proveSequentialExactApplicationGate({
       label: alias.label,
-      request: (headers) => requestExactAppAlias(alias, headers),
+      request: (headers) => requestExactAppAlias(
+        alias,
+        withVercelAutomationBypass(
+          headers,
+          alias.vercelAutomationBypassRequired,
+        ),
+      ),
       getSecret: () => requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43),
       headerName: STAGING_ACCESS_HEADER,
       cookieName: STAGING_ACCESS_COOKIE,
@@ -2183,13 +2325,17 @@ async function proveExactPostDeployAppAliasGate(alias) {
     noGate,
     headerGate,
     cookieGate,
+    vercelAutomationBypassRequired:
+      alias.vercelAutomationBypassRequired,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
   });
 }
 
-async function provePostDeployAppAliasGate() {
+async function provePostDeployAppAliasGate(aliasAccessRequirements) {
+  assertExactAliasRuntimeAccessPortfolio(aliasAccessRequirements);
   const aliases = [];
-  for (const alias of EXPECTED_APP_ALIASES) {
-    aliases.push(await proveExactPostDeployAppAliasGate(alias));
+  for (const aliasAccess of aliasAccessRequirements) {
+    aliases.push(await proveExactPostDeployAppAliasGate(aliasAccess));
   }
   return Object.freeze({
     status: "PASS",
@@ -2200,6 +2346,10 @@ async function provePostDeployAppAliasGate() {
     headerGateStatus: 200,
     cookieGateStatus: 200,
     redirectsFollowed: false,
+    vercelAutomationBypassAliasCount: aliases.filter(
+      ({ vercelAutomationBypassRequired }) =>
+        vercelAutomationBypassRequired,
+    ).length,
     secretsPersistedToEvidence: false,
   });
 }
@@ -2221,7 +2371,10 @@ async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
     headers: {
       Accept: "*/*",
       "User-Agent": "DealFlow-Staging-Static-Gate/1.0",
-      ...headers,
+      ...withVercelAutomationBypass(
+        headers,
+        alias.vercelAutomationBypassRequired,
+      ),
     },
     redirect: "manual",
   }, 20_000);
@@ -2238,6 +2391,8 @@ async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
     contentType: (response.headers.get("content-type") ?? "").split(";")[0],
     redirectFollowed: false,
     responseUrlExact: true,
+    vercelAutomationBypassRequired:
+      alias.vercelAutomationBypassRequired,
   });
 }
 
@@ -2257,6 +2412,10 @@ async function requestExactPublicOptimizerSource(alias) {
     headers: {
       Accept: "image/png",
       "User-Agent": "DealFlow-Staging-Optimizer-Source-Proof/1.0",
+      ...withVercelAutomationBypass(
+        {},
+        alias.vercelAutomationBypassRequired,
+      ),
     },
     redirect: "manual",
   }, 20_000);
@@ -2277,15 +2436,22 @@ async function requestExactPublicOptimizerSource(alias) {
     bodySha256: sha256(body),
     redirectFollowed: false,
     stagingAccessCredentialSent: false,
+    vercelAutomationBypassRequired:
+      alias.vercelAutomationBypassRequired,
   });
 }
 
-async function provePostDeployStaticAssetGate() {
+async function provePostDeployStaticAssetGate(aliasAccessRequirements) {
+  assertExactAliasRuntimeAccessPortfolio(aliasAccessRequirements);
   const secret = requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43);
+  const stableAliasAccess = aliasAccessRequirements[0];
   const privacyResponse = await executionFetch(
     new URL("/privacy", EXPECTED_STAGING_BASE_URL),
     {
-      headers: withStagingAccess({ Accept: "text/html" }),
+      headers: withVercelAutomationBypass(
+        withStagingAccess({ Accept: "text/html" }),
+        stableAliasAccess.vercelAutomationBypassRequired,
+      ),
       redirect: "manual",
     },
     20_000,
@@ -2301,7 +2467,7 @@ async function provePostDeployStaticAssetGate() {
   const imagePath =
     "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
   const aliases = [];
-  for (const alias of EXPECTED_APP_ALIASES) {
+  for (const alias of aliasAccessRequirements) {
     const publicOptimizerSource = await requestExactPublicOptimizerSource(alias);
     const resources = [];
     for (const [kind, resourcePath] of [["chunk", chunkPath], ["image", imagePath]]) {
@@ -2330,6 +2496,8 @@ async function provePostDeployStaticAssetGate() {
     aliases.push({
       label: alias.label,
       host: alias.host,
+      vercelAutomationBypassRequired:
+        alias.vercelAutomationBypassRequired,
       publicOptimizerSource,
       resources,
     });
@@ -2347,6 +2515,7 @@ async function provePostDeployStaticAssetGate() {
     aliases,
     resourcePathsPersisted: false,
     secretsPersistedToEvidence: false,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
   });
 }
 
@@ -2376,21 +2545,16 @@ async function proveUniqueDeploymentProtectionRedirect(deploymentUrl, deployment
   }, 15_000);
   await response.arrayBuffer();
   const rawLocation = response.headers.get("location");
-  let location;
+  let protectionRedirect;
   try {
-    location = rawLocation ? new URL(rawLocation, endpoint) : null;
+    protectionRedirect = classifyExactVercelAutomationProtectionRedirect({
+      endpointUrl: endpoint.toString(),
+      responseUrl: response.url,
+      status: response.status,
+      redirected: response.redirected,
+      rawLocation,
+    });
   } catch {
-    location = null;
-  }
-  if (
-    response.url !== endpoint.toString() ||
-    ![301, 302, 303, 307, 308].includes(response.status) ||
-    !location ||
-    location.protocol !== "https:" ||
-    location.username !== "" ||
-    location.password !== "" ||
-    !(location.hostname === "vercel.com" || location.hostname.endsWith(".vercel.com"))
-  ) {
     throw new Error("Unique deployment did not retain the exact Vercel protection redirect");
   }
   return Object.freeze({
@@ -2398,27 +2562,44 @@ async function proveUniqueDeploymentProtectionRedirect(deploymentUrl, deployment
     deploymentHost,
     responseStatus: response.status,
     redirectFollowed: false,
-    protectionLocation: `${location.origin}${location.pathname}`,
+    protectionLocation: protectionRedirect.locationOriginPath,
+    protectionLocationQueryShapeExact:
+      protectionRedirect.locationQueryShapeExact,
+    protectionReturnUrlExact: protectionRedirect.returnUrlExact,
+    protectionNonceFormatExact: protectionRedirect.nonceFormatExact,
     stagingAccessCredentialSent: false,
+    vercelAutomationBypassCredentialSent: false,
   });
 }
 
-async function waitForDeployment(url, timeoutMs = 180_000) {
+async function waitForDeployment(
+  url,
+  vercelAutomationBypassRequired,
+  timeoutMs = 180_000,
+) {
   const startedAt = Date.now();
   let lastStatus = 0;
   while (Date.now() - startedAt < timeoutMs) {
     try {
       const response = await executionFetch(`${url}/privacy`, {
-        headers: withStagingAccess({
-          Accept: "text/html",
-          "User-Agent": "DealFlow-Staging-Acceptance/1.0",
-        }),
+        headers: withVercelAutomationBypass(
+          withStagingAccess({
+            Accept: "text/html",
+            "User-Agent": "DealFlow-Staging-Acceptance/1.0",
+          }),
+          vercelAutomationBypassRequired,
+        ),
         redirect: "manual",
       }, 15_000);
       lastStatus = response.status;
       await response.arrayBuffer();
       if (classifyStagingHostReadiness({ status: response.status }) === "ready") {
-        return { status: response.status, elapsedMs: Date.now() - startedAt };
+        return {
+          status: response.status,
+          elapsedMs: Date.now() - startedAt,
+          vercelAutomationBypassRequired,
+          vercelAutomationBypassSecretPersistedToEvidence: false,
+        };
       }
     } catch (error) {
       if (terminationRequested) throw terminationRequest.error;
@@ -2450,6 +2631,7 @@ async function proveHostedBuildReleaseIdentity(
   vercelDryRunSourceProof,
   baseUrl,
   expectedHost,
+  vercelAutomationBypassRequired,
 ) {
   const base = new URL(baseUrl);
   if (
@@ -2468,11 +2650,14 @@ async function proveHostedBuildReleaseIdentity(
 
   const endpoint = new URL("/api/internal/release-identity", base);
   const response = await executionFetch(endpoint, {
-    headers: withStagingAccess({
-      Authorization: `Bearer ${requiredEnvironment("INTERNAL_SYSTEM_JOBS_SECRET", 32)}`,
-      Accept: "application/json",
-      "User-Agent": "DealFlow-Staging-Release-Identity/1.0",
-    }),
+    headers: withVercelAutomationBypass(
+      withStagingAccess({
+        Authorization: `Bearer ${requiredEnvironment("INTERNAL_SYSTEM_JOBS_SECRET", 32)}`,
+        Accept: "application/json",
+        "User-Agent": "DealFlow-Staging-Release-Identity/1.0",
+      }),
+      vercelAutomationBypassRequired,
+    ),
     redirect: "manual",
   }, 30_000);
   const contentType = response.headers.get("content-type") ?? "";
@@ -2542,17 +2727,25 @@ async function proveHostedBuildReleaseIdentity(
     deployableFileCount: identity.deployableFileCount,
     vercelDryRunSourceSha256: vercelDryRunSourceProof.sourceSetSha256,
     vercelDryRunFileCount: vercelDryRunSourceProof.regularFileCount,
+    vercelAutomationBypassRequired,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
   });
 }
 
-async function assertHostedZeroEffects(baseUrl) {
+async function assertHostedZeroEffects(
+  baseUrl,
+  vercelAutomationBypassRequired = false,
+) {
   const secret = requiredEnvironment("INTERNAL_SYSTEM_JOBS_SECRET", 32);
   const endpoint = new URL("/api/internal/zero-external-effects", baseUrl);
   const response = await executionFetch(endpoint, {
-    headers: withStagingAccess({
-      Authorization: `Bearer ${secret}`,
-      Accept: "application/json",
-    }),
+    headers: withVercelAutomationBypass(
+      withStagingAccess({
+        Authorization: `Bearer ${secret}`,
+        Accept: "application/json",
+      }),
+      vercelAutomationBypassRequired,
+    ),
     redirect: "manual",
   }, 30_000);
   const payload = await response.json().catch(() => null);
@@ -2575,6 +2768,8 @@ async function assertHostedZeroEffects(baseUrl) {
     attestation: payload.attestation,
     checkedControlCount: payload.checkedControlCount,
     failedControlCount: payload.failedControls.length,
+    vercelAutomationBypassRequired,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
   };
 }
 
@@ -3325,6 +3520,7 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
       process.env.INTERNAL_SYSTEM_JOBS_SECRET,
       process.env.STAGING_ACCESS_GATE_SECRET,
       process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
+      process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       ...secrets,
     ],
   });
@@ -3333,6 +3529,7 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
     process.env.INTERNAL_SYSTEM_JOBS_SECRET,
     process.env.STAGING_ACCESS_GATE_SECRET,
     process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
     ...secrets,
   ]);
   const jsonPath = join(
@@ -3403,12 +3600,52 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
   return summary;
 }
 
+function browserVercelAutomationBypassEnvironment(protectionPortfolio) {
+  if (
+    !Array.isArray(protectionPortfolio) ||
+    protectionPortfolio.length === 0 ||
+    protectionPortfolio.some((entry) =>
+      !entry ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      JSON.stringify(Object.keys(entry).sort()) !==
+        JSON.stringify(["origin", "vercelAutomationBypassRequired"]) ||
+      typeof entry.origin !== "string" ||
+      typeof entry.vercelAutomationBypassRequired !== "boolean"
+    )
+  ) {
+    throw new Error("Browser Vercel protection portfolio is not exact");
+  }
+  if (
+    !protectionPortfolio.some(
+      ({ vercelAutomationBypassRequired }) =>
+        vercelAutomationBypassRequired,
+    )
+  ) {
+    return Object.freeze({});
+  }
+  return Object.freeze({
+    VERCEL_AUTOMATION_BYPASS_SECRET: requiredStrongStagingSecret(
+      "VERCEL_AUTOMATION_BYPASS_SECRET",
+      32,
+    ),
+  });
+}
+
 function multiRoleBrowserEnvironment(
-  deploymentUrl,
-  secondPartnerUrl,
+  aliasAccessRequirements,
   evidenceDir,
   browserSessionBundleJson,
 ) {
+  const exactAliasAccess = assertExactAliasRuntimeAccessPortfolio(
+    aliasAccessRequirements,
+  );
+  const protectionPortfolio = exactAliasAccess.map(
+    ({ url, vercelAutomationBypassRequired }) => ({
+      origin: url,
+      vercelAutomationBypassRequired,
+    }),
+  );
   return {
     CI: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
@@ -3417,25 +3654,43 @@ function multiRoleBrowserEnvironment(
     STAGING_SYNTHETIC_BROWSER_SESSION_BUNDLE: browserSessionBundleJson,
     STAGING_TURNSTILE_TEST_SITE_KEY: STAGING_TURNSTILE_SITE_KEY,
     STAGING_ACCEPTANCE_EXECUTION: "true",
-    STAGING_ACCEPTANCE_BASE_URL: EXPECTED_STAGING_BASE_URL,
-    STAGING_ACCEPTANCE_PARTNER_BASE_URL: deploymentUrl,
-    STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL: secondPartnerUrl,
+    STAGING_ACCEPTANCE_BASE_URL: exactAliasAccess[0].url,
+    STAGING_ACCEPTANCE_PARTNER_BASE_URL: exactAliasAccess[1].url,
+    STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL: exactAliasAccess[2].url,
+    VERCEL_AUTOMATION_PROTECTION_PORTFOLIO:
+      JSON.stringify(protectionPortfolio),
     SAFE_E2E_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
     STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
+    ...browserVercelAutomationBypassEnvironment(protectionPortfolio),
     STAGING_ACCEPTANCE_ZERO_EXTERNAL_EFFECTS_ATTESTATION: ZERO_EXTERNAL_EFFECTS_ATTESTATION,
     STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR: join(evidenceDir, "multi-role-browser-artifacts"),
   };
 }
 
-function safeProductBrowserEnvironment(evidenceDir, browserSessionBundleJson) {
+function safeProductBrowserEnvironment(
+  aliasAccessRequirements,
+  evidenceDir,
+  browserSessionBundleJson,
+) {
+  const [stableAliasAccess] = assertExactAliasRuntimeAccessPortfolio(
+    aliasAccessRequirements,
+  );
+  const protectionPortfolio = [{
+    origin: stableAliasAccess.url,
+    vercelAutomationBypassRequired:
+      stableAliasAccess.vercelAutomationBypassRequired,
+  }];
   return {
     CI: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     QA_AUTH_HARNESS_ENABLED: "true",
     QA_ISOLATED_SUPABASE_PROJECT_REF: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
-    SAFE_E2E_BASE_URL: EXPECTED_STAGING_BASE_URL,
+    SAFE_E2E_BASE_URL: stableAliasAccess.url,
+    VERCEL_AUTOMATION_PROTECTION_PORTFOLIO:
+      JSON.stringify(protectionPortfolio),
     SAFE_E2E_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
     STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
+    ...browserVercelAutomationBypassEnvironment(protectionPortfolio),
     SAFE_E2E_OUTPUT_DIR: join(evidenceDir, "safe-product-browser-artifacts"),
     SAFE_E2E_QA_AUTH: "true",
     SAFE_E2E_ZERO_EXTERNAL_EFFECTS_ATTESTATION: ZERO_EXTERNAL_EFFECTS_ATTESTATION,
@@ -3463,13 +3718,22 @@ async function runBoundedPool(items, concurrency, worker) {
   return results;
 }
 
-async function timedFetch(url, init, expectedHeaders = {}, acceptedStatuses = [200]) {
+async function timedFetch(
+  url,
+  init,
+  expectedHeaders = {},
+  acceptedStatuses = [200],
+  vercelAutomationBypassRequired = false,
+) {
   const startedAt = performance.now();
   try {
     const endpoint = new URL(url);
     const response = await executionFetch(endpoint, {
       ...init,
-      headers: withStagingAccess(init.headers ?? {}),
+      headers: withVercelAutomationBypass(
+        withStagingAccess(init.headers ?? {}),
+        vercelAutomationBypassRequired,
+      ),
       redirect: "manual",
     }, 30_000);
     await response.arrayBuffer();
@@ -3526,14 +3790,14 @@ function summarizeLoad(name, results, maxP95Ms) {
   };
 }
 
-async function runHostedLoadProof(baseUrl) {
-  await assertHostedZeroEffects(baseUrl);
+async function runHostedLoadProof(baseUrl, vercelAutomationBypassRequired) {
+  await assertHostedZeroEffects(baseUrl, vercelAutomationBypassRequired);
   const routePaths = ["/privacy", "/terms", `/f/${PUBLIC_FUNNEL_SLUG}`];
   const routeItems = Array.from({ length: 160 }, (_, index) => routePaths[index % routePaths.length]);
   const routeResults = await runBoundedPool(routeItems, 12, (path) =>
     timedFetch(`${baseUrl}${path}`, {
       headers: { Accept: "text/html", "User-Agent": "DealFlow-Staging-Load/1.0" },
-    }),
+    }, {}, [200], vercelAutomationBypassRequired),
   );
   const controlItems = Array.from({ length: 40 });
   const controlResults = await runBoundedPool(controlItems, 6, () =>
@@ -3549,6 +3813,8 @@ async function runHostedLoadProof(baseUrl) {
       {
         "x-robots-tag": "noindex",
       },
+      [200],
+      vercelAutomationBypassRequired,
     ),
   );
   return {
@@ -3560,6 +3826,8 @@ async function runHostedLoadProof(baseUrl) {
     ),
     methods: ["GET"],
     leadCapturePostAttempted: false,
+    vercelAutomationBypassRequired,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
   };
 }
 
@@ -4209,9 +4477,13 @@ async function main() {
     await waitForExactAppAliasPropagation(
       EXPECTED_APP_ALIASES[0], options.evidenceDir, vercel, deployment,
     );
+  const stableAliasAccess = exactAliasRuntimeAccess(
+    EXPECTED_APP_ALIASES[0],
+    stableAliasPropagation,
+  );
   failureContext.stage = "stable_alias_application_gate_verification";
   const stableGateImmediatelyAfterAlias =
-    await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0]);
+    await proveExactPostDeployAppAliasGate(stableAliasAccess);
   failureContext.stage = "stable_alias_build_identity_verification";
   const stableIdentityImmediatelyAfterAlias =
     await proveHostedBuildReleaseIdentity(
@@ -4219,6 +4491,7 @@ async function main() {
       vercelDryRunSourceProof,
       EXPECTED_STAGING_BASE_URL,
       EXPECTED_STAGING_HOST,
+      stableAliasAccess.vercelAutomationBypassRequired,
     );
   failureContext.stage = "partner_one_alias_configuration";
   const partnerOneAlias = await configureAndProveAppAlias(
@@ -4237,9 +4510,13 @@ async function main() {
     await waitForExactAppAliasPropagation(
       EXPECTED_APP_ALIASES[1], options.evidenceDir, vercel, deployment,
     );
+  const partnerOneAliasAccess = exactAliasRuntimeAccess(
+    EXPECTED_APP_ALIASES[1],
+    partnerOneAliasPropagation,
+  );
   failureContext.stage = "partner_one_application_gate_verification";
   const partnerOneGateImmediatelyAfterAlias =
-    await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[1]);
+    await proveExactPostDeployAppAliasGate(partnerOneAliasAccess);
   failureContext.stage = "partner_one_build_identity_verification";
   const partnerOneIdentityImmediatelyAfterAlias =
     await proveHostedBuildReleaseIdentity(
@@ -4247,6 +4524,7 @@ async function main() {
       vercelDryRunSourceProof,
       partnerOneAlias.aliasUrl,
       partnerOneAlias.aliasHost,
+      partnerOneAliasAccess.vercelAutomationBypassRequired,
     );
   failureContext.stage = "partner_two_alias_configuration";
   const secondPartnerAlias = await configureAndProveAppAlias(
@@ -4265,9 +4543,13 @@ async function main() {
     await waitForExactAppAliasPropagation(
       EXPECTED_APP_ALIASES[2], options.evidenceDir, vercel, deployment,
     );
+  const secondPartnerAliasAccess = exactAliasRuntimeAccess(
+    EXPECTED_APP_ALIASES[2],
+    secondPartnerAliasPropagation,
+  );
   failureContext.stage = "partner_two_application_gate_verification";
   const secondPartnerGateImmediatelyAfterAlias =
-    await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[2]);
+    await proveExactPostDeployAppAliasGate(secondPartnerAliasAccess);
   failureContext.stage = "partner_two_build_identity_verification";
   const secondPartnerIdentityImmediatelyAfterAlias =
     await proveHostedBuildReleaseIdentity(
@@ -4275,21 +4557,40 @@ async function main() {
       vercelDryRunSourceProof,
       secondPartnerAlias.aliasUrl,
       secondPartnerAlias.aliasHost,
+      secondPartnerAliasAccess.vercelAutomationBypassRequired,
     );
+  const aliasAccessRequirements = assertExactAliasRuntimeAccessPortfolio([
+    stableAliasAccess,
+    partnerOneAliasAccess,
+    secondPartnerAliasAccess,
+  ]);
   failureContext.stage = "stable_alias_readiness";
-  const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL);
+  const stableReady = await waitForDeployment(
+    EXPECTED_STAGING_BASE_URL,
+    stableAliasAccess.vercelAutomationBypassRequired,
+  );
   failureContext.stage = "partner_one_alias_readiness";
-  const partnerOneReady = await waitForDeployment(partnerOneAlias.aliasUrl);
+  const partnerOneReady = await waitForDeployment(
+    partnerOneAlias.aliasUrl,
+    partnerOneAliasAccess.vercelAutomationBypassRequired,
+  );
   failureContext.stage = "partner_two_alias_readiness";
-  const secondPartnerReady = await waitForDeployment(secondPartnerAlias.aliasUrl);
+  const secondPartnerReady = await waitForDeployment(
+    secondPartnerAlias.aliasUrl,
+    secondPartnerAliasAccess.vercelAutomationBypassRequired,
+  );
   failureContext.stage = "postdeployment_application_alias_gate_verification";
-  const postDeployAppAliasGate = await provePostDeployAppAliasGate();
+  const postDeployAppAliasGate = await provePostDeployAppAliasGate(
+    aliasAccessRequirements,
+  );
   writeJson(
     join(options.evidenceDir, "postdeploy-app-alias-gate.json"),
     postDeployAppAliasGate,
   );
   failureContext.stage = "postdeployment_static_asset_gate_verification";
-  const postDeployStaticAssetGate = await provePostDeployStaticAssetGate();
+  const postDeployStaticAssetGate = await provePostDeployStaticAssetGate(
+    aliasAccessRequirements,
+  );
   writeJson(
     join(options.evidenceDir, "postdeploy-static-asset-gate.json"),
     postDeployStaticAssetGate,
@@ -4422,9 +4723,18 @@ async function main() {
     throw new Error("Authenticated isolated-staging RLS proofs did not close with exact zero residue");
   }
 
-  const zeroEffectsStable = await assertHostedZeroEffects(EXPECTED_STAGING_BASE_URL);
-  const zeroEffectsPartner = await assertHostedZeroEffects(partnerOneAlias.aliasUrl);
-  const zeroEffectsPartnerTwo = await assertHostedZeroEffects(secondPartnerAlias.aliasUrl);
+  const zeroEffectsStable = await assertHostedZeroEffects(
+    EXPECTED_STAGING_BASE_URL,
+    stableAliasAccess.vercelAutomationBypassRequired,
+  );
+  const zeroEffectsPartner = await assertHostedZeroEffects(
+    partnerOneAlias.aliasUrl,
+    partnerOneAliasAccess.vercelAutomationBypassRequired,
+  );
+  const zeroEffectsPartnerTwo = await assertHostedZeroEffects(
+    secondPartnerAlias.aliasUrl,
+    secondPartnerAliasAccess.vercelAutomationBypassRequired,
+  );
   writeJson(join(options.evidenceDir, "hosted-zero-external-effects.json"), {
     status: "PASS",
     stableDirectHost: zeroEffectsStable,
@@ -4478,8 +4788,7 @@ async function main() {
   const multiRoleBundle = browserSessionBundle(multiRolePortfolio);
   syntheticSessionLifecycle.push(multiRolePortfolio.attestation);
   const multiRoleEnvironment = multiRoleBrowserEnvironment(
-    partnerOneAlias.aliasUrl,
-    secondPartnerAlias.aliasUrl,
+    aliasAccessRequirements,
     options.evidenceDir,
     multiRoleBundle.json,
   );
@@ -4502,6 +4811,7 @@ async function main() {
   const safeBundle = browserSessionBundle(safePortfolio);
   syntheticSessionLifecycle.push(safePortfolio.attestation);
   const safeBrowserEnvironment = safeProductBrowserEnvironment(
+    aliasAccessRequirements,
     options.evidenceDir,
     safeBundle.json,
   );
@@ -4581,7 +4891,10 @@ async function main() {
       ]).size === 3,
   });
 
-  const load = await runHostedLoadProof(EXPECTED_STAGING_BASE_URL);
+  const load = await runHostedLoadProof(
+    EXPECTED_STAGING_BASE_URL,
+    stableAliasAccess.vercelAutomationBypassRequired,
+  );
   const countsAfter = await captureNoEffectCounts(admin);
   if (JSON.stringify(countsBefore) !== JSON.stringify(countsAfter)) {
     throw new Error("Browser/load acceptance changed a provider-effect or lead count");
@@ -4700,14 +5013,7 @@ async function main() {
   const seal = sealEvidenceBundle(options.evidenceDir, summary, [
     execution.projectRef,
     vercelAuthority.projectId,
-    process.env.VERCEL_TOKEN,
-    process.env.VERCEL_ORG_ID,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    process.env.STAGING_QA_PASSWORD,
-    process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
-    process.env.INTERNAL_SYSTEM_JOBS_SECRET,
-    ...failureContext.transientSecrets,
+    ...protectedRuntimeValues(),
   ]);
   failureContext.sealCompleted = true;
   failureContext.unsealedPlaywrightArtifactDirectories = [];

@@ -7,18 +7,164 @@ export const EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS = 15_000;
 const EXACT_OBSERVATION_KEYS = Object.freeze([
   "disposition",
   "locationPresent",
+  "protectionBypass",
+  "protectionRedirect",
   "redirected",
   "responseUrlExact",
   "status",
 ]);
 
+const EXACT_PROTECTION_REDIRECT_KEYS = Object.freeze([
+  "locationOriginPath",
+  "locationQueryShapeExact",
+  "nonceFormatExact",
+  "redirectFollowed",
+  "returnUrlExact",
+]);
+
+const EXACT_PROTECTION_BYPASS_KEYS = Object.freeze([
+  "disposition",
+  "locationPresent",
+  "redirected",
+  "responseUrlExact",
+  "status",
+]);
+
+const SAFE_DISPOSITIONS = Object.freeze([
+  "VERCEL_DEPLOYMENT_NOT_FOUND",
+  "DEALFLOW_APPLICATION_GATE",
+  "AUTHORIZED_HTTP_200",
+  "VERCEL_AUTOMATION_PROTECTION",
+  "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
+  "UNRECOGNIZED",
+]);
+
+function hasExactKeys(value, keys) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    JSON.stringify(Object.keys(value).sort()) === JSON.stringify(keys)
+  );
+}
+
+function isSafeBasicResponse(value) {
+  return (
+    hasExactKeys(value, EXACT_PROTECTION_BYPASS_KEYS) &&
+    Number.isSafeInteger(value.status) &&
+    value.status >= 100 &&
+    value.status <= 599 &&
+    typeof value.redirected === "boolean" &&
+    typeof value.locationPresent === "boolean" &&
+    typeof value.responseUrlExact === "boolean" &&
+    SAFE_DISPOSITIONS.includes(value.disposition)
+  );
+}
+
+function isExactProtectionRedirectProof(value) {
+  return (
+    hasExactKeys(value, EXACT_PROTECTION_REDIRECT_KEYS) &&
+    value.locationOriginPath === "https://vercel.com/sso-api" &&
+    value.locationQueryShapeExact === true &&
+    value.nonceFormatExact === true &&
+    value.redirectFollowed === false &&
+    value.returnUrlExact === true
+  );
+}
+
+function isExactProtectedApplicationGate(observation) {
+  return (
+    observation.status === 302 &&
+    observation.redirected === false &&
+    observation.locationPresent === true &&
+    observation.responseUrlExact === true &&
+    observation.disposition ===
+      "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION" &&
+    isExactProtectionRedirectProof(observation.protectionRedirect) &&
+    isSafeBasicResponse(observation.protectionBypass) &&
+    observation.protectionBypass.status === 404 &&
+    observation.protectionBypass.redirected === false &&
+    observation.protectionBypass.locationPresent === false &&
+    observation.protectionBypass.responseUrlExact === true &&
+    observation.protectionBypass.disposition === "DEALFLOW_APPLICATION_GATE"
+  );
+}
+
+export function classifyExactVercelAutomationProtectionRedirect({
+  endpointUrl,
+  responseUrl,
+  status,
+  redirected,
+  rawLocation,
+}) {
+  let endpoint;
+  let location;
+  try {
+    endpoint = new URL(endpointUrl);
+    location = typeof rawLocation === "string" && rawLocation.length > 0
+      ? new URL(rawLocation, endpoint)
+      : null;
+  } catch {
+    throw new Error("Vercel automation protection redirect was not exact");
+  }
+  const entries = location ? [...location.searchParams.entries()] : [];
+  const queryKeys = entries.map(([key]) => key).sort();
+  const nonce = location?.searchParams.get("nonce") ?? "";
+  const returnUrl = location?.searchParams.get("url") ?? "";
+  if (
+    endpoint.protocol !== "https:" ||
+    endpoint.username !== "" ||
+    endpoint.password !== "" ||
+    endpoint.hash !== "" ||
+    status !== 302 ||
+    redirected !== false ||
+    responseUrl !== endpoint.toString() ||
+    !location ||
+    location.origin !== "https://vercel.com" ||
+    location.pathname !== "/sso-api" ||
+    location.username !== "" ||
+    location.password !== "" ||
+    location.hash !== "" ||
+    JSON.stringify(queryKeys) !== JSON.stringify(["nonce", "url"]) ||
+    location.searchParams.getAll("nonce").length !== 1 ||
+    location.searchParams.getAll("url").length !== 1 ||
+    !/^[a-f0-9]{64}$/.test(nonce) ||
+    returnUrl !== endpoint.toString()
+  ) {
+    throw new Error("Vercel automation protection redirect was not exact");
+  }
+  return Object.freeze({
+    locationOriginPath: "https://vercel.com/sso-api",
+    locationQueryShapeExact: true,
+    nonceFormatExact: true,
+    redirectFollowed: false,
+    returnUrlExact: true,
+  });
+}
+
 export function classifyExactAliasPropagationObservation(observation) {
   if (
-    !observation ||
-    typeof observation !== "object" ||
-    Array.isArray(observation) ||
-    JSON.stringify(Object.keys(observation).sort()) !==
-      JSON.stringify(EXACT_OBSERVATION_KEYS) ||
+    !hasExactKeys(observation, EXACT_OBSERVATION_KEYS) ||
+    !Number.isSafeInteger(observation.status) ||
+    observation.status < 100 ||
+    observation.status > 599 ||
+    typeof observation.redirected !== "boolean" ||
+    typeof observation.locationPresent !== "boolean" ||
+    typeof observation.responseUrlExact !== "boolean" ||
+    !SAFE_DISPOSITIONS.includes(observation.disposition)
+  ) {
+    throw new Error(
+      "Alias propagation observed a response outside the exact closed staging surface",
+    );
+  }
+
+  if (isExactProtectedApplicationGate(observation)) {
+    return "READY_EXACT_DEALFLOW_GATE";
+  }
+
+  if (
+    observation.protectionRedirect !== null ||
+    observation.protectionBypass !== null ||
     observation.redirected !== false ||
     observation.locationPresent !== false ||
     observation.responseUrlExact !== true ||
@@ -66,23 +212,20 @@ export class ExactAliasPropagationHardFailureError extends Error {
 
 function safeTerminalObservation(observation) {
   if (
-    !observation ||
-    typeof observation !== "object" ||
-    Array.isArray(observation) ||
-    JSON.stringify(Object.keys(observation).sort()) !==
-      JSON.stringify(EXACT_OBSERVATION_KEYS) ||
+    !hasExactKeys(observation, EXACT_OBSERVATION_KEYS) ||
     !Number.isSafeInteger(observation.status) ||
     observation.status < 100 ||
     observation.status > 599 ||
     typeof observation.redirected !== "boolean" ||
     typeof observation.locationPresent !== "boolean" ||
     typeof observation.responseUrlExact !== "boolean" ||
-    ![
-      "VERCEL_DEPLOYMENT_NOT_FOUND",
-      "DEALFLOW_APPLICATION_GATE",
-      "AUTHORIZED_HTTP_200",
-      "UNRECOGNIZED",
-    ].includes(observation.disposition)
+    !SAFE_DISPOSITIONS.includes(observation.disposition) ||
+    !(
+      (observation.protectionRedirect === null &&
+        observation.protectionBypass === null) ||
+      (isExactProtectionRedirectProof(observation.protectionRedirect) &&
+        isSafeBasicResponse(observation.protectionBypass))
+    )
   ) {
     return null;
   }
@@ -92,6 +235,8 @@ function safeTerminalObservation(observation) {
     locationPresent: observation.locationPresent,
     responseUrlExact: observation.responseUrlExact,
     disposition: observation.disposition,
+    protectionRedirect: observation.protectionRedirect,
+    protectionBypass: observation.protectionBypass,
   };
 }
 
@@ -185,6 +330,10 @@ export async function waitForExactAliasPropagation({
       elapsedMs: Math.max(0, Math.floor(now() - startedAt)),
       status: observation.status,
       disposition: observation.disposition,
+      vercelAutomationBypassUsed: observation.protectionBypass !== null,
+      protectionBypassStatus: observation.protectionBypass?.status ?? null,
+      protectionBypassDisposition:
+        observation.protectionBypass?.disposition ?? null,
       classification,
     }));
 

@@ -8,7 +8,9 @@ import {
   SYNTHETIC_STAGING_ROLE_EMAILS,
 } from "../../scripts/staging/browser-session-bundle-contract.mjs";
 import {
+  exactVercelAutomationProtectionPortfolio,
   installBrowserContextNetworkBoundary,
+  primeVercelAutomationBypassCookies,
   safeHttpEvidenceTarget,
   safeWebSocketEvidenceTarget,
   scopedStagingAccessHeaders,
@@ -71,6 +73,19 @@ function requiredEnvironment(name: string) {
   return value!;
 }
 
+function requiredVercelAutomationBypassSecret(required: boolean) {
+  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "";
+  expect(
+    required
+      ? secret.length >= 32 &&
+        secret.trim() === secret &&
+        /^[\x21-\x7e]+$/.test(secret)
+      : secret === "",
+    "VERCEL_AUTOMATION_BYPASS_SECRET must exactly match the protected-origin requirement",
+  ).toBe(true);
+  return secret;
+}
+
 function stagingAppHeaders(rawTarget: string, additional: Record<string, string> = {}) {
   const base = requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL");
   const target = new URL(rawTarget, base);
@@ -105,6 +120,8 @@ function sanitizeBrowserDiagnostic(value: string) {
   return String(value)
     .replace(/(?:https?|wss?):\/\/[^\s"'`<>]+/gi, (url) => safeHttpEvidenceTarget(url))
     .replace(/Bearer\s+[^\s"'`<>]+/gi, "Bearer [REDACTED]")
+    .replace(/x-vercel-protection-bypass\s*[:=]\s*[^\s"'`<>]+/gi, "x-vercel-protection-bypass=[REDACTED]")
+    .replace(/_vercel_jwt=[^\s;"'`<>]+/gi, "_vercel_jwt=[REDACTED]")
     .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED_JWT]")
     .replace(/sb-[a-z0-9-]+-auth-token(?:\.\d+)?=[^\s;]+/gi, "sb-[REDACTED]-auth-token=[REDACTED]")
     .slice(0, 2_000);
@@ -158,6 +175,25 @@ function assertGlobalPreconditions() {
     .toBe("1x00000000000000000000AA");
   expect(requiredEnvironment("STAGING_ACCESS_GATE_SECRET").length)
     .toBeGreaterThanOrEqual(43);
+  const protectionPortfolio = exactVercelAutomationProtectionPortfolio({
+    applicationOrigins: [
+      baseUrl.origin,
+      partnerBaseUrl.origin,
+      partnerTwoBaseUrl.origin,
+    ],
+    serializedPortfolio: requiredEnvironment(
+      "VERCEL_AUTOMATION_PROTECTION_PORTFOLIO",
+    ),
+  });
+  const bypassRequired = protectionPortfolio.some(
+    ({ vercelAutomationBypassRequired: required }) => required,
+  );
+  const browserBypassSecret = requiredVercelAutomationBypassSecret(bypassRequired);
+  if (bypassRequired) {
+    expect(browserBypassSecret.length).toBeGreaterThanOrEqual(32);
+  } else {
+    expect(browserBypassSecret).toBe("");
+  }
 }
 
 async function installFailClosedNetworkBoundary(page: Page) {
@@ -172,13 +208,32 @@ async function installFailClosedNetworkBoundary(page: Page) {
   };
   const context = page.context();
   diagnosticsByPage.set(page, diagnostics);
-  const allowedApplicationOrigins = new Set([
+  const applicationOrigins = [
     new URL(requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL")).origin,
     new URL(requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL")).origin,
     new URL(requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL")).origin,
-  ]);
+  ];
+  const allowedApplicationOrigins = new Set(applicationOrigins);
+  const serializedProtectionPortfolio = requiredEnvironment(
+    "VERCEL_AUTOMATION_PROTECTION_PORTFOLIO",
+  );
+  const protectionPortfolio = exactVercelAutomationProtectionPortfolio({
+    applicationOrigins,
+    serializedPortfolio: serializedProtectionPortfolio,
+  });
+  const vercelAutomationBypassRequired = protectionPortfolio.some(
+    ({ vercelAutomationBypassRequired: required }) => required,
+  );
   let activeApplicationOrigin: string | null = null;
 
+  await primeVercelAutomationBypassCookies({
+    context,
+    applicationOrigins,
+    serializedProtectionPortfolio,
+    vercelAutomationBypassSecret: requiredVercelAutomationBypassSecret(
+      vercelAutomationBypassRequired,
+    ),
+  });
   await context.addCookies(
     stagingAccessCookiesForOrigins({
       applicationOrigins: [...allowedApplicationOrigins],
