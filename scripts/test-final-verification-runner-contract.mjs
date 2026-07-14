@@ -18,6 +18,7 @@ import {
 
 const source = readFileSync("scripts/run-dealflow-final-verification.mjs", "utf8");
 
+assert.match(source, /Final verification requires Node 24/);
 assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 90);
 assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 90);
 assert.equal(new Set(FINAL_VERIFICATION_COMMAND_PORTFOLIO).size, 90);

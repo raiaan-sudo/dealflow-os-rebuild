@@ -30,9 +30,9 @@ const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env.test.local",
 ];
 
-if (process.versions.node.split(".")[0] !== "20") {
+if (process.versions.node.split(".")[0] !== "24") {
   throw new Error(
-    `Final verification requires Node 20; received ${process.version}.`,
+    `Final verification requires Node 24; received ${process.version}.`,
   );
 }
 

@@ -10,8 +10,8 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const attestation = "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
 const internalSecret = randomBytes(32).toString("hex");
 
-if (process.versions.node.split(".")[0] !== "20") {
-  throw new Error(`Safe local load proof requires Node 20; received ${process.version}`);
+if (process.versions.node.split(".")[0] !== "24") {
+  throw new Error(`Safe local load proof requires Node 24; received ${process.version}`);
 }
 if (!existsSync(".next/BUILD_ID")) {
   throw new Error("Safe local load proof requires the current production build output");

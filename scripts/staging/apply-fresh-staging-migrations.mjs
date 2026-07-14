@@ -118,8 +118,8 @@ const migrations = readdirSync(migrationDir)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))
   .sort();
 
-if (process.versions.node.split(".")[0] !== "20") {
-  throw new Error(`The staging migration broker requires Node 20; received ${process.version}`);
+if (process.versions.node.split(".")[0] !== "24") {
+  throw new Error(`The staging migration broker requires Node 24; received ${process.version}`);
 }
 
 function sha256(value) {
@@ -359,7 +359,7 @@ function readPassingVerificationSummary(path, expectedRound) {
   if (
     summary.schemaVersion !== "dealflow.final-verification.v3" ||
     String(summary.round) !== expectedRound ||
-    !/^v20\./.test(summary.runtime ?? "") ||
+    !/^v24\./.test(summary.runtime ?? "") ||
     summary.repositoryInvariant !== "passed" ||
     summary.localGateStatus !== expectedVerificationLocalGate ||
     summary.failedCount !== 0 ||

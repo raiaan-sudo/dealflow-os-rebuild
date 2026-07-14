@@ -143,8 +143,8 @@ function captureReleaseIdentity() {
   if (realpathSync(repo) !== realpathSync(expectedRepo)) {
     throw new Error("The authority broker requires the exact isolated release worktree");
   }
-  if (process.versions.node.split(".")[0] !== "20") {
-    throw new Error(`The authority broker requires Node 20; received ${process.version}`);
+  if (process.versions.node.split(".")[0] !== "24") {
+    throw new Error(`The authority broker requires Node 24; received ${process.version}`);
   }
   const status = git(
     ["status", "--porcelain=v1", "--untracked-files=all", "-z"],
@@ -214,7 +214,7 @@ function readRound(path, expectedRound, identity, migrations) {
   if (
     value.schemaVersion !== "dealflow.final-verification.v3" ||
     String(value.round) !== expectedRound ||
-    !/^v20\./.test(value.runtime ?? "") ||
+    !/^v24\./.test(value.runtime ?? "") ||
     value.localGateStatus !== expectedLocalGate ||
     value.repositoryInvariant !== "passed" ||
     value.failedCount !== 0 ||

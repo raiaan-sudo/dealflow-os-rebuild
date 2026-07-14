@@ -41,7 +41,7 @@ those counts as the current candidate inventory.
 ## Current local exact-seal requirements
 
 Every row below must bind to the same clean commit, tree, tracked-file digest,
-lockfile digest, migration digest, Node 20 runtime, PostgreSQL 17.6 runtime, and
+lockfile digest, migration digest, Node 24 runtime, PostgreSQL 17.6 runtime, and
 final runner version. The authoritative result is currently `NOT_YET_RUN`.
 
 | Portfolio | Required proof | Current exact-seal result |

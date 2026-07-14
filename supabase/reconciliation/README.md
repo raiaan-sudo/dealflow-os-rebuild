@@ -18,7 +18,7 @@ The generator refuses a current authority without a valid combined public/privat
 
 ## Deterministic verification
 
-Run with Node 20:
+Run with Node 24:
 
 ```sh
 node scripts/generate-forward-migration-portfolio.mjs --check

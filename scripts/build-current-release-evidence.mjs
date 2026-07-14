@@ -441,7 +441,7 @@ function validateRound(directory, expectedRound, identity, migrations) {
   assertIdentity(identity, summary, `verification round ${expectedRound}`);
   assertMigrations(migrations, summary, `verification round ${expectedRound}`);
   if (
-    !/^v20\./.test(summary.runtime ?? "") ||
+    !/^v24\./.test(summary.runtime ?? "") ||
     summary.repositoryInvariant !== "passed" ||
     summary.failedCount !== 0 ||
     summary.commandCount !== summary.plannedCommandCount ||

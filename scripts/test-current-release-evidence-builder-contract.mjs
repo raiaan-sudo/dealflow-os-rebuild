@@ -204,7 +204,7 @@ try {
     write(join(external, `round-${round}`, "verification-summary.json"), {
       schemaVersion: "dealflow.final-verification.v3",
       round,
-      runtime: "v20.20.2",
+      runtime: "v24.15.0",
       headCommit: identity.commit,
       headTree: identity.tree,
       trackedWorktreeSha256: identity.trackedWorktreeSha256,

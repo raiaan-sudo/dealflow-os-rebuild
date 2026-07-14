@@ -12,7 +12,7 @@ assert.match(load, /LOAD_TEST_INTERNAL_SECRET must be configured with at least 3
 assert.match(load, /Refusing non-loopback load target/);
 assert.match(load, /payload\.failedControls\.length !== 0/);
 
-assert.match(harness, /Safe local load proof requires Node 20/);
+assert.match(harness, /Safe local load proof requires Node 24/);
 assert.match(harness, /requires the current production build output/);
 assert.match(harness, /DEALFLOW_DEPLOYMENT_TARGET: "test"/);
 assert.match(harness, /QA_ISOLATED_SUPABASE_PROJECT_REF: "local"/);

@@ -176,8 +176,8 @@ for (const deferredCommand of [
 ]) {
   requireMarker(new RegExp(deferredCommand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${deferredCommand} allowlist entry`);
 }
-requireMarker(/!\/\^v20\\\.\/[\s\S]*summary\.runtime/, "Node 20 verification-round binding");
-requireMarker(/staging migration broker requires Node 20/, "Node 20 execution gate");
+requireMarker(/!\/\^v24\\\.\/[\s\S]*summary\.runtime/, "Node 24 verification-round binding");
+requireMarker(/staging migration broker requires Node 24/, "Node 24 execution gate");
 requireMarker(/exact pinned PostgreSQL 17\.6 runtime/, "PostgreSQL 17.6 runtime gate");
 requireMarker(/config\/security\/supabase-prod-ca-2021\.crt/, "tracked Supabase TLS trust bundle path");
 requireMarker(/700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7/, "pinned Supabase TLS trust bundle digest");
@@ -1041,5 +1041,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer fresh transaction, fail-closed read-only exact-existing resume, exact pinned-102 to one-migration-103 forward transaction, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 103 migrations, Node 20, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer fresh transaction, fail-closed read-only exact-existing resume, exact pinned-102 to one-migration-103 forward transaction, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 103 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
 );

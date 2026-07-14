@@ -69,7 +69,7 @@ provider acceptance, production migration, deployment or release.
 - Final verification must run from a completely clean worktree and remain
   bound after every command to one HEAD commit, HEAD tree, tracked-file count,
   tracked-worktree SHA-256, dependency-lock SHA-256, and exact migration
-  portfolio SHA-256. Node 20 and a clean `npm ci` dependency installation are
+  portfolio SHA-256. Node 24 and a clean `npm ci` dependency installation are
   mandatory in each round.
 - The isolated staging fixture must prove direct unpaid/paid, reconciled legacy,
   white-label partner/child, admin/operator, attacker/removed-member, and
@@ -94,7 +94,7 @@ production deployment may occur.
 
 ## Canonical verification
 
-Use Node 20.20.2 and PostgreSQL 17.6, then run two independent external-output
+Use Node 24 LTS and PostgreSQL 17.6, then run two independent external-output
 rounds with:
 
 ```bash

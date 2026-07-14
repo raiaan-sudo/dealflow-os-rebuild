@@ -14,7 +14,7 @@ This harness is the only supported one-pass path from an exact local release sea
 
 ## Required preconditions
 
-Run both exact final-verification rounds first. Each summary must be schema v3, Node 20, bound to the same clean commit/tree and exact migration portfolio, have every local command pass, and contain only the three allowlisted authenticated-hosted deferrals:
+Run both exact final-verification rounds first. Each summary must be schema v3, Node 24, bound to the same clean commit/tree and exact migration portfolio, have every local command pass, and contain only the three allowlisted authenticated-hosted deferrals:
 
 - `npm run rls:cross-tenant`
 - `npm run rls:fixture-smoke`
@@ -23,6 +23,8 @@ Run both exact final-verification rounds first. Each summary must be schema v3, 
 The execution shell must contain the exact isolated staging Supabase authority, the existing staging Vercel authority, and freshly supplied staging-only QA password, partner-attribution signing secret, and internal-system secret. Secrets are accepted from process memory and sent to Vercel through stdin; they are never placed in arguments or evidence. Database-owner transfer uses the pinned Keychain entry, PostgreSQL 17.6, TLS `verify-full`, and the commit-bound `config/security/supabase-prod-ca-2021.crt` trust bundle (SHA-256 `700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7`). The public CA is the `Supabase Root 2021 CA` downloaded from Supabase's official certificate endpoint; its certificate fingerprint is `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA` and it expires April 26, 2031.
 
 Every zero-external-effects flag must have the exact value enforced by `src/lib/safety/zero-external-effects.ts`. In particular, `STRIPE_FORCE_TEST_MODE`, both lead-load bypass flags, and all provider-write flags remain `false`.
+
+`vercel.json` pins dependency installation to `npm ci --ignore-scripts --no-audit --no-fund`. This prevents Vercel's dependency-install phase from rewriting `package-lock.json` before the hosted source-identity prebuild verifies the exact uploaded portfolio. `package.json` pins Node `24.x`, the supported LTS major used by the exact local verification and hosted staging build portfolios.
 
 ## Execution
 

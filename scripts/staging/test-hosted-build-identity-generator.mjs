@@ -38,6 +38,22 @@ const canonicalStagingProjectId = String(
   JSON.parse(readFileSync(join(root, ".vercel", "project.json"), "utf8"))
     .projectId,
 );
+const vercelConfiguration = JSON.parse(
+  readFileSync(join(root, "vercel.json"), "utf8"),
+);
+const packageConfiguration = JSON.parse(
+  readFileSync(join(root, "package.json"), "utf8"),
+);
+assert.equal(
+  vercelConfiguration.installCommand,
+  "npm ci --ignore-scripts --no-audit --no-fund",
+  "Vercel must install from the exact lockfile without rewriting tracked source before the hosted identity prebuild",
+);
+assert.equal(
+  packageConfiguration.engines?.node,
+  "24.x",
+  "Vercel must use the supported Node 24 LTS major bound to the exact verification portfolio",
+);
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");

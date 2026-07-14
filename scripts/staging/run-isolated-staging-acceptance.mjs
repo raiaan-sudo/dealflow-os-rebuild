@@ -699,8 +699,8 @@ function captureExactReleaseIdentity() {
   if (realpathSync(process.cwd()) !== realpathSync(EXPECTED_REPO)) {
     throw new Error("Staging acceptance must run from the exact isolated release worktree");
   }
-  if (process.versions.node.split(".")[0] !== "20") {
-    throw new Error(`Staging acceptance requires Node 20; received ${process.version}`);
+  if (process.versions.node.split(".")[0] !== "24") {
+    throw new Error(`Staging acceptance requires Node 24; received ${process.version}`);
   }
   const status = git(
     ["status", "--porcelain=v1", "--untracked-files=all", "-z"],
@@ -1028,7 +1028,7 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
   if (
     parsed.schemaVersion !== "dealflow.final-verification.v3" ||
     String(parsed.round) !== expectedRound ||
-    !/^v20\./.test(parsed.runtime ?? "") ||
+    !/^v24\./.test(parsed.runtime ?? "") ||
     parsed.repositoryInvariant !== "passed" ||
     parsed.localGateStatus !== EXPECTED_LOCAL_GATE_STATUS ||
     parsed.headCommit !== identity.commit ||
