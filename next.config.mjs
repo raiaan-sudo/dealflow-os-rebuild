@@ -6,6 +6,11 @@ const nextConfig = {
   experimental: {
     cpus: buildCpus,
   },
+  outputFileTracingIncludes: {
+    "/api/internal/release-identity": [
+      "./public/.well-known/dealflow-hosted-build-identity.json",
+    ],
+  },
 };
 
 export default nextConfig;

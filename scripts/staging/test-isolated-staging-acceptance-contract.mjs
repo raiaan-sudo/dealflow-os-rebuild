@@ -559,12 +559,7 @@ assert.match(runner, /"deploy",\s*"--dry",\s*"--format=json"/);
 assert.match(runner, /assertExactVercelDryRunSourcePortfolio\(\{/);
 assert.match(runner, /NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256:/);
 assert.match(runner, /NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT:/);
-assert.match(runner, /buildArtifact\?\.deployablePathSetVerified !== true/);
-assert.match(runner, /buildArtifact\?\.predeployPathSetProofBound !== true/);
-assert.match(
-  runner,
-  /buildArtifact\?\.vercelConfigurationNormalization\?\.status !== "PASS"/,
-);
+assert.match(runner, /assertExactHostedBuildSourceIdentity\(\{/);
 assert.match(runner, /vercel-dry-run-source-proof\.json/);
 assert.ok(
   predeployClosedSurfaceIndex > releaseCapture && predeployClosedSurfaceIndex < configureIndex,
@@ -786,6 +781,49 @@ assert.doesNotMatch(runner, /const uniqueReady = await waitForDeployment/);
 assert.doesNotMatch(
   runner,
   /proveHostedBuildReleaseIdentity\(\s*identity,\s*deployment\.deploymentUrl/,
+);
+assert.match(
+  runner,
+  /HOSTED_RELEASE_IDENTITY_SCHEMA = "dealflow\.hosted-release-identity\.v2"/,
+);
+assert.match(
+  runner,
+  /JSON\.stringify\(\["buildSource", "ok", "release", "schemaVersion"\]\)/,
+);
+assert.match(runner, /buildSource: payload\.buildSource/);
+assert.match(runner, /assertExactHostedBuildSourceIdentity/);
+assert.match(
+  runner,
+  /buildGeneratedIdentityTransport: "authenticated_release_identity_payload"/,
+);
+assert.match(runner, /buildSourceEmbeddedInReleaseIdentityResponse: true/);
+assert.match(runner, /buildGeneratedIdentityEndpointPath: endpoint\.pathname/);
+for (const stage of [
+  "stable_alias_configuration",
+  "stable_alias_application_gate_verification",
+  "stable_alias_build_identity_verification",
+  "partner_one_alias_configuration",
+  "partner_one_application_gate_verification",
+  "partner_one_build_identity_verification",
+  "partner_two_alias_configuration",
+  "partner_two_application_gate_verification",
+  "partner_two_build_identity_verification",
+  "stable_alias_readiness",
+  "partner_one_alias_readiness",
+  "partner_two_alias_readiness",
+  "postdeployment_application_alias_gate_verification",
+  "postdeployment_static_asset_gate_verification",
+]) {
+  assert.match(
+    runner,
+    new RegExp(`failureContext\\.stage = "${stage}"`),
+    `missing exact hosted acceptance failure stage ${stage}`,
+  );
+}
+assert.doesNotMatch(
+  runner,
+  /new URL\(\s*"\/\.well-known\/dealflow-hosted-build-identity\.json"/,
+  "hosted source proof must use the authenticated release-identity response, not a public static artifact fetch",
 );
 assert.match(runner, /assertSeedReplayIsIdempotent\(seedOne, seedTwo\)/);
 assert.match(runner, /function classifyExactSyntheticRetentionAuthorityReplay/);

@@ -50,6 +50,7 @@ import { assertApprovedStagingEvidenceRootPath } from "./staging-evidence-root-c
 import { parseExactHostedSupabaseProjectUrl } from "./exact-supabase-project-url.mjs";
 import { assertExactDeployableSourcePathSet } from "./deployable-source-path-set-contract.mjs";
 import { assertExactVercelDryRunSourcePortfolio } from "./vercel-dry-run-source-contract.mjs";
+import { assertExactHostedBuildSourceIdentity } from "./hosted-build-source-identity-contract.mjs";
 import { findExactNextStaticChunkPath } from "./next-static-chunk-path.mjs";
 
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
@@ -97,7 +98,7 @@ const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
 ]);
 const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
-const HOSTED_RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v1";
+const HOSTED_RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v2";
 const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";
 const STAGING_IMAGE_OPTIMIZER_SOURCE_PATH =
@@ -2340,7 +2341,7 @@ async function proveHostedBuildReleaseIdentity(
     payload?.ok !== true ||
     payload?.schemaVersion !== HOSTED_RELEASE_IDENTITY_SCHEMA ||
     JSON.stringify(Object.keys(payload ?? {}).sort()) !==
-      JSON.stringify(["ok", "release", "schemaVersion"]) ||
+      JSON.stringify(["buildSource", "ok", "release", "schemaVersion"]) ||
     JSON.stringify(Object.keys(payload?.release ?? {}).sort()) !==
       JSON.stringify([
         "commit",
@@ -2359,46 +2360,13 @@ async function proveHostedBuildReleaseIdentity(
     throw new Error("Hosted artifact did not return the exact build-injected release identity");
   }
 
-  const buildArtifactEndpoint = new URL(
-    "/.well-known/dealflow-hosted-build-identity.json",
-    base,
-  );
-  const buildArtifactResponse = await executionFetch(buildArtifactEndpoint, {
-    headers: withStagingAccess({
-      Accept: "application/json",
-      "User-Agent": "DealFlow-Staging-Build-Source-Identity/1.0",
-    }),
-    redirect: "manual",
-  }, 30_000);
-  const buildArtifactContentType =
-    buildArtifactResponse.headers.get("content-type") ?? "";
-  const buildArtifact = buildArtifactContentType
-    .toLowerCase()
-    .includes("application/json")
-    ? await buildArtifactResponse.json().catch(() => null)
-    : null;
-  if (
-    buildArtifactResponse.status !== 200 ||
-    buildArtifactResponse.redirected ||
-    buildArtifactResponse.url !== buildArtifactEndpoint.href ||
-    buildArtifactResponse.headers.has("location") ||
-    buildArtifact?.schemaVersion !==
-      "dealflow.hosted-build-source-identity.v1" ||
-    buildArtifact?.status !== "HOSTED_SOURCE_VERIFIED" ||
-    buildArtifact?.generatedInsideBuild !== true ||
-    buildArtifact?.expectedIdentityMatched !== true ||
-    buildArtifact?.deployablePathSetVerified !== true ||
-    buildArtifact?.predeployPathSetProofBound !== true ||
-    buildArtifact?.vercelConfigurationNormalization?.status !== "PASS" ||
-    buildArtifact?.manifestSha256 !== identity.deployableManifestSha256 ||
-    buildArtifact?.deployableSourceSha256 !== identity.deployableSourceSha256 ||
-    buildArtifact?.deployableFileCount !== identity.deployableFileCount ||
-    buildArtifact?.vercelDryRunSourceSha256 !==
-      vercelDryRunSourceProof.sourceSetSha256 ||
-    buildArtifact?.vercelDryRunFileCount !==
-      vercelDryRunSourceProof.regularFileCount ||
-    JSON.stringify(buildArtifact?.release) !== JSON.stringify(expectedRelease)
-  ) {
+  let buildArtifact;
+  try {
+    buildArtifact = assertExactHostedBuildSourceIdentity({
+      buildSource: payload.buildSource,
+      expectedRelease,
+    });
+  } catch {
     throw new Error(
       "Hosted artifact did not prove the source portfolio generated inside its build",
     );
@@ -2416,7 +2384,9 @@ async function proveHostedBuildReleaseIdentity(
     runtimeGitMetadataTrustedAsArtifactProof: false,
     buildInjectedIdentityMatched: true,
     buildGeneratedSourcePortfolioMatched: true,
-    buildGeneratedIdentityEndpointPath: buildArtifactEndpoint.pathname,
+    buildGeneratedIdentityEndpointPath: endpoint.pathname,
+    buildGeneratedIdentityTransport: "authenticated_release_identity_payload",
+    buildSourceEmbeddedInReleaseIdentityResponse: true,
     deployableManifestSha256: identity.deployableManifestSha256,
     deployableSourceSha256: identity.deployableSourceSha256,
     deployableFileCount: identity.deployableFileCount,
@@ -4072,6 +4042,7 @@ async function main() {
       deployment.deploymentUrl,
       deployment.deploymentHost,
     );
+  failureContext.stage = "stable_alias_configuration";
   const stableAlias = await configureAndProveAppAlias(
     identity,
     deployment,
@@ -4083,8 +4054,10 @@ async function main() {
       priorMapping: priorAliasMapping(EXPECTED_STAGING_HOST),
     },
   );
+  failureContext.stage = "stable_alias_application_gate_verification";
   const stableGateImmediatelyAfterAlias =
     await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0]);
+  failureContext.stage = "stable_alias_build_identity_verification";
   const stableIdentityImmediatelyAfterAlias =
     await proveHostedBuildReleaseIdentity(
       identity,
@@ -4092,6 +4065,7 @@ async function main() {
       EXPECTED_STAGING_BASE_URL,
       EXPECTED_STAGING_HOST,
     );
+  failureContext.stage = "partner_one_alias_configuration";
   const partnerOneAlias = await configureAndProveAppAlias(
     identity,
     deployment,
@@ -4103,8 +4077,10 @@ async function main() {
       priorMapping: priorAliasMapping(EXPECTED_PARTNER_ONE_HOST),
     },
   );
+  failureContext.stage = "partner_one_application_gate_verification";
   const partnerOneGateImmediatelyAfterAlias =
     await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[1]);
+  failureContext.stage = "partner_one_build_identity_verification";
   const partnerOneIdentityImmediatelyAfterAlias =
     await proveHostedBuildReleaseIdentity(
       identity,
@@ -4112,6 +4088,7 @@ async function main() {
       partnerOneAlias.aliasUrl,
       partnerOneAlias.aliasHost,
     );
+  failureContext.stage = "partner_two_alias_configuration";
   const secondPartnerAlias = await configureAndProveAppAlias(
     identity,
     deployment,
@@ -4123,8 +4100,10 @@ async function main() {
       priorMapping: priorAliasMapping(EXPECTED_SECOND_PARTNER_HOST),
     },
   );
+  failureContext.stage = "partner_two_application_gate_verification";
   const secondPartnerGateImmediatelyAfterAlias =
     await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[2]);
+  failureContext.stage = "partner_two_build_identity_verification";
   const secondPartnerIdentityImmediatelyAfterAlias =
     await proveHostedBuildReleaseIdentity(
       identity,
@@ -4132,14 +4111,19 @@ async function main() {
       secondPartnerAlias.aliasUrl,
       secondPartnerAlias.aliasHost,
     );
+  failureContext.stage = "stable_alias_readiness";
   const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL);
+  failureContext.stage = "partner_one_alias_readiness";
   const partnerOneReady = await waitForDeployment(partnerOneAlias.aliasUrl);
+  failureContext.stage = "partner_two_alias_readiness";
   const secondPartnerReady = await waitForDeployment(secondPartnerAlias.aliasUrl);
+  failureContext.stage = "postdeployment_application_alias_gate_verification";
   const postDeployAppAliasGate = await provePostDeployAppAliasGate();
   writeJson(
     join(options.evidenceDir, "postdeploy-app-alias-gate.json"),
     postDeployAppAliasGate,
   );
+  failureContext.stage = "postdeployment_static_asset_gate_verification";
   const postDeployStaticAssetGate = await provePostDeployStaticAssetGate();
   writeJson(
     join(options.evidenceDir, "postdeploy-static-asset-gate.json"),

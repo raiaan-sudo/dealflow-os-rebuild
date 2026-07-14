@@ -1,3 +1,5 @@
+import { lstatSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   ApiError,
   assertInternalSystemRequest,
@@ -14,7 +16,15 @@ import { isExactIsolatedSupabaseProject } from "@/lib/security/supabase-isolatio
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v1" as const;
+const RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v2" as const;
+const BUILD_SOURCE_IDENTITY_SCHEMA =
+  "dealflow.hosted-build-source-identity.v1" as const;
+const BUILD_SOURCE_ARTIFACT_RELATIVE_PATH = join(
+  "public",
+  ".well-known",
+  "dealflow-hosted-build-identity.json",
+);
+const BUILD_SOURCE_ARTIFACT_MAX_BYTES = 16 * 1024;
 
 // These direct NEXT_PUBLIC references are intentionally evaluated by the Next
 // build. The endpoint therefore attests the built artifact, not mutable Git
@@ -117,16 +127,184 @@ function readExactBuildReleaseIdentity() {
   });
 }
 
+type ExactBuildReleaseIdentity = ReturnType<
+  typeof readExactBuildReleaseIdentity
+>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: string[]) {
+  return (
+    JSON.stringify(Object.keys(value).sort()) ===
+    JSON.stringify([...keys].sort())
+  );
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function releaseIdentityMatches(
+  value: unknown,
+  expected: ExactBuildReleaseIdentity,
+) {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "commit",
+      "tree",
+      "trackedWorktreeSha256",
+      "trackedFileCount",
+      "dependencyLockSha256",
+      "deployableSourceSha256",
+      "deployableManifestSha256",
+      "deployableFileCount",
+      "vercelDryRunSourceSha256",
+      "vercelDryRunFileCount",
+    ])
+  ) {
+    return false;
+  }
+
+  return (
+    value.commit === expected.commit &&
+    value.tree === expected.tree &&
+    value.trackedWorktreeSha256 === expected.trackedWorktreeSha256 &&
+    value.trackedFileCount === expected.trackedFileCount &&
+    value.dependencyLockSha256 === expected.dependencyLockSha256 &&
+    value.deployableSourceSha256 === expected.deployableSourceSha256 &&
+    value.deployableManifestSha256 === expected.deployableManifestSha256 &&
+    value.deployableFileCount === expected.deployableFileCount &&
+    value.vercelDryRunSourceSha256 ===
+      expected.vercelDryRunSourceSha256 &&
+    value.vercelDryRunFileCount === expected.vercelDryRunFileCount
+  );
+}
+
+function isExactVercelConfigurationNormalization(value: unknown) {
+  if (!isRecord(value) || value.status !== "PASS") return false;
+
+  if (value.transformation === "exact_source_bytes") {
+    return hasExactKeys(value, ["status", "transformation"]);
+  }
+
+  return (
+    value.transformation === "vercel_canonical_config_normalization_v1" &&
+    hasExactKeys(value, [
+      "status",
+      "transformation",
+      "injectedProjectNameMatched",
+      "injectedVersion",
+      "hostedBytesSha256",
+      "recoveredSourceSha256",
+    ]) &&
+    value.injectedProjectNameMatched === true &&
+    value.injectedVersion === 2 &&
+    isSha256(value.hostedBytesSha256) &&
+    isSha256(value.recoveredSourceSha256)
+  );
+}
+
+function invalidBuildSourceArtifact(): ApiError {
+  return new ApiError(
+    503,
+    "The hosted build source identity is unavailable or invalid.",
+    "release_identity_source_artifact_invalid",
+  );
+}
+
+function readExactBuildSourceIdentity(expected: ExactBuildReleaseIdentity) {
+  const artifactPath = join(
+    process.cwd(),
+    BUILD_SOURCE_ARTIFACT_RELATIVE_PATH,
+  );
+  let bytes: Buffer;
+
+  try {
+    const stat = lstatSync(artifactPath);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      stat.size <= 0 ||
+      stat.size > BUILD_SOURCE_ARTIFACT_MAX_BYTES
+    ) {
+      throw invalidBuildSourceArtifact();
+    }
+    bytes = readFileSync(artifactPath);
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw invalidBuildSourceArtifact();
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw invalidBuildSourceArtifact();
+  }
+
+  if (
+    !isRecord(parsed) ||
+    `${JSON.stringify(parsed)}\n` !== bytes.toString("utf8") ||
+    !hasExactKeys(parsed, [
+      "schemaVersion",
+      "status",
+      "generatedInsideBuild",
+      "manifestSha256",
+      "deployableSourceSha256",
+      "deployableFileCount",
+      "release",
+      "targetClassification",
+      "expectedIdentityMatched",
+      "deployablePathSetVerified",
+      "predeployPathSetProofBound",
+      "vercelConfigurationNormalization",
+      "vercelDryRunSourceSha256",
+      "vercelDryRunFileCount",
+    ]) ||
+    parsed.schemaVersion !== BUILD_SOURCE_IDENTITY_SCHEMA ||
+    parsed.status !== "HOSTED_SOURCE_VERIFIED" ||
+    parsed.generatedInsideBuild !== true ||
+    parsed.targetClassification !== "exact_staging" ||
+    parsed.expectedIdentityMatched !== true ||
+    parsed.deployablePathSetVerified !== true ||
+    parsed.predeployPathSetProofBound !== true ||
+    !isSha256(parsed.manifestSha256) ||
+    parsed.manifestSha256 !== expected.deployableManifestSha256 ||
+    !isSha256(parsed.deployableSourceSha256) ||
+    parsed.deployableSourceSha256 !== expected.deployableSourceSha256 ||
+    !Number.isSafeInteger(parsed.deployableFileCount) ||
+    parsed.deployableFileCount !== expected.deployableFileCount ||
+    !isSha256(parsed.vercelDryRunSourceSha256) ||
+    parsed.vercelDryRunSourceSha256 !== expected.vercelDryRunSourceSha256 ||
+    !Number.isSafeInteger(parsed.vercelDryRunFileCount) ||
+    parsed.vercelDryRunFileCount !== expected.vercelDryRunFileCount ||
+    !releaseIdentityMatches(parsed.release, expected) ||
+    !isExactVercelConfigurationNormalization(
+      parsed.vercelConfigurationNormalization,
+    )
+  ) {
+    throw invalidBuildSourceArtifact();
+  }
+
+  return Object.freeze(parsed);
+}
+
 export async function GET(request: Request) {
   try {
     assertInternalSystemRequest(request);
     assertHostedReleaseIdentityAuthority();
+    const release = readExactBuildReleaseIdentity();
+    const buildSource = readExactBuildSourceIdentity(release);
 
     return Response.json(
       {
         ok: true,
         schemaVersion: RELEASE_IDENTITY_SCHEMA,
-        release: readExactBuildReleaseIdentity(),
+        release,
+        buildSource,
       },
       {
         headers: {
