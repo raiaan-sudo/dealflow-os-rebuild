@@ -15,7 +15,10 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+import {
+  FINAL_VERIFICATION_HOSTED_DEFERRALS,
+  assertExactFinalVerificationSummaryPortfolio,
+} from "../lib/final-verification-command-contract.mjs";
 
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg || process.argv.length !== 6) {
@@ -46,11 +49,7 @@ const expectedMigrationCount = 103;
 const expectedFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
 const expectedLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
-const expectedDeferrals = Object.freeze([
-  "npm run operator:debt",
-  "npm run rls:cross-tenant",
-  "npm run rls:fixture-smoke",
-]);
+const expectedDeferrals = FINAL_VERIFICATION_HOSTED_DEFERRALS;
 const authorityMarker =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const authorityTimestamp = "2026-07-12T12:00:00.000Z";

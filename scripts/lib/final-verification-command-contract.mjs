@@ -96,6 +96,11 @@ export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
 export const FINAL_VERIFICATION_COMMAND_COUNT = 90;
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256 =
   "b91e86deb84a5db3d502af3fb712412474e9d3640d5179dca6dc1b55b4c5d972";
+export const FINAL_VERIFICATION_HOSTED_DEFERRALS = Object.freeze([
+  "npm run rls:cross-tenant",
+  "npm run rls:fixture-smoke",
+  "npm run operator:debt",
+]);
 
 const SPECIAL_EVIDENCE_QUALIFICATIONS = Object.freeze({
   "npm run test:e2e:safe": "local_public_pass_authenticated_deferred",
@@ -180,6 +185,14 @@ export function assertExactFinalVerificationSummaryPortfolio(
     summary.commandCount !== FINAL_VERIFICATION_COMMAND_COUNT ||
     summary.passedCount !== FINAL_VERIFICATION_COMMAND_COUNT ||
     summary.commandPortfolioSha256 !== FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256 ||
+    summary.blockedCount !== FINAL_VERIFICATION_HOSTED_DEFERRALS.length ||
+    summary.environmentOnlyDeferredCount !== FINAL_VERIFICATION_HOSTED_DEFERRALS.length ||
+    !Array.isArray(summary.environmentOnlyDeferrals) ||
+    JSON.stringify(summary.environmentOnlyDeferrals.map((item) => item?.command)) !==
+      JSON.stringify(FINAL_VERIFICATION_HOSTED_DEFERRALS) ||
+    summary.environmentOnlyDeferrals.some(
+      (item) => item?.status !== "authenticated_deferred",
+    ) ||
     !Array.isArray(summary.records) ||
     summary.records.length !== FINAL_VERIFICATION_COMMAND_COUNT
   ) {

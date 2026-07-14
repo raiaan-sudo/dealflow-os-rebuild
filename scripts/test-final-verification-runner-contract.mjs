@@ -8,6 +8,7 @@ import {
   FINAL_VERIFICATION_COMMAND_COUNT,
   FINAL_VERIFICATION_COMMAND_PORTFOLIO,
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+  FINAL_VERIFICATION_HOSTED_DEFERRALS,
   assertExactFinalVerificationCommandPortfolio,
   assertExactFinalVerificationRecordPortfolio,
   assertExactFinalVerificationSummaryPortfolio,
@@ -109,6 +110,12 @@ const exactSummary = {
   commandCount: 90,
   passedCount: 90,
   commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+  blockedCount: 3,
+  environmentOnlyDeferredCount: 3,
+  environmentOnlyDeferrals: FINAL_VERIFICATION_HOSTED_DEFERRALS.map((command) => ({
+    command,
+    status: "authenticated_deferred",
+  })),
   records: exactRecords,
 };
 const exactSummarySnapshot = JSON.stringify(exactSummary);
@@ -205,6 +212,12 @@ expectPortfolioRejection((candidate) => {
 expectPortfolioRejection((candidate) => {
   delete candidate.commandPortfolioSha256;
 });
+expectPortfolioRejection((candidate) => {
+  candidate.environmentOnlyDeferrals.reverse();
+});
+expectPortfolioRejection((candidate) => {
+  candidate.environmentOnlyDeferrals[0].status = "different_status";
+});
 assert.throws(
   () => assertExactFinalVerificationSummaryPortfolio(null),
   /does not match the exact final-verification command contract/,
@@ -266,6 +279,15 @@ const npmCi = source.indexOf('["npm", ["ci", "--ignore-scripts", "--no-audit", "
 const npmLs = source.indexOf('["npm", ["ls", "--all"]]');
 const gitDiff = source.indexOf('["git", ["diff", "--check"]]');
 assert.ok(npmCi >= 0 && npmCi < npmLs && npmLs < gitDiff, "Final runner must preserve the broker-bound first two commands");
+const hostedDeferralSource = source.slice(
+  source.indexOf("const environmentOnlyDeferrals = Object.freeze(["),
+  source.indexOf("\nfunction sanitize", source.indexOf("const environmentOnlyDeferrals")),
+);
+assert.deepEqual(
+  [...hostedDeferralSource.matchAll(/command: "([^"]+)"/g)].map((match) => match[1]),
+  FINAL_VERIFICATION_HOSTED_DEFERRALS,
+  "The runner and every staging consumer must share one exact hosted-deferral order",
+);
 const exactPortfolioGate = source.indexOf(
   "const commandPortfolio = assertExactFinalVerificationCommandPortfolio(",
 );

@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import {
   FINAL_VERIFICATION_COMMAND_PORTFOLIO,
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+  FINAL_VERIFICATION_HOSTED_DEFERRALS,
   finalVerificationEvidenceQualification,
 } from "./lib/final-verification-command-contract.mjs";
 
@@ -194,11 +195,10 @@ try {
       failedCount: 0,
       blockedCount: 3,
       environmentOnlyDeferredCount: 3,
-      environmentOnlyDeferrals: [
-        { command: "rls", status: "authenticated_deferred" },
-        { command: "fixture", status: "authenticated_deferred" },
-        { command: "operator", status: "authenticated_deferred" },
-      ],
+      environmentOnlyDeferrals: FINAL_VERIFICATION_HOSTED_DEFERRALS.map((command) => ({
+        command,
+        status: "authenticated_deferred",
+      })),
       localGateStatus: "NO_GO_AUTHENTICATED_PROOF_DEFERRED",
       exactSealCommandPortfolioStatus: "passed_with_mandatory_hosted_proof_blockers",
       records,

@@ -34,6 +34,7 @@ assert.match(source, /requires a clean release worktree/);
 assert.match(source, /dealflow\.final-verification\.v3/);
 assert.match(source, /final-verification-command-contract\.mjs/);
 assert.match(source, /assertExactFinalVerificationSummaryPortfolio/);
+assert.match(source, /expectedDeferrals = FINAL_VERIFICATION_HOSTED_DEFERRALS/);
 assert.match(source, /`Verification round \$\{expectedRound\} portfolio`/);
 assert.doesNotMatch(source, /hasExactVerificationEvidenceQualification/);
 assert.match(source, /Two distinct exact verification rounds are required/);
