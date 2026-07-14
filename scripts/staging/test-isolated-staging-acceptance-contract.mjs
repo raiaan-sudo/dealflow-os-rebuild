@@ -114,6 +114,9 @@ assert.match(runner, /Read-only resume and exact forward mode require --prior-mi
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--verify-existing-exact"/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--apply-forward-exact"/);
 assert.match(runner, /migrationSummary\.migrationMode === "VERIFY_EXISTING_EXACT"/);
+assert.match(runner, /isExactSafeStagingAuthSurfaceProof/);
+assert.match(runner, /migrationSummary\.authUserSurfaceAtVerification/);
+assert.match(runner, /migrationSummary\.authUserCountAtVerification/);
 assert.match(runner, /migrationSummary\.migrationMode === "APPLY_FORWARD_EXACT"/);
 assert.match(runner, /migrationSummary\.serviceRoleColumnWritePrivilegesPresent !== false/);
 assert.match(runner, /migrationSummary\.anonColumnPrivilegesPresent !== false/);
@@ -142,6 +145,8 @@ assert.match(priorProofContract, /priorApplication\.migrationCount === expectedM
 assert.match(priorProofContract, /priorApplication\.migrationFiles/);
 assert.match(priorProofContract, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(priorProofContract, /committed_forward_recovery/);
+assert.match(priorProofContract, /EXACT_SYNTHETIC_FIXTURE_SET/);
+assert.match(priorProofContract, /rawIdentityValuesPersisted: false/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);

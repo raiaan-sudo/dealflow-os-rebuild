@@ -17,6 +17,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  classifyExactStagingAuthSurface,
   classifyPriorMigrationEvidence,
   isExactCommittedForwardRecoverySeal,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
@@ -850,6 +851,52 @@ function captureRemoteStructuralState(labelPrefix) {
   });
 }
 
+function captureAndAssertStagingAuthSurface(label) {
+  const payload = JSON.parse(sql(
+    `with bounded_auth_users as (
+      select email, raw_user_meta_data
+      from auth.users
+      order by email
+      limit 11
+    ), auth_count as (
+      select count(*)::integer as total_count
+      from auth.users
+    )
+    select jsonb_build_object(
+      'totalCount', (select total_count from auth_count),
+      'rows', coalesce(
+        (
+          select jsonb_agg(
+            jsonb_build_object(
+              'email', email,
+              'fixture', raw_user_meta_data->>'fixture',
+              'synthetic', raw_user_meta_data->'synthetic',
+              'scenario', raw_user_meta_data->>'scenario'
+            )
+            order by email
+          )
+          from bounded_auth_users
+        ),
+        '[]'::jsonb
+      )
+    )::text;`,
+    label,
+  ));
+  if (
+    !Number.isSafeInteger(payload?.totalCount) ||
+    !Array.isArray(payload.rows) ||
+    ![0, 10].includes(payload.totalCount) ||
+    payload.rows.length !== payload.totalCount
+  ) {
+    throw new Error("Staging auth surface is neither empty nor the exact bounded synthetic fixture set");
+  }
+  const proof = classifyExactStagingAuthSurface(payload.rows);
+  if (proof.userCount !== payload.totalCount) {
+    throw new Error("Staging auth surface count and identity proof diverged");
+  }
+  return proof;
+}
+
 function isExactEmptyPlatformState(state, expectedStructuralCatalogSha256 = null) {
   return state.historyTableExists === false &&
     state.migrationHistoryCount === 0 &&
@@ -1429,8 +1476,14 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     if (!hasExactMigrationHistory(existingState)) {
       throw new Error("Existing staging migration history does not match the exact portfolio");
     }
-    if (existingState.authUserCount !== 0 || existingState.storageObjectCount !== 0) {
-      throw new Error("Existing isolated staging is no longer empty of auth users or storage objects");
+    if (existingState.storageObjectCount !== 0) {
+      throw new Error("Existing isolated staging contains storage objects");
+    }
+    const authSurface = captureAndAssertStagingAuthSurface(
+      "Verify existing staging auth surface is empty or the exact synthetic fixture set",
+    );
+    if (authSurface.userCount !== existingState.authUserCount) {
+      throw new Error("Existing staging auth-surface count did not match structural-state capture");
     }
     if (existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256) {
       throw new Error("Existing staging structural catalog drifted from the sealed application proof");
@@ -1497,7 +1550,8 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       activationRuntimeControlsDefaultClosed: true,
       ghlRuntimeControlsDefaultClosed: true,
       ...retentionAuthorityAcl,
-      authUserCountAtVerification: existingState.authUserCount,
+      authUserCountAtVerification: authSurface.userCount,
+      authUserSurfaceAtVerification: authSurface,
       storageObjectCountAtVerification: existingState.storageObjectCount,
       normalizedSchemaSha256: existingSchemaSha256,
       normalizedSchemaBytes: Buffer.byteLength(existingDump),
@@ -1533,6 +1587,8 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       lastAppliedVersion: requiredFinalMigration.slice(0, 14),
       lastCommittedVersion: requiredFinalMigration.slice(0, 14),
       remoteStateVerificationStatus: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+      authUserCountAtVerification: authSurface.userCount,
+      authUserSurfaceAtVerification: authSurface,
       ...retentionAuthorityAcl,
     });
     const manifestRecord = writeJsonEvidence("evidence-manifest.json", {

@@ -8,9 +8,11 @@ import { fileURLToPath } from "node:url";
 
 import { createNativePostgresTestAdapter } from "../lib/native-postgres-test-adapter.mjs";
 import {
+  classifyExactStagingAuthSurface,
   classifyPriorMigrationEvidence,
   isExactCommittedForwardRecoverySeal,
   isExactCurrentResumeIdentity,
+  isExactSafeStagingAuthSurfaceProof,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
   PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
   PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS,
@@ -21,6 +23,10 @@ const brokerPath = join(scriptDir, "apply-fresh-staging-migrations.mjs");
 const source = readFileSync(brokerPath, "utf8");
 const priorProofContractSource = readFileSync(
   join(scriptDir, "prior-migration-proof-contract.mjs"),
+  "utf8",
+);
+const stagingSeedSource = readFileSync(
+  join(scriptDir, "..", "seed-isolated-staging.mjs"),
   "utf8",
 );
 const trustBundle = readFileSync(
@@ -61,6 +67,21 @@ requireMarker(/portfolioApplicationRemoteMutationCompleted: true/, "separate his
 requireMarker(/remoteMutationStarted: false/, "read-only resume mutation-start truth");
 requireMarker(/remoteMutationCompleted: false/, "read-only resume mutation-completion truth");
 requireMarker(/EXACT_EXISTING_COMMITTED_PORTFOLIO/, "exact existing portfolio result");
+requireMarker(/captureAndAssertStagingAuthSurface/, "empty-or-exact-synthetic auth-surface verifier");
+requireMarker(/with bounded_auth_users as \(/, "single-statement bounded auth identity snapshot");
+requireMarker(/auth_count as \(/, "single-statement auth count snapshot");
+requireMarker(/'totalCount', \(select total_count from auth_count\)/, "count and identities share one statement snapshot");
+requireMarker(/!\[0, 10\]\.includes\(payload\.totalCount\)/, "empty-or-exact-ten auth count gate");
+requireMarker(/limit 11/, "bounded auth identity read");
+requireMarker(/'email', email/, "raw auth email supplied to canonical classifier");
+assert.doesNotMatch(
+  source,
+  /'email', lower\(email\)/,
+  "The database query must not normalize a noncanonical stored auth email before classification",
+);
+requireMarker(/raw_user_meta_data->>'fixture'/, "synthetic auth fixture-label capture");
+requireMarker(/raw_user_meta_data->'synthetic'/, "synthetic auth boolean capture");
+requireMarker(/raw_user_meta_data->>'scenario'/, "synthetic auth scenario capture");
 requireMarker(/captureNormalizedSchemaDump/, "normalized schema comparison");
 requireMarker(/function captureAndAssertRetentionAuthorityAcl\(label\)/, "table and column ACL postcondition verifier");
 requireMarker(/'serviceRoleMaintain', has_table_privilege\('service_role'.*'MAINTAIN'\)/, "PostgreSQL 17 MAINTAIN privilege rejection");
@@ -269,6 +290,67 @@ assert.ok(
   retentionAuthorityAclQuery,
   "Contract must extract the broker's exact retention-authority ACL query",
 );
+
+const expectedSyntheticAuthRows = [
+  ["dealflow-staging-20260712@example.com", "paid_direct_realtor"],
+  ["dealflow-staging-attacker-20260712@example.com", "cross_tenant_attacker"],
+  ["dealflow-staging-deletion-20260712@example.com", "account_deletion_fail_closed_realtor"],
+  ["dealflow-staging-legacy-20260712@example.com", "grandfathered_legacy_realtor"],
+  ["dealflow-staging-new-direct-20260712@example.com", "new_unpaid_direct_realtor"],
+  ["dealflow-staging-operator-20260712@example.com", "internal_admin_operator"],
+  ["dealflow-staging-partner-admin-20260712@example.com", "active_white_label_partner_admin"],
+  ["dealflow-staging-partner-child-20260712@example.com", "white_label_child_realtor"],
+  ["dealflow-staging-partner-two-admin-20260712@example.com", "active_white_label_partner_two_admin"],
+  ["dealflow-staging-partner-two-child-20260712@example.com", "white_label_partner_two_child_realtor"],
+].map(([email, scenario]) => ({
+  email,
+  fixture: "DF-STAGING-20260712",
+  synthetic: true,
+  scenario,
+}));
+for (const { email, scenario } of expectedSyntheticAuthRows) {
+  assert.match(stagingSeedSource, new RegExp(email.replaceAll(".", "\\.")));
+  assert.match(stagingSeedSource, new RegExp(scenario));
+}
+const emptyAuthSurfaceProof = classifyExactStagingAuthSurface([]);
+assert.equal(emptyAuthSurfaceProof.status, "EMPTY");
+assert.equal(isExactSafeStagingAuthSurfaceProof(emptyAuthSurfaceProof), true);
+const syntheticAuthSurfaceProof = classifyExactStagingAuthSurface(
+  structuredClone(expectedSyntheticAuthRows).reverse(),
+);
+assert.equal(syntheticAuthSurfaceProof.status, "EXACT_SYNTHETIC_FIXTURE_SET");
+assert.equal(syntheticAuthSurfaceProof.userCount, 10);
+assert.equal(syntheticAuthSurfaceProof.rawIdentityValuesPersisted, false);
+assert.equal(isExactSafeStagingAuthSurfaceProof(syntheticAuthSurfaceProof), true);
+for (const [label, rows] of [
+  ["missing identity", expectedSyntheticAuthRows.slice(1)],
+  ["duplicate identity", [...expectedSyntheticAuthRows.slice(0, -1), expectedSyntheticAuthRows[0]]],
+  ["unexpected identity", expectedSyntheticAuthRows.map((row, index) => index === 0 ? { ...row, email: "unexpected@example.com" } : row)],
+  ["wrong fixture", expectedSyntheticAuthRows.map((row, index) => index === 0 ? { ...row, fixture: "wrong" } : row)],
+  ["not synthetic", expectedSyntheticAuthRows.map((row, index) => index === 0 ? { ...row, synthetic: false } : row)],
+  ["wrong scenario", expectedSyntheticAuthRows.map((row, index) => index === 0 ? { ...row, scenario: "wrong" } : row)],
+  ["noncanonical email", expectedSyntheticAuthRows.map((row, index) => index === 0 ? { ...row, email: row.email.toUpperCase() } : row)],
+]) {
+  assert.throws(
+    () => classifyExactStagingAuthSurface(structuredClone(rows)),
+    /Staging auth surface/,
+    `Auth-surface proof must reject ${label}`,
+  );
+}
+for (const mutation of [
+  { userCount: 9 },
+  { emailSetSha256: "0".repeat(64) },
+  { identitySetSha256: "0".repeat(64) },
+  { unexpectedIdentityCount: 1 },
+  { rawIdentityValuesPersisted: true },
+  { rawEmails: [] },
+]) {
+  assert.equal(
+    isExactSafeStagingAuthSurfaceProof({ ...syntheticAuthSurfaceProof, ...mutation }),
+    false,
+    "Tampered synthetic auth-surface proof must fail closed",
+  );
+}
 
 requireMarker(/"staging-migration-proof\.json"/, "final proof evidence");
 requireMarker(/"staging-migration-summary\.json"/, "final summary evidence");

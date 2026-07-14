@@ -15,7 +15,10 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
-import { isExactCurrentResumeIdentity } from "./prior-migration-proof-contract.mjs";
+import {
+  isExactCurrentResumeIdentity,
+  isExactSafeStagingAuthSurfaceProof,
+} from "./prior-migration-proof-contract.mjs";
 
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
@@ -1845,6 +1848,11 @@ async function main() {
     migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
     migrationSummary.remoteStateVerificationStatus ===
       "EXACT_EXISTING_COMMITTED_PORTFOLIO" &&
+    isExactSafeStagingAuthSurfaceProof(
+      migrationSummary.authUserSurfaceAtVerification,
+    ) &&
+    migrationSummary.authUserCountAtVerification ===
+      migrationSummary.authUserSurfaceAtVerification.userCount &&
     priorApplicationRetainedHistory &&
     exactCurrentResumePriorIdentity;
   const exactForwardApplication =

@@ -1,3 +1,119 @@
+import { createHash } from "node:crypto";
+
+const SYNTHETIC_AUTH_FIXTURE_LABEL = "DF-STAGING-20260712";
+const EXPECTED_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
+  ["dealflow-staging-20260712@example.com", "paid_direct_realtor"],
+  ["dealflow-staging-attacker-20260712@example.com", "cross_tenant_attacker"],
+  ["dealflow-staging-deletion-20260712@example.com", "account_deletion_fail_closed_realtor"],
+  ["dealflow-staging-legacy-20260712@example.com", "grandfathered_legacy_realtor"],
+  ["dealflow-staging-new-direct-20260712@example.com", "new_unpaid_direct_realtor"],
+  ["dealflow-staging-operator-20260712@example.com", "internal_admin_operator"],
+  ["dealflow-staging-partner-admin-20260712@example.com", "active_white_label_partner_admin"],
+  ["dealflow-staging-partner-child-20260712@example.com", "white_label_child_realtor"],
+  ["dealflow-staging-partner-two-admin-20260712@example.com", "active_white_label_partner_two_admin"],
+  ["dealflow-staging-partner-two-child-20260712@example.com", "white_label_partner_two_child_realtor"],
+].map(([email, scenario]) => Object.freeze({
+  email,
+  fixture: SYNTHETIC_AUTH_FIXTURE_LABEL,
+  synthetic: true,
+  scenario,
+})));
+
+function sha256(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+const EMPTY_AUTH_SURFACE_SHA256 = sha256("[]");
+const EXPECTED_SYNTHETIC_AUTH_EMAIL_SET_SHA256 = sha256(
+  JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES.map(({ email }) => email)),
+);
+const EXPECTED_SYNTHETIC_AUTH_IDENTITY_SET_SHA256 = sha256(
+  JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES),
+);
+
+export function classifyExactStagingAuthSurface(rows) {
+  if (!Array.isArray(rows)) {
+    throw new Error("Staging auth surface is not a bounded identity array");
+  }
+  if (rows.length === 0) {
+    return Object.freeze({
+      schemaVersion: "dealflow.staging-auth-surface-proof.v1",
+      status: "EMPTY",
+      userCount: 0,
+      emailSetSha256: EMPTY_AUTH_SURFACE_SHA256,
+      identitySetSha256: EMPTY_AUTH_SURFACE_SHA256,
+      unexpectedIdentityCount: 0,
+      rawIdentityValuesPersisted: false,
+    });
+  }
+  if (rows.length !== EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length) {
+    throw new Error("Staging auth surface is not the exact synthetic fixture set");
+  }
+  const identities = rows.map((row) => {
+    if (
+      !row ||
+      typeof row.email !== "string" ||
+      row.email !== row.email.trim().toLowerCase() ||
+      typeof row.fixture !== "string" ||
+      typeof row.synthetic !== "boolean" ||
+      typeof row.scenario !== "string"
+    ) {
+      throw new Error("Staging auth surface contains a malformed identity");
+    }
+    return {
+      email: row.email,
+      fixture: row.fixture,
+      synthetic: row.synthetic,
+      scenario: row.scenario,
+    };
+  }).sort((left, right) => left.email.localeCompare(right.email));
+  if (
+    new Set(identities.map(({ email }) => email)).size !== identities.length ||
+    JSON.stringify(identities) !== JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES)
+  ) {
+    throw new Error("Staging auth surface contains an unexpected or incorrectly labeled identity");
+  }
+  return Object.freeze({
+    schemaVersion: "dealflow.staging-auth-surface-proof.v1",
+    status: "EXACT_SYNTHETIC_FIXTURE_SET",
+    userCount: identities.length,
+    emailSetSha256: sha256(JSON.stringify(identities.map(({ email }) => email))),
+    identitySetSha256: sha256(JSON.stringify(identities)),
+    unexpectedIdentityCount: 0,
+    rawIdentityValuesPersisted: false,
+  });
+}
+
+export function isExactSafeStagingAuthSurfaceProof(proof) {
+  const expectedKeys = [
+    "emailSetSha256",
+    "identitySetSha256",
+    "rawIdentityValuesPersisted",
+    "schemaVersion",
+    "status",
+    "unexpectedIdentityCount",
+    "userCount",
+  ];
+  if (
+    !proof ||
+    JSON.stringify(Object.keys(proof).sort()) !== JSON.stringify(expectedKeys) ||
+    proof?.schemaVersion !== "dealflow.staging-auth-surface-proof.v1" ||
+    proof.unexpectedIdentityCount !== 0 ||
+    proof.rawIdentityValuesPersisted !== false
+  ) {
+    return false;
+  }
+  if (proof.status === "EMPTY") {
+    return proof.userCount === 0 &&
+      proof.emailSetSha256 === EMPTY_AUTH_SURFACE_SHA256 &&
+      proof.identitySetSha256 === EMPTY_AUTH_SURFACE_SHA256;
+  }
+  return proof.status === "EXACT_SYNTHETIC_FIXTURE_SET" &&
+    proof.userCount === EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length &&
+    proof.emailSetSha256 === EXPECTED_SYNTHETIC_AUTH_EMAIL_SET_SHA256 &&
+    proof.identitySetSha256 === EXPECTED_SYNTHETIC_AUTH_IDENTITY_SET_SHA256;
+}
+
 const APPLICATION_ARTIFACTS = Object.freeze([
   "evidence-manifest.json",
   "evidence-manifest.pre-mutation.json",
