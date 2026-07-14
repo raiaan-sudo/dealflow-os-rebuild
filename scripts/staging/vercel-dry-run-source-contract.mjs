@@ -107,7 +107,9 @@ export function assertExactVercelDryRunSourcePortfolio({
     regular.push({ path, size: raw.size, mode: raw.mode, sha: raw.sha });
   }
 
-  regular.sort((left, right) => left.path.localeCompare(right.path));
+  regular.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+  );
   const expectedPaths = [
     ...manifest.entries.map((entry) => assertSafePath(
       entry?.path,

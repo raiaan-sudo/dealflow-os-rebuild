@@ -32,10 +32,20 @@ function record(path) {
 try {
   mkdirSync(join(root, "config", "release"), { recursive: true });
   mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, "Z-file.ts"), "export const upper = true;\n");
+  writeFileSync(join(root, "a-file.ts"), "export const lower = true;\n");
   writeFileSync(join(root, "package.json"), "{\"name\":\"fixture\"}\n");
   writeFileSync(join(root, "src", "app.ts"), "export const app = true;\n");
   writeFileSync(join(root, "extra.ts"), "export const extra = true;\n");
-  const manifestEntries = ["package.json", "src/app.ts"].map((path) => {
+  // Uppercase-before-lowercase is Git/manifest codepoint order but differs
+  // from localeCompare in common locales. Keep both to prevent locale-driven
+  // false failures against the real Vercel inventory.
+  const manifestEntries = [
+    "Z-file.ts",
+    "a-file.ts",
+    "package.json",
+    "src/app.ts",
+  ].map((path) => {
     const source = record(path);
     return {
       path,
@@ -70,9 +80,9 @@ try {
     manifestRelativePath,
   });
   assert.equal(proof.status, "PASS");
-  assert.equal(proof.regularFileCount, 3);
+  assert.equal(proof.regularFileCount, 5);
   assert.equal(proof.directoryEntryCount, 1);
-  assert.equal(proof.manifestDeclaredFileCount, 2);
+  assert.equal(proof.manifestDeclaredFileCount, 4);
   assert.match(proof.sourceSetSha256, /^[a-f0-9]{64}$/);
 
   for (const [mutate, pattern] of [
