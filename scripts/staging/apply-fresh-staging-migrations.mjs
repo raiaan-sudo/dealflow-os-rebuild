@@ -93,6 +93,25 @@ const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run rls:cross-tenant",
   "npm run rls:fixture-smoke",
 ]);
+const existingExactVerificationFailureCodes = Object.freeze({
+  SERVER_VERSION: "existing_server_version_not_proven",
+  REMOTE_STRUCTURAL_STATE: "existing_remote_structural_state_not_proven",
+  MIGRATION_HISTORY: "existing_migration_history_not_proven",
+  STORAGE_SURFACE: "existing_storage_surface_not_proven",
+  AUTH_SURFACE: "existing_auth_surface_not_proven",
+  AUTH_COUNT_CONSISTENCY: "existing_auth_count_consistency_not_proven",
+  STRUCTURAL_CATALOG_BINDING: "existing_structural_catalog_binding_not_proven",
+  STRUCTURAL_CATALOG_STABILITY: "existing_structural_catalog_stability_not_proven",
+  NORMALIZED_SCHEMA_FIRST_CAPTURE: "existing_normalized_schema_first_capture_not_proven",
+  NORMALIZED_SCHEMA_REPEAT_CAPTURE: "existing_normalized_schema_repeat_capture_not_proven",
+  NORMALIZED_SCHEMA_BINDING: "existing_normalized_schema_binding_not_proven",
+  FORCED_RLS_COUNT: "existing_forced_rls_count_not_proven",
+  META_RUNTIME_CONTROLS: "existing_meta_runtime_controls_not_proven",
+  GHL_RUNTIME_CONTROLS: "existing_ghl_runtime_controls_not_proven",
+  RETENTION_AUTHORITY_ACL: "existing_retention_authority_acl_not_proven",
+  BROKER_SOURCE_REBIND: "existing_broker_source_rebind_not_proven",
+  FINAL_EVIDENCE_WRITE: "existing_final_evidence_write_not_proven",
+});
 const brokerRelativePath = "scripts/staging/apply-fresh-staging-migrations.mjs";
 const migrationDir = join(repo, "supabase", "migrations");
 const migrations = readdirSync(migrationDir)
@@ -142,11 +161,38 @@ const brokerSourceIdentity = captureBrokerSourceIdentity();
 
 function sanitized(value, projectRef) {
   const escaped = projectRef.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedEvidenceDir = evidenceDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedRepo = repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return String(value ?? "")
     .replace(new RegExp(escaped, "gi"), "[REDACTED_PROJECT_REF]")
+    .replace(new RegExp(escapedEvidenceDir, "g"), "[EVIDENCE_DIR]")
+    .replace(new RegExp(escapedRepo, "g"), "[RELEASE_REPO]")
     .replace(/db\.[a-z0-9-]+\.supabase\.co/gi, "[REDACTED_DATABASE_HOST]")
     .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, "[REDACTED_DATABASE_URL]")
     .replace(/(password\s*[=:]\s*)\S+/gi, "$1[REDACTED]");
+}
+
+function existingExactFailureEvidence(stage, error, projectRef) {
+  const failureCode = existingExactVerificationFailureCodes[stage];
+  if (!failureCode) {
+    throw new Error("Existing exact verification failure stage is not allowlisted");
+  }
+  const boundedSanitizedError = sanitized(
+    error instanceof Error ? `${error.name}:${error.message}` : `NON_ERROR_THROW:${String(error)}`,
+    projectRef,
+  )
+    .replace(
+      /((?:access[_ -]?token|token|password|secret|api[_ -]?key|cookie)\s*[=:]\s*)\S+/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/\b[A-Za-z0-9+/_-]{48,}={0,2}\b/g, "[REDACTED_LONG_VALUE]")
+    .slice(0, 4_000);
+  return Object.freeze({
+    failureStage: stage,
+    failureCode,
+    sanitizedErrorSha256: sha256(boundedSanitizedError),
+    rawErrorPersisted: false,
+  });
 }
 
 function run(command, args, options = {}) {
@@ -812,7 +858,11 @@ function captureRemoteCatalogIdentity(label) {
   });
 }
 
-function captureRemoteStructuralState(labelPrefix) {
+function captureRemoteStructuralState(labelPrefix, attributeStage = null) {
+  const setStage = (stage) => {
+    if (attributeStage) attributeStage(stage);
+  };
+  setStage("MIGRATION_HISTORY");
   const historyTableExists = sql(
     "select to_regclass('supabase_migrations.schema_migrations') is not null;",
     `${labelPrefix} migration-history existence`,
@@ -829,35 +879,48 @@ function captureRemoteStructuralState(labelPrefix) {
       `${labelPrefix} migration-history versions`,
     ).split("\n").filter(Boolean)
     : [];
+  setStage("STRUCTURAL_CATALOG_BINDING");
+  const structuralCatalog = captureRemoteCatalogIdentity(
+    `${labelPrefix} structural-catalog identity`,
+  );
+  setStage("REMOTE_STRUCTURAL_STATE");
+  const publicTableCount = Number(sql(
+    "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p');",
+    `${labelPrefix} public-table count`,
+  ));
+  const authTableCount = Number(sql(
+    "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='auth' and c.relkind in ('r','p');",
+    `${labelPrefix} auth-platform-table count`,
+  ));
+  const storageTableCount = Number(sql(
+    "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='storage' and c.relkind in ('r','p');",
+    `${labelPrefix} storage-platform-table count`,
+  ));
+  const vaultTableCount = Number(sql(
+    "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='vault' and c.relkind in ('r','p');",
+    `${labelPrefix} vault-platform-table count`,
+  ));
+  setStage("AUTH_SURFACE");
+  const authUserCount = Number(sql(
+    "select count(*) from auth.users;",
+    `${labelPrefix} auth-user count`,
+  ));
+  setStage("STORAGE_SURFACE");
+  const storageObjectCount = Number(sql(
+    "select count(*) from storage.objects;",
+    `${labelPrefix} storage-object count`,
+  ));
   return Object.freeze({
-    ...captureRemoteCatalogIdentity(`${labelPrefix} structural-catalog identity`),
+    ...structuralCatalog,
     historyTableExists,
     migrationHistoryCount,
     migrationHistoryVersions,
-    publicTableCount: Number(sql(
-      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p');",
-      `${labelPrefix} public-table count`,
-    )),
-    authTableCount: Number(sql(
-      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='auth' and c.relkind in ('r','p');",
-      `${labelPrefix} auth-platform-table count`,
-    )),
-    storageTableCount: Number(sql(
-      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='storage' and c.relkind in ('r','p');",
-      `${labelPrefix} storage-platform-table count`,
-    )),
-    vaultTableCount: Number(sql(
-      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='vault' and c.relkind in ('r','p');",
-      `${labelPrefix} vault-platform-table count`,
-    )),
-    authUserCount: Number(sql(
-      "select count(*) from auth.users;",
-      `${labelPrefix} auth-user count`,
-    )),
-    storageObjectCount: Number(sql(
-      "select count(*) from storage.objects;",
-      `${labelPrefix} storage-object count`,
-    )),
+    publicTableCount,
+    authTableCount,
+    storageTableCount,
+    vaultTableCount,
+    authUserCount,
+    storageObjectCount,
   });
 }
 
@@ -1474,7 +1537,9 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     remoteReadStarted: true,
     ...common,
   });
+  let verificationStage = "SERVER_VERSION";
   try {
+    verificationStage = "SERVER_VERSION";
     const existingServerVersion = sql(
       "show server_version;",
       "Existing staging PostgreSQL version check",
@@ -1482,22 +1547,34 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     if (!existingServerVersion.startsWith("17.6")) {
       throw new Error("The existing staging PostgreSQL version does not match exact 17.6");
     }
-    const existingState = captureRemoteStructuralState("Existing staging exact verification");
+    verificationStage = "REMOTE_STRUCTURAL_STATE";
+    const existingState = captureRemoteStructuralState(
+      "Existing staging exact verification",
+      (stage) => {
+        verificationStage = stage;
+      },
+    );
+    verificationStage = "MIGRATION_HISTORY";
     if (!hasExactMigrationHistory(existingState)) {
       throw new Error("Existing staging migration history does not match the exact portfolio");
     }
+    verificationStage = "STORAGE_SURFACE";
     if (existingState.storageObjectCount !== 0) {
       throw new Error("Existing isolated staging contains storage objects");
     }
+    verificationStage = "AUTH_SURFACE";
     const authSurface = captureAndAssertStagingAuthSurface(
       "Verify existing staging auth surface is empty or the exact synthetic fixture set",
     );
+    verificationStage = "AUTH_COUNT_CONSISTENCY";
     if (authSurface.userCount !== existingState.authUserCount) {
       throw new Error("Existing staging auth-surface count did not match structural-state capture");
     }
+    verificationStage = "STRUCTURAL_CATALOG_BINDING";
     if (existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256) {
       throw new Error("Existing staging structural catalog drifted from the sealed application proof");
     }
+    verificationStage = "STRUCTURAL_CATALOG_STABILITY";
     const existingCatalogRepeat = captureRemoteCatalogIdentity(
       "Repeat existing staging structural-catalog identity",
     );
@@ -1507,26 +1584,27 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     ) {
       throw new Error("Existing staging structural catalog was not stable across repeated capture");
     }
+    verificationStage = "NORMALIZED_SCHEMA_FIRST_CAPTURE";
     const existingDump = captureNormalizedSchemaDump();
+    verificationStage = "NORMALIZED_SCHEMA_REPEAT_CAPTURE";
     const existingDumpRepeat = captureNormalizedSchemaDump();
     const existingSchemaSha256 = sha256(existingDump);
+    verificationStage = "NORMALIZED_SCHEMA_BINDING";
     if (
       existingSchemaSha256 !== sha256(existingDumpRepeat) ||
       existingSchemaSha256 !== priorApplication.normalizedSchemaSha256
     ) {
       throw new Error("Existing staging normalized schema drifted from the sealed application proof");
     }
+    verificationStage = "FORCED_RLS_COUNT";
     const forcedRlsCount = Number(sql(
       "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and c.relrowsecurity and c.relforcerowsecurity;",
       "Count existing staging forced-RLS tables",
     ));
+    verificationStage = "META_RUNTIME_CONTROLS";
     const activationControls = sql(
       "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
       "Verify existing closed Meta activation runtime controls",
-    ).split("\n").filter(Boolean);
-    const ghlControls = sql(
-      "select environment || ':' || provisioning_writes_enabled::text || ':' || lead_writes_enabled::text || ':' || lifecycle_webhook_enabled::text from public.ghl_runtime_controls order by environment;",
-      "Verify existing closed GHL runtime controls",
     ).split("\n").filter(Boolean);
     if (
       activationControls.some((row) => !row.endsWith(":false")) ||
@@ -1534,15 +1612,22 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     ) {
       throw new Error("Meta activation runtime controls are not default closed in existing staging");
     }
+    verificationStage = "GHL_RUNTIME_CONTROLS";
+    const ghlControls = sql(
+      "select environment || ':' || provisioning_writes_enabled::text || ':' || lead_writes_enabled::text || ':' || lifecycle_webhook_enabled::text from public.ghl_runtime_controls order by environment;",
+      "Verify existing closed GHL runtime controls",
+    ).split("\n").filter(Boolean);
     if (
       ghlControls.length !== 3 ||
       ghlControls.some((row) => !row.endsWith(":false:false:false"))
     ) {
       throw new Error("GHL provider runtime controls are not default closed in existing staging");
     }
+    verificationStage = "RETENTION_AUTHORITY_ACL";
     const retentionAuthorityAcl = captureAndAssertRetentionAuthorityAcl(
       "Verify existing retention authority table and column ACLs",
     );
+    verificationStage = "BROKER_SOURCE_REBIND";
     assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
     const applied = migrationSources.map(({ file, version, body }) => ({
       version,
@@ -1581,6 +1666,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       },
       applied,
     };
+    verificationStage = "FINAL_EVIDENCE_WRITE";
     const proofRecord = writeJsonEvidence("staging-migration-proof.json", result);
     const summaryRecord = writeJsonEvidence("staging-migration-summary.json", {
       schemaVersion: "dealflow.staging-migration-summary.v1",
@@ -1625,17 +1711,22 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       `Existing isolated staging migration portfolio PASS: ${migrations.length} migrations, PostgreSQL ${existingServerVersion}, schema ${existingSchemaSha256}, read-only verification, manifest ${manifestRecord.sha256}\n`,
     );
     process.exit(0);
-  } catch {
+  } catch (error) {
+    const failureEvidence = existingExactFailureEvidence(
+      verificationStage,
+      error,
+      projectRef,
+    );
     const failureRecord = writeJsonEvidence("staging-migration-failure.json", {
       schemaVersion: "dealflow.isolated-staging-migration-failure.v1",
       status: "FAILED_EXISTING_EXACT_VERIFICATION",
-      failureCode: "existing_exact_portfolio_not_proven",
+      ...failureEvidence,
       ...common,
     });
     const failureSummaryRecord = writeJsonEvidence("staging-migration-summary.json", {
       schemaVersion: "dealflow.staging-migration-summary.v1",
       status: "FAILED_EXISTING_EXACT_VERIFICATION",
-      failureCode: "existing_exact_portfolio_not_proven",
+      ...failureEvidence,
       ...common,
     });
     const failureManifestRecord = writeJsonEvidence("evidence-manifest.json", {
@@ -1649,6 +1740,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       broker: brokerEvidenceIdentity,
       brokerSourceSha256: brokerSourceIdentity.sha256,
       priorApplication,
+      ...failureEvidence,
       artifacts: [
         preflightRecord,
         preflightSummaryRecord,

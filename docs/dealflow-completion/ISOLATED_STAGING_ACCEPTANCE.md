@@ -29,9 +29,9 @@ Every zero-external-effects flag must have the exact value enforced by `src/lib/
 ```bash
 npm run staging:acceptance -- \
   --execute \
-  --apply-forward-migration \
+  --verify-existing-migrations \
   --deploy \
-  --prior-migration-proof-dir /private/tmp/dealflow-staging-acceptance-evidence-e776f38/migration-proof \
+  --prior-migration-proof-dir /absolute/path/to/latest-sealed-103-run/migration-proof \
   --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<seal> \
   --round-one /absolute/path/to/round-1/verification-summary.json \
   --round-two /absolute/path/to/round-2/verification-summary.json
@@ -45,8 +45,11 @@ DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_
 
 For a genuinely empty isolated project, `--apply-migrations` is the fresh atomic
 mode and forbids a prior proof. `--verify-existing-migrations` is the exact
-read-only schema mode. Exactly one mode is accepted; the current qibh path uses
-the pinned 102-to-103 forward mode above.
+read-only schema mode. Exactly one mode is accepted. The pinned qibh project has
+already completed its 102-to-103 forward transition, so subsequent acceptance
+runs must use `--verify-existing-migrations` with the latest passing sealed
+103-migration proof. `--apply-forward-migration` is retained only for the
+completed one-time transition and must not be used for the current qibh state.
 
 Without the required flags, that authorization, every required secure input, an exact clean branch/commit/tree, and both accepted round summaries, the runner performs no remote mutation.
 
@@ -54,7 +57,7 @@ Without the required flags, that authorization, every required secure input, an 
 
 1. Verify local repo, Node, branch, commit, tree, tracked-file digest, migration portfolio, Supabase fingerprint, Vercel fingerprints, all safety flags, secure inputs, and both local verification rounds.
 2. Provision the exact allowlisted isolated-staging Vercel environment through stdin and reject any unexpected existing variable name.
-3. Prove the pinned exact 102-migration qibh state, apply only migration 103 and its history receipt in one outer transaction, and verify the exact 103-history/schema/ACL result. Never fall back to a fresh apply on nonempty state.
+3. For the current qibh state, verify the exact committed 103-migration history, schema, catalog, ACLs, closed runtime controls, storage surface, and bounded synthetic auth surface without database mutation. Fresh apply is allowed only for a genuinely empty isolated project; the historical 102-to-103 forward mode remains a separate one-time path and never falls back to fresh apply on nonempty state.
 4. Through a separate database-owner broker, install, tightly recover, or exactly reuse the qibh-only synthetic retention policy. Prove service-role SELECT-only access, zero table- or column-level writes, zero anon/authenticated/PUBLIC grants, exact policy values, and the actual relation owner.
 5. Deploy the exact commit to the isolated Vercel staging project and verify deployment metadata.
 6. Seed the deployment-bound white-label hosts and ten synthetic roles twice, proving idempotency and atomic partner attribution.

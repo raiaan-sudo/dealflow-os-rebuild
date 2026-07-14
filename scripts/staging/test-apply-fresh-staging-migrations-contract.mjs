@@ -67,6 +67,60 @@ requireMarker(/portfolioApplicationRemoteMutationCompleted: true/, "separate his
 requireMarker(/remoteMutationStarted: false/, "read-only resume mutation-start truth");
 requireMarker(/remoteMutationCompleted: false/, "read-only resume mutation-completion truth");
 requireMarker(/EXACT_EXISTING_COMMITTED_PORTFOLIO/, "exact existing portfolio result");
+requireMarker(
+  /const existingExactVerificationFailureCodes = Object\.freeze\(\{/,
+  "bounded existing-verification failure-code map",
+);
+for (const stage of [
+  "SERVER_VERSION",
+  "REMOTE_STRUCTURAL_STATE",
+  "MIGRATION_HISTORY",
+  "STORAGE_SURFACE",
+  "AUTH_SURFACE",
+  "AUTH_COUNT_CONSISTENCY",
+  "STRUCTURAL_CATALOG_BINDING",
+  "STRUCTURAL_CATALOG_STABILITY",
+  "NORMALIZED_SCHEMA_FIRST_CAPTURE",
+  "NORMALIZED_SCHEMA_REPEAT_CAPTURE",
+  "NORMALIZED_SCHEMA_BINDING",
+  "FORCED_RLS_COUNT",
+  "META_RUNTIME_CONTROLS",
+  "GHL_RUNTIME_CONTROLS",
+  "RETENTION_AUTHORITY_ACL",
+  "BROKER_SOURCE_REBIND",
+  "FINAL_EVIDENCE_WRITE",
+]) {
+  requireMarker(
+    new RegExp(`${stage}: "[a-z0-9_]+"`),
+    `type-safe ${stage} failure code`,
+  );
+}
+const existingFailureCodeMapBody =
+  /const existingExactVerificationFailureCodes = Object\.freeze\(\{([\s\S]*?)\n\}\);/.exec(
+    source,
+  )?.[1];
+assert.ok(existingFailureCodeMapBody, "Existing-verification failure-code map must be inspectable");
+const existingFailureCodes = [
+  ...existingFailureCodeMapBody.matchAll(/^[ ]{2}[A-Z_]+: "([a-z0-9_]+)",$/gm),
+].map((match) => match[1]);
+assert.equal(existingFailureCodes.length, 17, "Every existing-verification stage needs one code");
+assert.equal(
+  new Set(existingFailureCodes).size,
+  existingFailureCodes.length,
+  "Existing-verification failure codes must be unique",
+);
+requireMarker(
+  /function existingExactFailureEvidence\(stage, error, projectRef\)/,
+  "bounded existing-verification failure evidence builder",
+);
+requireMarker(/sanitizedErrorSha256: sha256\(boundedSanitizedError\)/, "digest-only sanitized error evidence");
+requireMarker(/rawErrorPersisted: false/, "explicit raw-error non-persistence truth");
+requireMarker(/\[EVIDENCE_DIR\]/, "run-specific evidence-directory normalization");
+requireMarker(/\[RELEASE_REPO\]/, "release-repository path normalization");
+requireMarker(
+  /function captureRemoteStructuralState\(labelPrefix, attributeStage = null\)/,
+  "query-level structural-state stage attribution",
+);
 requireMarker(/captureAndAssertStagingAuthSurface/, "empty-or-exact-synthetic auth-surface verifier");
 requireMarker(/with bounded_auth_users as \(/, "single-statement bounded auth identity snapshot");
 requireMarker(/auth_count as \(/, "single-statement auth count snapshot");
@@ -296,7 +350,10 @@ requireMarker(/terminalStatus = "FAILED_REMOTE_STATE_NOT_PROVEN"/, "unproven rol
 requireMarker(/terminalStatus = "FAILED_UNEXPECTED_REMOTE_STATE"/, "unexpected remote state failure status");
 requireMarker(/lastAttemptedVersion: transactionExecution\.lastAttemptedVersion/, "terminal last-attempted evidence");
 requireMarker(/lastAppliedVersion: transactionExecution\.lastAppliedVersion/, "terminal last-applied evidence");
-requireMarker(/function captureRemoteStructuralState\(labelPrefix\)/, "read-only remote state recapture");
+requireMarker(
+  /function captureRemoteStructuralState\(labelPrefix, attributeStage = null\)/,
+  "read-only remote state recapture with optional exact-stage attribution",
+);
 requireMarker(/function captureRemoteCatalogIdentity\(label\)/, "full structural-catalog identity capture");
 requireMarker(/function isExactEmptyPlatformState\(state, expectedStructuralCatalogSha256 = null\)/, "exact empty-state rollback verifier");
 requireMarker(/state\.structuralCatalogSha256 === expectedStructuralCatalogSha256/, "exact preflight structural-catalog rollback comparison");
@@ -399,6 +456,75 @@ assert.ok(
   "Resume and forward modes must be discrete pre-fresh branches",
 );
 const resumeBranch = source.slice(resumeStart, forwardStart);
+for (const stage of Object.keys({
+  SERVER_VERSION: true,
+  REMOTE_STRUCTURAL_STATE: true,
+  MIGRATION_HISTORY: true,
+  STORAGE_SURFACE: true,
+  AUTH_SURFACE: true,
+  AUTH_COUNT_CONSISTENCY: true,
+  STRUCTURAL_CATALOG_BINDING: true,
+  STRUCTURAL_CATALOG_STABILITY: true,
+  NORMALIZED_SCHEMA_FIRST_CAPTURE: true,
+  NORMALIZED_SCHEMA_REPEAT_CAPTURE: true,
+  NORMALIZED_SCHEMA_BINDING: true,
+  FORCED_RLS_COUNT: true,
+  META_RUNTIME_CONTROLS: true,
+  GHL_RUNTIME_CONTROLS: true,
+  RETENTION_AUTHORITY_ACL: true,
+  BROKER_SOURCE_REBIND: true,
+  FINAL_EVIDENCE_WRITE: true,
+})) {
+  assert.match(
+    resumeBranch,
+    new RegExp(`verificationStage = "${stage}"`),
+    `Resume verifier must attribute failures to ${stage}`,
+  );
+}
+assert.match(
+  resumeBranch,
+  /catch \(error\) \{[\s\S]*existingExactFailureEvidence\([\s\S]*verificationStage,[\s\S]*error,[\s\S]*projectRef/,
+  "Resume verifier must convert caught failures to bounded diagnostic evidence",
+);
+assert.match(
+  resumeBranch,
+  /captureRemoteStructuralState\([\s\S]*?\(stage\) => \{[\s\S]*?verificationStage = stage;[\s\S]*?\}\s*,?\s*\)/,
+  "Composite structural capture must attribute each query to its exact stage",
+);
+const structuralCaptureBody =
+  /function captureRemoteStructuralState\(labelPrefix, attributeStage = null\) \{([\s\S]*?)\n\}/.exec(
+    source,
+  )?.[1];
+assert.ok(structuralCaptureBody, "Structural-state capture must remain inspectable");
+for (const orderedStage of [
+  "MIGRATION_HISTORY",
+  "STRUCTURAL_CATALOG_BINDING",
+  "REMOTE_STRUCTURAL_STATE",
+  "AUTH_SURFACE",
+  "STORAGE_SURFACE",
+]) {
+  assert.match(
+    structuralCaptureBody,
+    new RegExp(`setStage\\("${orderedStage}"\\)`),
+    `Structural capture must attribute ${orderedStage}`,
+  );
+}
+const metaStageStart = resumeBranch.indexOf('verificationStage = "META_RUNTIME_CONTROLS"');
+const metaSemanticCheck = resumeBranch.indexOf(
+  'throw new Error("Meta activation runtime controls are not default closed in existing staging")',
+);
+const ghlStageStart = resumeBranch.indexOf('verificationStage = "GHL_RUNTIME_CONTROLS"');
+assert.ok(
+  metaStageStart >= 0 &&
+    metaSemanticCheck > metaStageStart &&
+    ghlStageStart > metaSemanticCheck,
+  "Meta runtime-control query and semantic validation must remain attributed to the Meta stage",
+);
+assert.doesNotMatch(
+  resumeBranch,
+  /(?:rawError|errorMessage|sanitizedErrorMessage)\s*:/,
+  "Resume verifier must never persist a raw or sanitized error message",
+);
 assert.doesNotMatch(
   resumeBranch,
   /executeAtomicMigrationTransaction\s*\(/,

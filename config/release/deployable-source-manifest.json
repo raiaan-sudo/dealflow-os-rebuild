@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 972,
-  "deployableSourceSha256": "61beb1cb167c75fb5cb31310fa080bfaa8770991134c0c5ffea90a7581a1b577",
+  "deployableSourceSha256": "fdc8e22f387a97fe78efe7cec6e0ed955b626ad1d949810603d727da3701cd60",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -120,9 +120,9 @@
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 6011,
+      "size": 6434,
       "mode": 33188,
-      "sha256": "ad0ed425004210b7d4ac1762d10d64dbaa3ac76dba6e5e0df7bcf724c14e210a"
+      "sha256": "9dfdd65e8b4ef1d58febcc4eeb172494374469a2fe94d4288a2c7d9c5a4a825a"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -936,9 +936,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 112508,
+      "size": 116366,
       "mode": 33188,
-      "sha256": "147debd751dc297bed0403aed5d0539b95cd4a0c430bda95a189249305c310c4"
+      "sha256": "4ea483fcb3a889ee9cb79e48ccca6dbe5a602a7add56cf6adc0fa0038fe0ef26"
     },
     {
       "path": "scripts/staging/browser-context-network-boundary.mjs",
@@ -1038,9 +1038,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 44813,
+      "size": 49365,
       "mode": 33188,
-      "sha256": "72a2f73640d41675b849334048a9a5bfeb0b77ed9c3408e79a7c5ba9b5254cbd"
+      "sha256": "e3295f48df708413cdab68b1d97670e0f8d4877f183cc3dfcb031cceea8e52d1"
     },
     {
       "path": "scripts/staging/test-browser-context-network-boundary.mjs",
