@@ -19,6 +19,10 @@ import { runInNewContext } from "node:vm";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
 const runner = readFileSync(runnerPath, "utf8");
+const imageBuildInputContract = readFileSync(
+  join(root, "scripts", "staging", "staging-image-build-input-contract.mjs"),
+  "utf8",
+);
 const trustBundle = readFileSync(
   join(root, "config", "security", "supabase-prod-ca-2021.crt"),
 );
@@ -1072,6 +1076,25 @@ assert.match(runner, /function buildVersionedPrivateImagePaths/);
 assert.match(runner, /optimizer\.searchParams\.set\("url", sourceResourcePath\)/);
 assert.match(runner, /DISABLED_STAGING_IMAGE_OPTIMIZER_PATH/);
 assert.match(runner, /function isExactDealFlowApplicationGateResponse/);
+assert.match(runner, /function isExactNextImageDisallowedInputResponse/);
+assert.match(runner, /NEXT_IMAGE_DISALLOWED_BODY_BYTES = 30/);
+assert.match(runner, /3a1ccc2882f115bd4e3e3fa69bdf2614c34865765b5b0db3f78716dfe922de5f/);
+assert.match(runner, /NEXT_IMAGE_DISALLOWED_CACHE_CONTROL/);
+assert.match(runner, /vercelErrorPresent === false/);
+assert.match(runner, /defaultOptimizerOwnedByVercelEdge: true/);
+assert.match(runner, /defaultOptimizerApplicationProxyClaimed: false/);
+assert.match(runner, /EXACT_NEXT_IMAGE_DISALLOWED_INPUT/);
+assert.match(runner, /proveApprovedDirectPublicImageMatrix/);
+assert.match(runner, /proveDynamicImageSourceMatrix/);
+assert.match(runner, /privateImageForbiddenQueryRejected: true/);
+assert.match(runner, /forbiddenQueryWithValidHeader/);
+assert.match(runner, /assertExactStagingImageBuildInputInventory/);
+assert.match(imageBuildInputContract, /optimizerEligibleStaticMediaAssetCount: 0/);
+assert.match(imageBuildInputContract, /next\/legacy\/image/);
+assert.match(imageBuildInputContract, /next\/future\/image/);
+assert.match(imageBuildInputContract, /aliases or calls its Next Image binding/);
+assert.match(imageBuildInputContract, /Dynamic image-producing route inventory is not exact/);
+assert.match(imageBuildInputContract, /Deployable image assets are not the exact approved public direct-asset portfolio/);
 assert.match(runner, /function classifyExactLegacyOptimizerResponse/);
 assert.match(runner, /LEGACY_BENIGN_OPTIMIZER_BODY_SHA256/);
 assert.match(runner, /cachedPriorProofPathUsed: false/);

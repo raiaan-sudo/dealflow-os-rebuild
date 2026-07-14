@@ -33,13 +33,13 @@ export function resolveIsolatedStagingImageConfig(environment = process.env) {
   }
 
   return {
-    // Next's optimizer performs a fresh internal source fetch without
-    // forwarding the caller's staging credential. Every current Next Image is
-    // explicitly unoptimized, and the source-inventory contract rejects future
-    // exceptions. `unoptimized` plus the application proxy's exact optimizer
-    // closure are the primary controls. The dedicated path and narrow declared
-    // patterns are defense in depth only; production receives no override.
+    // Vercel's default image optimizer is edge-owned and does not traverse the
+    // application proxy. Exact isolated staging therefore emits only direct
+    // images, forbids static-image module imports, and rejects every declared
+    // local/remote optimizer source. The dedicated custom path remains an
+    // application-owned closed surface. Production receives no override.
     unoptimized: true,
+    disableStaticImages: true,
     path: DISABLED_STAGING_IMAGE_OPTIMIZER_PATH,
     remotePatterns: [],
     localPatterns: [

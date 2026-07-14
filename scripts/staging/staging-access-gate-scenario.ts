@@ -37,10 +37,10 @@ if (scenario === "authorized") {
 } else if (scenario === "wrong_static_header") {
   path = "/_next/static/chunks/staging-gate-proof.js";
   suppliedSecret = "W".repeat(secret.length);
-} else if (scenario === "closed_image_header") {
+} else if (scenario === "authorized_default_image_header") {
   path = `/_next/image?${privateImageOptimizerQuery}`;
   suppliedSecret = secret;
-} else if (scenario === "closed_image_cookie") {
+} else if (scenario === "authorized_default_image_cookie") {
   path = `/_next/image?${privateImageOptimizerQuery}`;
   suppliedCookieSecret = secret;
 } else if (scenario === "closed_disabled_image_no_gate") {
@@ -161,8 +161,6 @@ async function main() {
     scenario === "unauthorized_cookie" ||
     scenario === "unauthorized_static" ||
     scenario === "unauthorized_image" ||
-    scenario === "closed_image_header" ||
-    scenario === "closed_image_cookie" ||
     scenario === "closed_disabled_image_no_gate" ||
     scenario === "closed_disabled_image_header" ||
     scenario === "closed_disabled_image_cookie" ||

@@ -2,10 +2,16 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+
+import {
+  APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS,
+  assertExactStagingImageBuildInputInventory,
+  assertStaticImageBuildSourceSafety,
+  isPotentialDynamicImageSource,
+} from "./staging-image-build-input-contract.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const proxy = readFileSync(join(root, "src", "proxy.ts"), "utf8");
@@ -59,7 +65,10 @@ assert.match(proxy, /matcher: \["\/:path\*"\]/);
 assert.match(proxy, /STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX/);
 assert.match(proxy, /pathname\.startsWith\(STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX\)/);
 assert.match(proxy, /rawPathname === DISABLED_STAGING_IMAGE_OPTIMIZER_PATH/);
-assert.match(proxy, /rawPathname === NEXT_IMAGE_OPTIMIZER_PATH/);
+assert.doesNotMatch(
+  /stagingAccess\.required[\s\S]*?return applySecurityHeaders\(/.exec(proxy)?.[0] ?? "",
+  /NEXT_IMAGE_OPTIMIZER_PATH/,
+);
 assert.match(proxy, /rawPathname === STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH/);
 assert.match(runner, /staging-private-image-gate-proof-v2\//);
 assert.match(runner, /requestExactPrivateImageSource/);
@@ -79,6 +88,7 @@ assert.doesNotMatch(proxy, /\(\?!_next\/static\|_next\/image\)/);
 assert.match(proxy, /hostedProductionSlot && explicitlyStaging && !exactIsolatedStagingHost/);
 assert.match(nextConfigSource, /resolveIsolatedStagingImageConfig/);
 assert.match(nextConfigSource, /unoptimized: true/);
+assert.match(nextConfigSource, /disableStaticImages: true/);
 assert.match(nextConfigSource, /ISOLATED_STAGING_PROJECT_ID_SHA256/);
 assert.match(nextConfigSource, /createHash\("sha256"\)\.update\(vercelProjectId\)/);
 assert.match(nextConfigSource, /_dealflow-staging-image-optimizer-disabled/);
@@ -98,6 +108,7 @@ const exactStagingImageConfig = resolveIsolatedStagingImageConfig({
 });
 assert.deepEqual(exactStagingImageConfig, {
   unoptimized: true,
+  disableStaticImages: true,
   path: "/_dealflow-staging-image-optimizer-disabled",
   remotePatterns: [],
   localPatterns: [
@@ -143,136 +154,78 @@ for (const environment of [
   );
 }
 
-function listSourceFiles(directory) {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const absolute = join(directory, entry.name);
-    return entry.isDirectory()
-      ? listSourceFiles(absolute)
-      : entry.isFile() && /\.(?:[cm]?js|jsx|tsx?)$/.test(entry.name)
-        ? [absolute]
-        : [];
-  });
-}
-
-const sourceModuleInventory = listSourceFiles(join(root, "src"))
-  .map((path) => ({
-    path: relative(root, path),
-    source: readFileSync(path, "utf8"),
-  }))
-  .map((entry) => ({
-    ...entry,
-    sourceFile: ts.createSourceFile(
-      entry.path,
-      entry.source,
-      ts.ScriptTarget.Latest,
-      true,
-      entry.path.endsWith(".tsx")
-        ? ts.ScriptKind.TSX
-        : entry.path.endsWith(".jsx")
-          ? ts.ScriptKind.JSX
-          : entry.path.endsWith(".ts")
-            ? ts.ScriptKind.TS
-            : ts.ScriptKind.JS,
-    ),
-  }));
-
-let nextImageModuleReferenceCount = 0;
-for (const { path, sourceFile } of sourceModuleInventory) {
-  const visitModuleReferences = (node) => {
-    if (
-      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
-      node.text === "next/image"
-    ) {
-      nextImageModuleReferenceCount += 1;
-      assert.ok(
-        ts.isImportDeclaration(node.parent) &&
-          node.parent.moduleSpecifier === node &&
-          node.parent.importClause?.name &&
-          node.parent.importClause.namedBindings === undefined,
-        `${path} contains a non-default or dynamic next/image module reference`,
-      );
-    }
-    ts.forEachChild(node, visitModuleReferences);
-  };
-  visitModuleReferences(sourceFile);
-}
-assert.equal(nextImageModuleReferenceCount, 4);
-
-const nextImageInventory = sourceModuleInventory
-  .filter(({ sourceFile }) =>
-    sourceFile.statements.some(
-      (statement) =>
-        ts.isImportDeclaration(statement) &&
-        ts.isStringLiteral(statement.moduleSpecifier) &&
-        statement.moduleSpecifier.text === "next/image",
-    ),
-  )
-  .sort((left, right) => left.path.localeCompare(right.path));
-assert.deepEqual(
-  nextImageInventory.map(({ path }) => path),
-  [
-    "src/components/campaign/static-ad-composed-preview.tsx",
-    "src/components/funnel/funnel-preview.tsx",
-    "src/components/funnels/canonical-funnel-renderer.tsx",
-    "src/components/ui/logo.tsx",
-  ],
+const deployableManifest = JSON.parse(
+  readFileSync(join(root, "config", "release", "deployable-source-manifest.json"), "utf8"),
 );
-let nextImageJsxCount = 0;
-for (const { path, sourceFile } of nextImageInventory) {
-  const imports = sourceFile.statements.filter(
-    (statement) =>
-      ts.isImportDeclaration(statement) &&
-      ts.isStringLiteral(statement.moduleSpecifier) &&
-      statement.moduleSpecifier.text === "next/image",
+const imageBuildInputProof = assertExactStagingImageBuildInputInventory({
+  root,
+  deployablePaths: deployableManifest.entries.map(({ path }) => path),
+});
+assert.equal(imageBuildInputProof.optimizerEligibleStaticMediaAssetCount, 0);
+assert.equal(imageBuildInputProof.nextImageModuleReferenceCount, 4);
+assert.equal(imageBuildInputProof.nextImageJsxCount, 6);
+assert.equal(
+  imageBuildInputProof.approvedDirectPublicAssetCount,
+  APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.length,
+);
+for (const source of [
+  `import hero from "./hero.png"; export default hero;`,
+  `export { default as hero } from "./hero.webp";`,
+  `const hero = require("./hero.jpg");`,
+  `const hero = import("./hero.avif");`,
+  `const hero = new URL("./hero.svg", import.meta.url);`,
+  `const hero = new URL(\`./\${name}.png\`, import.meta.url);`,
+  `import Legacy from "next/legacy/image"; export default Legacy;`,
+  `import { getImageProps as renamed } from "next/image"; renamed({});`,
+  `const Image = require("next/image");`,
+  `const Image = require("next/" + "image").default;`,
+  `const Image = require(\`next/\${kind}\`).default;`,
+  `const Image = (await import("next/" + "image")).default;`,
+  `const Image = (await import(\`next/\${kind}\`)).default;`,
+  `import { Image } from "./shared/lib/image-external"; export default Image;`,
+  `export { Image } from "./shared/lib/image-external";`,
+  `const Image = require("./shared/lib/image-external").Image;`,
+  `const Image = (await import("./shared/lib/image-external")).Image;`,
+  `import Image from "@/client/image-component"; export default Image;`,
+  `import { getImgProps } from "@/shared/lib/get-img-props"; getImgProps({});`,
+  `import Image from "src/client/image-component"; export default Image;`,
+  `import loader from "next/dist/shared/lib/image-loader"; export default loader;`,
+  `import { getImgProps } from "next/dist/shared/lib/get-img-props"; getImgProps({});`,
+  `const endpoint = "/_next/static/media/hero.123.png";`,
+  `const endpoint = "/_next/image?url=%2Flogo.svg&w=32&q=75";`,
+  `const endpoint = \`/_next/image?url=\${source}&w=32&q=75\`;`,
+  `const background = "url('./hero.png')";`,
+  `export default () => <img src="./hero.png" alt="x" />;`,
+  `import Image from "next/image"; const Wrapped = Image; export default () => <Image unoptimized src="/logo.svg" alt="x" />;`,
+  `import Image from "next/image"; export default () => <Image {...{ unoptimized: true }} src="/logo.svg" alt="x" />;`,
+  `import Image from "next/image"; export default () => <Image unoptimized={false} src="/logo.svg" alt="x" />;`,
+]) {
+  assert.throws(
+    () => assertStaticImageBuildSourceSafety({ path: "src/negative.tsx", source }),
+    /image|Image|static media|optimizer/i,
   );
-  assert.equal(imports.length, 1, `${path} must have one next/image import`);
-  const defaultImport = imports[0].importClause?.name?.text;
-  assert.ok(defaultImport, `${path} must use a default next/image import`);
-  assert.equal(
-    imports[0].importClause?.namedBindings,
-    undefined,
-    `${path} must not mix named or namespace next/image imports`,
-  );
-
-  let fileImageJsxCount = 0;
-  const visit = (node) => {
-    if (
-      (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) &&
-      ts.isIdentifier(node.tagName) &&
-      node.tagName.text === defaultImport
-    ) {
-      fileImageJsxCount += 1;
-      nextImageJsxCount += 1;
-      const attributes = node.attributes.properties;
-      assert.equal(
-        attributes.some((attribute) => ts.isJsxSpreadAttribute(attribute)),
-        false,
-        `${path} Next Image JSX must not use spread attributes`,
-      );
-      const unoptimized = attributes.filter(
-        (attribute) =>
-          ts.isJsxAttribute(attribute) &&
-          attribute.name.text === "unoptimized",
-      );
-      assert.equal(
-        unoptimized.length,
-        1,
-        `${path} Next Image JSX must declare unoptimized exactly once`,
-      );
-      const initializer = unoptimized[0].initializer;
-      assert.ok(
-        initializer === undefined ||
-          (ts.isJsxExpression(initializer) &&
-            initializer.expression?.kind === ts.SyntaxKind.TrueKeyword),
-        `${path} Next Image unoptimized must be bare or literal true`,
-      );
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  assert.ok(fileImageJsxCount > 0, `${path} must render its next/image import`);
 }
-assert.equal(nextImageJsxCount, 6);
+for (const source of [
+  `return new Response(body, { headers: { "content-type": "image/png" } });`,
+  `const headers = new Headers(); headers.set("content-type", "image/webp");`,
+  `const headers = new Headers({ "CONTENT-TYPE": image.contentType });`,
+  `import { ImageResponse } from "next/og"; return new ImageResponse(<div />);`,
+]) {
+  assert.equal(
+    isPotentialDynamicImageSource({
+      path: "src/app/api/future-image/route.ts",
+      source,
+    }),
+    true,
+  );
+}
+assert.equal(
+  isPotentialDynamicImageSource({
+    path: "src/app/api/json/route.ts",
+    source: `return Response.json({ ok: true });`,
+  }),
+  false,
+);
 assert.doesNotMatch(
   /const STAGING_NATIVE_PROVIDER_CALLBACK_PATHS = new Set\(\[([\s\S]*?)\]\);/.exec(proxy)?.[1] ?? "",
   /lead-capture/,
@@ -318,8 +271,8 @@ for (const scenario of [
   "authorized_static_header",
   "authorized_static_cookie",
   "wrong_static_header",
-  "closed_image_header",
-  "closed_image_cookie",
+  "authorized_default_image_header",
+  "authorized_default_image_cookie",
   "closed_disabled_image_no_gate",
   "closed_disabled_image_header",
   "closed_disabled_image_cookie",
@@ -375,6 +328,7 @@ for (const scenario of [
   "forged-project",
   "forged-attestation",
   "wrong-commit",
+  "query",
 ]) {
   const result = spawnSync(
     process.execPath,
@@ -399,5 +353,5 @@ for (const scenario of [
 }
 
 console.log(
-  "isolated staging access gate: PASS (private app, explicit direct images, closed optimizer paths, and lead-capture surface; fail-closed secret; no secret forwarding; production unaffected; exact native-signed provider callbacks remain reachable)",
+  "isolated staging access gate: PASS (private app, exact direct-image inventory, staging static imports disabled, edge optimizer pinned to disallowed input, custom optimizer closed, and lead-capture surface; fail-closed secret; no secret forwarding; production unaffected; exact native-signed provider callbacks remain reachable)",
 );

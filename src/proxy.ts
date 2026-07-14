@@ -76,7 +76,6 @@ const STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX =
   "/staging-private-image-gate-proof-v2/";
 const STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH =
   "/staging-image-optimizer-proof.png";
-const NEXT_IMAGE_OPTIMIZER_PATH = "/_next/image";
 const DISABLED_STAGING_IMAGE_OPTIMIZER_PATH =
   "/_dealflow-staging-image-optimizer-disabled";
 const STAGING_NATIVE_PROVIDER_CALLBACK_PATHS = new Set([
@@ -594,17 +593,15 @@ export async function proxy(request: NextRequest) {
   if (
     stagingAccess.required &&
     (
-      rawPathname === NEXT_IMAGE_OPTIMIZER_PATH ||
       rawPathname === DISABLED_STAGING_IMAGE_OPTIMIZER_PATH ||
       rawPathname === STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH
     )
   ) {
-    // Next's optimizer performs a fresh internal source fetch without
-    // forwarding the staging credential. Current app images are explicitly
-    // direct and exact staging closes both optimizer paths. The dedicated
-    // emitted-client path is defense in depth. The retired public source is also
-    // closed so a historical cached transform can never refresh from an origin
-    // response. Production never enters this branch.
+    // The custom staging optimizer path remains application-owned and closed.
+    // Vercel's default /_next/image path is edge-owned and is instead proven as
+    // an exact disallowed-input response by hosted acceptance. The retired
+    // public source is also closed so a historical transform can never refresh
+    // from an origin response. Production never enters this branch.
     return applySecurityHeaders(
       request,
       NextResponse.json(

@@ -21,7 +21,7 @@ function notFound() {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ commit: string }> },
 ) {
   const expectedCommit =
@@ -29,6 +29,7 @@ export async function GET(
   const { commit } = await context.params;
   if (
     !isExactIsolatedStagingVercelHost() ||
+    new URL(request.url).search !== "" ||
     !/^[0-9a-f]{40}$/.test(expectedCommit) ||
     commit !== `${expectedCommit}.png`
   ) {

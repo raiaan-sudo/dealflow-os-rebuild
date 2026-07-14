@@ -64,6 +64,10 @@ import { assertExactDeployableSourcePathSet } from "./deployable-source-path-set
 import { assertExactVercelDryRunSourcePortfolio } from "./vercel-dry-run-source-contract.mjs";
 import { assertExactHostedBuildSourceIdentity } from "./hosted-build-source-identity-contract.mjs";
 import { findExactNextStaticChunkPath } from "./next-static-chunk-path.mjs";
+import {
+  APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS,
+  assertExactStagingImageBuildInputInventory,
+} from "./staging-image-build-input-contract.mjs";
 
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
@@ -121,6 +125,9 @@ const RETIRED_PUBLIC_IMAGE_SOURCE_PATH =
 const NEXT_IMAGE_OPTIMIZER_PATH = "/_next/image";
 const DISABLED_STAGING_IMAGE_OPTIMIZER_PATH =
   "/_dealflow-staging-image-optimizer-disabled";
+const OPEN_GRAPH_IMAGE_SOURCE_PATH = "/opengraph-image";
+const INVALID_SIGNED_PROVIDER_IMAGE_SOURCE_PATH =
+  "/api/provider-media/higgsfield-source/00000000-0000-4000-8000-000000000000";
 const STAGING_PRIVATE_IMAGE_SOURCE_BODY_BYTES = 210;
 const STAGING_PRIVATE_IMAGE_SOURCE_BODY_SHA256 =
   "79e21c735b4f029f2995a86f3619ab9eb6ca501898ff0467d545cef2f09594d8";
@@ -130,6 +137,17 @@ const LEGACY_BENIGN_OPTIMIZER_BODY_SHA256 =
 const DEALFLOW_NOT_FOUND_BODY_BYTES = 22;
 const DEALFLOW_NOT_FOUND_BODY_SHA256 =
   "58e46b31fc6d69e3ecdb843eeff8bac8d49c9a70cdac583c73986a8a4fb5d1b0";
+const NEXT_IMAGE_DISALLOWED_BODY_BYTES = 30;
+const NEXT_IMAGE_DISALLOWED_BODY_SHA256 =
+  "3a1ccc2882f115bd4e3e3fa69bdf2614c34865765b5b0db3f78716dfe922de5f";
+const NEXT_IMAGE_DISALLOWED_CACHE_CONTROL =
+  "public, max-age=0, must-revalidate";
+const PRIVATE_IMAGE_ROUTE_NOT_FOUND_BODY_BYTES = 10;
+const PRIVATE_IMAGE_ROUTE_NOT_FOUND_BODY_SHA256 =
+  "0802559db1375af3ff5caabba71acea1d6299f1a7fc64b6a5024f19cbd33b72f";
+const INVALID_SIGNED_PROVIDER_IMAGE_BODY_BYTES = 38;
+const INVALID_SIGNED_PROVIDER_IMAGE_BODY_SHA256 =
+  "2d24047265df34202b8968cbc26cc0dc8549ad16cc3aea707c2034c0441eded5";
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const SYNTHETIC_FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
@@ -726,11 +744,16 @@ function captureDeployableSourceIdentity() {
   if (deployableSourceSha256 !== manifest.deployableSourceSha256) {
     throw new Error("The deployable source portfolio digest is not exact");
   }
+  const imageBuildInputProof = assertExactStagingImageBuildInputInventory({
+    root: EXPECTED_REPO,
+    deployablePaths: manifest.entries.map((entry) => entry.path),
+  });
   return Object.freeze({
     deployableSourceSha256,
     deployableFileCount: manifest.entryCount,
     deployableManifestSha256: sha256(manifestBytes),
     deployablePathSetExact: pathSetProof.exactPathSet,
+    imageBuildInputProof,
   });
 }
 
@@ -2448,14 +2471,18 @@ async function requestExactPrivateImageSource(
   resourcePath,
   expectedReleaseCommit,
   headers = {},
+  { forbiddenQuery = false } = {},
 ) {
   const endpoint = new URL(resourcePath, alias.url);
+  if (forbiddenQuery) {
+    endpoint.searchParams.set("cache-bypass", "forbidden");
+  }
   if (
     endpoint.origin !== alias.url ||
     endpoint.pathname !==
       `${STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX}${expectedReleaseCommit}.png` ||
     !/^[0-9a-f]{40}$/.test(expectedReleaseCommit) ||
-    endpoint.search !== "" ||
+    endpoint.search !== (forbiddenQuery ? "?cache-bypass=forbidden" : "") ||
     endpoint.hash !== "" ||
     endpoint.username !== "" ||
     endpoint.password !== ""
@@ -2490,6 +2517,117 @@ async function requestExactPrivateImageSource(
     robotsTag: response.headers.get("x-robots-tag") ?? "",
     vercelErrorPresent: response.headers.has("x-vercel-error"),
     redirectFollowed: false,
+    responseUrlExact: true,
+    vercelAutomationBypassRequired:
+      alias.vercelAutomationBypassRequired,
+  });
+}
+
+async function requestExactDirectPublicImage(alias, asset, headers = {}) {
+  const approved = APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.find(
+    (candidate) => candidate.resourcePath === asset?.resourcePath,
+  );
+  if (!approved || JSON.stringify(approved) !== JSON.stringify(asset)) {
+    throw new Error("Direct public image proof received an unapproved asset identity");
+  }
+  const endpoint = new URL(asset.resourcePath, alias.url);
+  if (
+    endpoint.origin !== alias.url ||
+    endpoint.pathname !== asset.resourcePath ||
+    endpoint.search !== "" ||
+    endpoint.hash !== "" ||
+    endpoint.username !== "" ||
+    endpoint.password !== ""
+  ) {
+    throw new Error("Direct public image proof received a non-exact resource");
+  }
+  const response = await executionFetch(endpoint, {
+    headers: {
+      Accept: asset.contentType,
+      "User-Agent": "DealFlow-Staging-Direct-Public-Image-Proof/1.0",
+      ...withVercelAutomationBypass(
+        headers,
+        alias.vercelAutomationBypassRequired,
+      ),
+    },
+    redirect: "manual",
+  }, 20_000);
+  const body = Buffer.from(await response.arrayBuffer());
+  if (
+    response.url !== endpoint.toString() ||
+    response.redirected ||
+    response.headers.has("location")
+  ) {
+    throw new Error(`${alias.label} direct public image request changed URL`);
+  }
+  return Object.freeze({
+    status: response.status,
+    contentType: (response.headers.get("content-type") ?? "").split(";")[0],
+    bodyBytes: body.length,
+    bodySha256: sha256(body),
+    cacheControl: response.headers.get("cache-control") ?? "",
+    robotsTag: response.headers.get("x-robots-tag") ?? "",
+    vercelErrorPresent: response.headers.has("x-vercel-error"),
+    redirectFollowed: false,
+    responseUrlExact: true,
+    vercelAutomationBypassRequired:
+      alias.vercelAutomationBypassRequired,
+  });
+}
+
+async function requestExactDynamicImageSource(
+  alias,
+  resourcePath,
+  headers = {},
+) {
+  if (
+    ![
+      OPEN_GRAPH_IMAGE_SOURCE_PATH,
+      INVALID_SIGNED_PROVIDER_IMAGE_SOURCE_PATH,
+    ].includes(resourcePath)
+  ) {
+    throw new Error("Dynamic image source proof received an unapproved route");
+  }
+  const endpoint = new URL(resourcePath, alias.url);
+  if (
+    endpoint.origin !== alias.url ||
+    endpoint.pathname !== resourcePath ||
+    endpoint.search !== "" ||
+    endpoint.hash !== "" ||
+    endpoint.username !== "" ||
+    endpoint.password !== ""
+  ) {
+    throw new Error("Dynamic image source proof received a non-exact route");
+  }
+  const response = await executionFetch(endpoint, {
+    headers: {
+      Accept: "image/*",
+      "User-Agent": "DealFlow-Staging-Dynamic-Image-Source-Proof/1.0",
+      ...withVercelAutomationBypass(
+        headers,
+        alias.vercelAutomationBypassRequired,
+      ),
+    },
+    redirect: "manual",
+  }, 20_000);
+  const body = Buffer.from(await response.arrayBuffer());
+  if (
+    response.url !== endpoint.toString() ||
+    response.redirected ||
+    response.headers.has("location")
+  ) {
+    throw new Error(`${alias.label} dynamic image source request changed URL`);
+  }
+  return Object.freeze({
+    status: response.status,
+    contentType: (response.headers.get("content-type") ?? "").split(";")[0],
+    bodyBytes: body.length,
+    bodySha256: sha256(body),
+    cacheControl: response.headers.get("cache-control") ?? "",
+    robotsTag: response.headers.get("x-robots-tag") ?? "",
+    vercelErrorPresent: response.headers.has("x-vercel-error"),
+    redirectFollowed: false,
+    responseUrlExact: true,
     vercelAutomationBypassRequired:
       alias.vercelAutomationBypassRequired,
   });
@@ -2540,15 +2678,17 @@ async function requestExactRetiredImageSource(alias, headers = {}) {
   });
 }
 
-function buildVersionedPrivateImagePaths(identity) {
-  if (!identity || !/^[0-9a-f]{40}$/.test(identity.commit)) {
-    throw new Error("Private image proof requires the exact candidate commit");
+function buildExactImageOptimizerPaths(sourceResourcePath) {
+  const source = new URL(sourceResourcePath, EXPECTED_STAGING_BASE_URL);
+  if (
+    source.origin !== EXPECTED_STAGING_BASE_URL ||
+    source.pathname !== sourceResourcePath ||
+    source.search !== "" ||
+    source.hash !== "" ||
+    !sourceResourcePath.startsWith("/")
+  ) {
+    throw new Error("Image optimizer proof requires an exact same-origin no-query source path");
   }
-  const source = new URL(
-    `${STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX}${identity.commit}.png`,
-    EXPECTED_STAGING_BASE_URL,
-  );
-  const sourceResourcePath = source.pathname;
   const defaultOptimizer = new URL(
     NEXT_IMAGE_OPTIMIZER_PATH,
     EXPECTED_STAGING_BASE_URL,
@@ -2562,6 +2702,24 @@ function buildVersionedPrivateImagePaths(identity) {
     optimizer.searchParams.set("w", "32");
     optimizer.searchParams.set("q", "75");
   }
+  return Object.freeze({
+    defaultOptimizerResourcePath:
+      `${defaultOptimizer.pathname}${defaultOptimizer.search}`,
+    disabledOptimizerResourcePath:
+      `${disabledOptimizer.pathname}${disabledOptimizer.search}`,
+  });
+}
+
+function buildVersionedPrivateImagePaths(identity) {
+  if (!identity || !/^[0-9a-f]{40}$/.test(identity.commit)) {
+    throw new Error("Private image proof requires the exact candidate commit");
+  }
+  const source = new URL(
+    `${STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX}${identity.commit}.png`,
+    EXPECTED_STAGING_BASE_URL,
+  );
+  const sourceResourcePath = source.pathname;
+  const optimizerPaths = buildExactImageOptimizerPaths(sourceResourcePath);
   const legacyOptimizer = new URL(
     NEXT_IMAGE_OPTIMIZER_PATH,
     EXPECTED_STAGING_BASE_URL,
@@ -2571,10 +2729,7 @@ function buildVersionedPrivateImagePaths(identity) {
   legacyOptimizer.searchParams.set("q", "75");
   return Object.freeze({
     sourceResourcePath,
-    defaultOptimizerResourcePath:
-      `${defaultOptimizer.pathname}${defaultOptimizer.search}`,
-    disabledOptimizerResourcePath:
-      `${disabledOptimizer.pathname}${disabledOptimizer.search}`,
+    ...optimizerPaths,
     legacyOptimizerResourcePath:
       `${legacyOptimizer.pathname}${legacyOptimizer.search}`,
     releaseCommit: identity.commit,
@@ -2591,6 +2746,267 @@ function isExactDealFlowApplicationGateResponse(result) {
     /noindex/i.test(result.robotsTag) &&
     result.vercelErrorPresent === false
   );
+}
+
+function isExactNextImageDisallowedInputResponse(result) {
+  return (
+    result.status === 400 &&
+    result.contentType === "text/plain" &&
+    result.bodyBytes === NEXT_IMAGE_DISALLOWED_BODY_BYTES &&
+    result.bodySha256 === NEXT_IMAGE_DISALLOWED_BODY_SHA256 &&
+    result.cacheControl === NEXT_IMAGE_DISALLOWED_CACHE_CONTROL &&
+    result.vercelErrorPresent === false &&
+    result.redirectFollowed === false &&
+    result.responseUrlExact === true
+  );
+}
+
+function isExactPrivateImageRouteNotFoundResponse(result) {
+  return (
+    result.status === 404 &&
+    result.contentType === "text/plain" &&
+    result.bodyBytes === PRIVATE_IMAGE_ROUTE_NOT_FOUND_BODY_BYTES &&
+    result.bodySha256 === PRIVATE_IMAGE_ROUTE_NOT_FOUND_BODY_SHA256 &&
+    /(?:^|,)\s*private\s*,\s*no-store\s*,\s*max-age=0(?:\s*,|$)/i.test(
+      result.cacheControl,
+    ) &&
+    /noindex/i.test(result.robotsTag) &&
+    result.vercelErrorPresent === false &&
+    result.redirectFollowed === false &&
+    result.responseUrlExact === true
+  );
+}
+
+function isExactApprovedDirectPublicImageResponse(result, asset) {
+  return (
+    result.status === 200 &&
+    result.contentType === asset.contentType &&
+    result.bodyBytes === asset.bodyBytes &&
+    result.bodySha256 === asset.bodySha256 &&
+    result.vercelErrorPresent === false &&
+    result.redirectFollowed === false &&
+    result.responseUrlExact === true
+  );
+}
+
+async function collectExactSixModeGateMatrix(request, secret) {
+  return Object.freeze({
+    noGateBeforeWarm: await request({}),
+    headerGate: await request({ [STAGING_ACCESS_HEADER]: secret }),
+    cookieGate: await request({
+      Cookie: `${STAGING_ACCESS_COOKIE}=${secret}`,
+    }),
+    noGateAfterWarm: await request({}),
+    invalidHeaderAfterWarm: await request({
+      [STAGING_ACCESS_HEADER]: "W".repeat(secret.length),
+    }),
+    invalidCookieAfterWarm: await request({
+      Cookie: `${STAGING_ACCESS_COOKIE}=${"W".repeat(secret.length)}`,
+    }),
+  });
+}
+
+async function proveApprovedDirectPublicImageMatrix(alias, secret) {
+  const assets = [];
+  for (const asset of APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS) {
+    const optimizerPaths = buildExactImageOptimizerPaths(asset.resourcePath);
+    const direct = await collectExactSixModeGateMatrix(
+      (headers) => requestExactDirectPublicImage(alias, asset, headers),
+      secret,
+    );
+    if (
+      !isExactDealFlowApplicationGateResponse(direct.noGateBeforeWarm) ||
+      !isExactApprovedDirectPublicImageResponse(direct.headerGate, asset) ||
+      !isExactApprovedDirectPublicImageResponse(direct.cookieGate, asset) ||
+      !isExactDealFlowApplicationGateResponse(direct.noGateAfterWarm) ||
+      !isExactDealFlowApplicationGateResponse(direct.invalidHeaderAfterWarm) ||
+      !isExactDealFlowApplicationGateResponse(direct.invalidCookieAfterWarm)
+    ) {
+      throw new Error(`${alias.label} approved direct public image gate matrix failed`);
+    }
+
+    const defaultOptimizer = await collectExactSixModeGateMatrix(
+      (headers) => requestExactGatedAsset(
+        alias,
+        optimizerPaths.defaultOptimizerResourcePath,
+        headers,
+      ),
+      secret,
+    );
+    if (
+      Object.values(defaultOptimizer).some(
+        (result) => !isExactNextImageDisallowedInputResponse(result),
+      )
+    ) {
+      throw new Error(`${alias.label} approved direct image default optimizer response was not exact`);
+    }
+
+    const disabledOptimizer = await collectExactSixModeGateMatrix(
+      (headers) => requestExactGatedAsset(
+        alias,
+        optimizerPaths.disabledOptimizerResourcePath,
+        headers,
+      ),
+      secret,
+    );
+    if (
+      Object.values(disabledOptimizer).some(
+        (result) => !isExactDealFlowApplicationGateResponse(result),
+      )
+    ) {
+      throw new Error(`${alias.label} approved direct image custom optimizer response was not exact`);
+    }
+
+    assets.push(Object.freeze({
+      assetIdentity: asset.bodySha256,
+      contentType: asset.contentType,
+      bodyBytes: asset.bodyBytes,
+      direct,
+      defaultOptimizer,
+      disabledOptimizer,
+      sameOriginRequestsOnly: true,
+      defaultOptimizerDisposition: "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
+      disabledOptimizerDisposition: "DEALFLOW_APPLICATION_GATE",
+    }));
+  }
+  return Object.freeze({
+    status: "PASS",
+    approvedAssetCount: assets.length,
+    fullSixModeMatrixPerAsset: true,
+    noAndInvalidGateRecheckedAfterWarm: true,
+    exactSourceBytesVerifiedForHeaderAndCookie: true,
+    defaultAndCustomOptimizerProvenPerAsset: true,
+    assets,
+  });
+}
+
+function isExactDynamicOpenGraphImageResponse(result) {
+  return (
+    result.status === 200 &&
+    result.contentType === "image/png" &&
+    result.bodyBytes > 1_000 &&
+    /^[a-f0-9]{64}$/.test(result.bodySha256) &&
+    result.vercelErrorPresent === false &&
+    result.redirectFollowed === false &&
+    result.responseUrlExact === true
+  );
+}
+
+function isExactInvalidSignedProviderImageResponse(result) {
+  return (
+    result.status === 404 &&
+    result.contentType === "application/json" &&
+    result.bodyBytes === INVALID_SIGNED_PROVIDER_IMAGE_BODY_BYTES &&
+    result.bodySha256 === INVALID_SIGNED_PROVIDER_IMAGE_BODY_SHA256 &&
+    result.vercelErrorPresent === false &&
+    result.redirectFollowed === false &&
+    result.responseUrlExact === true
+  );
+}
+
+async function proveDynamicImageSourceMatrix(alias, secret) {
+  const proveOptimizerPair = async (resourcePath) => {
+    const optimizerPaths = buildExactImageOptimizerPaths(resourcePath);
+    const defaultOptimizer = await collectExactSixModeGateMatrix(
+      (headers) => requestExactGatedAsset(
+        alias,
+        optimizerPaths.defaultOptimizerResourcePath,
+        headers,
+      ),
+      secret,
+    );
+    if (
+      Object.values(defaultOptimizer).some(
+        (result) => !isExactNextImageDisallowedInputResponse(result),
+      )
+    ) {
+      throw new Error(`${alias.label} dynamic image default optimizer response was not exact`);
+    }
+    const disabledOptimizer = await collectExactSixModeGateMatrix(
+      (headers) => requestExactGatedAsset(
+        alias,
+        optimizerPaths.disabledOptimizerResourcePath,
+        headers,
+      ),
+      secret,
+    );
+    if (
+      Object.values(disabledOptimizer).some(
+        (result) => !isExactDealFlowApplicationGateResponse(result),
+      )
+    ) {
+      throw new Error(`${alias.label} dynamic image custom optimizer response was not exact`);
+    }
+    return Object.freeze({
+      defaultOptimizer,
+      disabledOptimizer,
+      defaultOptimizerDisposition: "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
+      disabledOptimizerDisposition: "DEALFLOW_APPLICATION_GATE",
+    });
+  };
+
+  const openGraphDirect = await collectExactSixModeGateMatrix(
+    (headers) => requestExactDynamicImageSource(
+      alias,
+      OPEN_GRAPH_IMAGE_SOURCE_PATH,
+      headers,
+    ),
+    secret,
+  );
+  if (
+    !isExactDealFlowApplicationGateResponse(openGraphDirect.noGateBeforeWarm) ||
+    !isExactDynamicOpenGraphImageResponse(openGraphDirect.headerGate) ||
+    !isExactDynamicOpenGraphImageResponse(openGraphDirect.cookieGate) ||
+    openGraphDirect.headerGate.bodyBytes !== openGraphDirect.cookieGate.bodyBytes ||
+    openGraphDirect.headerGate.bodySha256 !== openGraphDirect.cookieGate.bodySha256 ||
+    !isExactDealFlowApplicationGateResponse(openGraphDirect.noGateAfterWarm) ||
+    !isExactDealFlowApplicationGateResponse(openGraphDirect.invalidHeaderAfterWarm) ||
+    !isExactDealFlowApplicationGateResponse(openGraphDirect.invalidCookieAfterWarm)
+  ) {
+    throw new Error(`${alias.label} dynamic open-graph image gate matrix failed`);
+  }
+  const openGraphOptimizers = await proveOptimizerPair(OPEN_GRAPH_IMAGE_SOURCE_PATH);
+
+  const signedProviderDirect = await collectExactSixModeGateMatrix(
+    (headers) => requestExactDynamicImageSource(
+      alias,
+      INVALID_SIGNED_PROVIDER_IMAGE_SOURCE_PATH,
+      headers,
+    ),
+    secret,
+  );
+  if (
+    !isExactDealFlowApplicationGateResponse(signedProviderDirect.noGateBeforeWarm) ||
+    !isExactInvalidSignedProviderImageResponse(signedProviderDirect.headerGate) ||
+    !isExactInvalidSignedProviderImageResponse(signedProviderDirect.cookieGate) ||
+    !isExactDealFlowApplicationGateResponse(signedProviderDirect.noGateAfterWarm) ||
+    !isExactDealFlowApplicationGateResponse(signedProviderDirect.invalidHeaderAfterWarm) ||
+    !isExactDealFlowApplicationGateResponse(signedProviderDirect.invalidCookieAfterWarm)
+  ) {
+    throw new Error(`${alias.label} signed provider image authorization matrix failed`);
+  }
+  const signedProviderOptimizers = await proveOptimizerPair(
+    INVALID_SIGNED_PROVIDER_IMAGE_SOURCE_PATH,
+  );
+
+  return Object.freeze({
+    status: "PASS",
+    dynamicImageSourceCount: 2,
+    openGraph: {
+      direct: openGraphDirect,
+      ...openGraphOptimizers,
+      exactRepeatedValidBodyIdentity: true,
+    },
+    signedProviderMedia: {
+      direct: signedProviderDirect,
+      ...signedProviderOptimizers,
+      validProviderSignatureSupplied: false,
+      providerOrDatabaseFetchReached: false,
+      exactInvalidSignatureResponse: true,
+    },
+    fullSixModeMatrixPerSource: true,
+    defaultAndCustomOptimizerProvenPerSource: true,
+  });
 }
 
 function classifyExactLegacyOptimizerResponse(result) {
@@ -2700,6 +3116,13 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
         privateImagePaths.releaseCommit,
         { Cookie: `${STAGING_ACCESS_COOKIE}=${"W".repeat(secret.length)}` },
       ),
+      forbiddenQueryWithValidHeader: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+        { [STAGING_ACCESS_HEADER]: secret },
+        { forbiddenQuery: true },
+      ),
     };
     if (
       !isExactDealFlowApplicationGateResponse(
@@ -2715,6 +3138,9 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
       ) ||
       !isExactDealFlowApplicationGateResponse(
         privateImageSource.invalidCookieAfterWarm,
+      ) ||
+      !isExactPrivateImageRouteNotFoundResponse(
+        privateImageSource.forbiddenQueryWithValidHeader,
       )
     ) {
       throw new Error(
@@ -2781,34 +3207,23 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
       ),
     };
     if (
-      !isExactDealFlowApplicationGateResponse(
-        defaultOptimizer.noGateBeforeWarm,
-      ) ||
-      !isExactDealFlowApplicationGateResponse(defaultOptimizer.headerGate) ||
-      !isExactDealFlowApplicationGateResponse(defaultOptimizer.cookieGate) ||
-      !isExactDealFlowApplicationGateResponse(
-        defaultOptimizer.noGateAfterWarm,
-      ) ||
-      !isExactDealFlowApplicationGateResponse(
-        defaultOptimizer.invalidHeaderAfterWarm,
-      ) ||
-      !isExactDealFlowApplicationGateResponse(
-        defaultOptimizer.invalidCookieAfterWarm,
+      Object.values(defaultOptimizer).some(
+        (result) => !isExactNextImageDisallowedInputResponse(result),
       )
     ) {
       throw new Error(
-        `${alias.label} default image optimizer path was not exactly closed`,
+        `${alias.label} default edge image optimizer did not return the exact fixed disallowed-input response`,
       );
     }
     const defaultOptimizerEvidence = {
       ...defaultOptimizer,
       headerGate: {
         ...defaultOptimizer.headerGate,
-        disposition: "DEALFLOW_APPLICATION_GATE",
+        disposition: "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
       },
       cookieGate: {
         ...defaultOptimizer.cookieGate,
-        disposition: "DEALFLOW_APPLICATION_GATE",
+        disposition: "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
       },
     };
 
@@ -2886,6 +3301,10 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
         },
       ]),
     );
+    const approvedDirectPublicImages =
+      await proveApprovedDirectPublicImageMatrix(alias, secret);
+    const dynamicImageSources =
+      await proveDynamicImageSourceMatrix(alias, secret);
 
     aliases.push({
       label: alias.label,
@@ -2894,11 +3313,13 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
         alias.vercelAutomationBypassRequired,
       retiredPublicImageSource,
       privateImageSource,
+      approvedDirectPublicImages,
+      dynamicImageSources,
       legacyOptimizer,
       resources: [
         { kind: "real_next_chunk", ...chunk },
         {
-          kind: "closed_default_next_image_optimizer",
+          kind: "exact_default_next_image_disallowed_input",
           ...defaultOptimizerEvidence,
         },
         { kind: "closed_disabled_staging_image_optimizer", ...disabledOptimizer },
@@ -2910,24 +3331,38 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
     aliasCount: aliases.length,
     resourceKinds: [
       "versioned_private_image_source_v2",
+      "approved_direct_public_image_portfolio",
+      "dynamic_open_graph_image_source",
+      "signed_provider_media_image_source",
       "retired_public_image_source_closed",
       "real_next_chunk",
-      "closed_default_next_image_optimizer",
+      "exact_default_next_image_disallowed_input",
       "closed_disabled_staging_image_optimizer",
       "exact_legacy_benign_cache_disposition",
     ],
     imageOptimizationMode:
-      "unoptimized_direct_images_and_closed_optimizer_paths_for_exact_isolated_staging",
+      "staging_unoptimized_disable_static_images_exact_inventory_and_edge_disallowed_input",
     configuredStagingImageOptimizerPath:
       DISABLED_STAGING_IMAGE_OPTIMIZER_PATH,
-    exactClosedImageOptimizerDispositions: ["DEALFLOW_APPLICATION_GATE"],
+    exactImageOptimizerDispositions: [
+      "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
+      "DEALFLOW_APPLICATION_GATE",
+    ],
     defaultOptimizerNoOrInvalidGateDisposition:
-      "DEALFLOW_APPLICATION_GATE",
+      "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
     defaultOptimizerValidGateDisposition:
-      "DEALFLOW_APPLICATION_GATE",
+      "EXACT_NEXT_IMAGE_DISALLOWED_INPUT",
     configuredDisabledOptimizerAllGateModesDisposition:
       "DEALFLOW_APPLICATION_GATE",
     currentVersionedProofIntentionalPublicResourceCountPerAlias: 0,
+    approvedDirectPublicImageCountPerAlias:
+      APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.length,
+    dynamicImageSourceCountPerAlias: 2,
+    defaultOptimizerOwnedByVercelEdge: true,
+    defaultOptimizerApplicationProxyClaimed: false,
+    zeroOptimizerEligibleStaticMediaAssets:
+      identity.imageBuildInputProof.optimizerEligibleStaticMediaAssetCount === 0,
+    staticImageImportsDisabledInExactStagingBuild: true,
     directSourceNoGateStatus: 404,
     directSourceHeaderGateStatus: 200,
     directSourceCookieGateStatus: 200,
@@ -2937,6 +3372,7 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity)
     privateImageProofVersion: 2,
     privateImageProofReleaseCommitInPath: true,
     postWarmUnauthorizedSourceAndChunkRecheck: true,
+    privateImageForbiddenQueryRejected: true,
     exactDeploymentIdentityVerifiedBeforeProof: true,
     aliases,
     resourcePathsPersisted: false,

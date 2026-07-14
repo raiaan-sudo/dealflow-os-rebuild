@@ -22,7 +22,7 @@ if (scenario === "production") {
   process.env.VERCEL_PROJECT_ID = `${projectId}-forged`;
 } else if (scenario === "forged-attestation") {
   process.env.DEALFLOW_STAGING_HOST_ATTESTATION = "forged";
-} else if (scenario === "wrong-commit") {
+} else if (scenario === "wrong-commit" || scenario === "query") {
   // Exact staging authority remains valid; only the route-bound candidate is wrong.
 } else if (scenario !== "exact-staging") {
   throw new Error(`Unknown staging private image proof route scenario: ${scenario}`);
@@ -32,7 +32,9 @@ async function main() {
   const { GET } = await import(
     "../../src/app/staging-private-image-gate-proof-v2/[commit]/route"
   );
-  const response = await GET(new Request("https://dealflow-isolated.example"), {
+  const response = await GET(new Request(
+    `https://dealflow-isolated.example${scenario === "query" ? "?cache-bypass=forbidden" : ""}`,
+  ), {
     params: Promise.resolve({
       commit: `${scenario === "wrong-commit" ? "b".repeat(40) : releaseCommit}.png`,
     }),
