@@ -18,7 +18,9 @@ import { fileURLToPath } from "node:url";
 
 import {
   classifyPriorMigrationEvidence,
+  isExactCommittedForwardRecoverySeal,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
+  PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
   PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS,
 } from "./prior-migration-proof-contract.mjs";
 
@@ -908,12 +910,43 @@ function captureNormalizedSchemaDump() {
 function captureAndAssertRetentionAuthorityAcl(label) {
   const acl = JSON.parse(sql(
     `select jsonb_build_object(
+      'relationOwner', (
+        select pg_get_userbyid(class.relowner)
+        from pg_class class
+        join pg_namespace namespace on namespace.oid=class.relnamespace
+        where namespace.nspname='public'
+          and class.relname='account_deletion_retention_configuration'
+      ),
+      'rowSecurityEnabled', (
+        select class.relrowsecurity
+        from pg_class class
+        join pg_namespace namespace on namespace.oid=class.relnamespace
+        where namespace.nspname='public'
+          and class.relname='account_deletion_retention_configuration'
+      ),
+      'rowSecurityForced', (
+        select class.relforcerowsecurity
+        from pg_class class
+        join pg_namespace namespace on namespace.oid=class.relnamespace
+        where namespace.nspname='public'
+          and class.relname='account_deletion_retention_configuration'
+      ),
       'serviceRoleSelect', has_table_privilege('service_role','public.account_deletion_retention_configuration','SELECT'),
-      'serviceRoleTableWrite', has_table_privilege('service_role','public.account_deletion_retention_configuration','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+      'serviceRoleInsert', has_table_privilege('service_role','public.account_deletion_retention_configuration','INSERT'),
+      'serviceRoleUpdate', has_table_privilege('service_role','public.account_deletion_retention_configuration','UPDATE'),
+      'serviceRoleDelete', has_table_privilege('service_role','public.account_deletion_retention_configuration','DELETE'),
+      'serviceRoleTruncate', has_table_privilege('service_role','public.account_deletion_retention_configuration','TRUNCATE'),
+      'serviceRoleReferences', has_table_privilege('service_role','public.account_deletion_retention_configuration','REFERENCES'),
+      'serviceRoleTrigger', has_table_privilege('service_role','public.account_deletion_retention_configuration','TRIGGER'),
+      'serviceRoleMaintain', has_table_privilege('service_role','public.account_deletion_retention_configuration','MAINTAIN'),
+      'serviceRoleTableWrite', has_table_privilege('service_role','public.account_deletion_retention_configuration','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'),
+      'serviceRoleColumnInsert', has_any_column_privilege('service_role','public.account_deletion_retention_configuration','INSERT'),
+      'serviceRoleColumnUpdate', has_any_column_privilege('service_role','public.account_deletion_retention_configuration','UPDATE'),
+      'serviceRoleColumnReferences', has_any_column_privilege('service_role','public.account_deletion_retention_configuration','REFERENCES'),
       'serviceRoleColumnWrite', has_any_column_privilege('service_role','public.account_deletion_retention_configuration','INSERT,UPDATE,REFERENCES'),
-      'anonTablePrivilege', has_table_privilege('anon','public.account_deletion_retention_configuration','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+      'anonTablePrivilege', has_table_privilege('anon','public.account_deletion_retention_configuration','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'),
       'anonColumnPrivilege', has_any_column_privilege('anon','public.account_deletion_retention_configuration','SELECT,INSERT,UPDATE,REFERENCES'),
-      'authenticatedTablePrivilege', has_table_privilege('authenticated','public.account_deletion_retention_configuration','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+      'authenticatedTablePrivilege', has_table_privilege('authenticated','public.account_deletion_retention_configuration','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'),
       'authenticatedColumnPrivilege', has_any_column_privilege('authenticated','public.account_deletion_retention_configuration','SELECT,INSERT,UPDATE,REFERENCES'),
       'publicTableAclPresent', exists (
         select 1 from pg_class class
@@ -927,7 +960,7 @@ function captureAndAssertRetentionAuthorityAcl(label) {
         select 1 from pg_attribute attribute
         join pg_class class on class.oid=attribute.attrelid
         join pg_namespace namespace on namespace.oid=class.relnamespace
-        cross join lateral aclexplode(coalesce(attribute.attacl,'{}'::aclitem[])) acl_entry
+        cross join lateral aclexplode(attribute.attacl) acl_entry
         where namespace.nspname='public'
           and class.relname='account_deletion_retention_configuration'
           and attribute.attnum > 0
@@ -938,8 +971,21 @@ function captureAndAssertRetentionAuthorityAcl(label) {
     label,
   ));
   if (
+    acl.relationOwner !== "postgres" ||
+    acl.rowSecurityEnabled !== true ||
+    acl.rowSecurityForced !== true ||
     acl.serviceRoleSelect !== true ||
+    acl.serviceRoleInsert !== false ||
+    acl.serviceRoleUpdate !== false ||
+    acl.serviceRoleDelete !== false ||
+    acl.serviceRoleTruncate !== false ||
+    acl.serviceRoleReferences !== false ||
+    acl.serviceRoleTrigger !== false ||
+    acl.serviceRoleMaintain !== false ||
     acl.serviceRoleTableWrite !== false ||
+    acl.serviceRoleColumnInsert !== false ||
+    acl.serviceRoleColumnUpdate !== false ||
+    acl.serviceRoleColumnReferences !== false ||
     acl.serviceRoleColumnWrite !== false ||
     acl.anonTablePrivilege !== false ||
     acl.anonColumnPrivilege !== false ||
@@ -951,7 +997,24 @@ function captureAndAssertRetentionAuthorityAcl(label) {
     throw new Error("Retention authority table or column privileges are not fully hardened");
   }
   return Object.freeze({
+    retentionConfigurationRelationOwner: "postgres",
+    retentionConfigurationRowSecurityEnabled: true,
+    retentionConfigurationRowSecurityForced: true,
     serviceRoleRetentionConfigurationSelectOnly: true,
+    serviceRoleTableWritePrivileges: Object.freeze({
+      insert: false,
+      update: false,
+      delete: false,
+      truncate: false,
+      references: false,
+      trigger: false,
+      maintain: false,
+    }),
+    serviceRoleColumnWritePrivileges: Object.freeze({
+      insert: false,
+      update: false,
+      references: false,
+    }),
     serviceRoleColumnWritePrivilegesPresent: false,
     anonPrivilegesPresent: false,
     anonColumnPrivilegesPresent: false,
@@ -980,7 +1043,9 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
       ? PRIOR_MIGRATION_APPLICATION_ARTIFACTS
       : matchesArtifactSet(PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS)
         ? PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS
-        : [],
+        : matchesArtifactSet(PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS)
+          ? PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS
+          : [],
   );
   if (requiredNames.size === 0) {
     throw new Error("Prior migration proof directory does not contain an exact supported sealed artifact set");
@@ -1032,13 +1097,26 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
   ) {
     throw new Error("Prior migration proof manifest does not seal every required artifact");
   }
-  const proofArtifact = readPriorArtifact("staging-migration-proof.json");
+  const committedForwardRecoveryEvidence = requiredNames.has(
+    "staging-migration-failure.json",
+  );
+  const proofArtifact = committedForwardRecoveryEvidence
+    ? null
+    : readPriorArtifact("staging-migration-proof.json");
+  const mutationStatusArtifact = committedForwardRecoveryEvidence
+    ? readPriorArtifact("staging-mutation-status.json")
+    : null;
+  const failureArtifact = committedForwardRecoveryEvidence
+    ? readPriorArtifact("staging-migration-failure.json")
+    : null;
   const summaryArtifact = readPriorArtifact("staging-migration-summary.json");
-  const proof = proofArtifact.parsed;
+  const proof = proofArtifact?.parsed ?? null;
+  const mutationStatus = mutationStatusArtifact?.parsed ?? null;
+  const failure = failureArtifact?.parsed ?? null;
   const summary = summaryArtifact.parsed;
   if (requirePinnedPrior102 && (
     sha256(manifestArtifact.contents) !== expectedPriorManifestSha256 ||
-    sha256(proofArtifact.contents) !== expectedPriorProofSha256 ||
+    sha256(proofArtifact?.contents ?? Buffer.alloc(0)) !== expectedPriorProofSha256 ||
     sha256(summaryArtifact.contents) !== expectedPriorSummarySha256
   )) {
     throw new Error("Prior migration proof does not match the exact pinned application seal");
@@ -1063,9 +1141,120 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
     manifest,
     proof,
     summary,
+    failure,
+    mutationStatus,
     expectedMigrationCount: expectedCount,
+    expectedFinalVersion,
     requireApplicationEvidence: requirePinnedPrior102,
   });
+  if (evidenceTruth.evidenceKind === "committed_forward_recovery") {
+    const manifestSha256 = sha256(manifestArtifact.contents);
+    const mutationStatusSha256 = sha256(mutationStatusArtifact.contents);
+    const failureSha256 = sha256(failureArtifact.contents);
+    const summarySha256 = sha256(summaryArtifact.contents);
+    const expectedPriorApplied = expectedApplied.slice(0, expectedPriorMigrationCount);
+    const exactForwardMigration = expectedApplied.at(-1);
+    if (
+      !isExactCommittedForwardRecoverySeal({
+        applicationCommit: mutationStatus.headCommit,
+        applicationTree: mutationStatus.headTree,
+        manifestSha256,
+        summarySha256,
+        mutationStatusSha256,
+        failureSha256,
+        brokerSourceSha256: mutationStatus.brokerSourceSha256,
+        migrationPortfolioSha256: mutationStatus.migrationPortfolioSha256,
+        postStructuralCatalogSha256: mutationStatus.postStructuralCatalogSha256,
+        postNormalizedSchemaSha256: mutationStatus.postNormalizedSchemaSha256,
+      }) ||
+      summary.headCommit !== mutationStatus.headCommit ||
+      summary.headTree !== mutationStatus.headTree ||
+      failure.headCommit !== mutationStatus.headCommit ||
+      failure.headTree !== mutationStatus.headTree ||
+      mutationStatus.projectFingerprint !== expectedProjectFingerprint ||
+      summary.projectFingerprint !== expectedProjectFingerprint ||
+      failure.projectFingerprint !== expectedProjectFingerprint ||
+      mutationStatus.safeSuffix !== expectedProjectSafeSuffix ||
+      summary.safeSuffix !== expectedProjectSafeSuffix ||
+      failure.safeSuffix !== expectedProjectSafeSuffix ||
+      mutationStatus.releaseBranch !== releaseIdentity.branch ||
+      summary.releaseBranch !== releaseIdentity.branch ||
+      failure.releaseBranch !== releaseIdentity.branch ||
+      mutationStatus.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
+      summary.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
+      failure.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
+      JSON.stringify(mutationStatus.forwardMigration) !==
+        JSON.stringify(exactForwardMigration) ||
+      JSON.stringify(summary.forwardMigration) !== JSON.stringify(exactForwardMigration) ||
+      JSON.stringify(failure.forwardMigration) !== JSON.stringify(exactForwardMigration) ||
+      mutationStatus.priorApplication?.applicationCommit !==
+        expectedPriorApplicationCommit ||
+      mutationStatus.priorApplication?.applicationTree !== expectedPriorApplicationTree ||
+      mutationStatus.priorApplication?.manifestSha256 !== expectedPriorManifestSha256 ||
+      mutationStatus.priorApplication?.migrationPortfolioSha256 !==
+        expectedPriorMigrationPortfolioSha256 ||
+      mutationStatus.priorApplication?.lastCommittedVersion !==
+        expectedPriorFinalMigration.slice(0, 14) ||
+      JSON.stringify(mutationStatus.priorApplication?.migrationFiles) !==
+        JSON.stringify(expectedPriorApplied) ||
+      mutationStatus.preflightStructuralCatalogSha256 !==
+        mutationStatus.priorApplication?.structuralCatalogSha256 ||
+      mutationStatus.preflightNormalizedSchemaSha256 !==
+        mutationStatus.priorApplication?.normalizedSchemaSha256 ||
+      mutationStatus.broker?.path !== brokerRelativePath ||
+      mutationStatus.brokerSourceSha256 !== mutationStatus.broker?.sha256 ||
+      manifest.broker?.path !== brokerRelativePath ||
+      manifest.brokerSourceSha256 !== mutationStatus.brokerSourceSha256
+    ) {
+      throw new Error(
+        "Prior committed-forward recovery evidence does not match the one exact pinned seal",
+      );
+    }
+    const priorTree = git(
+      ["rev-parse", "--verify", `${mutationStatus.headCommit}^{tree}`],
+      "Unable to verify the committed-forward recovery commit",
+    ).trim();
+    if (priorTree !== mutationStatus.headTree) {
+      throw new Error("Committed-forward recovery commit and tree do not match retained Git history");
+    }
+    const priorBrokerSource = git(
+      ["show", `${mutationStatus.headCommit}:${brokerRelativePath}`],
+      "Unable to recover the committed-forward broker source",
+    );
+    if (sha256(priorBrokerSource) !== mutationStatus.brokerSourceSha256) {
+      throw new Error("Committed-forward recovery broker is not bound to retained Git history");
+    }
+    git(
+      ["merge-base", "--is-ancestor", mutationStatus.headCommit, releaseIdentity.headCommit],
+      "Committed-forward recovery seal is not an ancestor of the current exact seal",
+    );
+    return Object.freeze({
+      manifestSha256,
+      proofSha256: mutationStatusSha256,
+      mutationStatusSha256,
+      failureSha256,
+      summarySha256,
+      priorEvidenceDirectoryName: basename(priorMigrationProofDir),
+      priorEvidencePathSha256: sha256(realpathSync(priorMigrationProofDir)),
+      applicationCommit: mutationStatus.headCommit,
+      applicationTree: mutationStatus.headTree,
+      migrationCount: expectedCount,
+      lastCommittedVersion: expectedFinalVersion,
+      migrationFiles: expectedApplied,
+      migrationPortfolioSha256: mutationStatus.migrationPortfolioSha256,
+      normalizedSchemaSha256: mutationStatus.postNormalizedSchemaSha256,
+      structuralCatalogSha256: mutationStatus.postStructuralCatalogSha256,
+      singleOuterTransaction: true,
+      migrationHistoryReceiptsInsideOuterTransaction: true,
+      evidenceKind: evidenceTruth.evidenceKind,
+      evidenceRemoteMutationStarted: true,
+      evidenceRemoteMutationCompleted: true,
+      portfolioApplicationRemoteMutationCompleted: true,
+      sourceRemoteStateVerificationStatus:
+        "SEALED_FORWARD_103_COMMIT_REQUIRES_READ_ONLY_REPROOF",
+      remoteMutationCompleted: true,
+    });
+  }
   if (
     summary.singleOuterTransaction !== true ||
     summary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
@@ -1240,12 +1429,28 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     if (!hasExactMigrationHistory(existingState)) {
       throw new Error("Existing staging migration history does not match the exact portfolio");
     }
+    if (existingState.authUserCount !== 0 || existingState.storageObjectCount !== 0) {
+      throw new Error("Existing isolated staging is no longer empty of auth users or storage objects");
+    }
     if (existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256) {
       throw new Error("Existing staging structural catalog drifted from the sealed application proof");
     }
+    const existingCatalogRepeat = captureRemoteCatalogIdentity(
+      "Repeat existing staging structural-catalog identity",
+    );
+    if (
+      existingCatalogRepeat.structuralCatalogSha256 !==
+      existingState.structuralCatalogSha256
+    ) {
+      throw new Error("Existing staging structural catalog was not stable across repeated capture");
+    }
     const existingDump = captureNormalizedSchemaDump();
+    const existingDumpRepeat = captureNormalizedSchemaDump();
     const existingSchemaSha256 = sha256(existingDump);
-    if (existingSchemaSha256 !== priorApplication.normalizedSchemaSha256) {
+    if (
+      existingSchemaSha256 !== sha256(existingDumpRepeat) ||
+      existingSchemaSha256 !== priorApplication.normalizedSchemaSha256
+    ) {
       throw new Error("Existing staging normalized schema drifted from the sealed application proof");
     }
     const forcedRlsCount = Number(sql(

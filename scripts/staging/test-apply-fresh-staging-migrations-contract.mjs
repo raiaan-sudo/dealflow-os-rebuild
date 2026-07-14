@@ -9,14 +9,20 @@ import { fileURLToPath } from "node:url";
 import { createNativePostgresTestAdapter } from "../lib/native-postgres-test-adapter.mjs";
 import {
   classifyPriorMigrationEvidence,
+  isExactCommittedForwardRecoverySeal,
   isExactCurrentResumeIdentity,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
+  PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
   PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS,
 } from "./prior-migration-proof-contract.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const brokerPath = join(scriptDir, "apply-fresh-staging-migrations.mjs");
 const source = readFileSync(brokerPath, "utf8");
+const priorProofContractSource = readFileSync(
+  join(scriptDir, "prior-migration-proof-contract.mjs"),
+  "utf8",
+);
 const trustBundle = readFileSync(
   join(scriptDir, "..", "..", "config", "security", "supabase-prod-ca-2021.crt"),
 );
@@ -41,6 +47,11 @@ requireMarker(
 );
 requireMarker(/Prior migration proof artifact does not match its sealed digest/, "prior artifact digest verification");
 requireMarker(/Prior migration proof does not match the exact pinned application seal/, "exact prior seal pin");
+requireMarker(/isExactCommittedForwardRecoverySeal/, "dedicated committed-forward recovery seal gate");
+assert.match(priorProofContractSource, /cc3e8c91f0f95a61b4b2f8e0c113367781e80bdf01ccf3a727a64cf664b2b6c7/, "exact failed-forward manifest pin");
+assert.match(priorProofContractSource, /2546b7c44116e0920534ef58f649acd9c037c586/, "exact failed-forward commit pin");
+assert.match(priorProofContractSource, /9c404170b7a5a4708d4685a6c22f540894eabf2e/, "exact failed-forward tree pin");
+requireMarker(/SEALED_FORWARD_103_COMMIT_REQUIRES_READ_ONLY_REPROOF/, "dedicated read-only recovery identity");
 requireMarker(/e776f38b5302dda525d51cf03e4668568e272a77/, "prior application commit pin");
 requireMarker(/0fcf11214ed3ae097003f737077cd7c67cdedfb7/, "prior application tree pin");
 requireMarker(/877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4/, "prior manifest digest pin");
@@ -52,10 +63,20 @@ requireMarker(/remoteMutationCompleted: false/, "read-only resume mutation-compl
 requireMarker(/EXACT_EXISTING_COMMITTED_PORTFOLIO/, "exact existing portfolio result");
 requireMarker(/captureNormalizedSchemaDump/, "normalized schema comparison");
 requireMarker(/function captureAndAssertRetentionAuthorityAcl\(label\)/, "table and column ACL postcondition verifier");
+requireMarker(/'serviceRoleMaintain', has_table_privilege\('service_role'.*'MAINTAIN'\)/, "PostgreSQL 17 MAINTAIN privilege rejection");
 requireMarker(/has_any_column_privilege\('service_role'/, "service_role column-write rejection");
 requireMarker(/has_any_column_privilege\('anon'/, "anon column-privilege rejection");
 requireMarker(/has_any_column_privilege\('authenticated'/, "authenticated column-privilege rejection");
 requireMarker(/publicColumnAclPresent/, "PUBLIC column ACL rejection");
+requireMarker(/cross join lateral aclexplode\(attribute\.attacl\)/, "NULL-safe column ACL expansion");
+assert.doesNotMatch(
+  source,
+  /aclexplode\(coalesce\(attribute\.attacl,'\{\}'::aclitem\[\]\)\)/,
+  "The ACL verifier must not turn a NULL column ACL into a zero-dimensional array",
+);
+requireMarker(/retentionConfigurationRelationOwner: "postgres"/, "retention relation owner proof");
+requireMarker(/retentionConfigurationRowSecurityEnabled: true/, "retention RLS-enabled proof");
+requireMarker(/retentionConfigurationRowSecurityForced: true/, "retention forced-RLS proof");
 requireMarker(/serviceRoleColumnWritePrivilegesPresent: false/, "sealed service_role column-write result");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
 requireMarker(/expectedPriorFinalMigration[\s\S]+20260713027000_add_ghl_location_display_name_finalization\.sql/, "the prior final migration pin");
@@ -243,6 +264,11 @@ requireMarker(/\.slice\(0, 4_000\)/, "bounded database diagnostic capture");
 
 const catalogIdentityQuery = /function captureRemoteCatalogIdentity\(label\) \{[\s\S]*?const material = sql\(\n    `([\s\S]*?)`,\n    label,/.exec(source)?.[1];
 assert.ok(catalogIdentityQuery, "Contract must extract the broker's exact structural-catalog identity query");
+const retentionAuthorityAclQuery = /function captureAndAssertRetentionAuthorityAcl\(label\) \{[\s\S]*?const acl = JSON\.parse\(sql\(\n    `([\s\S]*?)`,\n    label,/.exec(source)?.[1];
+assert.ok(
+  retentionAuthorityAclQuery,
+  "Contract must extract the broker's exact retention-authority ACL query",
+);
 
 requireMarker(/"staging-migration-proof\.json"/, "final proof evidence");
 requireMarker(/"staging-migration-summary\.json"/, "final summary evidence");
@@ -418,6 +444,146 @@ function exactEvidenceFixture({ count, kind, chained = false }) {
   };
 }
 
+function committedForwardRecoveryFixture() {
+  const expectedFinalVersion = "20260713028000";
+  const common = {
+    migrationMode: "APPLY_FORWARD_EXACT",
+    forwardOnly: true,
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+    migrationCount: 103,
+    priorMigrationCount: 102,
+    forwardMigrationCount: 1,
+    forwardMigration: {
+      version: expectedFinalVersion,
+      file: `${expectedFinalVersion}_harden_account_deletion_retention_authority.sql`,
+      sha256: "a".repeat(64),
+    },
+  };
+  const manifest = {
+    schemaVersion: "dealflow.staging-evidence-manifest.v1",
+    status: "FAILED_AFTER_FORWARD_103_COMMIT",
+    migrationMode: "APPLY_FORWARD_EXACT",
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+  };
+  const summary = {
+    schemaVersion: "dealflow.staging-migration-summary.v1",
+    status: "FAILED_AFTER_FORWARD_103_COMMIT",
+    failureCode: "retention_table_or_column_acl_not_hardened",
+    ...common,
+    singleOuterTransaction: true,
+    migrationHistoryReceiptsInsideOuterTransaction: true,
+    lastAttemptedVersion: expectedFinalVersion,
+    lastAppliedVersion: expectedFinalVersion,
+    lastCommittedVersion: expectedFinalVersion,
+  };
+  const failure = {
+    schemaVersion: "dealflow.isolated-staging-migration-failure.v1",
+    status: "FAILED_AFTER_FORWARD_103_COMMIT",
+    failureCode: "retention_table_or_column_acl_not_hardened",
+    ...common,
+  };
+  const mutationStatus = {
+    schemaVersion: "dealflow.staging-mutation-status.v1",
+    status: "FAILED_AFTER_FORWARD_103_COMMIT",
+    failureCode: "retention_table_or_column_acl_not_hardened",
+    ...common,
+    singleOuterTransaction: true,
+    migrationHistoryReceiptsInsideOuterTransaction: true,
+    transactionCommitMarkerSeen: true,
+    attemptedCount: 1,
+    appliedInTransactionCount: 1,
+    processExitStatus: 0,
+    processSignal: null,
+    processError: false,
+    processErrorCode: null,
+    databaseSqlstate: null,
+    lastAttemptedVersion: expectedFinalVersion,
+    lastAppliedVersion: expectedFinalVersion,
+    lastCommittedVersion: expectedFinalVersion,
+    preflightStructuralCatalogSha256: "b".repeat(64),
+    preflightNormalizedSchemaSha256: "c".repeat(64),
+    postStructuralCatalogSha256: "d".repeat(64),
+    postNormalizedSchemaSha256: "e".repeat(64),
+  };
+  return {
+    expectedFinalVersion,
+    args: {
+      actualNames: [...PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS],
+      manifest,
+      proof: null,
+      summary,
+      failure,
+      mutationStatus,
+      expectedMigrationCount: 103,
+      expectedFinalVersion,
+    },
+  };
+}
+
+const committedRecovery = committedForwardRecoveryFixture();
+const exactCommittedRecoverySeal = {
+  applicationCommit: "2546b7c44116e0920534ef58f649acd9c037c586",
+  applicationTree: "9c404170b7a5a4708d4685a6c22f540894eabf2e",
+  manifestSha256: "cc3e8c91f0f95a61b4b2f8e0c113367781e80bdf01ccf3a727a64cf664b2b6c7",
+  summarySha256: "a041b76bb744dbd35e7915bc0cf8f9fe03f4e2285eccae0586b9fb4ef17b819d",
+  mutationStatusSha256: "eb9f256667f1228b4d2465eff47fc9ceeb0b6f0b189d094cdd5150b931a8ee90",
+  failureSha256: "a164142a34eba81827a7b9c9483535b994f51c6c61f390b14174a7b1215070b8",
+  brokerSourceSha256: "5f8bbd5fb01d462b3c323517310620d467aa70615747b2b0a05383b5df7fb11e",
+  migrationPortfolioSha256: "066dacae58f0987a281bff1f8b21cfaaa2a1cebe49e797a0f764f88d21be74ca",
+  postStructuralCatalogSha256: "6e638308fac2144c019934361831685c5a43cb77155e9882d10a9d650fd3058e",
+  postNormalizedSchemaSha256: "081c495390be502caba2a66fc0091d788652672578bcb1dd02fd33321d5b5aee",
+};
+assert.equal(
+  isExactCommittedForwardRecoverySeal(exactCommittedRecoverySeal),
+  true,
+  "The one exact committed-forward seal must be accepted",
+);
+for (const field of Object.keys(exactCommittedRecoverySeal)) {
+  assert.equal(
+    isExactCommittedForwardRecoverySeal({
+      ...exactCommittedRecoverySeal,
+      [field]: "0".repeat(String(exactCommittedRecoverySeal[field]).length),
+    }),
+    false,
+    `The committed-forward seal must reject a changed ${field}`,
+  );
+}
+assert.equal(
+  classifyPriorMigrationEvidence(committedRecovery.args).evidenceKind,
+  "committed_forward_recovery",
+  "Only the exact post-commit ACL-readback failure shape may enter read-only recovery",
+);
+for (const [label, mutate] of [
+  ["ambiguous state", (value) => { value.mutationStatus.status = "FAILED_FORWARD_103_STATE_DETECTED_WITHOUT_COMMIT_PROOF"; }],
+  ["pre-commit state", (value) => { value.summary.status = "ROLLED_BACK_EXACT_PRIOR_102"; }],
+  ["missing commit marker", (value) => { value.mutationStatus.transactionCommitMarkerSeen = false; }],
+  ["mutation not completed", (value) => { value.manifest.remoteMutationCompleted = false; }],
+  ["wrong failure code", (value) => { value.failure.failureCode = "forward_103_atomic_transaction_failed"; }],
+  ["wrong last commit", (value) => { value.mutationStatus.lastCommittedVersion = "20260713027000"; }],
+  ["missing post catalog", (value) => { value.mutationStatus.postStructuralCatalogSha256 = null; }],
+  ["missing post schema", (value) => { value.mutationStatus.postNormalizedSchemaSha256 = null; }],
+  ["process failure", (value) => { value.mutationStatus.processExitStatus = 1; }],
+  ["extra artifact", (value) => { value.actualNames.push("unsealed-extra.json"); }],
+]) {
+  const mutated = structuredClone(committedRecovery.args);
+  mutate(mutated);
+  assert.throws(
+    () => classifyPriorMigrationEvidence(mutated),
+    /exact sealed post-commit ACL-readback failure|exact supported sealed artifact set/,
+    `Committed-forward recovery must reject ${label}`,
+  );
+}
+assert.throws(
+  () => classifyPriorMigrationEvidence({
+    ...committedRecovery.args,
+    requireApplicationEvidence: true,
+  }),
+  /requires an exact mutation-complete application proof/,
+  "The one-time recovery shape must never be accepted as a normal forward-application proof",
+);
+
 const forward103Fixture = exactEvidenceFixture({ count: 103, kind: "application" });
 assert.equal(
   classifyPriorMigrationEvidence({
@@ -516,6 +682,17 @@ assert.equal(
 assert.equal(
   isExactCurrentResumeIdentity({
     ...currentResumeArguments,
+    priorApplication: {
+      ...exactResumeIdentity,
+      evidenceKind: "committed_forward_recovery",
+    },
+  }),
+  true,
+  "Runner must accept the one exact committed-forward identity only for read-only reproof",
+);
+assert.equal(
+  isExactCurrentResumeIdentity({
+    ...currentResumeArguments,
     priorApplication: { ...exactResumeIdentity, migrationCount: 102 },
   }),
   false,
@@ -587,8 +764,45 @@ if (nativeConfigNames.every((name) => process.env[name])) {
       preflightCatalogIdentity,
       "Forced failure must restore the exact preflight structural-catalog identity",
     );
+    database.psql(
+      `do $roles$
+       begin
+         if not exists (select 1 from pg_roles where rolname='service_role') then
+           create role service_role nologin;
+         end if;
+         if not exists (select 1 from pg_roles where rolname='anon') then
+           create role anon nologin;
+         end if;
+         if not exists (select 1 from pg_roles where rolname='authenticated') then
+           create role authenticated nologin;
+         end if;
+       end
+       $roles$;
+       create table public.account_deletion_retention_configuration (
+         singleton boolean primary key,
+         retention_days integer not null
+       );
+       alter table public.account_deletion_retention_configuration enable row level security;
+       alter table public.account_deletion_retention_configuration force row level security;
+       revoke all on public.account_deletion_retention_configuration from public, anon, authenticated, service_role;
+       grant select on public.account_deletion_retention_configuration to service_role;`,
+      { label: "Create NULL-column-ACL regression fixture" },
+    );
+    const retentionAcl = JSON.parse(database.psql(retentionAuthorityAclQuery, {
+      label: "Execute exact NULL-safe retention ACL query",
+    }));
+    assert.equal(retentionAcl.serviceRoleSelect, true);
+    assert.equal(retentionAcl.serviceRoleTableWrite, false);
+    assert.equal(retentionAcl.serviceRoleMaintain, false);
+    assert.equal(retentionAcl.serviceRoleColumnWrite, false);
+    assert.equal(retentionAcl.publicColumnAclPresent, false);
+    database.psql(
+      "drop table public.account_deletion_retention_configuration;",
+      { label: "Remove NULL-column-ACL regression fixture" },
+    );
   });
-  forcedFailureProof = "native PostgreSQL 17.6 forced-failure rollback";
+  forcedFailureProof =
+    "native PostgreSQL 17.6 forced-failure rollback plus NULL-column-ACL readback";
 }
 
 console.log(

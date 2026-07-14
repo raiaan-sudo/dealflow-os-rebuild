@@ -1894,7 +1894,22 @@ async function main() {
     migrationSummary.headTree !== identity.tree ||
     migrationSummary.projectFingerprint !== EXPECTED_SUPABASE_FINGERPRINT ||
     migrationSummary.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
+    migrationSummary.retentionConfigurationRelationOwner !== "postgres" ||
+    migrationSummary.retentionConfigurationRowSecurityEnabled !== true ||
+    migrationSummary.retentionConfigurationRowSecurityForced !== true ||
     migrationSummary.serviceRoleRetentionConfigurationSelectOnly !== true ||
+    JSON.stringify(migrationSummary.serviceRoleTableWritePrivileges) !==
+      JSON.stringify({
+        insert: false,
+        update: false,
+        delete: false,
+        truncate: false,
+        references: false,
+        trigger: false,
+        maintain: false,
+      }) ||
+    JSON.stringify(migrationSummary.serviceRoleColumnWritePrivileges) !==
+      JSON.stringify({ insert: false, update: false, references: false }) ||
     migrationSummary.serviceRoleColumnWritePrivilegesPresent !== false ||
     migrationSummary.anonPrivilegesPresent !== false ||
     migrationSummary.anonColumnPrivilegesPresent !== false ||

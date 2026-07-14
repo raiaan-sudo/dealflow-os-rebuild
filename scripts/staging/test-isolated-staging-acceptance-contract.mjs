@@ -119,6 +119,12 @@ assert.match(runner, /migrationSummary\.serviceRoleColumnWritePrivilegesPresent 
 assert.match(runner, /migrationSummary\.anonColumnPrivilegesPresent !== false/);
 assert.match(runner, /migrationSummary\.authenticatedColumnPrivilegesPresent !== false/);
 assert.match(runner, /migrationSummary\.publicColumnAclPresent !== false/);
+assert.match(runner, /migrationSummary\.retentionConfigurationRelationOwner !== "postgres"/);
+assert.match(runner, /migrationSummary\.retentionConfigurationRowSecurityEnabled !== true/);
+assert.match(runner, /migrationSummary\.retentionConfigurationRowSecurityForced !== true/);
+assert.match(runner, /migrationSummary\.serviceRoleTableWritePrivileges/);
+assert.match(runner, /maintain: false/);
+assert.match(runner, /migrationSummary\.serviceRoleColumnWritePrivileges/);
 assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
 assert.match(
@@ -135,6 +141,7 @@ assert.match(priorProofContract, /priorApplication\.structuralCatalogSha256/);
 assert.match(priorProofContract, /priorApplication\.migrationCount === expectedMigrationCount/);
 assert.match(priorProofContract, /priorApplication\.migrationFiles/);
 assert.match(priorProofContract, /portfolioApplicationRemoteMutationCompleted === true/);
+assert.match(priorProofContract, /committed_forward_recovery/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);
