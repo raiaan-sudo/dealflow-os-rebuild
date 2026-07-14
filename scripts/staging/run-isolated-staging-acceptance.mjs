@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
 import {
@@ -35,6 +36,15 @@ import {
   configureExactStagingVercelProtection,
   verifyExactStagingVercelProtection,
 } from "./vercel-staging-protection-contract.mjs";
+import {
+  EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS,
+  EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+  EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
+  ExactAliasPropagationTimeoutError,
+  proveSequentialExactApplicationGate,
+  summarizeExactAliasPropagationFailure,
+  waitForExactAliasPropagation,
+} from "./vercel-alias-propagation-contract.mjs";
 import {
   SYNTHETIC_BROWSER_SESSION_BUNDLE_SCHEMA,
   SYNTHETIC_STAGING_ROLE_EMAILS,
@@ -1621,9 +1631,17 @@ async function configureHostedStagingEnvironment(vercel, environment) {
   };
 }
 
-async function fetchAuthoritativeVercelDeployment(vercel, deploymentId, label) {
+async function fetchAuthoritativeVercelDeployment(
+  vercel,
+  deploymentId,
+  label,
+  { timeoutMs = 3 * 60_000 } = {},
+) {
   if (!/^dpl_[A-Za-z0-9]+$/.test(deploymentId)) {
     throw new Error(`${label} returned an invalid Vercel deployment id`);
+  }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3 * 60_000) {
+    throw new Error(`${label} Vercel deployment read timeout is outside the bounded contract`);
   }
   const response = await runInterruptible(
     EXECUTABLE,
@@ -1637,7 +1655,7 @@ async function fetchAuthoritativeVercelDeployment(vercel, deploymentId, label) {
     {
       label: `${label} authoritative Vercel deployment API read`,
       env: vercelEnvironment(),
-      timeoutMs: 3 * 60_000,
+      timeoutMs,
       secrets: protectedRuntimeValues(),
     },
   );
@@ -1662,7 +1680,12 @@ function sameExactAliasMapping(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-async function fetchExactAliasMapping(vercel, alias, label) {
+async function fetchExactAliasMapping(
+  vercel,
+  alias,
+  label,
+  { timeoutMs = 3 * 60_000 } = {},
+) {
   if (
     !EXPECTED_APP_ALIASES.some(
       ({ host, url }) => host === alias.host && url === alias.url,
@@ -1670,13 +1693,17 @@ async function fetchExactAliasMapping(vercel, alias, label) {
   ) {
     throw new Error(`${label} received an unregistered staging alias`);
   }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3 * 60_000) {
+    throw new Error(`${label} Vercel alias read timeout is outside the bounded contract`);
+  }
+  const startedAt = performance.now();
   const result = await runInterruptibleAllowNonzero(
     EXECUTABLE,
     [vercel.path, "api", exactAliasRecordPath(alias.host), "--raw", "--no-color"],
     {
       label: `${label} authoritative Vercel alias record read`,
       env: vercelEnvironment(),
-      timeoutMs: 3 * 60_000,
+      timeoutMs,
       secrets: protectedRuntimeValues(),
     },
   );
@@ -1688,7 +1715,13 @@ async function fetchExactAliasMapping(vercel, alias, label) {
     if (!/(?:Response Error[^\n]*\b404\b|\b404\b[^\n]*(?:not found|NOT_FOUND))/i.test(diagnostic)) {
       throw new Error(`${label} authoritative Vercel alias read failed: ${diagnostic}`);
     }
-    const publicSurface = await requestExactAppAlias(alias);
+    const remainingMs = Math.floor(timeoutMs - (performance.now() - startedAt));
+    if (remainingMs < 1) {
+      throw new Error(`${label} authoritative Vercel alias read exhausted its bounded timeout`);
+    }
+    const publicSurface = await requestExactAppAlias(alias, {}, {
+      timeoutMs: Math.min(EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS, remainingMs),
+    });
     if (
       publicSurface.status !== 404 ||
       publicSurface.disposition !== "VERCEL_DEPLOYMENT_NOT_FOUND"
@@ -1717,10 +1750,15 @@ async function fetchExactAliasMapping(vercel, alias, label) {
   ) {
     throw new Error(`${label} is not owned by the exact isolated staging project`);
   }
+  const remainingMs = Math.floor(timeoutMs - (performance.now() - startedAt));
+  if (remainingMs < 1) {
+    throw new Error(`${label} authoritative Vercel alias proof exhausted its bounded timeout`);
+  }
   const authoritative = await fetchAuthoritativeVercelDeployment(
     vercel,
     deploymentId,
     `${label} mapped deployment`,
+    { timeoutMs: remainingMs },
   );
   const authoritativeProjectId =
     authoritative.projectId ?? authoritative.project?.id;
@@ -1914,7 +1952,10 @@ async function configureAndProveAppAlias(
 async function requestExactAppAlias(
   alias,
   headers = {},
-  { allowDuringTermination = false } = {},
+  {
+    allowDuringTermination = false,
+    timeoutMs = EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+  } = {},
 ) {
   const endpoint = new URL("/privacy", alias.url);
   if (
@@ -1927,14 +1968,25 @@ async function requestExactAppAlias(
   ) {
     throw new Error("Application-gate proof received a non-exact staging alias");
   }
-  const response = await (allowDuringTermination ? cleanupFetch : executionFetch)(endpoint, {
-    headers: {
-      Accept: "text/html",
-      "User-Agent": "DealFlow-Staging-Acceptance/1.0",
-      ...headers,
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS
+  ) {
+    throw new Error("Application-gate request timeout is outside the bounded contract");
+  }
+  const response = await (allowDuringTermination ? cleanupFetch : executionFetch)(
+    endpoint,
+    {
+      headers: {
+        Accept: "text/html",
+        "User-Agent": "DealFlow-Staging-Acceptance/1.0",
+        ...headers,
+      },
+      redirect: "manual",
     },
-    redirect: "manual",
-  }, 15_000);
+    timeoutMs,
+  );
   const contentType = response.headers.get("content-type") ?? "";
   const payload = contentType.toLowerCase().includes("application/json")
     ? await response.json().catch(() => null)
@@ -1969,6 +2021,114 @@ async function requestExactAppAlias(
           ? "AUTHORIZED_HTTP_200"
           : "UNRECOGNIZED",
   };
+}
+
+async function waitForExactAppAliasPropagation(
+  alias,
+  evidenceDir,
+  vercel,
+  deployment,
+) {
+  let result;
+  try {
+    result = await waitForExactAliasPropagation({
+      probe: ({ timeoutMs }) => requestExactAppAlias(alias, {}, { timeoutMs }),
+      verifyMapping: async ({ timeoutMs }) => {
+        const mapping = await fetchExactAliasMapping(
+          vercel,
+          alias,
+          `${alias.label} post-propagation alias`,
+          { timeoutMs },
+        );
+        if (
+          mapping?.deploymentId !== deployment.deploymentId ||
+          mapping?.deploymentHost !== deployment.deploymentHost ||
+          mapping?.projectIdFingerprint !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT
+        ) {
+          throw new Error(`${alias.label} staging app alias mapping drifted during edge propagation`);
+        }
+        return mapping;
+      },
+      delay: abortableDelay,
+    });
+  } catch (error) {
+    const failureEvidence = summarizeExactAliasPropagationFailure(error);
+    writeJson(
+      join(evidenceDir, `alias-edge-propagation-${alias.label}.json`),
+      {
+        schemaVersion: "dealflow.vercel-alias-edge-propagation.v1",
+        status: error instanceof ExactAliasPropagationTimeoutError
+          ? "FAILED_TIMEOUT"
+          : "FAILED_HARD",
+        aliasLabel: alias.label,
+        aliasHost: alias.host,
+        expectedDeploymentId: deployment.deploymentId,
+        expectedDeploymentHost: deployment.deploymentHost,
+        projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+        timeoutMs: EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
+        pollIntervalMs: EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS,
+        requestTimeoutMaximumMs: EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+        failurePhase: failureEvidence.failurePhase,
+        requestAttemptCount: failureEvidence.requestAttemptCount,
+        completedResponseCount: failureEvidence.completedResponseCount,
+        elapsedMs: failureEvidence.elapsedMs,
+        observations: failureEvidence.observations,
+        terminalObservation: failureEvidence.terminalObservation,
+        sanitizedFailureSha256: sha256(
+          sanitize(error instanceof Error ? error.message : String(error), protectedRuntimeValues()),
+        ),
+        intermediateDispositionAllowed: "VERCEL_DEPLOYMENT_NOT_FOUND",
+        requiredFinalDisposition: "DEALFLOW_APPLICATION_GATE",
+        exactCandidateMappingProvenBeforeWait: true,
+        exactCandidateMappingProvenAfterWait: false,
+        redirectsFollowed: failureEvidence.redirectsFollowed,
+        responseUrlExact: failureEvidence.responseUrlExact,
+        gateCredentialSentDuringWait: false,
+        publicWindowObserved: failureEvidence.publicWindowObserved,
+        publicWindowProofStatus: failureEvidence.publicWindowProofStatus,
+        productionOrSharedAliasChanged: false,
+      },
+      { allowDuringTermination: true },
+    );
+    throw error;
+  }
+
+  const proof = Object.freeze({
+    schemaVersion: "dealflow.vercel-alias-edge-propagation.v1",
+    status: "PASS",
+    aliasLabel: alias.label,
+    aliasHost: alias.host,
+    expectedDeploymentId: deployment.deploymentId,
+    expectedDeploymentHost: deployment.deploymentHost,
+    projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+    timeoutMs: EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
+    pollIntervalMs: EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS,
+    requestTimeoutMaximumMs: EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+    attemptCount: result.observations.length,
+    transientDeploymentNotFoundCount: result.observations.filter(
+      ({ disposition }) => disposition === "VERCEL_DEPLOYMENT_NOT_FOUND",
+    ).length,
+    elapsedMs: result.elapsedMs,
+    firstDisposition: result.observations[0]?.disposition ?? null,
+    finalDisposition: result.observations.at(-1)?.disposition ?? null,
+    finalStatus: result.observations.at(-1)?.status ?? null,
+    observations: result.observations,
+    intermediateDispositionAllowed: "VERCEL_DEPLOYMENT_NOT_FOUND",
+    requiredFinalDisposition: "DEALFLOW_APPLICATION_GATE",
+    exactCandidateMappingProvenBeforeWait: true,
+    exactCandidateMappingProvenAfterWait: true,
+    postWaitMapping: result.mappingProof,
+    redirectsFollowed: false,
+    responseUrlExact: true,
+    gateCredentialSentDuringWait: false,
+    publicWindowObserved: false,
+    productionOrSharedAliasChanged: false,
+  });
+  writeJson(
+    join(evidenceDir, `alias-edge-propagation-${alias.label}.json`),
+    proof,
+  );
+  return proof;
 }
 
 async function proveClosedPreDeployAppAliasSurface() {
@@ -2009,24 +2169,14 @@ async function proveClosedPreDeployAppAliasSurface() {
 }
 
 async function proveExactPostDeployAppAliasGate(alias) {
-  const secret = requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43);
-  const noGate = await requestExactAppAlias(alias);
-  const headerGate = await requestExactAppAlias(alias, {
-    [STAGING_ACCESS_HEADER]: secret,
-  });
-  const cookieGate = await requestExactAppAlias(alias, {
-    Cookie: `${STAGING_ACCESS_COOKIE}=${secret}`,
-  });
-  if (
-    noGate.status !== 404 ||
-    noGate.disposition !== "DEALFLOW_APPLICATION_GATE" ||
-    headerGate.status !== 200 ||
-    headerGate.disposition !== "AUTHORIZED_HTTP_200" ||
-    cookieGate.status !== 200 ||
-    cookieGate.disposition !== "AUTHORIZED_HTTP_200"
-  ) {
-    throw new Error(`${alias.label} did not prove the exact closed application gate`);
-  }
+  const { noGate, headerGate, cookieGate } =
+    await proveSequentialExactApplicationGate({
+      label: alias.label,
+      request: (headers) => requestExactAppAlias(alias, headers),
+      getSecret: () => requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43),
+      headerName: STAGING_ACCESS_HEADER,
+      cookieName: STAGING_ACCESS_COOKIE,
+    });
   return Object.freeze({
     label: alias.label,
     host: alias.host,
@@ -4054,6 +4204,11 @@ async function main() {
       priorMapping: priorAliasMapping(EXPECTED_STAGING_HOST),
     },
   );
+  failureContext.stage = "stable_alias_edge_propagation";
+  const stableAliasPropagation =
+    await waitForExactAppAliasPropagation(
+      EXPECTED_APP_ALIASES[0], options.evidenceDir, vercel, deployment,
+    );
   failureContext.stage = "stable_alias_application_gate_verification";
   const stableGateImmediatelyAfterAlias =
     await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0]);
@@ -4077,6 +4232,11 @@ async function main() {
       priorMapping: priorAliasMapping(EXPECTED_PARTNER_ONE_HOST),
     },
   );
+  failureContext.stage = "partner_one_alias_edge_propagation";
+  const partnerOneAliasPropagation =
+    await waitForExactAppAliasPropagation(
+      EXPECTED_APP_ALIASES[1], options.evidenceDir, vercel, deployment,
+    );
   failureContext.stage = "partner_one_application_gate_verification";
   const partnerOneGateImmediatelyAfterAlias =
     await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[1]);
@@ -4100,6 +4260,11 @@ async function main() {
       priorMapping: priorAliasMapping(EXPECTED_SECOND_PARTNER_HOST),
     },
   );
+  failureContext.stage = "partner_two_alias_edge_propagation";
+  const secondPartnerAliasPropagation =
+    await waitForExactAppAliasPropagation(
+      EXPECTED_APP_ALIASES[2], options.evidenceDir, vercel, deployment,
+    );
   failureContext.stage = "partner_two_application_gate_verification";
   const secondPartnerGateImmediatelyAfterAlias =
     await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[2]);
@@ -4141,15 +4306,18 @@ async function main() {
     ...deployment,
     uniqueDeploymentProtection,
     stableGateImmediatelyAfterAlias,
+    stableAliasPropagation,
     stableIdentityImmediatelyAfterAlias,
     stableReady,
     stableAlias,
     partnerOneAlias,
     partnerOneGateImmediatelyAfterAlias,
+    partnerOneAliasPropagation,
     partnerOneIdentityImmediatelyAfterAlias,
     partnerOneReady,
     secondPartnerAlias,
     secondPartnerGateImmediatelyAfterAlias,
+    secondPartnerAliasPropagation,
     secondPartnerIdentityImmediatelyAfterAlias,
     secondPartnerReady,
     postDeployAppAliasGate,
@@ -4510,6 +4678,7 @@ async function main() {
     hostedZeroExternalEffectsPassed: true,
     preDeployPublicWindowAbsent: true,
     threeAliasApplicationGatePassed: true,
+    threeAliasEdgePropagationPassed: true,
     uniqueDeploymentProtectionPassed: true,
     crossBrowserZeroSkipPassed: true,
     hostedLoadPassed: true,

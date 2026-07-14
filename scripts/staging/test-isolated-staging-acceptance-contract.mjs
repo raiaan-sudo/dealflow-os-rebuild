@@ -31,6 +31,14 @@ const vercelProtectionTest = readFileSync(
   join(root, "scripts", "staging", "test-vercel-staging-protection-contract.mjs"),
   "utf8",
 );
+const vercelAliasPropagationContract = readFileSync(
+  join(root, "scripts", "staging", "vercel-alias-propagation-contract.mjs"),
+  "utf8",
+);
+const vercelAliasPropagationTest = readFileSync(
+  join(root, "scripts", "staging", "test-vercel-alias-propagation-contract.mjs"),
+  "utf8",
+);
 const rlsFixtureSmoke = readFileSync(
   join(root, "scripts", "run-rls-fixture-smoke.mjs"),
   "utf8",
@@ -529,6 +537,9 @@ const uniqueProtectionIndex = runner.indexOf(
 const stableGateIndex = runner.indexOf(
   "await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0])",
 );
+const stablePropagationIndex = runner.indexOf(
+  "const stableAliasPropagation =",
+);
 const stableIdentityIndex = runner.indexOf(
   "const stableIdentityImmediatelyAfterAlias =",
 );
@@ -536,12 +547,18 @@ const partnerOneAliasIndex = runner.indexOf("const partnerOneAlias =");
 const partnerOneGateIndex = runner.indexOf(
   "const partnerOneGateImmediatelyAfterAlias =",
 );
+const partnerOnePropagationIndex = runner.indexOf(
+  "const partnerOneAliasPropagation =",
+);
 const partnerOneIdentityIndex = runner.indexOf(
   "const partnerOneIdentityImmediatelyAfterAlias =",
 );
 const partnerTwoAliasIndex = runner.indexOf("const secondPartnerAlias =");
 const partnerTwoGateIndex = runner.indexOf(
   "const secondPartnerGateImmediatelyAfterAlias =",
+);
+const partnerTwoPropagationIndex = runner.indexOf(
+  "const secondPartnerAliasPropagation =",
 );
 const partnerTwoIdentityIndex = runner.indexOf(
   "const secondPartnerIdentityImmediatelyAfterAlias =",
@@ -576,6 +593,11 @@ assert.ok(
   "standard protection, the unique redirect, and the stable app gate and identity must be proven before app-alias readiness",
 );
 assert.ok(
+  uniqueProtectionIndex < stablePropagationIndex &&
+    stablePropagationIndex < stableGateIndex,
+  "the stable alias must finish its bounded unauthenticated edge-propagation proof before any credentialed gate probe",
+);
+assert.ok(
   predeploymentProtectionIndex < immediatePreDeployIdentityIndex &&
     immediatePreDeployIdentityIndex < immediatePreDeployDryRunIndex &&
     immediatePreDeployDryRunIndex < deployIndex &&
@@ -595,10 +617,12 @@ assert.match(
 );
 assert.ok(
   stableIdentityIndex < partnerOneAliasIndex &&
-    partnerOneAliasIndex < partnerOneGateIndex &&
+    partnerOneAliasIndex < partnerOnePropagationIndex &&
+    partnerOnePropagationIndex < partnerOneGateIndex &&
     partnerOneGateIndex < partnerOneIdentityIndex &&
     partnerOneIdentityIndex < partnerTwoAliasIndex &&
-    partnerTwoAliasIndex < partnerTwoGateIndex &&
+    partnerTwoAliasIndex < partnerTwoPropagationIndex &&
+    partnerTwoPropagationIndex < partnerTwoGateIndex &&
     partnerTwoGateIndex < partnerTwoIdentityIndex &&
     partnerTwoIdentityIndex < firstReadinessIndex,
   "each exact alias must prove its gate and build identity before the next alias can be assigned",
@@ -623,6 +647,73 @@ assert.match(vercelProtectionTest, /wrong input project must be blocked before a
 assert.match(vercelProtectionTest, /assert\.deepEqual\(call\.body/);
 assert.match(vercelProtectionTest, /\["GET", "PATCH", "GET"\]/);
 assert.match(vercelProtectionTest, /for \(const status of \[301, 302, 303, 307, 308\]\)/);
+assert.match(runner, /async function waitForExactAppAliasPropagation\(\s*alias,\s*evidenceDir,\s*vercel,\s*deployment,\s*\)/);
+assert.match(runner, /waitForExactAliasPropagation\(\{/);
+assert.match(runner, /EXACT_ALIAS_PROPAGATION_TIMEOUT_MS/);
+assert.match(runner, /EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS/);
+assert.match(runner, /EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS/);
+assert.match(runner, /alias-edge-propagation-\$\{alias\.label\}\.json/);
+assert.match(runner, /intermediateDispositionAllowed: "VERCEL_DEPLOYMENT_NOT_FOUND"/);
+assert.match(runner, /requiredFinalDisposition: "DEALFLOW_APPLICATION_GATE"/);
+assert.match(runner, /gateCredentialSentDuringWait: false/);
+assert.match(runner, /publicWindowObserved: false/);
+assert.match(runner, /threeAliasEdgePropagationPassed: true/);
+assert.match(vercelAliasPropagationContract, /EXACT_ALIAS_PROPAGATION_TIMEOUT_MS = 180_000/);
+assert.match(vercelAliasPropagationContract, /EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS = 2_000/);
+assert.match(vercelAliasPropagationContract, /observation\.status !== 404/);
+assert.match(vercelAliasPropagationContract, /observation\.redirected !== false/);
+assert.match(vercelAliasPropagationContract, /observation\.locationPresent !== false/);
+assert.match(vercelAliasPropagationContract, /observation\.responseUrlExact !== true/);
+assert.match(vercelAliasPropagationContract, /class ExactAliasPropagationTimeoutError extends Error/);
+assert.match(vercelAliasPropagationContract, /class ExactAliasPropagationHardFailureError extends Error/);
+assert.match(vercelAliasPropagationContract, /now = \(\) => performance\.now\(\)/);
+assert.match(vercelAliasPropagationContract, /mappingProof = await verifyMapping\(\{/);
+assert.ok(
+  (vercelAliasPropagationContract.match(/if \(now\(\) >= deadline\)/g) ?? []).length >= 3,
+  "the hard propagation deadline must be rechecked after probe and mapping work",
+);
+assert.match(vercelAliasPropagationContract, /await delay\(Math\.min\(pollIntervalMs, remainingMs\)\)/);
+assert.match(vercelAliasPropagationTest, /status: 200, disposition: "AUTHORIZED_HTTP_200"/);
+assert.match(vercelAliasPropagationTest, /status: 503, disposition: "DEALFLOW_APPLICATION_GATE"/);
+assert.match(vercelAliasPropagationTest, /redirected: true/);
+assert.match(vercelAliasPropagationTest, /locationPresent: true/);
+assert.match(vercelAliasPropagationTest, /responseUrlExact: false/);
+assert.match(vercelAliasPropagationTest, /simulated transport failure/);
+assert.match(vercelAliasPropagationTest, /simulated mapping drift/);
+assert.match(vercelAliasPropagationTest, /simulated termination/);
+assert.match(vercelAliasPropagationTest, /requestTimeouts, \[5_000, 3_000, 1_000\]/);
+assert.match(vercelAliasPropagationTest, /probeAdvanceMs: 101/);
+assert.match(vercelAliasPropagationTest, /mappingAdvanceMs: 101/);
+assert.match(vercelAliasPropagationTest, /transientThenPublicError\.safeTerminalObservation\.status, 200/);
+assert.match(vercelAliasPropagationTest, /rejectedSecretReads, 0/);
+assert.match(vercelAliasPropagationTest, /headerFailureHeaders, \[\{\}, \{ "x-test-gate": "test-secret" \}\]/);
+const propagationWaitSource = runner.slice(
+  runner.indexOf("async function waitForExactAppAliasPropagation("),
+  runner.indexOf("async function proveClosedPreDeployAppAliasSurface("),
+);
+assert.doesNotMatch(propagationWaitSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
+assert.match(propagationWaitSource, /catch \(error\)[\s\S]+throw error/);
+assert.match(propagationWaitSource, /post-propagation alias/);
+assert.match(propagationWaitSource, /mapping\?\.deploymentId !== deployment\.deploymentId/);
+assert.match(propagationWaitSource, /allowDuringTermination: true/);
+assert.match(propagationWaitSource, /publicWindowProofStatus/);
+assert.match(propagationWaitSource, /terminalObservation/);
+const exactGateProofSource = runner.slice(
+  runner.indexOf("async function proveExactPostDeployAppAliasGate("),
+  runner.indexOf("async function provePostDeployAppAliasGate("),
+);
+assert.match(exactGateProofSource, /proveSequentialExactApplicationGate\(\{/);
+assert.match(exactGateProofSource, /getSecret: \(\) => requiredEnvironment\("STAGING_ACCESS_GATE_SECRET", 43\)/);
+const sequentialGateContractSource = vercelAliasPropagationContract.slice(
+  vercelAliasPropagationContract.indexOf("export async function proveSequentialExactApplicationGate("),
+);
+assert.ok(
+  sequentialGateContractSource.indexOf("const noGate = await request({})") <
+    sequentialGateContractSource.indexOf("const secret = getSecret()") &&
+    sequentialGateContractSource.indexOf('headerGate.disposition !== "AUTHORIZED_HTTP_200"') <
+      sequentialGateContractSource.indexOf("const cookieGate = await request"),
+  "the unauthenticated surface and header authorization must each pass before the next credential is loaded or sent",
+);
 assert.match(
   roundReaderSource,
   /assertExactFinalVerificationSummaryPortfolio\(parsed, `\$\{label\} portfolio`\)/,
@@ -800,12 +891,15 @@ assert.match(runner, /buildSourceEmbeddedInReleaseIdentityResponse: true/);
 assert.match(runner, /buildGeneratedIdentityEndpointPath: endpoint\.pathname/);
 for (const stage of [
   "stable_alias_configuration",
+  "stable_alias_edge_propagation",
   "stable_alias_application_gate_verification",
   "stable_alias_build_identity_verification",
   "partner_one_alias_configuration",
+  "partner_one_alias_edge_propagation",
   "partner_one_application_gate_verification",
   "partner_one_build_identity_verification",
   "partner_two_alias_configuration",
+  "partner_two_alias_edge_propagation",
   "partner_two_application_gate_verification",
   "partner_two_build_identity_verification",
   "stable_alias_readiness",
@@ -1189,7 +1283,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
@@ -1200,6 +1294,7 @@ assert.match(completionSuite, /"staging\/test-interruptible-command\.mjs"/);
 assert.match(completionSuite, /"staging\/test-unsealed-playwright-artifact-cleanup\.mjs"/);
 assert.match(completionSuite, /"staging\/test-deployable-source-path-set-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-dry-run-source-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-vercel-alias-propagation-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-exact-supabase-project-url\.mjs"/);
 assert.match(completionSuite, /"staging\/test-next-static-chunk-path\.mjs"/);
 assert.match(completionSuite, /"staging\/test-isolated-staging-access-gate\.mjs"/);
