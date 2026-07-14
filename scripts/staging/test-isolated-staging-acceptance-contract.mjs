@@ -855,8 +855,14 @@ const propagationWaitSource = runner.slice(
   runner.indexOf("async function waitForExactAppAliasPropagation("),
   runner.indexOf("async function proveClosedPreDeployAppAliasSurface("),
 );
+const aliasEdgeObservationSource = runner.slice(
+  runner.indexOf("async function requestExactAppAliasEdgeObservation("),
+  runner.indexOf("async function waitForExactAppAliasPropagation("),
+);
 assert.doesNotMatch(propagationWaitSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
-assert.match(propagationWaitSource, /withVercelAutomationBypass\(\{\}, true\)/);
+assert.doesNotMatch(aliasEdgeObservationSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
+assert.match(aliasEdgeObservationSource, /withVercelAutomationBypass\(\{\}, true\)/);
+assert.match(aliasEdgeObservationSource, /allowDuringTermination/);
 assert.match(propagationWaitSource, /post-propagation alias/);
 assert.match(propagationWaitSource, /catch \(error\)[\s\S]+throw error/);
 assert.match(propagationWaitSource, /mapping\?\.deploymentId !== deployment\.deploymentId/);
@@ -990,7 +996,10 @@ assert.match(runner, /failureContext\.stagingAliasMutations\.push\(rollbackRecor
 assert.match(runner, /async function rollbackCreatedStagingAliasesAfterFailure/);
 assert.match(runner, /rollback\.error \|\| rollback\.signal \|\| rollback\.status !== 0/);
 assert.match(runner, /authoritativePriorMappingRestored/);
-assert.match(runner, /publicContainmentProvenSeparately: true/);
+assert.match(
+  runner,
+  /publicContainmentProvenSeparately: aliases\.every\(/,
+);
 assert.doesNotMatch(runner, /createdStagingAliases/);
 const aliasConfigurationSource = runner.slice(
   runner.indexOf("async function configureAndProveAppAlias("),
@@ -1009,6 +1018,35 @@ assert.match(aliasRollbackSource, /spawnSync\(/);
 assert.match(aliasRollbackSource, /record\.deployment\?\.id !== deploymentId/);
 assert.match(aliasRollbackSource, /`\/v13\/deployments\/\$\{deploymentId\}`/);
 assert.doesNotMatch(aliasRollbackSource, /configureHostedStagingProtection|--method|PATCH/);
+assert.match(
+  aliasRollbackSource,
+  /timeoutMs = EXACT_ALIAS_PROPAGATION_TIMEOUT_MS/,
+  "rollback authority reads must inherit the bounded edge-containment deadline",
+);
+assert.match(aliasRollbackSource, /timeout: timeoutMs/);
+assert.match(aliasRollbackSource, /timeout: remainingMs/);
+assert.match(aliasRollbackSource, /waitForExactAliasRollbackContainment\(\{/);
+assert.match(aliasRollbackSource, /priorMappingPresent: mutation\.priorMapping !== null/);
+assert.match(aliasRollbackSource, /allowDuringTermination: true/);
+assert.match(aliasRollbackSource, /\{ timeoutMs \}/);
+assert.match(aliasRollbackSource, /delay: cleanupDelay/);
+assert.match(aliasRollbackSource, /PRODUCTION_OR_SHARED_HOSTS\.has\(mutation\.aliasHost\)/);
+assert.match(
+  aliasRollbackSource,
+  /PRODUCTION_OR_SHARED_HOSTS\.has\(mutation\.priorMapping\.deploymentHost\)/,
+);
+assert.match(
+  aliasRollbackSource,
+  /PRODUCTION_OR_SHARED_HOSTS\.has\(intendedMapping\.deploymentHost\)/,
+);
+assert.match(aliasRollbackSource, /allRegisteredAliasesAttempted/);
+assert.match(aliasRollbackSource, /cleanupContinuedAfterIndividualFailure: true/);
+assert.match(aliasRollbackSource, /StagingAliasRollbackIncompleteError/);
+assert.doesNotMatch(
+  aliasRollbackSource,
+  /const publicSurface = await requestExactAppAlias\(alias, \{\}, \{\s*allowDuringTermination: true/,
+  "rollback must not make a one-shot stale-edge containment decision",
+);
 assert.match(runner, /"alias",\s*"set"/);
 assert.match(runner, /dealflow-os-rebuild-selfserve-clean-partner-one-qibh\.vercel\.app/);
 assert.match(runner, /dealflow-os-rebuild-selfserve-clean-partner-two-qibh\.vercel\.app/);
@@ -1027,11 +1065,33 @@ assert.match(runner, /function provePostDeployAppAliasGate/);
 assert.match(runner, /function proveUniqueDeploymentProtectionRedirect/);
 assert.match(runner, /function provePostDeployStaticAssetGate/);
 assert.match(runner, /findExactNextStaticChunkPath/);
-assert.match(runner, /\/_next\/image\?url=%2Fstaging-image-optimizer-proof\.png/);
+assert.match(runner, /STAGING_PRIVATE_IMAGE_SOURCE_PATH/);
+assert.match(runner, /staging-private-image-gate-proof-v2\//);
+assert.match(runner, /`\$\{STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX\}\$\{identity\.commit\}\.png`/);
+assert.match(runner, /function buildVersionedPrivateImagePaths/);
+assert.match(runner, /optimizer\.searchParams\.set\("url", sourceResourcePath\)/);
+assert.match(runner, /DISABLED_STAGING_IMAGE_OPTIMIZER_PATH/);
+assert.match(runner, /function isExactDealFlowApplicationGateResponse/);
+assert.match(runner, /function classifyExactLegacyOptimizerResponse/);
+assert.match(runner, /LEGACY_BENIGN_OPTIMIZER_BODY_SHA256/);
+assert.match(runner, /cachedPriorProofPathUsed: false/);
+assert.match(runner, /privateImageProofVersion: 2/);
+assert.match(runner, /currentVersionedProofIntentionalPublicResourceCountPerAlias: 0/);
+assert.match(runner, /legacyOptimizerCacheResidueClassifiedOnlyByExactBodyIdentity: true/);
+assert.match(runner, /retiredPublicSourceStatusAllCredentialModes: 404/);
+assert.match(runner, /postWarmUnauthorizedSourceAndChunkRecheck: true/);
+assert.match(runner, /invalidHeaderAfterWarm/);
+assert.match(runner, /invalidCookieAfterWarm/);
+assert.match(browserSpec, /imageFailures/);
+assert.match(browserSpec, /response\.request\(\)\.resourceType\(\) === "image"/);
+assert.match(browserSpec, /naturalWidth/);
+assert.match(browserSpec, /assertDirectImageLoaded/);
+assert.match(browserSpec, /_dealflow-staging-image-optimizer-disabled/);
 assert.match(runner, /postdeploy-static-asset-gate\.json/);
-assert.match(runner, /noGate\.status !== 404/);
-assert.match(runner, /headerGate\.status !== 200/);
-assert.match(runner, /cookieGate\.status !== 200/);
+assert.match(
+  runner,
+  /provePostDeployStaticAssetGate\(\s*aliasAccessRequirements,\s*identity,\s*\)/,
+);
 assert.match(
   runner,
   /protectionRedirect = classifyExactVercelAutomationProtectionRedirect\(\{/,

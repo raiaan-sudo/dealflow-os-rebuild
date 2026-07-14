@@ -1,5 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page, type Route, type TestInfo } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Route,
+  type TestInfo,
+} from "@playwright/test";
 import { createHash } from "node:crypto";
 import {
   browserCookiesForOrigin,
@@ -63,6 +70,7 @@ type Diagnostics = {
   pageErrors: string[];
   requestFailures: string[];
   serverErrors: string[];
+  imageFailures: string[];
 };
 
 const diagnosticsByPage = new WeakMap<Page, Diagnostics>();
@@ -205,6 +213,7 @@ async function installFailClosedNetworkBoundary(page: Page) {
     pageErrors: [],
     requestFailures: [],
     serverErrors: [],
+    imageFailures: [],
   };
   const context = page.context();
   diagnosticsByPage.set(page, diagnostics);
@@ -369,6 +378,14 @@ async function installFailClosedNetworkBoundary(page: Page) {
         `${response.status()} ${safeHttpEvidenceTarget(response.url())}`,
       );
     }
+    if (
+      response.request().resourceType() === "image" &&
+      response.status() >= 400
+    ) {
+      diagnostics.imageFailures.push(
+        `${response.status()} ${safeHttpEvidenceTarget(response.url())}`,
+      );
+    }
   });
 }
 
@@ -386,7 +403,49 @@ function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
     pageErrors: [],
     requestFailures: [],
     serverErrors: [],
+    imageFailures: [],
   });
+}
+
+async function assertDirectImageLoaded(
+  image: Locator,
+  expectedPathname: string,
+) {
+  await expect(image).toHaveCount(1);
+  await expect(image).toBeVisible();
+  await expect.poll(
+    async () => image.evaluate((element) => {
+      const img = element as HTMLImageElement;
+      return Boolean(
+        img.complete &&
+        img.naturalWidth > 0 &&
+        img.naturalHeight > 0 &&
+        img.currentSrc,
+      );
+    }),
+    { message: `${expectedPathname} did not finish loading as a real image` },
+  ).toBe(true);
+  const state = await image.evaluate((element) => {
+    const img = element as HTMLImageElement;
+    const source = new URL(img.currentSrc || img.src, document.baseURI);
+    return {
+      complete: img.complete,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      pathname: source.pathname,
+      sourceOrigin: source.origin,
+      documentOrigin: location.origin,
+    };
+  });
+  expect(state).toMatchObject({
+    complete: true,
+    pathname: expectedPathname,
+  });
+  expect(state.naturalWidth).toBeGreaterThan(0);
+  expect(state.naturalHeight).toBeGreaterThan(0);
+  expect(state.sourceOrigin).toBe(state.documentOrigin);
+  expect(state.pathname).not.toBe("/_next/image");
+  expect(state.pathname).not.toBe("/_dealflow-staging-image-optimizer-disabled");
 }
 
 async function assertHostedZeroEffects(page: Page) {
@@ -500,6 +559,12 @@ test("new direct realtor is authenticated but remains unpaid and launch-blocked"
 test("paid direct realtor sees exact Pro activation and seeded campaign truth", async ({ page }) => {
   await openAuthenticatedSession(page, "paidDirect", "/dashboard");
   await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 0) >= 1024) {
+    await assertDirectImageLoaded(
+      page.locator('img[alt="DealFlow AI icon"]:visible').first(),
+      "/logo-icon.svg",
+    );
+  }
   const billingResponse = await page.request.get("/api/billing/status", {
     maxRedirects: 0,
     headers: stagingAppHeaders("/api/billing/status"),
@@ -652,6 +717,10 @@ test("white-label child receives attributed branding across core product routes"
   const partnerOrigin = requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL");
   await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await assertDirectImageLoaded(
+    page.locator(`img[alt="${PARTNER_BRAND_NAME} logo"]`),
+    "/logo.svg",
+  );
   await openAuthenticatedSession(page, "partnerChild", "/dashboard", partnerOrigin);
   for (const path of ["/dashboard", "/builder", "/launch", "/results", "/support"]) {
     const response = await page.goto(new URL(path, partnerOrigin).toString(), {
@@ -678,6 +747,10 @@ test("second white-label child receives only partner-two branding and tenant dat
   await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
   await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
+  await assertDirectImageLoaded(
+    page.locator(`img[alt="${PARTNER_TWO_BRAND_NAME} logo"]`),
+    "/logo.svg",
+  );
   await openAuthenticatedSession(page, "partnerChildTwo", "/dashboard", partnerOrigin);
   for (const path of ["/dashboard", "/builder", "/launch", "/results", "/support"]) {
     const response = await page.goto(new URL(path, partnerOrigin).toString(), {

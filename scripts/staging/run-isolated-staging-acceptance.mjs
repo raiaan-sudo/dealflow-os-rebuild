@@ -45,6 +45,7 @@ import {
   proveSequentialExactApplicationGate,
   summarizeExactAliasPropagationFailure,
   waitForExactAliasPropagation,
+  waitForExactAliasRollbackContainment,
 } from "./vercel-alias-propagation-contract.mjs";
 import {
   SYNTHETIC_BROWSER_SESSION_BUNDLE_SCHEMA,
@@ -113,8 +114,22 @@ const HOSTED_RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v2";
 const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";
 const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
-const STAGING_IMAGE_OPTIMIZER_SOURCE_PATH =
+const STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX =
+  "/staging-private-image-gate-proof-v2/";
+const RETIRED_PUBLIC_IMAGE_SOURCE_PATH =
   "/staging-image-optimizer-proof.png";
+const NEXT_IMAGE_OPTIMIZER_PATH = "/_next/image";
+const DISABLED_STAGING_IMAGE_OPTIMIZER_PATH =
+  "/_dealflow-staging-image-optimizer-disabled";
+const STAGING_PRIVATE_IMAGE_SOURCE_BODY_BYTES = 210;
+const STAGING_PRIVATE_IMAGE_SOURCE_BODY_SHA256 =
+  "79e21c735b4f029f2995a86f3619ab9eb6ca501898ff0467d545cef2f09594d8";
+const LEGACY_BENIGN_OPTIMIZER_BODY_BYTES = 134;
+const LEGACY_BENIGN_OPTIMIZER_BODY_SHA256 =
+  "c3cd8dc9212528fc8c7798ec7feb4299b349f1b64f73272fa7098be58d02b682";
+const DEALFLOW_NOT_FOUND_BODY_BYTES = 22;
+const DEALFLOW_NOT_FOUND_BODY_SHA256 =
+  "58e46b31fc6d69e3ecdb843eeff8bac8d49c9a70cdac583c73986a8a4fb5d1b0";
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const SYNTHETIC_FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
@@ -260,6 +275,17 @@ async function abortableDelay(delayMs) {
     if (executionAbortController.signal.aborted) onAbort();
   });
   assertExecutionMayContinue();
+}
+
+async function cleanupDelay(delayMs) {
+  if (
+    !Number.isSafeInteger(delayMs) ||
+    delayMs < 1 ||
+    delayMs > EXACT_ALIAS_PROPAGATION_TIMEOUT_MS
+  ) {
+    throw new Error("Cleanup delay is outside the bounded alias propagation contract");
+  }
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
 }
 const PROVIDER_SENSITIVE_ENV_NAMES = [
   "META_ACCESS_TOKEN",
@@ -2059,6 +2085,64 @@ async function requestExactAppAlias(
   };
 }
 
+async function requestExactAppAliasEdgeObservation(
+  alias,
+  { timeoutMs, allowDuringTermination = false },
+) {
+  const startedAt = performance.now();
+  const publicObservation = await requestExactAppAlias(
+    alias,
+    {},
+    { timeoutMs, allowDuringTermination },
+  );
+  if (publicObservation.disposition !== "VERCEL_AUTOMATION_PROTECTION") {
+    return publicObservation;
+  }
+  const remainingMs = Math.floor(timeoutMs - (performance.now() - startedAt));
+  if (remainingMs < 1) {
+    throw new Error("Vercel automation bypass probe exhausted its bounded timeout");
+  }
+  const bypassObservation = await requestExactAppAlias(
+    alias,
+    withVercelAutomationBypass({}, true),
+    {
+      allowDuringTermination,
+      timeoutMs: Math.min(
+        EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+        remainingMs,
+      ),
+    },
+  );
+  const protectionBypass = Object.freeze({
+    status: bypassObservation.status,
+    redirected: bypassObservation.redirected,
+    locationPresent: bypassObservation.locationPresent,
+    responseUrlExact: bypassObservation.responseUrlExact,
+    disposition: bypassObservation.disposition,
+  });
+  const bypassReachedExactApplicationGate =
+    protectionBypass.status === 404 &&
+    protectionBypass.redirected === false &&
+    protectionBypass.locationPresent === false &&
+    protectionBypass.responseUrlExact === true &&
+    protectionBypass.disposition === "DEALFLOW_APPLICATION_GATE";
+  const bypassReachedExactDeploymentAbsence =
+    protectionBypass.status === 404 &&
+    protectionBypass.redirected === false &&
+    protectionBypass.locationPresent === false &&
+    protectionBypass.responseUrlExact === true &&
+    protectionBypass.disposition === "VERCEL_DEPLOYMENT_NOT_FOUND";
+  return Object.freeze({
+    ...publicObservation,
+    disposition: bypassReachedExactApplicationGate
+      ? "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION"
+      : bypassReachedExactDeploymentAbsence
+        ? "VERCEL_DEPLOYMENT_NOT_FOUND_BEHIND_VERCEL_AUTOMATION_PROTECTION"
+      : "VERCEL_AUTOMATION_PROTECTION",
+    protectionBypass,
+  });
+}
+
 async function waitForExactAppAliasPropagation(
   alias,
   evidenceDir,
@@ -2068,51 +2152,8 @@ async function waitForExactAppAliasPropagation(
   let result;
   try {
     result = await waitForExactAliasPropagation({
-      probe: async ({ timeoutMs }) => {
-        const startedAt = performance.now();
-        const publicObservation = await requestExactAppAlias(
-          alias,
-          {},
-          { timeoutMs },
-        );
-        if (publicObservation.disposition !== "VERCEL_AUTOMATION_PROTECTION") {
-          return publicObservation;
-        }
-        const remainingMs = Math.floor(timeoutMs - (performance.now() - startedAt));
-        if (remainingMs < 1) {
-          throw new Error("Vercel automation bypass probe exhausted its bounded timeout");
-        }
-        const bypassObservation = await requestExactAppAlias(
-          alias,
-          withVercelAutomationBypass({}, true),
-          {
-            timeoutMs: Math.min(
-              EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
-              remainingMs,
-            ),
-          },
-        );
-        const protectionBypass = Object.freeze({
-          status: bypassObservation.status,
-          redirected: bypassObservation.redirected,
-          locationPresent: bypassObservation.locationPresent,
-          responseUrlExact: bypassObservation.responseUrlExact,
-          disposition: bypassObservation.disposition,
-        });
-        const bypassReachedExactApplicationGate =
-          protectionBypass.status === 404 &&
-          protectionBypass.redirected === false &&
-          protectionBypass.locationPresent === false &&
-          protectionBypass.responseUrlExact === true &&
-          protectionBypass.disposition === "DEALFLOW_APPLICATION_GATE";
-        return Object.freeze({
-          ...publicObservation,
-          disposition: bypassReachedExactApplicationGate
-            ? "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION"
-            : "VERCEL_AUTOMATION_PROTECTION",
-          protectionBypass,
-        });
-      },
+      probe: ({ timeoutMs }) =>
+        requestExactAppAliasEdgeObservation(alias, { timeoutMs }),
       verifyMapping: async ({ timeoutMs }) => {
         const mapping = await fetchExactAliasMapping(
           vercel,
@@ -2360,7 +2401,8 @@ async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
     endpoint.origin !== alias.url ||
     !(
       endpoint.pathname.startsWith("/_next/static/") ||
-      endpoint.pathname === "/_next/image"
+      endpoint.pathname === NEXT_IMAGE_OPTIMIZER_PATH ||
+      endpoint.pathname === DISABLED_STAGING_IMAGE_OPTIMIZER_PATH
     ) ||
     endpoint.username !== "" ||
     endpoint.password !== ""
@@ -2378,7 +2420,7 @@ async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
     },
     redirect: "manual",
   }, 20_000);
-  await response.arrayBuffer();
+  const body = Buffer.from(await response.arrayBuffer());
   if (
     response.url !== endpoint.toString() ||
     response.redirected ||
@@ -2389,6 +2431,11 @@ async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
   return Object.freeze({
     status: response.status,
     contentType: (response.headers.get("content-type") ?? "").split(";")[0],
+    bodyBytes: body.length,
+    bodySha256: sha256(body),
+    cacheControl: response.headers.get("cache-control") ?? "",
+    robotsTag: response.headers.get("x-robots-tag") ?? "",
+    vercelErrorPresent: response.headers.has("x-vercel-error"),
     redirectFollowed: false,
     responseUrlExact: true,
     vercelAutomationBypassRequired:
@@ -2396,24 +2443,31 @@ async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
   });
 }
 
-async function requestExactPublicOptimizerSource(alias) {
-  const endpoint = new URL(STAGING_IMAGE_OPTIMIZER_SOURCE_PATH, alias.url);
+async function requestExactPrivateImageSource(
+  alias,
+  resourcePath,
+  expectedReleaseCommit,
+  headers = {},
+) {
+  const endpoint = new URL(resourcePath, alias.url);
   if (
     endpoint.origin !== alias.url ||
-    endpoint.pathname !== STAGING_IMAGE_OPTIMIZER_SOURCE_PATH ||
+    endpoint.pathname !==
+      `${STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX}${expectedReleaseCommit}.png` ||
+    !/^[0-9a-f]{40}$/.test(expectedReleaseCommit) ||
     endpoint.search !== "" ||
     endpoint.hash !== "" ||
     endpoint.username !== "" ||
     endpoint.password !== ""
   ) {
-    throw new Error("Optimizer source proof received a non-exact staging resource");
+    throw new Error("Private image source proof received a non-exact staging resource");
   }
   const response = await executionFetch(endpoint, {
     headers: {
       Accept: "image/png",
-      "User-Agent": "DealFlow-Staging-Optimizer-Source-Proof/1.0",
+      "User-Agent": "DealFlow-Staging-Private-Image-Source-Proof/2.0",
       ...withVercelAutomationBypass(
-        {},
+        headers,
         alias.vercelAutomationBypassRequired,
       ),
     },
@@ -2423,27 +2477,154 @@ async function requestExactPublicOptimizerSource(alias) {
   if (
     response.url !== endpoint.toString() ||
     response.redirected ||
-    response.headers.has("location") ||
-    response.status !== 200 ||
-    (response.headers.get("content-type") ?? "").split(";")[0] !== "image/png" ||
-    body.length === 0
+    response.headers.has("location")
   ) {
-    throw new Error(`${alias.label} exact public optimizer source was not available`);
+    throw new Error(`${alias.label} private image source request changed URL`);
   }
   return Object.freeze({
     status: response.status,
-    contentType: "image/png",
+    contentType: (response.headers.get("content-type") ?? "").split(";")[0],
     bodySha256: sha256(body),
+    bodyBytes: body.length,
+    cacheControl: response.headers.get("cache-control") ?? "",
+    robotsTag: response.headers.get("x-robots-tag") ?? "",
+    vercelErrorPresent: response.headers.has("x-vercel-error"),
     redirectFollowed: false,
-    stagingAccessCredentialSent: false,
     vercelAutomationBypassRequired:
       alias.vercelAutomationBypassRequired,
   });
 }
 
-async function provePostDeployStaticAssetGate(aliasAccessRequirements) {
+async function requestExactRetiredImageSource(alias, headers = {}) {
+  const endpoint = new URL(RETIRED_PUBLIC_IMAGE_SOURCE_PATH, alias.url);
+  if (
+    endpoint.origin !== alias.url ||
+    endpoint.pathname !== RETIRED_PUBLIC_IMAGE_SOURCE_PATH ||
+    endpoint.search !== "" ||
+    endpoint.hash !== "" ||
+    endpoint.username !== "" ||
+    endpoint.password !== ""
+  ) {
+    throw new Error("Retired image source proof received a non-exact staging resource");
+  }
+  const response = await executionFetch(endpoint, {
+    headers: {
+      Accept: "image/png",
+      "User-Agent": "DealFlow-Staging-Retired-Image-Source-Proof/1.0",
+      ...withVercelAutomationBypass(
+        headers,
+        alias.vercelAutomationBypassRequired,
+      ),
+    },
+    redirect: "manual",
+  }, 20_000);
+  const body = Buffer.from(await response.arrayBuffer());
+  if (
+    response.url !== endpoint.toString() ||
+    response.redirected ||
+    response.headers.has("location")
+  ) {
+    throw new Error(`${alias.label} retired image source request changed URL`);
+  }
+  return Object.freeze({
+    status: response.status,
+    contentType: (response.headers.get("content-type") ?? "").split(";")[0],
+    bodyBytes: body.length,
+    bodySha256: sha256(body),
+    cacheControl: response.headers.get("cache-control") ?? "",
+    robotsTag: response.headers.get("x-robots-tag") ?? "",
+    vercelErrorPresent: response.headers.has("x-vercel-error"),
+    redirectFollowed: false,
+    vercelAutomationBypassRequired:
+      alias.vercelAutomationBypassRequired,
+  });
+}
+
+function buildVersionedPrivateImagePaths(identity) {
+  if (!identity || !/^[0-9a-f]{40}$/.test(identity.commit)) {
+    throw new Error("Private image proof requires the exact candidate commit");
+  }
+  const source = new URL(
+    `${STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX}${identity.commit}.png`,
+    EXPECTED_STAGING_BASE_URL,
+  );
+  const sourceResourcePath = source.pathname;
+  const defaultOptimizer = new URL(
+    NEXT_IMAGE_OPTIMIZER_PATH,
+    EXPECTED_STAGING_BASE_URL,
+  );
+  const disabledOptimizer = new URL(
+    DISABLED_STAGING_IMAGE_OPTIMIZER_PATH,
+    EXPECTED_STAGING_BASE_URL,
+  );
+  for (const optimizer of [defaultOptimizer, disabledOptimizer]) {
+    optimizer.searchParams.set("url", sourceResourcePath);
+    optimizer.searchParams.set("w", "32");
+    optimizer.searchParams.set("q", "75");
+  }
+  const legacyOptimizer = new URL(
+    NEXT_IMAGE_OPTIMIZER_PATH,
+    EXPECTED_STAGING_BASE_URL,
+  );
+  legacyOptimizer.searchParams.set("url", RETIRED_PUBLIC_IMAGE_SOURCE_PATH);
+  legacyOptimizer.searchParams.set("w", "32");
+  legacyOptimizer.searchParams.set("q", "75");
+  return Object.freeze({
+    sourceResourcePath,
+    defaultOptimizerResourcePath:
+      `${defaultOptimizer.pathname}${defaultOptimizer.search}`,
+    disabledOptimizerResourcePath:
+      `${disabledOptimizer.pathname}${disabledOptimizer.search}`,
+    legacyOptimizerResourcePath:
+      `${legacyOptimizer.pathname}${legacyOptimizer.search}`,
+    releaseCommit: identity.commit,
+  });
+}
+
+function isExactDealFlowApplicationGateResponse(result) {
+  return (
+    result.status === 404 &&
+    result.contentType === "application/json" &&
+    result.bodyBytes === DEALFLOW_NOT_FOUND_BODY_BYTES &&
+    result.bodySha256 === DEALFLOW_NOT_FOUND_BODY_SHA256 &&
+    /(?:^|,)\s*(?:private\s*,\s*)?no-store(?:\s|,|$)/i.test(result.cacheControl) &&
+    /noindex/i.test(result.robotsTag) &&
+    result.vercelErrorPresent === false
+  );
+}
+
+function classifyExactLegacyOptimizerResponse(result) {
+  if (isExactDealFlowApplicationGateResponse(result)) {
+    return "DEALFLOW_APPLICATION_GATE";
+  }
+  if (
+    result.status === 200 &&
+    result.contentType === "image/png" &&
+    result.bodyBytes === LEGACY_BENIGN_OPTIMIZER_BODY_BYTES &&
+    result.bodySha256 === LEGACY_BENIGN_OPTIMIZER_BODY_SHA256 &&
+    result.vercelErrorPresent === false
+  ) {
+    return "EXACT_FIXED_BENIGN_R5_CACHE_RESIDUE";
+  }
+  throw new Error("Legacy optimizer response was neither closed nor the exact benign r5 artifact");
+}
+
+function isExactPrivateImageSourceResponse(result) {
+  return (
+    result.status === 200 &&
+    result.contentType === "image/png" &&
+    result.bodyBytes === STAGING_PRIVATE_IMAGE_SOURCE_BODY_BYTES &&
+    result.bodySha256 === STAGING_PRIVATE_IMAGE_SOURCE_BODY_SHA256 &&
+    /no-store/i.test(result.cacheControl) &&
+    /noindex/i.test(result.robotsTag) &&
+    result.vercelErrorPresent === false
+  );
+}
+
+async function provePostDeployStaticAssetGate(aliasAccessRequirements, identity) {
   assertExactAliasRuntimeAccessPortfolio(aliasAccessRequirements);
   const secret = requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43);
+  const privateImagePaths = buildVersionedPrivateImagePaths(identity);
   const stableAliasAccess = aliasAccessRequirements[0];
   const privacyResponse = await executionFetch(
     new URL("/privacy", EXPECTED_STAGING_BASE_URL),
@@ -2464,54 +2645,299 @@ async function provePostDeployStaticAssetGate(aliasAccessRequirements) {
   if (privacyResponse.status !== 200 || !chunkPath) {
     throw new Error("Could not discover a real gated Next.js chunk from the exact deployment");
   }
-  const imagePath =
-    "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
   const aliases = [];
   for (const alias of aliasAccessRequirements) {
-    const publicOptimizerSource = await requestExactPublicOptimizerSource(alias);
-    const resources = [];
-    for (const [kind, resourcePath] of [["chunk", chunkPath], ["image", imagePath]]) {
-      const noGate = await requestExactGatedAsset(alias, resourcePath);
-      const headerGate = await requestExactGatedAsset(alias, resourcePath, {
+    const retiredPublicImageSource = {
+      noGateBeforeWarm: await requestExactRetiredImageSource(alias),
+      headerGate: await requestExactRetiredImageSource(alias, {
         [STAGING_ACCESS_HEADER]: secret,
-      });
-      const cookieGate = await requestExactGatedAsset(alias, resourcePath, {
+      }),
+      cookieGate: await requestExactRetiredImageSource(alias, {
         Cookie: `${STAGING_ACCESS_COOKIE}=${secret}`,
-      });
-      const authorizedTypeIsExact = kind === "chunk"
-        ? /(?:javascript|ecmascript)/i.test(headerGate.contentType) &&
-          /(?:javascript|ecmascript)/i.test(cookieGate.contentType)
-        : headerGate.contentType.startsWith("image/") &&
-          cookieGate.contentType.startsWith("image/");
-      if (
-        noGate.status !== 404 ||
-        headerGate.status !== 200 ||
-        cookieGate.status !== 200 ||
-        !authorizedTypeIsExact
-      ) {
-        throw new Error(`${alias.label} ${kind} resource bypassed or failed the application gate`);
-      }
-      resources.push({ kind, noGate, headerGate, cookieGate });
+      }),
+      noGateAfterWarm: await requestExactRetiredImageSource(alias),
+    };
+    if (
+      Object.values(retiredPublicImageSource).some(
+        (result) => !isExactDealFlowApplicationGateResponse(result),
+      )
+    ) {
+      throw new Error(`${alias.label} retired public image source remains reachable`);
     }
+
+    const privateImageSource = {
+      noGateBeforeWarm: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+      ),
+      headerGate: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+        { [STAGING_ACCESS_HEADER]: secret },
+      ),
+      cookieGate: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${secret}` },
+      ),
+      noGateAfterWarm: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+      ),
+      invalidHeaderAfterWarm: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+        { [STAGING_ACCESS_HEADER]: "W".repeat(secret.length) },
+      ),
+      invalidCookieAfterWarm: await requestExactPrivateImageSource(
+        alias,
+        privateImagePaths.sourceResourcePath,
+        privateImagePaths.releaseCommit,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${"W".repeat(secret.length)}` },
+      ),
+    };
+    if (
+      !isExactDealFlowApplicationGateResponse(
+        privateImageSource.noGateBeforeWarm,
+      ) ||
+      !isExactPrivateImageSourceResponse(privateImageSource.headerGate) ||
+      !isExactPrivateImageSourceResponse(privateImageSource.cookieGate) ||
+      !isExactDealFlowApplicationGateResponse(
+        privateImageSource.noGateAfterWarm,
+      ) ||
+      !isExactDealFlowApplicationGateResponse(
+        privateImageSource.invalidHeaderAfterWarm,
+      ) ||
+      !isExactDealFlowApplicationGateResponse(
+        privateImageSource.invalidCookieAfterWarm,
+      )
+    ) {
+      throw new Error(
+        `${alias.label} private image source bypassed or failed the application gate`,
+      );
+    }
+    const chunk = {
+      noGateBeforeWarm: await requestExactGatedAsset(alias, chunkPath),
+      headerGate: await requestExactGatedAsset(alias, chunkPath, {
+        [STAGING_ACCESS_HEADER]: secret,
+      }),
+      cookieGate: await requestExactGatedAsset(alias, chunkPath, {
+        Cookie: `${STAGING_ACCESS_COOKIE}=${secret}`,
+      }),
+      noGateAfterWarm: await requestExactGatedAsset(alias, chunkPath),
+      invalidHeaderAfterWarm: await requestExactGatedAsset(alias, chunkPath, {
+        [STAGING_ACCESS_HEADER]: "W".repeat(secret.length),
+      }),
+      invalidCookieAfterWarm: await requestExactGatedAsset(alias, chunkPath, {
+        Cookie: `${STAGING_ACCESS_COOKIE}=${"W".repeat(secret.length)}`,
+      }),
+    };
+    if (
+      !isExactDealFlowApplicationGateResponse(chunk.noGateBeforeWarm) ||
+      chunk.headerGate.status !== 200 ||
+      chunk.cookieGate.status !== 200 ||
+      !/(?:javascript|ecmascript)/i.test(chunk.headerGate.contentType) ||
+      !/(?:javascript|ecmascript)/i.test(chunk.cookieGate.contentType) ||
+      !isExactDealFlowApplicationGateResponse(chunk.noGateAfterWarm) ||
+      !isExactDealFlowApplicationGateResponse(chunk.invalidHeaderAfterWarm) ||
+      !isExactDealFlowApplicationGateResponse(chunk.invalidCookieAfterWarm)
+    ) {
+      throw new Error(`${alias.label} chunk resource bypassed or failed the application gate`);
+    }
+
+    const defaultOptimizer = {
+      noGateBeforeWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.defaultOptimizerResourcePath,
+      ),
+      headerGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.defaultOptimizerResourcePath,
+        { [STAGING_ACCESS_HEADER]: secret },
+      ),
+      cookieGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.defaultOptimizerResourcePath,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${secret}` },
+      ),
+      noGateAfterWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.defaultOptimizerResourcePath,
+      ),
+      invalidHeaderAfterWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.defaultOptimizerResourcePath,
+        { [STAGING_ACCESS_HEADER]: "W".repeat(secret.length) },
+      ),
+      invalidCookieAfterWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.defaultOptimizerResourcePath,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${"W".repeat(secret.length)}` },
+      ),
+    };
+    if (
+      !isExactDealFlowApplicationGateResponse(
+        defaultOptimizer.noGateBeforeWarm,
+      ) ||
+      !isExactDealFlowApplicationGateResponse(defaultOptimizer.headerGate) ||
+      !isExactDealFlowApplicationGateResponse(defaultOptimizer.cookieGate) ||
+      !isExactDealFlowApplicationGateResponse(
+        defaultOptimizer.noGateAfterWarm,
+      ) ||
+      !isExactDealFlowApplicationGateResponse(
+        defaultOptimizer.invalidHeaderAfterWarm,
+      ) ||
+      !isExactDealFlowApplicationGateResponse(
+        defaultOptimizer.invalidCookieAfterWarm,
+      )
+    ) {
+      throw new Error(
+        `${alias.label} default image optimizer path was not exactly closed`,
+      );
+    }
+    const defaultOptimizerEvidence = {
+      ...defaultOptimizer,
+      headerGate: {
+        ...defaultOptimizer.headerGate,
+        disposition: "DEALFLOW_APPLICATION_GATE",
+      },
+      cookieGate: {
+        ...defaultOptimizer.cookieGate,
+        disposition: "DEALFLOW_APPLICATION_GATE",
+      },
+    };
+
+    const disabledOptimizerRaw = {
+      noGateBeforeWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.disabledOptimizerResourcePath,
+      ),
+      headerGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.disabledOptimizerResourcePath,
+        { [STAGING_ACCESS_HEADER]: secret },
+      ),
+      cookieGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.disabledOptimizerResourcePath,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${secret}` },
+      ),
+      noGateAfterWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.disabledOptimizerResourcePath,
+      ),
+      invalidHeaderAfterWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.disabledOptimizerResourcePath,
+        { [STAGING_ACCESS_HEADER]: "W".repeat(secret.length) },
+      ),
+      invalidCookieAfterWarm: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.disabledOptimizerResourcePath,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${"W".repeat(secret.length)}` },
+      ),
+    };
+    if (
+      Object.values(disabledOptimizerRaw).some(
+        (result) => !isExactDealFlowApplicationGateResponse(result),
+      )
+    ) {
+      throw new Error(
+        `${alias.label} configured disabled image path was not the exact DealFlow closure`,
+      );
+    }
+    const disabledOptimizer = Object.fromEntries(
+      Object.entries(disabledOptimizerRaw).map(([key, result]) => [
+        key,
+        {
+          ...result,
+          disposition: "DEALFLOW_APPLICATION_GATE",
+        },
+      ]),
+    );
+
+    const legacyOptimizerRaw = {
+      noGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.legacyOptimizerResourcePath,
+      ),
+      headerGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.legacyOptimizerResourcePath,
+        { [STAGING_ACCESS_HEADER]: secret },
+      ),
+      cookieGate: await requestExactGatedAsset(
+        alias,
+        privateImagePaths.legacyOptimizerResourcePath,
+        { Cookie: `${STAGING_ACCESS_COOKIE}=${secret}` },
+      ),
+    };
+    const legacyOptimizer = Object.fromEntries(
+      Object.entries(legacyOptimizerRaw).map(([key, result]) => [
+        key,
+        {
+          ...result,
+          disposition: classifyExactLegacyOptimizerResponse(result),
+        },
+      ]),
+    );
+
     aliases.push({
       label: alias.label,
       host: alias.host,
       vercelAutomationBypassRequired:
         alias.vercelAutomationBypassRequired,
-      publicOptimizerSource,
-      resources,
+      retiredPublicImageSource,
+      privateImageSource,
+      legacyOptimizer,
+      resources: [
+        { kind: "real_next_chunk", ...chunk },
+        {
+          kind: "closed_default_next_image_optimizer",
+          ...defaultOptimizerEvidence,
+        },
+        { kind: "closed_disabled_staging_image_optimizer", ...disabledOptimizer },
+      ],
     });
   }
   return Object.freeze({
     status: "PASS",
     aliasCount: aliases.length,
-    resourceKinds: ["real_next_chunk", "next_image_optimizer"],
-    intentionalPublicResourceCountPerAlias: 1,
-    intentionalPublicResource:
-      "staging_image_optimizer_source_png_only",
-    noGateStatus: 404,
-    headerGateStatus: 200,
-    cookieGateStatus: 200,
+    resourceKinds: [
+      "versioned_private_image_source_v2",
+      "retired_public_image_source_closed",
+      "real_next_chunk",
+      "closed_default_next_image_optimizer",
+      "closed_disabled_staging_image_optimizer",
+      "exact_legacy_benign_cache_disposition",
+    ],
+    imageOptimizationMode:
+      "unoptimized_direct_images_and_closed_optimizer_paths_for_exact_isolated_staging",
+    configuredStagingImageOptimizerPath:
+      DISABLED_STAGING_IMAGE_OPTIMIZER_PATH,
+    exactClosedImageOptimizerDispositions: ["DEALFLOW_APPLICATION_GATE"],
+    defaultOptimizerNoOrInvalidGateDisposition:
+      "DEALFLOW_APPLICATION_GATE",
+    defaultOptimizerValidGateDisposition:
+      "DEALFLOW_APPLICATION_GATE",
+    configuredDisabledOptimizerAllGateModesDisposition:
+      "DEALFLOW_APPLICATION_GATE",
+    currentVersionedProofIntentionalPublicResourceCountPerAlias: 0,
+    directSourceNoGateStatus: 404,
+    directSourceHeaderGateStatus: 200,
+    directSourceCookieGateStatus: 200,
+    retiredPublicSourceStatusAllCredentialModes: 404,
+    cachedPriorProofPathUsed: false,
+    legacyOptimizerCacheResidueClassifiedOnlyByExactBodyIdentity: true,
+    privateImageProofVersion: 2,
+    privateImageProofReleaseCommitInPath: true,
+    postWarmUnauthorizedSourceAndChunkRecheck: true,
+    exactDeploymentIdentityVerifiedBeforeProof: true,
     aliases,
     resourcePathsPersisted: false,
     secretsPersistedToEvidence: false,
@@ -4590,6 +5016,7 @@ async function main() {
   failureContext.stage = "postdeployment_static_asset_gate_verification";
   const postDeployStaticAssetGate = await provePostDeployStaticAssetGate(
     aliasAccessRequirements,
+    identity,
   );
   writeJson(
     join(options.evidenceDir, "postdeploy-static-asset-gate.json"),
@@ -5032,7 +5459,19 @@ async function main() {
   })}\n`);
 }
 
-function readExactAliasMappingDuringRollback(alias, label) {
+function readExactAliasMappingDuringRollback(
+  alias,
+  label,
+  { timeoutMs = EXACT_ALIAS_PROPAGATION_TIMEOUT_MS } = {},
+) {
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > EXACT_ALIAS_PROPAGATION_TIMEOUT_MS
+  ) {
+    throw new Error(`${label} authoritative rollback timeout is outside the bounded contract`);
+  }
+  const startedAt = performance.now();
   const result = spawnSync(
     EXECUTABLE,
     [
@@ -5046,7 +5485,7 @@ function readExactAliasMappingDuringRollback(alias, label) {
       cwd: EXPECTED_REPO,
       env: vercelEnvironment(),
       encoding: "utf8",
-      timeout: 3 * 60_000,
+      timeout: timeoutMs,
       maxBuffer: 4 * 1024 * 1024,
     },
   );
@@ -5082,6 +5521,10 @@ function readExactAliasMappingDuringRollback(alias, label) {
   ) {
     throw new Error(`${label} did not return the exact isolated staging alias authority`);
   }
+  const remainingMs = Math.floor(timeoutMs - (performance.now() - startedAt));
+  if (remainingMs < 1) {
+    throw new Error(`${label} authoritative rollback read exhausted its bounded timeout`);
+  }
   const deploymentResult = spawnSync(
     EXECUTABLE,
     [
@@ -5095,7 +5538,7 @@ function readExactAliasMappingDuringRollback(alias, label) {
       cwd: EXPECTED_REPO,
       env: vercelEnvironment(),
       encoding: "utf8",
-      timeout: 3 * 60_000,
+      timeout: remainingMs,
       maxBuffer: 4 * 1024 * 1024,
     },
   );
@@ -5131,6 +5574,18 @@ function readExactAliasMappingDuringRollback(alias, label) {
   });
 }
 
+class StagingAliasRollbackIncompleteError extends Error {
+  constructor(safeRollback) {
+    const failedLabels = safeRollback.aliases
+      .filter(({ status }) => status !== "PASS")
+      .map(({ aliasLabel }) => aliasLabel)
+      .join(",");
+    super(`Staging alias rollback remained unproven for: ${failedLabels}`);
+    this.name = "StagingAliasRollbackIncompleteError";
+    this.safeRollback = safeRollback;
+  }
+}
+
 async function rollbackCreatedStagingAliasesAfterFailure() {
   const mutations = [...failureContext.stagingAliasMutations].reverse();
   if (mutations.length === 0) {
@@ -5141,110 +5596,222 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
   }
   const aliases = [];
   for (const mutation of mutations) {
-    const alias = EXPECTED_APP_ALIASES.find(
-      ({ host, url }) => host === mutation.aliasHost && url === mutation.aliasUrl,
-    );
-    if (!alias) {
-      throw new Error("Staging alias rollback rejected an unregistered host");
-    }
-    const intendedMapping = Object.freeze({
-      deploymentId: mutation.intendedDeploymentId,
-      deploymentHost: mutation.intendedDeploymentHost,
-      projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
-    });
-    const mappingBeforeRollback = readExactAliasMappingDuringRollback(
-      alias,
-      `${mutation.aliasLabel} pre-rollback`,
-    );
-    if (
-      !sameExactAliasMapping(mappingBeforeRollback, mutation.priorMapping) &&
-      !sameExactAliasMapping(mappingBeforeRollback, intendedMapping)
-    ) {
-      throw new Error(`${mutation.aliasLabel} alias drifted outside the registered staging mutation`);
-    }
-
-    let rollbackCommand = "none_required";
-    let rollbackExitStatus = null;
-    if (!sameExactAliasMapping(mappingBeforeRollback, mutation.priorMapping)) {
-      const args = mutation.priorMapping
-        ? [
-            failureContext.vercelPath,
-            "alias",
-            "set",
-            mutation.priorMapping.deploymentHost,
-            mutation.aliasHost,
-            "--no-color",
-          ]
-        : [
-            failureContext.vercelPath,
-            "alias",
-            "rm",
-            mutation.aliasHost,
-            "--yes",
-            "--no-color",
-          ];
-      rollbackCommand = mutation.priorMapping
-        ? "restore_prior_mapping"
-        : "remove_new_mapping";
-      const rollback = spawnSync(EXECUTABLE, args, {
-        cwd: EXPECTED_REPO,
-        env: vercelEnvironment(),
-        encoding: "utf8",
-        timeout: 3 * 60_000,
-        maxBuffer: 4 * 1024 * 1024,
-      });
-      rollbackExitStatus = rollback.status;
-      if (rollback.error || rollback.signal || rollback.status !== 0) {
-        const diagnostic = sanitize(
-          `${rollback.error?.message ?? ""}\n${rollback.stderr ?? ""}\n${rollback.stdout ?? ""}`,
-          protectedRuntimeValues(),
-        );
-        throw new Error(`${mutation.aliasLabel} alias rollback command failed: ${diagnostic}`);
-      }
-    }
-
-    const mappingAfterRollback = readExactAliasMappingDuringRollback(
-      alias,
-      `${mutation.aliasLabel} post-rollback`,
-    );
-    const authoritativePriorMappingRestored = sameExactAliasMapping(
-      mappingAfterRollback,
-      mutation.priorMapping,
-    );
-    const publicSurface = await requestExactAppAlias(alias, {}, {
-      allowDuringTermination: true,
-    });
-    const publiclyContained =
-      publicSurface.status === 404 &&
-      ["VERCEL_DEPLOYMENT_NOT_FOUND", "DEALFLOW_APPLICATION_GATE"].includes(
-        publicSurface.disposition,
-      );
-    aliases.push({
+    const result = {
       aliasLabel: mutation.aliasLabel,
       aliasHost: mutation.aliasHost,
-      rollbackCommand,
-      rollbackExitStatus,
-      authoritativePriorMappingRestored,
-      publicContainmentDisposition: publicSurface.disposition,
-      publiclyContained,
-    });
-    if (!authoritativePriorMappingRestored || !publiclyContained) {
-      throw new Error(`Staging alias rollback did not restore and contain ${mutation.aliasHost}`);
-    }
-    failureContext.stagingAliasMutations =
-      failureContext.stagingAliasMutations.filter(
-        (record) => record.aliasHost !== mutation.aliasHost,
+      status: "FAILED",
+      expectedPriorMappingState: mutation.priorMapping
+        ? "EXACT_PRIOR_MAPPING"
+        : "ABSENT",
+      rollbackCommand: "not_attempted",
+      rollbackExitStatus: null,
+      authoritativePriorMappingRestored: false,
+      authoritativePriorMappingReverifiedAfterEdgeContainment: false,
+      publicContainmentDisposition: null,
+      publicContainmentClassification: null,
+      publicContainmentAttemptCount: 0,
+      publicContainmentElapsedMs: null,
+      publicContainmentFailurePhase: null,
+      staleEdgeObservationCount: 0,
+      publiclyContained: false,
+      sanitizedFailureSha256: null,
+    };
+    try {
+      const alias = EXPECTED_APP_ALIASES.find(
+        ({ host, url }) => host === mutation.aliasHost && url === mutation.aliasUrl,
       );
+      if (
+        !alias ||
+        alias.label !== mutation.aliasLabel ||
+        PRODUCTION_OR_SHARED_HOSTS.has(mutation.aliasHost)
+      ) {
+        throw new Error("Staging alias rollback rejected an unregistered or shared host");
+      }
+      if (
+        mutation.priorMapping !== null &&
+        (
+          !mutation.priorMapping ||
+          typeof mutation.priorMapping !== "object" ||
+          !/^dpl_[A-Za-z0-9]+$/.test(mutation.priorMapping.deploymentId ?? "") ||
+          !/^[a-z0-9-]+\.vercel\.app$/i.test(
+            mutation.priorMapping.deploymentHost ?? "",
+          ) ||
+          mutation.priorMapping.projectIdFingerprint !==
+            EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
+          EXPECTED_APP_ALIASES.some(
+            ({ host }) => host === mutation.priorMapping.deploymentHost,
+          ) ||
+          PRODUCTION_OR_SHARED_HOSTS.has(mutation.priorMapping.deploymentHost)
+        )
+      ) {
+        throw new Error("Staging alias rollback rejected an unsafe prior mapping");
+      }
+      const intendedMapping = Object.freeze({
+        deploymentId: mutation.intendedDeploymentId,
+        deploymentHost: mutation.intendedDeploymentHost,
+        projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+      });
+      if (
+        !/^dpl_[A-Za-z0-9]+$/.test(intendedMapping.deploymentId ?? "") ||
+        !/^[a-z0-9-]+\.vercel\.app$/i.test(intendedMapping.deploymentHost ?? "") ||
+        EXPECTED_APP_ALIASES.some(
+          ({ host }) => host === intendedMapping.deploymentHost,
+        ) ||
+        PRODUCTION_OR_SHARED_HOSTS.has(intendedMapping.deploymentHost)
+      ) {
+        throw new Error("Staging alias rollback rejected an unsafe intended mapping");
+      }
+      const mappingBeforeRollback = readExactAliasMappingDuringRollback(
+        alias,
+        `${mutation.aliasLabel} pre-rollback`,
+      );
+      if (
+        !sameExactAliasMapping(mappingBeforeRollback, mutation.priorMapping) &&
+        !sameExactAliasMapping(mappingBeforeRollback, intendedMapping)
+      ) {
+        throw new Error(`${mutation.aliasLabel} alias drifted outside the registered staging mutation`);
+      }
+
+      if (sameExactAliasMapping(mappingBeforeRollback, mutation.priorMapping)) {
+        result.rollbackCommand = "none_required";
+      } else {
+        const args = mutation.priorMapping
+          ? [
+              failureContext.vercelPath,
+              "alias",
+              "set",
+              mutation.priorMapping.deploymentHost,
+              mutation.aliasHost,
+              "--no-color",
+            ]
+          : [
+              failureContext.vercelPath,
+              "alias",
+              "rm",
+              mutation.aliasHost,
+              "--yes",
+              "--no-color",
+            ];
+        result.rollbackCommand = mutation.priorMapping
+          ? "restore_prior_mapping"
+          : "remove_new_mapping";
+        const rollback = spawnSync(EXECUTABLE, args, {
+          cwd: EXPECTED_REPO,
+          env: vercelEnvironment(),
+          encoding: "utf8",
+          timeout: EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
+          maxBuffer: 4 * 1024 * 1024,
+        });
+        result.rollbackExitStatus = rollback.status;
+        if (rollback.error || rollback.signal || rollback.status !== 0) {
+          const diagnostic = sanitize(
+            `${rollback.error?.message ?? ""}\n${rollback.stderr ?? ""}\n${rollback.stdout ?? ""}`,
+            protectedRuntimeValues(),
+          );
+          throw new Error(`${mutation.aliasLabel} alias rollback command failed: ${diagnostic}`);
+        }
+      }
+
+      const mappingAfterRollback = readExactAliasMappingDuringRollback(
+        alias,
+        `${mutation.aliasLabel} post-rollback`,
+      );
+      result.authoritativePriorMappingRestored = sameExactAliasMapping(
+        mappingAfterRollback,
+        mutation.priorMapping,
+      );
+      if (!result.authoritativePriorMappingRestored) {
+        throw new Error(`${mutation.aliasLabel} authoritative prior mapping was not restored`);
+      }
+
+      const containment = await waitForExactAliasRollbackContainment({
+        priorMappingPresent: mutation.priorMapping !== null,
+        probe: ({ timeoutMs }) => requestExactAppAliasEdgeObservation(alias, {
+          timeoutMs,
+          allowDuringTermination: true,
+        }),
+        verifyMapping: ({ timeoutMs }) => {
+          const mapping = readExactAliasMappingDuringRollback(
+            alias,
+            `${mutation.aliasLabel} post-containment rollback`,
+            { timeoutMs },
+          );
+          if (!sameExactAliasMapping(mapping, mutation.priorMapping)) {
+            throw new Error(
+              `${mutation.aliasLabel} authoritative prior mapping drifted during edge containment`,
+            );
+          }
+          return Object.freeze({
+            exactPriorMappingRestored: true,
+            priorMappingPresent: mutation.priorMapping !== null,
+            projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+          });
+        },
+        delay: cleanupDelay,
+      });
+      const terminalObservation = containment.observations.at(-1);
+      result.status = "PASS";
+      result.authoritativePriorMappingReverifiedAfterEdgeContainment =
+        containment.mappingProof.exactPriorMappingRestored === true;
+      result.publicContainmentDisposition = terminalObservation?.disposition ?? null;
+      result.publicContainmentClassification = terminalObservation?.classification ?? null;
+      result.publicContainmentAttemptCount = containment.observations.length;
+      result.publicContainmentElapsedMs = containment.elapsedMs;
+      result.staleEdgeObservationCount = containment.observations.filter(
+        ({ classification }) => classification.startsWith("WAIT_FOR_"),
+      ).length;
+      result.publiclyContained = true;
+      failureContext.stagingAliasMutations =
+        failureContext.stagingAliasMutations.filter(
+          (record) => record.aliasHost !== mutation.aliasHost,
+        );
+    } catch (error) {
+      const failure = summarizeExactAliasPropagationFailure(error);
+      const lastObservation = failure.observations.at(-1) ?? null;
+      result.publicContainmentAttemptCount = failure.requestAttemptCount ?? 0;
+      result.publicContainmentElapsedMs = failure.elapsedMs;
+      result.publicContainmentFailurePhase = failure.failurePhase;
+      result.publicContainmentDisposition =
+        failure.terminalObservation?.disposition ??
+        lastObservation?.disposition ??
+        null;
+      result.publicContainmentClassification =
+        lastObservation?.classification ?? null;
+      result.staleEdgeObservationCount = failure.observations.filter(
+        ({ classification }) => classification.startsWith("WAIT_FOR_"),
+      ).length;
+      result.sanitizedFailureSha256 = sha256(
+        sanitize(
+          error instanceof Error ? error.message : String(error),
+          protectedRuntimeValues(),
+        ),
+      );
+    }
+    aliases.push(Object.freeze(result));
   }
-  return Object.freeze({
-    status: "PASS",
+  const failedAliasCount = aliases.filter(({ status }) => status !== "PASS").length;
+  const rollback = Object.freeze({
+    status: failedAliasCount === 0 ? "PASS" : "FAILED",
     aliasCount: aliases.length,
-    aliases,
-    authoritativePriorMappingsRestored: true,
-    publicContainmentProvenSeparately: true,
+    successfulAliasCount: aliases.length - failedAliasCount,
+    failedAliasCount,
+    aliases: Object.freeze(aliases),
+    allRegisteredAliasesAttempted: aliases.length === mutations.length,
+    authoritativePriorMappingsRestored: aliases.every(
+      ({ authoritativePriorMappingRestored }) => authoritativePriorMappingRestored,
+    ),
+    publicContainmentProvenSeparately: aliases.every(
+      ({ publiclyContained }) => publiclyContained,
+    ),
+    cleanupContinuedAfterIndividualFailure: true,
+    remainingRegisteredMutationCount: failureContext.stagingAliasMutations.length,
     protectionModeChangedDuringRollback: false,
     productionOrSharedAliasChanged: false,
   });
+  if (failedAliasCount > 0) {
+    throw new StagingAliasRollbackIncompleteError(rollback);
+  }
+  return rollback;
 }
 
 let terminalFailurePromise = null;
@@ -5265,6 +5832,9 @@ async function finalizeFailure(error, { terminationKind = "main_rejection" } = {
   try {
     aliasRollback = await rollbackCreatedStagingAliasesAfterFailure();
   } catch (cleanupError) {
+    aliasRollback = cleanupError instanceof StagingAliasRollbackIncompleteError
+      ? cleanupError.safeRollback
+      : null;
     aliasRollbackError = cleanupError instanceof Error
       ? cleanupError.message
       : String(cleanupError);

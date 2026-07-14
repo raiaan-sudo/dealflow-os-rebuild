@@ -69,8 +69,16 @@ const PUBLIC_API_PATHS = new Set([
 ]);
 const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";
-const STAGING_IMAGE_OPTIMIZER_SOURCE_PATH =
+const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
+const VERCEL_SET_BYPASS_COOKIE_HEADER = "x-vercel-set-bypass-cookie";
+const VERCEL_AUTOMATION_BYPASS_COOKIE = "_vercel_jwt";
+const STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX =
+  "/staging-private-image-gate-proof-v2/";
+const STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH =
   "/staging-image-optimizer-proof.png";
+const NEXT_IMAGE_OPTIMIZER_PATH = "/_next/image";
+const DISABLED_STAGING_IMAGE_OPTIMIZER_PATH =
+  "/_dealflow-staging-image-optimizer-disabled";
 const STAGING_NATIVE_PROVIDER_CALLBACK_PATHS = new Set([
   "/api/integrations/ghl/webhook",
   "/api/meta/data-deletion",
@@ -82,7 +90,10 @@ const STAGING_NATIVE_PROVIDER_CALLBACK_PATHS = new Set([
 
 function isPublicRequest(pathname: string) {
   if (
-    pathname === STAGING_IMAGE_OPTIMIZER_SOURCE_PATH &&
+    pathname.startsWith(STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX) &&
+    /^[0-9a-f]{40}\.png$/.test(
+      pathname.slice(STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX.length),
+    ) &&
     isExactIsolatedStagingVercelHost()
   ) {
     return true;
@@ -180,14 +191,6 @@ function getIsolatedStagingAccessDecision(request: NextRequest) {
     return { required: false, configured: true, authorized: true } as const;
   }
 
-  // Next's image optimizer performs an internal request without forwarding the
-  // caller's staging credential. This one non-sensitive PNG is intentionally
-  // public only on the exact staging project so the outer optimizer route can
-  // remain gated and still complete its internal fetch.
-  if (request.nextUrl.pathname === STAGING_IMAGE_OPTIMIZER_SOURCE_PATH) {
-    return { required: false, configured: true, authorized: true } as const;
-  }
-
   // Provider callbacks cannot attach DealFlow's private staging header. Only
   // the exact native callback routes bypass this outer gate; each remains
   // fail-closed behind its provider verify-token or signature contract.
@@ -227,9 +230,15 @@ function removeCookieFromRequestHeader(
 
 function stripStagingAccessCredentials(requestHeaders: Headers) {
   requestHeaders.delete(STAGING_ACCESS_HEADER);
-  const sanitizedCookieHeader = removeCookieFromRequestHeader(
+  requestHeaders.delete(VERCEL_PROTECTION_BYPASS_HEADER);
+  requestHeaders.delete(VERCEL_SET_BYPASS_COOKIE_HEADER);
+  let sanitizedCookieHeader = removeCookieFromRequestHeader(
     requestHeaders.get("cookie"),
     STAGING_ACCESS_COOKIE,
+  );
+  sanitizedCookieHeader = removeCookieFromRequestHeader(
+    sanitizedCookieHeader,
+    VERCEL_AUTOMATION_BYPASS_COOKIE,
   );
   if (sanitizedCookieHeader) {
     requestHeaders.set("cookie", sanitizedCookieHeader);
@@ -582,6 +591,35 @@ export async function proxy(request: NextRequest) {
     );
   }
   const rawPathname = request.nextUrl.pathname;
+  if (
+    stagingAccess.required &&
+    (
+      rawPathname === NEXT_IMAGE_OPTIMIZER_PATH ||
+      rawPathname === DISABLED_STAGING_IMAGE_OPTIMIZER_PATH ||
+      rawPathname === STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH
+    )
+  ) {
+    // Next's optimizer performs a fresh internal source fetch without
+    // forwarding the staging credential. Current app images are explicitly
+    // direct and exact staging closes both optimizer paths. The dedicated
+    // emitted-client path is defense in depth. The retired public source is also
+    // closed so a historical cached transform can never refresh from an origin
+    // response. Production never enters this branch.
+    return applySecurityHeaders(
+      request,
+      NextResponse.json(
+        { error: "Not found." },
+        {
+          status: 404,
+          headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+        },
+      ),
+      nonce,
+      null,
+      null,
+      startedAt,
+    );
+  }
   if (
     rawPathname === "/_next" ||
     rawPathname.startsWith("/_next/")

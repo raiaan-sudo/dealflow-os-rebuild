@@ -9,10 +9,12 @@ import {
   ExactAliasPropagationHardFailureError,
   ExactAliasPropagationTimeoutError,
   classifyExactAliasPropagationObservation,
+  classifyExactAliasRollbackContainmentObservation,
   classifyExactVercelAutomationProtectionRedirect,
   proveSequentialExactApplicationGate,
   summarizeExactAliasPropagationFailure,
   waitForExactAliasPropagation,
+  waitForExactAliasRollbackContainment,
 } from "./vercel-alias-propagation-contract.mjs";
 
 const exactObservation = (overrides = {}) => ({
@@ -52,6 +54,14 @@ const protectedObservation = (bypassOverrides = {}, overrides = {}) => ({
     "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
   ...overrides,
 });
+
+const protectedNotFoundObservation = () => protectedObservation(
+  { disposition: "VERCEL_DEPLOYMENT_NOT_FOUND" },
+  {
+    disposition:
+      "VERCEL_DEPLOYMENT_NOT_FOUND_BEHIND_VERCEL_AUTOMATION_PROTECTION",
+  },
+);
 
 const endpointUrl = "https://partner.example.com/privacy";
 const nonce = "a".repeat(64);
@@ -110,6 +120,53 @@ assert.equal(
 assert.equal(
   classifyExactAliasPropagationObservation(protectedObservation()),
   "READY_EXACT_DEALFLOW_GATE",
+);
+assert.equal(
+  classifyExactAliasPropagationObservation(protectedNotFoundObservation()),
+  "WAIT_FOR_VERCEL_EDGE",
+);
+assert.equal(
+  classifyExactAliasRollbackContainmentObservation(exactObservation(), {
+    priorMappingPresent: false,
+  }),
+  "READY_EXACT_ALIAS_ABSENCE",
+);
+assert.equal(
+  classifyExactAliasRollbackContainmentObservation(
+    exactObservation({ disposition: "DEALFLOW_APPLICATION_GATE" }),
+    { priorMappingPresent: false },
+  ),
+  "WAIT_FOR_REMOVED_ALIAS_EDGE",
+);
+assert.equal(
+  classifyExactAliasRollbackContainmentObservation(protectedObservation(), {
+    priorMappingPresent: false,
+  }),
+  "WAIT_FOR_REMOVED_ALIAS_EDGE",
+);
+assert.equal(
+  classifyExactAliasRollbackContainmentObservation(protectedNotFoundObservation(), {
+    priorMappingPresent: false,
+  }),
+  "READY_EXACT_ALIAS_ABSENCE",
+);
+assert.equal(
+  classifyExactAliasRollbackContainmentObservation(exactObservation(), {
+    priorMappingPresent: true,
+  }),
+  "WAIT_FOR_PRIOR_MAPPING_EDGE",
+);
+assert.equal(
+  classifyExactAliasRollbackContainmentObservation(protectedObservation(), {
+    priorMappingPresent: true,
+  }),
+  "READY_EXACT_PRIOR_MAPPING_GATE",
+);
+assert.throws(
+  () => classifyExactAliasRollbackContainmentObservation(exactObservation(), {
+    priorMappingPresent: "false",
+  }),
+  /outside the bounded contract/,
 );
 
 for (const observation of [
@@ -172,6 +229,118 @@ function createFakeRun(observations, options = {}) {
     }),
   };
 }
+
+function createFakeRollbackRun(observations, priorMappingPresent, options = {}) {
+  let nowMs = 0;
+  let mappingCalls = 0;
+  const delays = [];
+  const queue = [...observations];
+  return {
+    state: {
+      delays,
+      get mappingCalls() { return mappingCalls; },
+    },
+    run: () => waitForExactAliasRollbackContainment({
+      priorMappingPresent,
+      probe: async () => {
+        const next = queue.length > 1 ? queue.shift() : queue[0];
+        if (next instanceof Error) throw next;
+        return next;
+      },
+      verifyMapping: async () => {
+        mappingCalls += 1;
+        if (options.mappingError) throw options.mappingError;
+        return { exactPriorMappingRestored: true, priorMappingPresent };
+      },
+      delay: async (delayMs) => {
+        delays.push(delayMs);
+        nowMs += delayMs;
+      },
+      now: () => nowMs,
+      timeoutMs: options.timeoutMs,
+    }),
+  };
+}
+
+const removedAliasStaleProtectedEdge = createFakeRollbackRun([
+  protectedObservation(),
+  protectedNotFoundObservation(),
+], false);
+const removedAliasContained = await removedAliasStaleProtectedEdge.run();
+assert.deepEqual(
+  removedAliasContained.observations.map(({ classification }) => classification),
+  ["WAIT_FOR_REMOVED_ALIAS_EDGE", "READY_EXACT_ALIAS_ABSENCE"],
+);
+assert.deepEqual(removedAliasStaleProtectedEdge.state.delays, [2_000]);
+assert.equal(removedAliasStaleProtectedEdge.state.mappingCalls, 1);
+assert.equal(
+  removedAliasContained.mappingProof.exactPriorMappingRestored,
+  true,
+);
+
+const restoredAliasEdge = createFakeRollbackRun([
+  exactObservation(),
+  protectedObservation(),
+], true);
+const restoredAliasContained = await restoredAliasEdge.run();
+assert.deepEqual(
+  restoredAliasContained.observations.map(({ classification }) => classification),
+  ["WAIT_FOR_PRIOR_MAPPING_EDGE", "READY_EXACT_PRIOR_MAPPING_GATE"],
+);
+assert.deepEqual(restoredAliasEdge.state.delays, [2_000]);
+assert.equal(restoredAliasEdge.state.mappingCalls, 1);
+
+const removedAliasTimeout = createFakeRollbackRun(
+  [protectedObservation()],
+  false,
+  { timeoutMs: 5_000 },
+);
+await assert.rejects(
+  removedAliasTimeout.run(),
+  ExactAliasPropagationTimeoutError,
+);
+assert.deepEqual(removedAliasTimeout.state.delays, [2_000, 2_000, 1_000]);
+assert.equal(removedAliasTimeout.state.mappingCalls, 0);
+
+const rollbackMappingDrift = createFakeRollbackRun(
+  [protectedNotFoundObservation()],
+  false,
+  { mappingError: new Error("simulated rollback mapping drift") },
+);
+await assert.rejects(
+  rollbackMappingDrift.run(),
+  (error) =>
+    error instanceof ExactAliasPropagationHardFailureError &&
+    error.phase === "MAPPING_VERIFICATION",
+);
+assert.equal(rollbackMappingDrift.state.mappingCalls, 1);
+
+const rollbackPublicWindow = createFakeRollbackRun([
+  exactObservation({ status: 200, disposition: "AUTHORIZED_HTTP_200" }),
+], false);
+await assert.rejects(
+  rollbackPublicWindow.run(),
+  (error) =>
+    error instanceof ExactAliasPropagationHardFailureError &&
+    error.phase === "CLASSIFICATION",
+);
+assert.equal(rollbackPublicWindow.state.mappingCalls, 0);
+
+assert.deepEqual(
+  summarizeExactAliasPropagationFailure(new Error("ordinary rollback failure")),
+  {
+    failurePhase: "UNCLASSIFIED",
+    requestAttemptCount: null,
+    completedResponseCount: null,
+    elapsedMs: null,
+    observations: [],
+    terminalObservation: null,
+    redirectsFollowed: null,
+    responseUrlExact: null,
+    publicWindowObserved: null,
+    publicWindowProofStatus: "NOT_PROVEN",
+  },
+);
 
 const immediate = createFakeRun([
   exactObservation({ disposition: "DEALFLOW_APPLICATION_GATE" }),
@@ -510,5 +679,5 @@ await assert.rejects(
 assert.deepEqual(headerFailureHeaders, [{}, { "x-test-gate": "test-secret" }]);
 
 console.log(
-  "Vercel alias propagation contract: PASS (hard deadline after probe and mapping; truthful typed failures; exact Vercel 404 transient; exact public 302 Vercel SSO plus no-app-gate automation bypass reaches the DealFlow 404; persistent protected aliases complete without following redirects; bounded post-bypass mapping recheck; public 2xx, malformed protection, redirected, transport, drift, timeout, and termination paths fail closed; raw Location query and nonce never enter safe observations)",
+  "Vercel alias propagation contract: PASS (forward and rollback hard deadlines after probe and mapping; truthful typed and ordinary failure summaries; exact Vercel 404 transient/absence; exact public 302 Vercel SSO plus no-app-gate automation bypass reaches the DealFlow gate or exact absent alias; stale protected removal edges are polled to containment; persistent protected aliases complete without following redirects; bounded post-bypass mapping recheck; public 2xx, malformed protection, redirected, transport, drift, timeout, and termination paths fail closed; raw Location query and nonce never enter safe observations)",
 );

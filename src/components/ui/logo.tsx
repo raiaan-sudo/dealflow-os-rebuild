@@ -41,6 +41,7 @@ export function Logo({
       width={dimensions.width}
       height={dimensions.height}
       priority={priority}
+      unoptimized
     />
   );
 }

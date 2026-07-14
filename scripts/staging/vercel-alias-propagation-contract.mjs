@@ -35,6 +35,7 @@ const SAFE_DISPOSITIONS = Object.freeze([
   "DEALFLOW_APPLICATION_GATE",
   "AUTHORIZED_HTTP_200",
   "VERCEL_AUTOMATION_PROTECTION",
+  "VERCEL_DEPLOYMENT_NOT_FOUND_BEHIND_VERCEL_AUTOMATION_PROTECTION",
   "DEALFLOW_APPLICATION_GATE_BEHIND_VERCEL_AUTOMATION_PROTECTION",
   "UNRECOGNIZED",
 ]);
@@ -87,6 +88,24 @@ function isExactProtectedApplicationGate(observation) {
     observation.protectionBypass.locationPresent === false &&
     observation.protectionBypass.responseUrlExact === true &&
     observation.protectionBypass.disposition === "DEALFLOW_APPLICATION_GATE"
+  );
+}
+
+function isExactProtectedDeploymentNotFound(observation) {
+  return (
+    observation.status === 302 &&
+    observation.redirected === false &&
+    observation.locationPresent === true &&
+    observation.responseUrlExact === true &&
+    observation.disposition ===
+      "VERCEL_DEPLOYMENT_NOT_FOUND_BEHIND_VERCEL_AUTOMATION_PROTECTION" &&
+    isExactProtectionRedirectProof(observation.protectionRedirect) &&
+    isSafeBasicResponse(observation.protectionBypass) &&
+    observation.protectionBypass.status === 404 &&
+    observation.protectionBypass.redirected === false &&
+    observation.protectionBypass.locationPresent === false &&
+    observation.protectionBypass.responseUrlExact === true &&
+    observation.protectionBypass.disposition === "VERCEL_DEPLOYMENT_NOT_FOUND"
   );
 }
 
@@ -161,6 +180,9 @@ export function classifyExactAliasPropagationObservation(observation) {
   if (isExactProtectedApplicationGate(observation)) {
     return "READY_EXACT_DEALFLOW_GATE";
   }
+  if (isExactProtectedDeploymentNotFound(observation)) {
+    return "WAIT_FOR_VERCEL_EDGE";
+  }
 
   if (
     observation.protectionRedirect !== null ||
@@ -184,6 +206,25 @@ export function classifyExactAliasPropagationObservation(observation) {
   throw new Error(
     "Alias propagation observed an unrecognized exact-URL staging response",
   );
+}
+
+export function classifyExactAliasRollbackContainmentObservation(
+  observation,
+  { priorMappingPresent },
+) {
+  if (typeof priorMappingPresent !== "boolean") {
+    throw new Error("Alias rollback containment target is outside the bounded contract");
+  }
+  const propagationClassification =
+    classifyExactAliasPropagationObservation(observation);
+  if (priorMappingPresent) {
+    return propagationClassification === "READY_EXACT_DEALFLOW_GATE"
+      ? "READY_EXACT_PRIOR_MAPPING_GATE"
+      : "WAIT_FOR_PRIOR_MAPPING_EDGE";
+  }
+  return propagationClassification === "WAIT_FOR_VERCEL_EDGE"
+    ? "READY_EXACT_ALIAS_ABSENCE"
+    : "WAIT_FOR_REMOVED_ALIAS_EDGE";
 }
 
 export class ExactAliasPropagationTimeoutError extends Error {
@@ -264,10 +305,12 @@ function hardFailureError({
   });
 }
 
-export async function waitForExactAliasPropagation({
+async function waitForExactAliasState({
   probe,
   verifyMapping,
   delay,
+  classifyObservation,
+  readyClassification,
   timeoutMs = EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
   pollIntervalMs = EXACT_ALIAS_PROPAGATION_POLL_INTERVAL_MS,
   requestTimeoutMaximumMs = EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
@@ -277,6 +320,9 @@ export async function waitForExactAliasPropagation({
     typeof probe !== "function" ||
     typeof verifyMapping !== "function" ||
     typeof delay !== "function" ||
+    typeof classifyObservation !== "function" ||
+    typeof readyClassification !== "string" ||
+    readyClassification.length === 0 ||
     typeof now !== "function" ||
     !Number.isSafeInteger(timeoutMs) ||
     timeoutMs < 1 ||
@@ -314,7 +360,7 @@ export async function waitForExactAliasPropagation({
     }
     let classification;
     try {
-      classification = classifyExactAliasPropagationObservation(observation);
+      classification = classifyObservation(observation);
     } catch (cause) {
       throw hardFailureError({
         phase: "CLASSIFICATION",
@@ -341,7 +387,7 @@ export async function waitForExactAliasPropagation({
       throw timeoutError(startedAt, now, observations);
     }
 
-    if (classification === "READY_EXACT_DEALFLOW_GATE") {
+    if (classification === readyClassification) {
       let mappingProof;
       try {
         mappingProof = await verifyMapping({
@@ -385,6 +431,33 @@ export async function waitForExactAliasPropagation({
   }
 
   throw timeoutError(startedAt, now, observations);
+}
+
+export async function waitForExactAliasPropagation(options) {
+  return waitForExactAliasState({
+    ...options,
+    classifyObservation: classifyExactAliasPropagationObservation,
+    readyClassification: "READY_EXACT_DEALFLOW_GATE",
+  });
+}
+
+export async function waitForExactAliasRollbackContainment({
+  priorMappingPresent,
+  ...options
+}) {
+  if (typeof priorMappingPresent !== "boolean") {
+    throw new Error("Alias rollback containment target is outside the bounded contract");
+  }
+  return waitForExactAliasState({
+    ...options,
+    classifyObservation: (observation) =>
+      classifyExactAliasRollbackContainmentObservation(observation, {
+        priorMappingPresent,
+      }),
+    readyClassification: priorMappingPresent
+      ? "READY_EXACT_PRIOR_MAPPING_GATE"
+      : "READY_EXACT_ALIAS_ABSENCE",
+  });
 }
 
 export function summarizeExactAliasPropagationFailure(error) {

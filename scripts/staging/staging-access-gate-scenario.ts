@@ -3,6 +3,11 @@ import { NextRequest } from "next/server";
 
 const scenario = process.argv[2];
 const secret = "T9!dealflow-isolated-staging-access-only-84Q";
+const releaseCommit = "a".repeat(40);
+const privateImageSourcePath =
+  `/staging-private-image-gate-proof-v2/${releaseCommit}.png`;
+const privateImageOptimizerQuery =
+  `url=${encodeURIComponent(privateImageSourcePath)}&w=32&q=75`;
 const projectId = process.env.DEALFLOW_TEST_CANONICAL_STAGING_PROJECT_ID ?? "";
 assert.match(projectId, /^prj_[A-Za-z0-9]+$/);
 
@@ -15,6 +20,7 @@ Object.assign(process.env, {
   DEALFLOW_STAGING_HOST_ATTESTATION:
     "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
   STAGING_ACCESS_GATE_SECRET: secret,
+  NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT: releaseCommit,
 });
 
 let path = "/privacy";
@@ -31,17 +37,39 @@ if (scenario === "authorized") {
 } else if (scenario === "wrong_static_header") {
   path = "/_next/static/chunks/staging-gate-proof.js";
   suppliedSecret = "W".repeat(secret.length);
-} else if (scenario === "authorized_image_header") {
-  path = "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
+} else if (scenario === "closed_image_header") {
+  path = `/_next/image?${privateImageOptimizerQuery}`;
   suppliedSecret = secret;
-} else if (scenario === "authorized_image_cookie") {
-  path = "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
+} else if (scenario === "closed_image_cookie") {
+  path = `/_next/image?${privateImageOptimizerQuery}`;
+  suppliedCookieSecret = secret;
+} else if (scenario === "closed_disabled_image_no_gate") {
+  path = `/_dealflow-staging-image-optimizer-disabled?${privateImageOptimizerQuery}`;
+} else if (scenario === "closed_disabled_image_header") {
+  path = `/_dealflow-staging-image-optimizer-disabled?${privateImageOptimizerQuery}`;
+  suppliedSecret = secret;
+} else if (scenario === "closed_disabled_image_cookie") {
+  path = `/_dealflow-staging-image-optimizer-disabled?${privateImageOptimizerQuery}`;
   suppliedCookieSecret = secret;
 } else if (scenario === "wrong_image_cookie") {
-  path = "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
+  path = `/_next/image?${privateImageOptimizerQuery}`;
   suppliedCookieSecret = "W".repeat(secret.length);
-} else if (scenario === "public_optimizer_source") {
+} else if (scenario === "private_image_source_header") {
+  path = privateImageSourcePath;
+  suppliedSecret = secret;
+} else if (scenario === "private_image_source_cookie") {
+  path = privateImageSourcePath;
+  suppliedCookieSecret = secret;
+} else if (scenario === "private_image_source_no_gate") {
+  path = privateImageSourcePath;
+} else if (scenario === "retired_image_source_no_gate") {
   path = "/staging-image-optimizer-proof.png";
+} else if (scenario === "retired_image_source_header") {
+  path = "/staging-image-optimizer-proof.png";
+  suppliedSecret = secret;
+} else if (scenario === "retired_image_source_cookie") {
+  path = "/staging-image-optimizer-proof.png";
+  suppliedCookieSecret = secret;
 } else if (scenario === "authorized_next_internal_header") {
   path = "/_next/data/staging-gate-proof.json";
   suppliedSecret = secret;
@@ -72,10 +100,13 @@ if (scenario === "authorized") {
 } else if (scenario === "production_static_ungated") {
   process.env.DEALFLOW_DEPLOYMENT_TARGET = "production";
   path = "/_next/static/chunks/staging-gate-proof.js";
+} else if (scenario === "production_image_ungated") {
+  process.env.DEALFLOW_DEPLOYMENT_TARGET = "production";
+  path = "/_next/image?url=%2Flogo.png&w=32&q=75";
 } else if (scenario === "unauthorized_static") {
   path = "/_next/static/chunks/staging-gate-proof.js";
 } else if (scenario === "unauthorized_image") {
-  path = "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
+  path = `/_next/image?${privateImageOptimizerQuery}`;
 } else if (scenario === "unauthorized_next_internal") {
   path = "/_next/data/staging-gate-proof.json";
 } else if (scenario === "native_callback") {
@@ -89,6 +120,18 @@ if (scenario === "authorized") {
 async function main() {
   const { proxy } = await import("../../src/proxy");
   const headers = new Headers();
+  headers.set(
+    "x-vercel-protection-bypass",
+    "synthetic-vercel-bypass-must-not-reach-application",
+  );
+  headers.set(
+    "x-vercel-set-bypass-cookie",
+    "synthetic-vercel-cookie-bootstrap-must-not-reach-application",
+  );
+  headers.set(
+    "cookie",
+    "_vercel_jwt=synthetic-vercel-jwt-must-not-reach-application",
+  );
   if (suppliedSecret) headers.set("x-dealflow-staging-access", suppliedSecret);
   if (suppliedCookieSecret) {
     const ordinaryCookie = scenario === "authorized_cookie_only"
@@ -96,7 +139,7 @@ async function main() {
       : "ordinary-cookie=retained; ";
     headers.set(
       "cookie",
-      `${ordinaryCookie}__Host-dealflow-staging-access=${suppliedCookieSecret}`,
+      `_vercel_jwt=synthetic-vercel-jwt-must-not-reach-application; ${ordinaryCookie}__Host-dealflow-staging-access=${suppliedCookieSecret}`,
     );
   }
   const response = await proxy(
@@ -106,12 +149,27 @@ async function main() {
   assert.doesNotMatch(serializedHeaders, /dealflow-isolated-staging-access-only/);
   assert.doesNotMatch(serializedHeaders, /x-dealflow-staging-access/);
   assert.doesNotMatch(serializedHeaders, /__host-dealflow-staging-access/);
+  assert.doesNotMatch(serializedHeaders, /x-vercel-protection-bypass/);
+  assert.doesNotMatch(serializedHeaders, /x-vercel-set-bypass-cookie/);
+  assert.doesNotMatch(serializedHeaders, /_vercel_jwt/);
+  assert.doesNotMatch(serializedHeaders, /synthetic-vercel-bypass-must-not-reach-application/);
+  assert.doesNotMatch(serializedHeaders, /synthetic-vercel-cookie-bootstrap-must-not-reach-application/);
+  assert.doesNotMatch(serializedHeaders, /synthetic-vercel-jwt-must-not-reach-application/);
 
   if (
     scenario === "unauthorized" ||
     scenario === "unauthorized_cookie" ||
     scenario === "unauthorized_static" ||
     scenario === "unauthorized_image" ||
+    scenario === "closed_image_header" ||
+    scenario === "closed_image_cookie" ||
+    scenario === "closed_disabled_image_no_gate" ||
+    scenario === "closed_disabled_image_header" ||
+    scenario === "closed_disabled_image_cookie" ||
+    scenario === "private_image_source_no_gate" ||
+    scenario === "retired_image_source_no_gate" ||
+    scenario === "retired_image_source_header" ||
+    scenario === "retired_image_source_cookie" ||
     scenario === "unauthorized_next_internal" ||
     [
       "wrong_static_header",

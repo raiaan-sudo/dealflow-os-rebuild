@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 976,
-  "deployableSourceSha256": "a8c08fc83576467bad3f99047c403d027bbd825e8f54a361fb7a0ee9aab7ccc6",
+  "deployableSourceSha256": "237c55ee68ecdcf17ab4d39ba2aff4c0a8acd794d5167867d008d04d6ac65808",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -120,9 +120,9 @@
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 8206,
+      "size": 9900,
       "mode": 33188,
-      "sha256": "cff789533feaf95224617c80d5650c0fed3aa218c4065db5d97cc59ec3f0ee14"
+      "sha256": "c452a0bc534be60238db22ada9a1ce6456d0ed233598bc099d1adb8e3444d259"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -606,9 +606,9 @@
     },
     {
       "path": "next.config.mjs",
-      "size": 481,
+      "size": 2679,
       "mode": 33188,
-      "sha256": "2d44dad08952342373c911f0f74cfb5579fedeb5bd13a900ad5739c228c9f859"
+      "sha256": "a635cdf843d55ef904a524efabcb12626088ddd108637723e6bf15b99dce3e73"
     },
     {
       "path": "package-lock.json",
@@ -918,9 +918,9 @@
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 100966,
+      "size": 100981,
       "mode": 33188,
-      "sha256": "89c7e83e184995832cc714b8553c3d070778a0f438f1cb7755d7fd4ef8de8441"
+      "sha256": "7af68ebc1ea62dcab63954ee1f37d0a90c3d461e7d7f0fe29d2bc51205997b9e"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -1014,9 +1014,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 208867,
+      "size": 230386,
       "mode": 33188,
-      "sha256": "0a8867a09f0f9e009ae20736367db43f2a00efaa2864ee81e3e7557dae333aa6"
+      "sha256": "c028377c48d17788b21fe2d210f39092fbe1c41f0236572754f61321552d83ff"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1032,9 +1032,9 @@
     },
     {
       "path": "scripts/staging/staging-access-gate-scenario.ts",
-      "size": 6021,
+      "size": 8806,
       "mode": 33188,
-      "sha256": "80dd3d8ce80e12c7889ffd1660c4e89c23131464c502af47e44f940f4c3b4999"
+      "sha256": "34e9c3bef12a907aa352e13fc22b6a460b3141815edaa657b2db568ca5f93e25"
     },
     {
       "path": "scripts/staging/staging-evidence-root-contract.mjs",
@@ -1043,10 +1043,10 @@
       "sha256": "6a908cb3d594cf36d62b369af7aba45f2afabac320f1ee8a47a75e7c67c28a13"
     },
     {
-      "path": "scripts/staging/staging-image-optimizer-proof-route-scenario.ts",
-      "size": 1889,
+      "path": "scripts/staging/staging-private-image-gate-proof-route-scenario.ts",
+      "size": 2384,
       "mode": 33188,
-      "sha256": "e7b87e4cc6be8b9e6c3294f4c2d576c9d1241485804da2090504375d2036fa7d"
+      "sha256": "7b810cc273c875f422a4607773f674c5febe6b5241fd0d73f4c6b50001f4fa6c"
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
@@ -1098,15 +1098,15 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 83759,
+      "size": 86909,
       "mode": 33188,
-      "sha256": "f26e588d43112fd063b09d1e6362f89a9683364ea869432fe0862e90327ac097"
+      "sha256": "7ba2d7f666cb33a97e4fa68bb053a5a0be9df52b6f11517896b366ede2ee17db"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
-      "size": 5996,
+      "size": 14182,
       "mode": 33188,
-      "sha256": "c8592b543396195cbc362f6852b7543c1e84db8079ea5bbde74e1a9f3f255341"
+      "sha256": "0ccd5d80fac06b5b4eadd5c4bd1fcf640ae8453a119135aa679c1290ffb5f782"
     },
     {
       "path": "scripts/staging/test-next-static-chunk-path.mjs",
@@ -1146,9 +1146,9 @@
     },
     {
       "path": "scripts/staging/test-vercel-alias-propagation-contract.mjs",
-      "size": 17805,
+      "size": 23060,
       "mode": 33188,
-      "sha256": "4dd36c48efad789f0e333671c0e03a0779c848239a5770850e325616f01b8ae0"
+      "sha256": "52a770f517de00fd5911d2e6e648951d252339b50c6e112c9a8a0ecd1ce7d462"
     },
     {
       "path": "scripts/staging/test-vercel-dry-run-source-contract.mjs",
@@ -1170,9 +1170,9 @@
     },
     {
       "path": "scripts/staging/vercel-alias-propagation-contract.mjs",
-      "size": 14927,
+      "size": 17508,
       "mode": 33188,
-      "sha256": "4bede407c9057dba75d37aa80fc291825b3afd963c37e7ca67a3b72bbd2bca04"
+      "sha256": "bd21a34d421c67db50fc9440795fa07679954ad073facb717227fab3b24179c8"
     },
     {
       "path": "scripts/staging/vercel-dry-run-source-contract.mjs",
@@ -2699,10 +2699,10 @@
       "sha256": "516cddccb745721cb7bd26549f2778dd0ae1de2b3468e1dc616facb8ead73c3b"
     },
     {
-      "path": "src/app/staging-image-optimizer-proof.png/route.ts",
-      "size": 1202,
+      "path": "src/app/staging-private-image-gate-proof-v2/[commit]/route.ts",
+      "size": 1606,
       "mode": 33188,
-      "sha256": "3f55843c64084b03745f32c9475daac0328bddb10fbf38438a64b648afc8323d"
+      "sha256": "779cac6a57787043777ddc71ef41b645162e43f36eec10bf310bc3dfddb70eec"
     },
     {
       "path": "src/app/terms/page.tsx",
@@ -3102,9 +3102,9 @@
     },
     {
       "path": "src/components/ui/logo.tsx",
-      "size": 1044,
+      "size": 1062,
       "mode": 33188,
-      "sha256": "d36802c950189968d8fd6189936364ad93c14f4c52ab620e4aae253aa56952b4"
+      "sha256": "fad2c187bc10b261528df4e0d3157aeec5b10b74dc60b38f90b5273a11baf01c"
     },
     {
       "path": "src/components/ui/page-shell.tsx",
@@ -4806,9 +4806,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 26404,
+      "size": 27729,
       "mode": 33188,
-      "sha256": "28c3e4ac810ff1092e546586a4008083b6292f08eef66b8fe33ae21b98fb8930"
+      "sha256": "50239ab4a5f71329a7731d2ef6227063b22cc6e105afd035b0c43eb1409fa2c0"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",
@@ -5736,9 +5736,9 @@
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
-      "size": 33363,
+      "size": 35432,
       "mode": 33188,
-      "sha256": "6b166577d33974799d2d55f0fec7ca94411935565c2373a7fbc938d8d7139dfc"
+      "sha256": "111b1b178b1b97c9bd60a1e4f654912cf7d1dcb58e2c268fc29ec809c3967c38"
     },
     {
       "path": "tests/e2e/global-safety-preflight.ts",
