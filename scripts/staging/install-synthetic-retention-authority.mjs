@@ -29,9 +29,11 @@ const expectedRepo = "/private/tmp/dealflow-overnight-release-20260712";
 const expectedBranch = "codex/dealflow-overnight-release-20260712";
 const expectedPostgresBin =
   "/private/tmp/dealflow-pg17.6-20260712-overnight/mnt/Postgres.app/Contents/Versions/17/bin";
-const expectedTrustBundlePath = "/etc/ssl/cert.pem";
+const expectedTrustBundleRelativePath =
+  "config/security/supabase-prod-ca-2021.crt";
+const expectedTrustBundlePath = resolve(repo, expectedTrustBundleRelativePath);
 const expectedTrustBundleSha256 =
-  "9dae8d76e55cb08991f2b672d58999ea15560d910759c16b544f843bdffbb994";
+  "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7";
 const projectRecordPath = "/private/tmp/dealflow-new-staging-project.json";
 const keychainService = "io.supabase.dealflow-staging.db";
 const keychainAccount = "dealflow-staging-20260712";
@@ -461,12 +463,18 @@ if (!psqlStat.isFile() || psqlStat.isSymbolicLink()) {
   throw new Error("The pinned psql binary identity is invalid");
 }
 const trustBundleStat = lstatSync(expectedTrustBundlePath);
+const trustBundleBytes = readFileSync(expectedTrustBundlePath);
+const committedTrustBundleBytes = git(
+  ["show", `${identity.headCommit}:${expectedTrustBundleRelativePath}`],
+  "Unable to recover the committed Supabase trust bundle",
+);
 if (
   !trustBundleStat.isFile() ||
   trustBundleStat.isSymbolicLink() ||
-  trustBundleStat.uid !== 0 ||
   (trustBundleStat.mode & 0o022) !== 0 ||
-  sha256(readFileSync(expectedTrustBundlePath)) !== expectedTrustBundleSha256
+  realpathSync(expectedTrustBundlePath) !== expectedTrustBundlePath ||
+  sha256(trustBundleBytes) !== expectedTrustBundleSha256 ||
+  sha256(committedTrustBundleBytes) !== expectedTrustBundleSha256
 ) {
   throw new Error("The pinned TLS trust bundle identity is invalid");
 }
@@ -871,7 +879,9 @@ const proof = {
   tlsServerAuthentication: {
     mode: "verify-full",
     trustBundlePath: expectedTrustBundlePath,
+    trustBundleRelativePath: expectedTrustBundleRelativePath,
     trustBundleSha256: expectedTrustBundleSha256,
+    trustBundleTrackedAtCommit: true,
   },
   serviceRolePrivileges: {
     select: true,

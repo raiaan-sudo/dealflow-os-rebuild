@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,16 +11,24 @@ const source = readFileSync(
   join(root, "scripts", "staging", "install-synthetic-retention-authority.mjs"),
   "utf8",
 );
+const trustBundle = readFileSync(
+  join(root, "config", "security", "supabase-prod-ca-2021.crt"),
+);
 
 assert.match(source, /expectedMigrationCount = 103/);
 assert.match(source, /20260713028000_harden_account_deletion_retention_authority\.sql/);
 assert.match(source, /expectedProjectSafeSuffix = "qibh"/);
 assert.match(source, /expectedProjectFingerprint/);
-assert.match(source, /expectedTrustBundlePath = "\/etc\/ssl\/cert\.pem"/);
+assert.match(source, /config\/security\/supabase-prod-ca-2021\.crt/);
 assert.match(source, /expectedTrustBundleSha256/);
-assert.match(source, /trustBundleStat\.uid !== 0/);
+assert.match(source, /committedTrustBundleBytes = git/);
+assert.match(source, /realpathSync\(expectedTrustBundlePath\) !== expectedTrustBundlePath/);
 assert.match(source, /PGSSLMODE: "verify-full"/);
 assert.match(source, /PGSSLROOTCERT: expectedTrustBundlePath/);
+assert.equal(
+  createHash("sha256").update(trustBundle).digest("hex"),
+  "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
+);
 assert.match(source, /expectedBranch = "codex\/dealflow-overnight-release-20260712"/);
 assert.match(source, /requires a clean release worktree/);
 assert.match(source, /dealflow\.final-verification\.v3/);

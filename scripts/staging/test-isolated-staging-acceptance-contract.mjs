@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,9 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
 const runner = readFileSync(runnerPath, "utf8");
+const trustBundle = readFileSync(
+  join(root, "config", "security", "supabase-prod-ca-2021.crt"),
+);
 const priorProofContract = readFileSync(
   join(root, "scripts", "staging", "prior-migration-proof-contract.mjs"),
   "utf8",
@@ -273,8 +277,12 @@ for (const [field, value] of Object.entries({
 }
 assert.match(runner, /billingCancellationMode: "period_end"/);
 assert.match(runner, /tlsServerAuthentication\?\.mode !== "verify-full"/);
-assert.match(runner, /EXPECTED_DATABASE_TRUST_BUNDLE_PATH = "\/etc\/ssl\/cert\.pem"/);
-assert.match(runner, /9dae8d76e55cb08991f2b672d58999ea15560d910759c16b544f843bdffbb994/);
+assert.match(runner, /supabase-prod-ca-2021\.crt/);
+assert.match(runner, /700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7/);
+assert.equal(
+  createHash("sha256").update(trustBundle).digest("hex"),
+  "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
+);
 assert.match(runner, /serviceRoleSelectOnly !== true/);
 assert.match(runner, /anonPrivilegesPresent !== false/);
 assert.match(runner, /authenticatedPrivilegesPresent !== false/);

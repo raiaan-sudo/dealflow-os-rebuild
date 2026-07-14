@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,9 @@ import {
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const brokerPath = join(scriptDir, "apply-fresh-staging-migrations.mjs");
 const source = readFileSync(brokerPath, "utf8");
+const trustBundle = readFileSync(
+  join(scriptDir, "..", "..", "config", "security", "supabase-prod-ca-2021.crt"),
+);
 
 function requireMarker(pattern, label) {
   assert.match(source, pattern, `Tracked staging broker is missing ${label}`);
@@ -73,14 +76,20 @@ for (const deferredCommand of [
 requireMarker(/!\/\^v20\\\.\/[\s\S]*summary\.runtime/, "Node 20 verification-round binding");
 requireMarker(/staging migration broker requires Node 20/, "Node 20 execution gate");
 requireMarker(/exact pinned PostgreSQL 17\.6 runtime/, "PostgreSQL 17.6 runtime gate");
-requireMarker(/const expectedTrustBundlePath = "\/etc\/ssl\/cert\.pem"/, "pinned TLS trust bundle path");
-requireMarker(/9dae8d76e55cb08991f2b672d58999ea15560d910759c16b544f843bdffbb994/, "pinned TLS trust bundle digest");
-requireMarker(/trustBundleStat\.uid !== 0/, "root-owned TLS trust bundle gate");
+requireMarker(/config\/security\/supabase-prod-ca-2021\.crt/, "tracked Supabase TLS trust bundle path");
+requireMarker(/700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7/, "pinned Supabase TLS trust bundle digest");
+requireMarker(/committedTrustBundleBytes = git/, "commit-bound TLS trust bundle gate");
+requireMarker(/realpathSync\(expectedTrustBundlePath\) !== expectedTrustBundlePath/, "real-path TLS trust bundle gate");
 requireMarker(/trustBundleStat\.mode & 0o022/, "non-writable TLS trust bundle gate");
 requireMarker(/PGSSLMODE: "verify-full"/, "full TLS server authentication");
 requireMarker(/PGSSLROOTCERT: expectedTrustBundlePath/, "pinned libpq trust bundle transport");
 requireMarker(/tlsServerAuthentication/, "TLS trust identity evidence");
 assert.doesNotMatch(source, /PGSSLMODE: "require"/, "Broker must not accept encryption without server authentication");
+assert.equal(
+  createHash("sha256").update(trustBundle).digest("hex"),
+  "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
+  "Tracked Supabase root CA bytes must match the pinned digest",
+);
 requireMarker(/serverVersion\.startsWith\("17\.6"\)/, "remote PostgreSQL 17.6 proof");
 requireMarker(/requires a completely clean release worktree/, "clean release seal");
 requireMarker(/release identity changed during broker preflight/, "clean-seal recheck");
