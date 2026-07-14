@@ -70,7 +70,11 @@ provider acceptance, production migration, deployment or release.
   bound after every command to one HEAD commit, HEAD tree, tracked-file count,
   tracked-worktree SHA-256, dependency-lock SHA-256, and exact migration
   portfolio SHA-256. Node 24 and a clean `npm ci` dependency installation are
-  mandatory in each round.
+  mandatory in each round. An atomic worktree-scoped process lock rejects
+  overlapping verification rounds so concurrent dependency installation cannot
+  corrupt either result. Abnormal termination leaves the lock fail-closed; it
+  may be removed only after the recorded owner PID and every child process are
+  confirmed absent.
 - The isolated staging fixture must prove direct unpaid/paid, reconciled legacy,
   white-label partner/child, admin/operator, attacker/removed-member, and
   failure/recovery scenarios. It must include a synthetic $297 activation, its

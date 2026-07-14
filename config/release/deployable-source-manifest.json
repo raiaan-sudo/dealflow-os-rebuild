@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 972,
-  "deployableSourceSha256": "4c5e6d80d00dcd32cd29967e9c50969ef4872384d0c35d82506656705e8aa379",
+  "entryCount": 973,
+  "deployableSourceSha256": "19e19d0f888651ea546228a56c546028f50ea99358c092df945fd4b9c8aa01b5",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -168,9 +168,9 @@
     },
     {
       "path": "docs/dealflow-completion/OVERNIGHT_INTEGRATION_20260713.md",
-      "size": 8111,
+      "size": 8414,
       "mode": 33188,
-      "sha256": "e0aa8414cc5739aa0545255e29085d7f0a506ba61d66118752a8f69849d7c86a"
+      "sha256": "57e69c91a7b84735f4f246e6a8bdbd5550ff41da8a03297c0e1048fb465af123"
     },
     {
       "path": "docs/dealflow-completion/PROVIDER_ACCEPTANCE_BOUNDARIES.md",
@@ -821,6 +821,12 @@
       "sha256": "b101671567d9194c7da4db5456d08bb7259f409cfeba877086c674fe3b537083"
     },
     {
+      "path": "scripts/lib/final-verification-lock.mjs",
+      "size": 4625,
+      "mode": 33188,
+      "sha256": "a26a874b5c3dd5c49cd0ea303c209c03cb1da2201200ce52c0c0e6f34b4f8a38"
+    },
+    {
       "path": "scripts/lib/native-postgres-test-adapter.mjs",
       "size": 32069,
       "mode": 33188,
@@ -864,9 +870,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 21729,
+      "size": 22050,
       "mode": 33188,
-      "sha256": "1cb4daff197bef8f1d70c248a3e2f61a52b692d142b59960577ef9ba8ec20817"
+      "sha256": "528ffdec0b5b6172292a9c4e073149abbd7c11f7e1e1566244f6c8fab150a6c6"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -1326,9 +1332,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 12896,
+      "size": 15638,
       "mode": 33188,
-      "sha256": "089a1f115ad049725d0937884118958f80ceaba3f4f8d5679b9d9872f1fff274"
+      "sha256": "518378fa43454caa34469f637b4d26a87310418daef042469b70406bd050576e"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",

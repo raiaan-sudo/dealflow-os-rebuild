@@ -2,7 +2,16 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   FINAL_VERIFICATION_COMMAND_COUNT,
@@ -15,10 +24,81 @@ import {
   finalVerificationEvidenceQualification,
   formatFinalVerificationCommandTuple,
 } from "./lib/final-verification-command-contract.mjs";
+import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
 
 const source = readFileSync("scripts/run-dealflow-final-verification.mjs", "utf8");
 
 assert.match(source, /Final verification requires Node 24/);
+assert.match(source, /acquireFinalVerificationLock/);
+assert.match(source, /process\.once\("exit", releaseFinalVerificationLock\)/);
+assert.doesNotMatch(source, /removeAllListeners/);
+
+const lockRepository = mkdtempSync(join(tmpdir(), "dealflow-final-lock-repo-"));
+const lockRoot = mkdtempSync(join(tmpdir(), "dealflow-final-lock-root-"));
+try {
+  const first = acquireFinalVerificationLock({
+    repositoryRoot: lockRepository,
+    lockRoot,
+  });
+  assert.throws(
+    () => acquireFinalVerificationLock({ repositoryRoot: lockRepository, lockRoot }),
+    /Another exact final verification is already active/,
+  );
+  assert.equal(first.release(), true);
+
+  const stale = acquireFinalVerificationLock({
+    repositoryRoot: lockRepository,
+    lockRoot,
+    pid: 2_147_483_647,
+    processAlive: () => false,
+  });
+  assert.throws(
+    () =>
+      acquireFinalVerificationLock({
+        repositoryRoot: lockRepository,
+        lockRoot,
+        processAlive: () => false,
+      }),
+    /stale final verification lock requires explicit operator cleanup/,
+  );
+  const lockPath = stale.lockPath;
+  assert.equal(stale.release(), true);
+
+  mkdirSync(lockPath, { mode: 0o700 });
+  writeFileSync(join(lockPath, "owner.json"), "{}\n", { mode: 0o600 });
+  assert.throws(
+    () => acquireFinalVerificationLock({ repositoryRoot: lockRepository, lockRoot }),
+    /lock owner is malformed/,
+  );
+  rmSync(lockPath, { recursive: true, force: true });
+
+  const changedOwnership = acquireFinalVerificationLock({
+    repositoryRoot: lockRepository,
+    lockRoot,
+  });
+  const changedOwnerPath = join(changedOwnership.lockPath, "owner.json");
+  const changedOwner = JSON.parse(readFileSync(changedOwnerPath, "utf8"));
+  changedOwner.nonce = "f".repeat(48);
+  writeFileSync(changedOwnerPath, `${JSON.stringify(changedOwner)}\n`, { mode: 0o600 });
+  assert.throws(
+    () => changedOwnership.release(),
+    /lock ownership changed unexpectedly/,
+  );
+  assert.equal(changedOwnership.release({ strict: false }), false);
+  rmSync(changedOwnership.lockPath, { recursive: true, force: true });
+
+  const symlinkTarget = join(lockRoot, "symlink-target");
+  mkdirSync(symlinkTarget, { mode: 0o700 });
+  symlinkSync(symlinkTarget, lockPath);
+  assert.throws(
+    () => acquireFinalVerificationLock({ repositoryRoot: lockRepository, lockRoot }),
+    /lock path is not a safe directory/,
+  );
+} finally {
+  rmSync(lockRoot, { recursive: true, force: true });
+  rmSync(lockRepository, { recursive: true, force: true });
+}
+
 assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 90);
 assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 90);
 assert.equal(new Set(FINAL_VERIFICATION_COMMAND_PORTFOLIO).size, 90);
@@ -324,5 +404,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (migration 103, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 103, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

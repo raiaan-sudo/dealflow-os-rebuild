@@ -12,6 +12,7 @@ import {
   formatFinalVerificationCommandTuple,
 } from "./lib/final-verification-command-contract.mjs";
 import { requireFinalVerificationNativeEnvironment } from "./lib/final-verification-environment.mjs";
+import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
 
 const root = process.cwd();
 const outputArg = process.argv[2];
@@ -39,6 +40,12 @@ if (process.versions.node.split(".")[0] !== "24") {
 if (!outputArg) {
   throw new Error("Usage: node scripts/run-dealflow-final-verification.mjs <external-output-directory> [round]");
 }
+
+const finalVerificationLock = acquireFinalVerificationLock({ repositoryRoot: root });
+const releaseFinalVerificationLock = () => {
+  finalVerificationLock.release({ strict: false });
+};
+process.once("exit", releaseFinalVerificationLock);
 
 const nativeEnvironment = requireFinalVerificationNativeEnvironment(process.env);
 
