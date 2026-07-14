@@ -15,6 +15,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
+import { isExactCurrentResumeIdentity } from "./prior-migration-proof-contract.mjs";
+
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
@@ -31,6 +33,8 @@ const EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE =
   "0fcf11214ed3ae097003f737077cd7c67cdedfb7";
 const EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 =
   "877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4";
+const EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256 =
+  "30f6d3f03198dc2742179cbf7546400ade2f6a660dc52b96b27aeaec46f46ab3";
 const EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
 const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
@@ -38,9 +42,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 102;
+const EXPECTED_MIGRATION_COUNT = 103;
 const EXPECTED_FINAL_MIGRATION =
-  "20260713027000_add_ghl_location_display_name_finalization.sql";
+  "20260713028000_harden_account_deletion_retention_authority.sql";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -53,6 +57,19 @@ const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const SYNTHETIC_FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
+const EXPECTED_SYNTHETIC_RETENTION_POLICY = Object.freeze({
+  graceDays: 0,
+  operationalRetentionDays: 1,
+  supportRetentionDays: 1,
+  analyticsRetentionDays: 1,
+  financialRetentionDays: 365,
+  receiptRetentionDays: 365,
+  billingCancellationMode: "period_end",
+  policyVersion: 2,
+});
+const EXPECTED_DATABASE_TRUST_BUNDLE_PATH = "/etc/ssl/cert.pem";
+const EXPECTED_DATABASE_TRUST_BUNDLE_SHA256 =
+  "9dae8d76e55cb08991f2b672d58999ea15560d910759c16b544f843bdffbb994";
 const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
 const PAID_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000001";
@@ -197,18 +214,27 @@ Safe resume after a previously sealed atomic application:
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
+Exact forward-only migration 103 on the pinned 102-migration staging seal:
+  node scripts/staging/run-isolated-staging-acceptance.mjs \\
+    --execute --apply-forward-migration --deploy \\
+    --prior-migration-proof-dir /absolute/path/pinned-102/migration-proof \\
+    --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<new-seal> \\
+    --round-one /absolute/path/final-verification-round-1.json \\
+    --round-two /absolute/path/final-verification-round-2.json
+
 Required execution environment:
   DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=${EXECUTION_AUTHORIZATION}
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
-Exactly one migration mode is required. Resume mode is read-only and never
-reapplies or resets the already committed migration portfolio.`;
+Exactly one migration mode is required. Resume mode is read-only. Forward mode
+proves the pinned 102 state and applies only migration 103 plus its receipt.`;
 }
 
 function parseArguments(argv) {
   const options = {
     execute: false,
     applyMigrations: false,
+    applyForwardMigration: false,
     verifyExistingMigrations: false,
     deploy: false,
     evidenceDir: null,
@@ -221,6 +247,7 @@ function parseArguments(argv) {
     if (arg === "--help" || arg === "-h") return { help: true };
     if (arg === "--execute") options.execute = true;
     else if (arg === "--apply-migrations") options.applyMigrations = true;
+    else if (arg === "--apply-forward-migration") options.applyForwardMigration = true;
     else if (arg === "--verify-existing-migrations") options.verifyExistingMigrations = true;
     else if (arg === "--deploy") options.deploy = true;
     else if (
@@ -378,15 +405,22 @@ function captureMigrationPortfolio() {
     throw new Error(`The exact ${EXPECTED_MIGRATION_COUNT}-migration portfolio is required`);
   }
   const digest = createHash("sha256");
+  const migrationFiles = [];
   for (const name of migrations) {
     const contents = readFileSync(join(dir, name));
     digest.update(`${name.length}\0${name}\0${contents.length}\0`);
     digest.update(contents);
     digest.update("\0");
+    migrationFiles.push({
+      version: name.slice(0, 14),
+      file: name,
+      sha256: sha256(contents),
+    });
   }
   return Object.freeze({
     migrationCount: migrations.length,
     finalMigration: migrations.at(-1),
+    migrationFiles: Object.freeze(migrationFiles),
     migrationPortfolioSha256: digest.digest("hex"),
   });
 }
@@ -1627,20 +1661,23 @@ async function main() {
     return;
   }
   const migrationModeCount =
-    Number(options.applyMigrations) + Number(options.verifyExistingMigrations);
+    Number(options.applyMigrations) +
+    Number(options.applyForwardMigration) +
+    Number(options.verifyExistingMigrations);
   if (!options.execute || !options.deploy || migrationModeCount !== 1) {
     throw new Error(
-      "No remote work was authorized: --execute, --deploy, and exactly one of --apply-migrations or --verify-existing-migrations are required",
+      "No remote work was authorized: --execute, --deploy, and exactly one migration mode are required",
     );
   }
   if (!options.evidenceDir || !options.roundOne || !options.roundTwo) {
     throw new Error("Evidence directory and both exact final-verification summaries are required");
   }
   if (
-    options.verifyExistingMigrations !== Boolean(options.priorMigrationProofDir)
+    (options.verifyExistingMigrations || options.applyForwardMigration) !==
+      Boolean(options.priorMigrationProofDir)
   ) {
     throw new Error(
-      "--verify-existing-migrations requires --prior-migration-proof-dir, and fresh apply mode forbids it",
+      "Read-only resume and exact forward mode require --prior-migration-proof-dir; fresh apply forbids it",
     );
   }
 
@@ -1696,6 +1733,7 @@ async function main() {
     executionFlags: {
       execute: options.execute,
       applyMigrations: options.applyMigrations,
+      applyForwardMigration: options.applyForwardMigration,
       verifyExistingMigrations: options.verifyExistingMigrations,
       deploy: options.deploy,
     },
@@ -1734,6 +1772,11 @@ async function main() {
       "--verify-existing-exact",
       options.priorMigrationProofDir,
     );
+  } else if (options.applyForwardMigration) {
+    migrationBrokerArgs.push(
+      "--apply-forward-exact",
+      options.priorMigrationProofDir,
+    );
   }
   run(
     EXECUTABLE,
@@ -1741,7 +1784,9 @@ async function main() {
     {
       label: options.verifyExistingMigrations
         ? "read-only exact existing isolated-staging migration verifier"
-        : "atomic fresh isolated-staging migration broker",
+        : options.applyForwardMigration
+          ? "exact forward-only isolated-staging migration broker"
+          : "atomic fresh isolated-staging migration broker",
       env: {
         ...childBaseEnvironment(),
         PATH: process.env.PATH,
@@ -1755,7 +1800,7 @@ async function main() {
     readFileSync(join(migrationEvidenceDir, "staging-migration-summary.json"), "utf8"),
   );
   let priorApplicationRetainedHistory = false;
-  if (options.verifyExistingMigrations) {
+  if (options.verifyExistingMigrations || options.applyForwardMigration) {
     const priorCommit = migrationSummary.priorApplication?.applicationCommit;
     const priorTree = migrationSummary.priorApplication?.applicationTree;
     if (/^[a-f0-9]{40}$/.test(priorCommit ?? "") && /^[a-f0-9]{40}$/.test(priorTree ?? "")) {
@@ -1773,11 +1818,19 @@ async function main() {
     }
   }
   const freshAtomicApplication =
-    !options.verifyExistingMigrations &&
+    options.applyMigrations &&
     migrationSummary.migrationMode == null &&
     migrationSummary.remoteMutationStarted === true &&
     migrationSummary.remoteMutationCompleted === true &&
     migrationSummary.remoteStateVerificationStatus === "EXACT_COMMITTED_PORTFOLIO";
+  const exactCurrentResumePriorIdentity = isExactCurrentResumeIdentity({
+    priorApplication: migrationSummary.priorApplication,
+    expectedMigrationCount: EXPECTED_MIGRATION_COUNT,
+    expectedFinalVersion: EXPECTED_FINAL_MIGRATION.slice(0, 14),
+    expectedMigrationPortfolioSha256: migrations.migrationPortfolioSha256,
+    expectedMigrationFiles: migrations.migrationFiles,
+    expectedNormalizedSchemaSha256: migrationSummary.normalizedSchemaSha256,
+  });
   const verifiedExistingExact =
     options.verifyExistingMigrations &&
     migrationSummary.migrationMode === "VERIFY_EXISTING_EXACT" &&
@@ -1788,6 +1841,23 @@ async function main() {
     migrationSummary.remoteStateVerificationStatus ===
       "EXACT_EXISTING_COMMITTED_PORTFOLIO" &&
     priorApplicationRetainedHistory &&
+    exactCurrentResumePriorIdentity;
+  const exactForwardApplication =
+    options.applyForwardMigration &&
+    migrationSummary.migrationMode === "APPLY_FORWARD_EXACT" &&
+    migrationSummary.forwardOnly === true &&
+    migrationSummary.priorMigrationCount === 102 &&
+    migrationSummary.forwardMigrationCount === 1 &&
+    migrationSummary.forwardMigration?.file === EXPECTED_FINAL_MIGRATION &&
+    migrationSummary.forwardMigration?.version === EXPECTED_FINAL_MIGRATION.slice(0, 14) &&
+    /^[a-f0-9]{64}$/.test(migrationSummary.forwardMigration?.sha256 ?? "") &&
+    migrationSummary.remoteMutationStarted === true &&
+    migrationSummary.remoteMutationCompleted === true &&
+    migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.serviceRoleRetentionConfigurationSelectOnly === true &&
+    migrationSummary.remoteStateVerificationStatus ===
+      "EXACT_FORWARD_COMMITTED_PORTFOLIO" &&
+    priorApplicationRetainedHistory &&
     migrationSummary.priorApplication?.remoteMutationCompleted === true &&
     migrationSummary.priorApplication?.applicationCommit ===
       EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT &&
@@ -1795,24 +1865,21 @@ async function main() {
       EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE &&
     migrationSummary.priorApplication?.manifestSha256 ===
       EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 &&
-    /^[a-f0-9]{64}$/.test(migrationSummary.priorApplication?.manifestSha256 ?? "") &&
-    /^[a-f0-9]{64}$/.test(migrationSummary.priorApplication?.proofSha256 ?? "") &&
-    /^[a-f0-9]{64}$/.test(migrationSummary.priorApplication?.summarySha256 ?? "") &&
-    /^[a-f0-9]{64}$/.test(
-      migrationSummary.priorApplication?.structuralCatalogSha256 ?? "",
-    ) &&
+    migrationSummary.priorApplication?.migrationCount === 102 &&
+    migrationSummary.priorApplication?.lastCommittedVersion === "20260713027000" &&
     migrationSummary.priorApplication?.migrationPortfolioSha256 ===
-      migrations.migrationPortfolioSha256 &&
-    migrationSummary.priorApplication?.normalizedSchemaSha256 ===
-      migrationSummary.normalizedSchemaSha256;
+      EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256 &&
+    Array.isArray(migrationSummary.priorApplication?.migrationFiles) &&
+    migrationSummary.priorApplication.migrationFiles.length === 102;
   if (
     migrationSummary.status !== "PASS" ||
-    (!freshAtomicApplication && !verifiedExistingExact) ||
+    (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication) ||
     migrationSummary.singleOuterTransaction !== true ||
     migrationSummary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
     ![
       "EXACT_COMMITTED_PORTFOLIO",
       "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+      "EXACT_FORWARD_COMMITTED_PORTFOLIO",
     ].includes(migrationSummary.remoteStateVerificationStatus) ||
     migrationSummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.migrationHistoryCount !== EXPECTED_MIGRATION_COUNT ||
@@ -1822,10 +1889,162 @@ async function main() {
     migrationSummary.headTree !== identity.tree ||
     migrationSummary.projectFingerprint !== EXPECTED_SUPABASE_FINGERPRINT ||
     migrationSummary.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
+    migrationSummary.serviceRoleRetentionConfigurationSelectOnly !== true ||
+    migrationSummary.serviceRoleColumnWritePrivilegesPresent !== false ||
+    migrationSummary.anonPrivilegesPresent !== false ||
+    migrationSummary.anonColumnPrivilegesPresent !== false ||
+    migrationSummary.authenticatedPrivilegesPresent !== false ||
+    migrationSummary.authenticatedColumnPrivilegesPresent !== false ||
+    migrationSummary.publicAclPresent !== false ||
+    migrationSummary.publicColumnAclPresent !== false ||
     migrationSummary.migrationPortfolioSha256 !== migrations.migrationPortfolioSha256
   ) {
     throw new Error(
       `The remote migration broker did not bind the exact candidate and all ${EXPECTED_MIGRATION_COUNT} migrations`,
+    );
+  }
+
+  failureContext.stage = "synthetic_retention_owner_authority";
+  const retentionAuthorityEvidenceDir = join(
+    options.evidenceDir,
+    "retention-authority",
+  );
+  run(
+    EXECUTABLE,
+    [
+      join(
+        EXPECTED_REPO,
+        "scripts",
+        "staging",
+        "install-synthetic-retention-authority.mjs",
+      ),
+      EXPECTED_REPO,
+      retentionAuthorityEvidenceDir,
+      options.roundOne,
+      options.roundTwo,
+    ],
+    {
+      label: "exact owner-authority synthetic retention installer",
+      env: {
+        ...childBaseEnvironment(),
+        PATH: process.env.PATH,
+        DEALFLOW_NATIVE_PGBIN: process.env.DEALFLOW_NATIVE_PGBIN,
+      },
+      timeoutMs: 10 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  const retentionAuthoritySummaryPath = join(
+    retentionAuthorityEvidenceDir,
+    "retention-authority-summary.json",
+  );
+  const retentionAuthorityDirectoryStat = lstatSync(retentionAuthorityEvidenceDir);
+  const retentionAuthorityArtifactNames = readdirSync(retentionAuthorityEvidenceDir).sort();
+  if (
+    retentionAuthorityDirectoryStat.isSymbolicLink() ||
+    !retentionAuthorityDirectoryStat.isDirectory() ||
+    (retentionAuthorityDirectoryStat.mode & 0o077) !== 0 ||
+    JSON.stringify(retentionAuthorityArtifactNames) !==
+      JSON.stringify(["SHA256SUMS", "retention-authority-summary.json"])
+  ) {
+    throw new Error("Synthetic retention authority evidence directory is not the exact sealed set");
+  }
+  const retentionAuthoritySummaryStat = lstatSync(retentionAuthoritySummaryPath);
+  const retentionAuthorityChecksumsPath = join(
+    retentionAuthorityEvidenceDir,
+    "SHA256SUMS",
+  );
+  const retentionAuthorityChecksumsStat = lstatSync(retentionAuthorityChecksumsPath);
+  if (
+    retentionAuthoritySummaryStat.isSymbolicLink() ||
+    !retentionAuthoritySummaryStat.isFile() ||
+    (retentionAuthoritySummaryStat.mode & 0o077) !== 0 ||
+    retentionAuthorityChecksumsStat.isSymbolicLink() ||
+    !retentionAuthorityChecksumsStat.isFile() ||
+    (retentionAuthorityChecksumsStat.mode & 0o077) !== 0
+  ) {
+    throw new Error("Synthetic retention authority artifacts must be real owner-only files");
+  }
+  const retentionAuthoritySummaryBytes = readFileSync(retentionAuthoritySummaryPath);
+  const expectedRetentionChecksum =
+    `${sha256(retentionAuthoritySummaryBytes)}  retention-authority-summary.json\n`;
+  if (readFileSync(retentionAuthorityChecksumsPath, "utf8") !== expectedRetentionChecksum) {
+    throw new Error("Synthetic retention authority evidence checksum did not verify");
+  }
+  const retentionAuthoritySummary = JSON.parse(
+    retentionAuthoritySummaryBytes.toString("utf8"),
+  );
+  const retentionAuthorityMode = retentionAuthoritySummary.installationMode;
+  const truthfulRetentionMutationState =
+    (retentionAuthorityMode === "pending_only_installed" &&
+      retentionAuthoritySummary.remoteMutationStarted === true &&
+      retentionAuthoritySummary.remoteMutationCompleted === true &&
+      retentionAuthoritySummary.remoteMutationOutcome ===
+        "exact_pending_only_install_committed") ||
+    (retentionAuthorityMode === "exact_approved_policy_recovered" &&
+      retentionAuthoritySummary.remoteMutationStarted === true &&
+      retentionAuthoritySummary.remoteMutationCompleted === true &&
+      retentionAuthoritySummary.remoteMutationOutcome ===
+        "exact_approved_policy_recovery_committed") ||
+    (retentionAuthorityMode === "exact_existing_reused" &&
+      retentionAuthoritySummary.remoteMutationStarted === false &&
+      retentionAuthoritySummary.remoteMutationCompleted === false &&
+      retentionAuthoritySummary.remoteMutationOutcome ===
+        "exact_existing_reused_without_mutation");
+  const verificationRoundEvidence = retentionAuthoritySummary.verificationRoundEvidence;
+  const exactVerificationRoundEvidence =
+    Array.isArray(verificationRoundEvidence) &&
+    verificationRoundEvidence.length === 2 &&
+    verificationRoundEvidence.every(
+      (record) =>
+        Number.isSafeInteger(record?.fileCount) &&
+        record.fileCount > 0 &&
+        /^[a-f0-9]{64}$/.test(record.evidenceSha256 ?? "") &&
+        /^[a-f0-9]{64}$/.test(record.summarySha256 ?? ""),
+    ) &&
+    new Set(verificationRoundEvidence.map((record) => record.evidenceSha256)).size === 2 &&
+    new Set(verificationRoundEvidence.map((record) => record.summarySha256)).size === 2;
+  if (
+    retentionAuthoritySummary.schemaVersion !==
+      "dealflow.synthetic-retention-authority.v1" ||
+    retentionAuthoritySummary.status !== "PASS" ||
+    retentionAuthoritySummary.authorityRole !== "postgres" ||
+    retentionAuthoritySummary.ownerAuthorityVerified !== true ||
+    JSON.stringify(retentionAuthoritySummary.approvedPolicy) !==
+      JSON.stringify(EXPECTED_SYNTHETIC_RETENTION_POLICY) ||
+    retentionAuthoritySummary.tlsServerAuthentication?.mode !== "verify-full" ||
+    retentionAuthoritySummary.tlsServerAuthentication?.trustBundlePath !==
+      EXPECTED_DATABASE_TRUST_BUNDLE_PATH ||
+    retentionAuthoritySummary.tlsServerAuthentication?.trustBundleSha256 !==
+      EXPECTED_DATABASE_TRUST_BUNDLE_SHA256 ||
+    retentionAuthoritySummary.projectFingerprint !== EXPECTED_SUPABASE_FINGERPRINT ||
+    retentionAuthoritySummary.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
+    retentionAuthoritySummary.releaseBranch !== identity.branch ||
+    retentionAuthoritySummary.headCommit !== identity.commit ||
+    retentionAuthoritySummary.headTree !== identity.tree ||
+    retentionAuthoritySummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
+    retentionAuthoritySummary.migrationPortfolioSha256 !==
+      migrations.migrationPortfolioSha256 ||
+    retentionAuthoritySummary.serviceRoleSelectOnly !== true ||
+    retentionAuthoritySummary.serviceRoleColumnWritePrivilegesPresent !== false ||
+    retentionAuthoritySummary.anonPrivilegesPresent !== false ||
+    retentionAuthoritySummary.authenticatedPrivilegesPresent !== false ||
+    retentionAuthoritySummary.publicAclPresent !== false ||
+    retentionAuthoritySummary.publicColumnAclPresent !== false ||
+    retentionAuthoritySummary.relationOwner !== "postgres" ||
+    retentionAuthoritySummary.ownerUpdatePrivilege !== true ||
+    retentionAuthoritySummary.exactSyntheticMarker !== true ||
+    !exactVerificationRoundEvidence ||
+    !truthfulRetentionMutationState ||
+    retentionAuthoritySummary.productionMutationPerformed !== false ||
+    retentionAuthoritySummary.providerActionPerformed !== false ||
+    retentionAuthoritySummary.customerDataAccessed !== false ||
+    retentionAuthoritySummary.realCustomerDataAccessed !== false ||
+    retentionAuthoritySummary.communicationSent !== false ||
+    retentionAuthoritySummary.spendIncurred !== false
+  ) {
+    throw new Error(
+      "The owner-authority retention installer did not prove the exact synthetic staging authority contract",
     );
   }
 
@@ -1994,6 +2213,7 @@ async function main() {
   }
   const productionGateMatrix = {
     exactCandidateAndSchema: "PASS",
+    syntheticRetentionOwnerAuthority: "PASS",
     isolatedHostedDeployment: "PASS",
     tenSyntheticRoleFixtures: "PASS",
     authenticatedDirectEntitlementBoundaries: "PASS",
@@ -2049,6 +2269,8 @@ async function main() {
     deployment,
     syntheticScenarioCount: 10,
     seedReplayIdempotent: true,
+    syntheticRetentionOwnerAuthorityPassed: true,
+    syntheticRetentionAuthorityInstallationMode: retentionAuthorityMode,
     hostedZeroExternalEffectsPassed: true,
     crossBrowserZeroSkipPassed: true,
     hostedLoadPassed: true,

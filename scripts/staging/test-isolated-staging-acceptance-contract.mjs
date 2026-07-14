@@ -9,6 +9,10 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
 const runner = readFileSync(runnerPath, "utf8");
+const priorProofContract = readFileSync(
+  join(root, "scripts", "staging", "prior-migration-proof-contract.mjs"),
+  "utf8",
+);
 const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
 const seedContract = readFileSync(join(root, "scripts", "test-isolated-staging-seed-contract.mjs"), "utf8");
 const providerIndependentProof = readFileSync(
@@ -53,8 +57,8 @@ assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
 assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 102/);
-assert.match(runner, /20260713027000_add_ghl_location_display_name_finalization\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 103/);
+assert.match(runner, /20260713028000_harden_account_deletion_retention_authority\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 
 const authoritativeFalseControls = extractStringArray(zeroEffectsSource, "MUST_BE_FALSE");
@@ -97,26 +101,58 @@ assert.match(
 const flagGate = runner.indexOf("const migrationModeCount =");
 const releaseCapture = runner.indexOf("const identity = captureExactReleaseIdentity()");
 assert.ok(flagGate >= 0 && releaseCapture > flagGate, "all execution flags must gate any release or remote work");
-assert.match(runner, /Number\(options\.applyMigrations\) \+ Number\(options\.verifyExistingMigrations\)/);
+assert.match(
+  runner,
+  /Number\(options\.applyMigrations\) \+[\s\S]+Number\(options\.applyForwardMigration\) \+[\s\S]+Number\(options\.verifyExistingMigrations\)/,
+);
 assert.match(runner, /migrationModeCount !== 1/);
-assert.match(runner, /--verify-existing-migrations requires --prior-migration-proof-dir/);
+assert.match(runner, /Read-only resume and exact forward mode require --prior-migration-proof-dir/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--verify-existing-exact"/);
+assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--apply-forward-exact"/);
 assert.match(runner, /migrationSummary\.migrationMode === "VERIFY_EXISTING_EXACT"/);
+assert.match(runner, /migrationSummary\.migrationMode === "APPLY_FORWARD_EXACT"/);
+assert.match(runner, /migrationSummary\.serviceRoleColumnWritePrivilegesPresent !== false/);
+assert.match(runner, /migrationSummary\.anonColumnPrivilegesPresent !== false/);
+assert.match(runner, /migrationSummary\.authenticatedColumnPrivilegesPresent !== false/);
+assert.match(runner, /migrationSummary\.publicColumnAclPresent !== false/);
 assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
 assert.match(
   runner,
-  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
-  "the common final gate must accept either exact fresh application or exact read-only resume status",
+  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*"EXACT_FORWARD_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
+  "the common final gate must accept exact fresh, read-only resume, or one-migration forward status",
 );
 assert.match(runner, /verify retained prior migration application tree/);
 assert.match(runner, /verify prior migration application ancestry/);
 assert.match(runner, /priorApplicationRetainedHistory/);
-assert.match(runner, /priorApplication\?\.manifestSha256/);
-assert.match(runner, /priorApplication\?\.structuralCatalogSha256/);
+assert.match(runner, /isExactCurrentResumeIdentity/);
+assert.match(priorProofContract, /priorApplication\.manifestSha256/);
+assert.match(priorProofContract, /priorApplication\.structuralCatalogSha256/);
+assert.match(priorProofContract, /priorApplication\.migrationCount === expectedMigrationCount/);
+assert.match(priorProofContract, /priorApplication\.migrationFiles/);
+assert.match(priorProofContract, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
 assert.match(runner, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);
+assert.match(runner, /EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256/);
+const currentResumeGate = runner.slice(
+  runner.indexOf("const verifiedExistingExact ="),
+  runner.indexOf("const exactForwardApplication ="),
+);
+assert.match(currentResumeGate, /exactCurrentResumePriorIdentity/);
+assert.doesNotMatch(
+  currentResumeGate,
+  /EXPECTED_PRIOR_MIGRATION_(?:APPLICATION|MANIFEST|PORTFOLIO)/,
+  "current-103 resume must not require the pinned migration-102 identity",
+);
+const pinnedForwardGate = runner.slice(
+  runner.indexOf("const exactForwardApplication ="),
+  runner.indexOf("if (\n    migrationSummary.status"),
+);
+assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
+assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
+assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);
+assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256/);
 assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
 assert.match(runner, /Staging acceptance requires Node 20/);
 assert.match(runner, /requires a completely clean release worktree/);
@@ -194,17 +230,76 @@ assert.match(
 
 const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
 const migrationIndex = runner.indexOf("const migrationBrokerArgs = [");
+const retentionAuthorityIndex = runner.indexOf(
+  'failureContext.stage = "synthetic_retention_owner_authority"',
+);
 const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
 const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl)");
 assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
 assert.ok(migrationIndex > configureIndex, "migration apply must follow exact hosted config provisioning");
-assert.ok(deployIndex > migrationIndex, "deployment must follow exact migration proof");
+assert.ok(
+  retentionAuthorityIndex > migrationIndex,
+  "owner-authority retention installation must follow exact migration proof",
+);
+assert.ok(
+  deployIndex > retentionAuthorityIndex,
+  "deployment must follow exact migration and owner-authority proofs",
+);
 assert.ok(seedIndex > deployIndex, "deployment-specific partner host must exist before seeding");
 assert.match(
   runner,
   /DEALFLOW_NATIVE_PGBIN: process\.env\.DEALFLOW_NATIVE_PGBIN/,
   "the staging parent must forward the pinned PostgreSQL runtime to the migration broker",
 );
+assert.match(runner, /install-synthetic-retention-authority\.mjs/);
+assert.match(runner, /retention-authority-summary\.json/);
+assert.match(runner, /Synthetic retention authority evidence directory is not the exact sealed set/);
+assert.match(runner, /expectedRetentionChecksum/);
+assert.match(runner, /Synthetic retention authority evidence checksum did not verify/);
+assert.match(runner, /dealflow\.synthetic-retention-authority\.v1/);
+assert.match(runner, /authorityRole !== "postgres"/);
+assert.match(runner, /ownerAuthorityVerified !== true/);
+assert.match(runner, /EXPECTED_SYNTHETIC_RETENTION_POLICY/);
+for (const [field, value] of Object.entries({
+  graceDays: 0,
+  operationalRetentionDays: 1,
+  supportRetentionDays: 1,
+  analyticsRetentionDays: 1,
+  financialRetentionDays: 365,
+  receiptRetentionDays: 365,
+  policyVersion: 2,
+})) {
+  assert.match(runner, new RegExp(`${field}: ${value}`));
+}
+assert.match(runner, /billingCancellationMode: "period_end"/);
+assert.match(runner, /tlsServerAuthentication\?\.mode !== "verify-full"/);
+assert.match(runner, /EXPECTED_DATABASE_TRUST_BUNDLE_PATH = "\/etc\/ssl\/cert\.pem"/);
+assert.match(runner, /9dae8d76e55cb08991f2b672d58999ea15560d910759c16b544f843bdffbb994/);
+assert.match(runner, /serviceRoleSelectOnly !== true/);
+assert.match(runner, /anonPrivilegesPresent !== false/);
+assert.match(runner, /authenticatedPrivilegesPresent !== false/);
+assert.match(runner, /publicAclPresent !== false/);
+assert.match(runner, /relationOwner !== "postgres"/);
+assert.match(runner, /ownerUpdatePrivilege !== true/);
+assert.match(runner, /exactSyntheticMarker !== true/);
+assert.match(runner, /retentionAuthorityMode === "pending_only_installed"/);
+assert.match(runner, /retentionAuthorityMode === "exact_approved_policy_recovered"/);
+assert.match(runner, /retentionAuthorityMode === "exact_existing_reused"/);
+assert.match(runner, /customerDataAccessed !== false/);
+assert.match(runner, /providerActionPerformed !== false/);
+assert.match(runner, /realCustomerDataAccessed !== false/);
+assert.match(runner, /communicationSent !== false/);
+assert.match(runner, /spendIncurred !== false/);
+assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_pending_only_install_committed/);
+assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_approved_policy_recovery_committed/);
+assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_existing_reused_without_mutation/);
+assert.match(runner, /serviceRoleColumnWritePrivilegesPresent !== false/);
+assert.match(runner, /publicColumnAclPresent !== false/);
+assert.match(runner, /verificationRoundEvidence\.length === 2/);
+assert.match(runner, /Number\.isSafeInteger\(record\?\.fileCount\)/);
+assert.match(runner, /record\.fileCount > 0/);
+assert.match(runner, /record\.evidenceSha256/);
+assert.match(runner, /record\.summarySha256/);
 assert.match(runner, /"env", "list", "production", "--format=json"/);
 assert.match(runner, /"env",\s*"add"/);
 assert.match(runner, /input: `\$\{value\}\\n`/);
@@ -319,6 +414,12 @@ assert.match(providerIndependentProof, /providerTableStateUnchanged: true/);
 assert.match(providerIndependentProof, /failedRefreshPreservedLastConfirmed: true/);
 assert.match(providerIndependentProof, /crossPartnerCampaignDenied: true/);
 assert.match(providerIndependentProof, /create_account_deletion_request_v1/);
+assert.match(providerIndependentProof, /authority\.grace_days !== 0/);
+assert.match(providerIndependentProof, /authority\.financial_retention_days !== 365/);
+assert.match(providerIndependentProof, /authority\.policy_version !== 2/);
+assert.match(providerIndependentProof, /retention_policy\?\.operationalRetentionDays !== 1/);
+assert.match(providerIndependentProof, /retention_policy\?\.financialRetentionDays !== 365/);
+assert.match(providerIndependentProof, /retention_policy\?\.policyVersion !== 2/);
 assert.match(providerIndependentProof, /account_deletion_execution_disabled/);
 assert.match(providerIndependentProof, /providerReceiptCount: 0/);
 assert.match(providerIndependentProof, /fullProviderOffboardingPerformed: false/);
@@ -373,7 +474,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-isolated-staging-acceptance-contract\.mjs"/);
 assert.match(envExample, /^STAGING_PARTNER_APP_URL=$/m);
@@ -389,6 +490,12 @@ const help = spawnSync(process.execPath, [runnerPath, "--help"], {
 assert.equal(help.status, 0, help.stderr);
 assert.match(help.stdout, /Exactly one migration mode is required/);
 assert.match(help.stdout, /--verify-existing-migrations --deploy/);
+assert.match(help.stdout, /--apply-forward-migration --deploy/);
+assert.match(
+  help.stdout,
+  /Exact forward-only migration 103[^\n]*:\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir/s,
+  "forward-mode help must preserve executable multiline shell continuations",
+);
 
 const refused = spawnSync(process.execPath, [runnerPath], {
   cwd: root,
@@ -400,5 +507,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh-or-read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 102-migration atomic broker with sealed exact-existing resume; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, read-only-resume, or exact-forward authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 103-migration atomic broker with pinned 102-to-103 forward mode and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

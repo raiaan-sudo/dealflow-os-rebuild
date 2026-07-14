@@ -2,7 +2,7 @@
 
 Historical ledger notice (2026-07-13): this 864-row inventory is retained as
 audit history for the earlier sealed implementation. It is not the current
-release-status authority and must not be used to claim the 102-migration
+release-status authority and must not be used to claim the 103-migration
 candidate is staged or released. Use `CURRENT_RELEASE_ISSUE_LEDGER.md` for the
 current candidate, staging, provider, and production disposition. The JSON and
 CSV companions are historical companions to this inventory.

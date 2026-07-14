@@ -25,6 +25,24 @@ const ghlActivationMigration = readFileSync(
   ),
   "utf8",
 );
+const campaignEntitlementMigration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260713021000_require_paid_activation_for_campaign_creation.sql",
+  ),
+  "utf8",
+);
+const campaignCreationGateMigration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260710235950_gate_campaign_creation_entitlement.sql",
+  ),
+  "utf8",
+);
 
 assert.match(source, /FIXTURE_LABEL = "DF-STAGING-20260712"/);
 assert.match(source, /FIXTURE_TIMESTAMP = "2026-07-12T12:00:00\.000Z"/);
@@ -183,6 +201,40 @@ assert.match(source, /initialCreditTruth\.balance_after !== 1_000/);
 assert.match(source, /commercial_activation_initial_credit:/);
 assert.match(source, /request_ghl_provisioning_from_billing_activation_v1/);
 assert.doesNotMatch(source, /grant_user_credits/);
+assert.doesNotMatch(source, /upsert\(admin, "campaign_plans"/);
+assert.match(source, /create \$\{childCampaign\.name\} through entitlement RPC/);
+assert.match(source, /p_campaign_id: childCampaign\.id/);
+assert.match(source, /p_organization_id: childCampaign\.organizationId/);
+assert.match(source, /p_user_id: childCampaign\.userId/);
+assert.match(source, /\.eq\("id", childCampaign\.id\)[\s\S]*\.eq\("organization_id", childCampaign\.organizationId\)[\s\S]*\.eq\("user_id", childCampaign\.userId\)/);
+assert.match(source, /completedChildCampaign\.partner_id !== childCampaign\.partnerId/);
+const childCampaignUpdateBody = /const completedChildCampaign = await assertNoError\(\s*await admin\s*\.from\("campaign_plans"\)\s*\.update\(\{([\s\S]*?)\}\)\s*\.eq\("id", childCampaign\.id\)/.exec(source)?.[1];
+assert.ok(childCampaignUpdateBody, "child campaign completion update must remain statically inspectable");
+assert.doesNotMatch(
+  childCampaignUpdateBody,
+  /\b(?:id|owner_id|organization_id|user_id)\s*:/,
+  "child campaign completion must not mutate immutable tenant identity",
+);
+assert.match(
+  campaignCreationGateMigration,
+  /revoke insert on table public\.campaign_plans from public, anon, authenticated, service_role/,
+);
+assert.match(
+  campaignEntitlementMigration,
+  /grant execute on function public\.create_campaign_plan_with_entitlement_v1[\s\S]*to service_role/,
+);
+assert.match(campaignEntitlementMigration, /Exact tenant\/user identity replay is read-only/);
+assert.match(
+  source,
+  /must be installed by the pinned DB-owner broker before fixture seeding/,
+  "the service-role seed must never install owner\/legal retention authority",
+);
+assert.doesNotMatch(
+  source,
+  /\.from\("account_deletion_retention_configuration"\)\s*\.update\(/,
+  "the service-role seed must remain read-only for retention authority",
+);
+assert.doesNotMatch(source, /install exact synthetic staging retention authority/);
 assert.match(source, /verify exact synthetic commercial activation count/);
 assert.match(source, /verify exact synthetic initial-credit count/);
 assert.match(source, /verify exact synthetic GHL activation-request count/);
@@ -232,7 +284,16 @@ assert.match(source, /verify exact active verified staging partner domain/);
 assert.match(source, /verify exact white-label child workspace attribution/);
 assert.match(source, /verify exact white-label partner two child workspace attribution/);
 assert.match(source, /SYNTHETIC_RETENTION_AUTHORITY_MARKER/);
-assert.match(source, /account_deletion_retention_authority_pending/);
+assert.match(source, /const SYNTHETIC_RETENTION_POLICY = Object\.freeze/);
+assert.match(source, /grace_days: 0/);
+assert.match(source, /operational_retention_days: 1/);
+assert.match(source, /financial_retention_days: 365/);
+assert.match(source, /billing_cancellation_mode: "period_end"/);
+assert.match(source, /policy_version: 2/);
+assert.match(source, /The staging retention policy drifted at/);
+assert.match(source, /The staging retention policy readback drifted at/);
+assert.match(source, /policy: SYNTHETIC_RETENTION_POLICY/);
+assert.match(source, /pinned DB-owner broker before fixture seeding/);
 assert.match(source, /pendingBeforeApproval: retentionAuthorityPendingBeforeApproval/);
 assert.match(source, /approvedAt: new Date\(retentionAuthorityAfter\.approved_at\)\.toISOString\(\)/);
 assert.match(source, /reusedExistingSyntheticApproval: syntheticRetentionAuthorityReused/);
@@ -258,5 +319,5 @@ assert.match(envExample, /^PARTNER_ATTRIBUTION_SIGNING_SECRET=$/m);
 assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);
 
 console.log(
-  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic synthetic roles, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, pending-before-approved synthetic deletion authority, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
+  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic synthetic roles, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
 );

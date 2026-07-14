@@ -2,8 +2,8 @@
 
 Overall verdict: `NO_GO`
 Frozen foundation: `80 MIGRATIONS / HISTORICAL_PASS`
-Integrated candidate: `102 MIGRATIONS / PENDING_FINAL_SEAL`
-Exact clean-seal 102-chain proof: `NOT_YET_RUN`
+Integrated candidate: `103 MIGRATIONS / PENDING_FINAL_SEAL`
+Exact clean-seal 103-chain proof: `NOT_YET_RUN`
 Isolated hosted staging application: `NOT_YET_RUN`
 Production migration: `NOT_YET_RUN`
 
@@ -20,7 +20,7 @@ produced a frozen 80-migration foundation and retained PostgreSQL 17.6 evidence
 for 14 foundation/adoption/collision/RLS/recovery gates. That evidence is a
 `HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions.
 
-The current source tree contains exactly 102 ordered SQL migrations. The twenty-two
+The current source tree contains exactly 103 ordered SQL migrations. The twenty-three
 additive extensions after the frozen foundation are:
 
 81. `20260712213000_create_ghl_sandbox_provider_path.sql`
@@ -45,8 +45,9 @@ additive extensions after the frozen foundation are:
 100. `20260713025000_add_generated_video_canonical_storage.sql`
 101. `20260713026000_add_account_deletion_and_provider_offboarding.sql`
 102. `20260713027000_add_ghl_location_display_name_finalization.sql`
+103. `20260713028000_harden_account_deletion_retention_authority.sql`
 
-Migrations 90-102 are not cosmetic. They prevent location-global GHL personalization
+Migrations 90-103 are not cosmetic. They prevent location-global GHL personalization
 from allowing one website campaign to overwrite another. Readiness becomes an
 exact organization + campaign + environment + manifest-slot + source-plan
 fingerprint fact. Legacy root-only personalization can serve one campaign only;
@@ -81,16 +82,22 @@ Migration 102 adds the fenced GHL location display-name finalization operation.
 It keeps the full immutable request tag only until exact location identity is
 durable, then requires official PUT cleanup and GET readback of the clean name
 before snapshot provisioning can advance.
+Migration 103 closes the retained account-deletion authority gap. The
+owner/legal retention configuration remains readable by `service_role`, but
+only database-owner authority may mutate it; explicit postconditions fail the
+migration if the service role retains `INSERT`, `UPDATE`, `DELETE`, or
+`TRUNCATE` privileges at table level, or any column-level `INSERT`, `UPDATE`,
+or `REFERENCES` grant survives.
 
 The final manifest must derive count, order, per-file digest, and aggregate
 digest from the exact clean commit. Those values are `PENDING_FINAL_SEAL` and
 must not be copied from a working tree.
 
-## Required local 102-chain proof
+## Required local 103-chain proof
 
 Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prove:
 
-1. all 102 migrations apply in order to a fresh disposable database;
+1. all 103 migrations apply in order to a fresh disposable database;
 2. frozen foundation followed by extensions converges to the same semantic
    public/private schema as the direct fresh chain;
 3. exact migration history replay performs zero structural mutation;
@@ -106,20 +113,22 @@ Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prov
 9. two independent final databases produce the same normalized digest; and
 10. all disposable roles/databases/processes are removed after proof.
 
-Current result for the exact final 102-migration seal: `NOT_YET_RUN`.
+Current result for the exact final 103-migration seal: `NOT_YET_RUN`.
 
 ## Isolated staging application contract
 
 The staging broker may run only after two passing final summaries bind the same
 clean seal. It must independently verify:
 
-- exact 102-file inventory and final filename;
+- exact 103-file inventory and final filename;
 - exact repository commit/tree/content/lock/migration digests;
 - exact isolated Supabase fingerprint and safe suffix;
 - exact staging Vercel project and host with no production alias;
-- owner-only database authority and an empty supported platform baseline;
+- owner-only database authority and either an empty supported platform baseline
+  or the pinned exact prior-102 qibh proof;
 - PostgreSQL runtime compatibility;
-- one transaction per migration plus its history receipt;
+- one outer transaction for the selected portfolio (fresh 103 or forward-only
+  migration 103) and every matching history receipt;
 - post-application schema/ACL/RLS digest and idempotent replay; and
 - sanitized external evidence with no credential or customer payload.
 
@@ -173,5 +182,5 @@ deletion, consent, GHL, Meta, and provider record. Never:
 - deploy an older checkout merely because it predates the failure.
 
 The retained 80-migration foundation includes a historical local
-forward-recovery drill. A final-seal 102-chain local drill, hosted staging drill,
+forward-recovery drill. A final-seal 103-chain local drill, hosted staging drill,
 and production-bound recovery exercise are all `NOT_YET_RUN`.

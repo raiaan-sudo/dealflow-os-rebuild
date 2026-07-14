@@ -471,13 +471,24 @@ async function main() {
   const authority = await noError(
     await admin
       .from("account_deletion_retention_configuration")
-      .select("approved_authority_hash,approved_at")
+      .select("grace_days,operational_retention_days,support_retention_days,analytics_retention_days,financial_retention_days,receipt_retention_days,billing_cancellation_mode,policy_version,approved_authority_hash,approved_at")
       .eq("singleton", true)
       .single(),
     "read exact synthetic deletion authority",
   );
   const expectedAuthorityHash = `sha256:${sha256(RETENTION_AUTHORITY_MARKER)}`;
-  if (authority.approved_authority_hash !== expectedAuthorityHash || !authority.approved_at) {
+  if (
+    authority.approved_authority_hash !== expectedAuthorityHash ||
+    !authority.approved_at ||
+    authority.grace_days !== 0 ||
+    authority.operational_retention_days !== 1 ||
+    authority.support_retention_days !== 1 ||
+    authority.analytics_retention_days !== 1 ||
+    authority.financial_retention_days !== 365 ||
+    authority.receipt_retention_days !== 365 ||
+    authority.billing_cancellation_mode !== "period_end" ||
+    authority.policy_version !== 2
+  ) {
     throw new Error("Synthetic deletion authority is not approved in isolated staging");
   }
   const deletionUser = await noError(
@@ -508,7 +519,15 @@ async function main() {
     deletionRequest?.organization_id !== IDS.deletionOrganization ||
     deletionRequest?.requested_by_user_id !== deletionUser.id ||
     deletionRequest?.state !== "suspending" ||
-    deletionRequest?.retention_policy?.approvedAuthorityHash !== expectedAuthorityHash
+    deletionRequest?.retention_policy?.approvedAuthorityHash !== expectedAuthorityHash ||
+    deletionRequest?.retention_policy?.graceDays !== 0 ||
+    deletionRequest?.retention_policy?.operationalRetentionDays !== 1 ||
+    deletionRequest?.retention_policy?.supportRetentionDays !== 1 ||
+    deletionRequest?.retention_policy?.analyticsRetentionDays !== 1 ||
+    deletionRequest?.retention_policy?.financialRetentionDays !== 365 ||
+    deletionRequest?.retention_policy?.receiptRetentionDays !== 365 ||
+    deletionRequest?.retention_policy?.billingCancellationMode !== "period_end" ||
+    deletionRequest?.retention_policy?.policyVersion !== 2
   ) {
     throw new Error("Synthetic account-deletion request did not snapshot exact approved authority");
   }

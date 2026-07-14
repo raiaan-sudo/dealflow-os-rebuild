@@ -114,7 +114,7 @@ The authoritative additive migration is
 adds a private immutable binding ledger, a replay-safe service-role RPC,
 generated-video path validation, creative-asset identity and customer-URL
 immutability, and a reserved Storage prefix trigger. It passed the exact
-102-migration disposable PostgreSQL 17.6 chain, including a second replay of
+103-migration disposable PostgreSQL 17.6 chain, including a second replay of
 migration 100, exact bind replay, cross-tenant/collision rejection, hostile
 custom-GUC attempts, direct service-role tampering rejection, and non-service
 Storage-prefix mutation rejection. The complete portfolio and final seal must

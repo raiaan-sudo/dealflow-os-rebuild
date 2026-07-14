@@ -10,7 +10,8 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const EXPECTED_MIGRATION_COUNT = 102;
+const EXPECTED_MIGRATION_COUNT = 103;
+const REQUIRED_FINAL_MIGRATION = "20260713028000_harden_account_deletion_retention_authority.sql";
 const TRANSACTION_OWNING_MIGRATION = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = readdirSync(MIGRATIONS)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))
@@ -964,6 +965,7 @@ async function proveBehavior(session) {
 let createdPostgresRole = false;
 try {
   assert.equal(migrations.length, EXPECTED_MIGRATION_COUNT);
+  assert.equal(migrations.at(-1), REQUIRED_FINAL_MIGRATION);
   adapter.preflight();
   if (adapter.psql("select exists(select 1 from pg_roles where rolname='postgres');") !== "t") {
     adapter.psql("create role postgres superuser nologin;", { label: "Create isolated migration owner" });

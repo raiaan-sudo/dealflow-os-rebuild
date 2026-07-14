@@ -14,6 +14,16 @@ const EXPECTED_STAGING_APP_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.ap
 const PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE = "owner";
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
+const SYNTHETIC_RETENTION_POLICY = Object.freeze({
+  grace_days: 0,
+  operational_retention_days: 1,
+  support_retention_days: 1,
+  analytics_retention_days: 1,
+  financial_retention_days: 365,
+  receipt_retention_days: 365,
+  billing_cancellation_mode: "period_end",
+  policy_version: 2,
+});
 const SYNTHETIC_SCENARIOS = Object.freeze({
   newDirect: Object.freeze({
     key: "new_unpaid_direct_realtor",
@@ -766,7 +776,7 @@ async function main() {
   const retentionAuthorityBefore = await assertNoError(
     await admin
       .from("account_deletion_retention_configuration")
-      .select("policy_version,approved_authority_hash,approved_at")
+      .select("grace_days,operational_retention_days,support_retention_days,analytics_retention_days,financial_retention_days,receipt_retention_days,billing_cancellation_mode,policy_version,approved_authority_hash,approved_at")
       .eq("singleton", true)
       .single(),
     "read staging account-deletion retention authority before approval",
@@ -777,44 +787,23 @@ async function main() {
   const syntheticRetentionAuthorityReused =
     retentionAuthorityBefore.approved_authority_hash === syntheticRetentionAuthorityHash &&
     typeof retentionAuthorityBefore.approved_at === "string";
-  if (!retentionAuthorityPendingBeforeApproval && !syntheticRetentionAuthorityReused) {
-    throw new Error("The staging retention authority is neither pending nor the exact synthetic approval");
-  }
   if (retentionAuthorityPendingBeforeApproval) {
-    const rejectedPendingRequest = await admin.rpc("create_account_deletion_request_v1", {
-      p_organization_id: IDS.deletionOrganization,
-      p_actor_user_id: scenarioUserIds.deletion,
-      p_idempotency_key: "df-staging-deletion-retention-authority-pending",
-      p_identity_method: "password",
-      p_identity_email_hash: `sha256:${sha256(SYNTHETIC_SCENARIOS.deletion.email)}`,
-    });
-    if (
-      !rejectedPendingRequest.error ||
-      !/account_deletion_retention_authority_pending/i.test(
-        rejectedPendingRequest.error.message ?? "",
-      )
-    ) {
-      throw new Error("Account deletion did not fail closed before synthetic staging authority approval");
-    }
-    await assertNoError(
-      await admin
-        .from("account_deletion_retention_configuration")
-        .update({
-          approved_authority_hash: syntheticRetentionAuthorityHash,
-          approved_at: FIXTURE_TIMESTAMP,
-        })
-        .eq("singleton", true)
-        .is("approved_authority_hash", null)
-        .is("approved_at", null)
-        .select("policy_version,approved_authority_hash,approved_at")
-        .single(),
-      "install exact synthetic staging retention authority",
+    throw new Error(
+      "The exact synthetic staging retention authority must be installed by the pinned DB-owner broker before fixture seeding",
     );
+  }
+  if (!syntheticRetentionAuthorityReused) {
+    throw new Error("The staging retention authority is not the exact synthetic approval");
+  }
+  for (const [field, expected] of Object.entries(SYNTHETIC_RETENTION_POLICY)) {
+    if (retentionAuthorityBefore[field] !== expected) {
+      throw new Error(`The staging retention policy drifted at ${field}`);
+    }
   }
   const retentionAuthorityAfter = await assertNoError(
     await admin
       .from("account_deletion_retention_configuration")
-      .select("policy_version,approved_authority_hash,approved_at")
+      .select("grace_days,operational_retention_days,support_retention_days,analytics_retention_days,financial_retention_days,receipt_retention_days,billing_cancellation_mode,policy_version,approved_authority_hash,approved_at")
       .eq("singleton", true)
       .single(),
     "read staging account-deletion retention authority after approval",
@@ -824,6 +813,11 @@ async function main() {
     !sameInstant(retentionAuthorityAfter.approved_at, FIXTURE_TIMESTAMP)
   ) {
     throw new Error("The exact synthetic staging retention authority was not preserved");
+  }
+  for (const [field, expected] of Object.entries(SYNTHETIC_RETENTION_POLICY)) {
+    if (retentionAuthorityAfter[field] !== expected) {
+      throw new Error(`The staging retention policy readback drifted at ${field}`);
+    }
   }
 
   await upsert(admin, "billing_subscriptions", {
@@ -1273,36 +1267,63 @@ async function main() {
     },
   ];
   for (const childCampaign of childCampaignFixtures) {
-    await upsert(admin, "campaign_plans", {
-      id: childCampaign.id,
-      owner_id: childCampaign.userId,
-      user_id: childCampaign.userId,
-      organization_id: childCampaign.organizationId,
-      partner_id: childCampaign.partnerId,
-      plan: {
-        fixture: FIXTURE_LABEL,
-        synthetic: true,
-        name: childCampaign.name,
-        campaign_name: childCampaign.name,
-        public_slug: childCampaign.slug,
-        objective: "Synthetic white-label isolation proof",
-        customer_type: "realtor",
-        market: "Toronto, Ontario",
-        location: "Toronto, Ontario",
-        intent: "buyer",
-      },
-      ads: [],
-      business_name: childCampaign.name,
-      status: "draft",
-      client_name: `${FIXTURE_LABEL} Child Realtor`,
-      industry: "Real estate",
-      location: "Toronto, Ontario",
-      budget: "10",
+    const childPlan = {
+      fixture: FIXTURE_LABEL,
+      synthetic: true,
+      name: childCampaign.name,
+      campaign_name: childCampaign.name,
       public_slug: childCampaign.slug,
-      publish_state: "draft",
-      launch_status: "draft",
-      lead_loop_verified: false,
-    }, "id");
+      objective: "Synthetic white-label isolation proof",
+      customer_type: "realtor",
+      market: "Toronto, Ontario",
+      location: "Toronto, Ontario",
+      intent: "buyer",
+    };
+    await assertNoError(
+      await admin.rpc("create_campaign_plan_with_entitlement_v1", {
+        p_campaign_id: childCampaign.id,
+        p_organization_id: childCampaign.organizationId,
+        p_user_id: childCampaign.userId,
+        p_plan: childPlan,
+        p_launch_status: "draft",
+        p_lead_loop_verified: false,
+        p_public_slug: childCampaign.slug,
+      }),
+      `create ${childCampaign.name} through entitlement RPC`,
+    );
+    const completedChildCampaign = await assertNoError(
+      await admin
+        .from("campaign_plans")
+        .update({
+          partner_id: childCampaign.partnerId,
+          plan: childPlan,
+          ads: [],
+          business_name: childCampaign.name,
+          status: "draft",
+          client_name: `${FIXTURE_LABEL} Child Realtor`,
+          industry: "Real estate",
+          location: "Toronto, Ontario",
+          budget: "10",
+          public_slug: childCampaign.slug,
+          publish_state: "draft",
+          launch_status: "draft",
+          lead_loop_verified: false,
+        })
+        .eq("id", childCampaign.id)
+        .eq("organization_id", childCampaign.organizationId)
+        .eq("user_id", childCampaign.userId)
+        .select("id,organization_id,user_id,partner_id")
+        .single(),
+      `complete ${childCampaign.name} fixture`,
+    );
+    if (
+      completedChildCampaign.id !== childCampaign.id ||
+      completedChildCampaign.organization_id !== childCampaign.organizationId ||
+      completedChildCampaign.user_id !== childCampaign.userId ||
+      completedChildCampaign.partner_id !== childCampaign.partnerId
+    ) {
+      throw new Error(`${childCampaign.name} did not preserve exact tenant identity`);
+    }
   }
 
   const nowMs = Date.now();
@@ -2059,6 +2080,7 @@ async function main() {
       approvedAfter: true,
       approvedAt: new Date(retentionAuthorityAfter.approved_at).toISOString(),
       reusedExistingSyntheticApproval: syntheticRetentionAuthorityReused,
+      policy: SYNTHETIC_RETENTION_POLICY,
       productionDefaultChanged: false,
     },
     failureFixtures: {

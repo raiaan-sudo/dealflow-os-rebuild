@@ -2,7 +2,7 @@
 
 Current verdict: `NO_GO`
 Final candidate commit/tree: `PENDING_FINAL_SEAL`
-Integrated migration inventory: `102`
+Integrated migration inventory: `103`
 Two exact-seal rounds: `NOT_YET_RUN`
 Isolated staging: `NOT_YET_RUN`
 Production deployment/mutation: `NOT_YET_RUN / NONE CLAIMED`
@@ -29,8 +29,8 @@ The integrated candidate preserves the realtor-focused UI and adds or hardens:
   stage-isolated job orchestration and fair reporting claims; and
 - canonical DealFlow-owned generated-video storage and a durable, always-fenced
   account-deletion/provider-offboarding lifecycle; and
-- an exact 102-migration inventory ending at
-  `20260713027000_add_ghl_location_display_name_finalization.sql`.
+- an exact 103-migration inventory ending at
+  `20260713028000_harden_account_deletion_retention_authority.sql`.
 
 This is source-contract truth only. The final clean seal and its complete proof
 are pending.
@@ -39,14 +39,14 @@ are pending.
 
 The recovered 80-migration PostgreSQL 17.6 foundation remains a retained
 `HISTORICAL_PASS`. Earlier 82/87/89 counts, tranche commits, and the
-99-migration checkpoint are intermediate historical evidence. They are not the
-current candidate seal and do not prove extensions 81-102, hosted staging, a
+99/102-migration checkpoints are intermediate historical evidence. They are not
+the current candidate seal and do not prove extensions 81-103, hosted staging, a
 provider, or production.
 
 ## Remaining release gates
 
 1. Create the final clean commit/tree and complete two identical exact-seal
-   local rounds, including the exact 102-chain, security, dependency, secret,
+   local rounds, including the exact 103-chain, security, dependency, secret,
    browser and load portfolios.
 2. Apply/deploy that exact seal only to isolated staging and complete zero-skip
    authenticated multi-role, white-label, EN/FR/ES, golden-journey,

@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 const source = readFileSync("scripts/run-dealflow-final-verification.mjs", "utf8");
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 102",
-  "20260713027000_add_ghl_location_display_name_finalization.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 103",
+  "20260713028000_harden_account_deletion_retention_authority.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["git", ["diff", "--check"]]',
@@ -65,5 +65,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (migration 102, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (migration 103, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

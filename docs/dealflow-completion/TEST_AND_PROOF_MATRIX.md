@@ -2,7 +2,7 @@
 
 Overall verdict: `NO_GO`
 Candidate seal: `PENDING_FINAL_SEAL`
-Current migration inventory: `102`
+Current migration inventory: `103`
 Two final exact-seal rounds: `NOT_YET_RUN`
 Isolated hosted staging acceptance: `NOT_YET_RUN`
 Production release proof: `NOT_YET_RUN`
@@ -30,8 +30,8 @@ and production. A pass in one column never implies a pass in a later column.
 | Evidence | Status | Exact limit |
 |---|---|---|
 | Production baseline source/deployment ancestry for the canonical core domains | `HISTORICAL_PASS` | Does not cover three independent subdomains and does not identify the current candidate |
-| Frozen recovered 80-migration PostgreSQL 17.6 foundation portfolio | `HISTORICAL_PASS` | Proves the recovered foundation and its retained oracle; it is not proof of extensions 81-102 |
-| Earlier 82/87/89/90/91/98 migration tranches and the 99-migration checkpoint | `HISTORICAL_PASS` where retained | Intermediate historical milestones only; none is the exact current 102-migration seal |
+| Frozen recovered 80-migration PostgreSQL 17.6 foundation portfolio | `HISTORICAL_PASS` | Proves the recovered foundation and its retained oracle; it is not proof of extensions 81-103 |
+| Earlier 82/87/89/90/91/98 migration tranches and the 99/102-migration checkpoints | `HISTORICAL_PASS` where retained | Intermediate historical milestones only; none is the exact current 103-migration seal |
 | Earlier anonymous screenshot and accessibility tranches | `HISTORICAL_PASS` where retained | Earlier source/runtime/viewports only; not hosted authenticated acceptance |
 
 Files under `docs/dealflow-completion/evidence/` keep their original counts and
@@ -63,7 +63,7 @@ final runner version. The authoritative result is currently `NOT_YET_RUN`.
 | Account deletion/offboarding | owner and recent-auth verification, always-on suspension, ordered leased tasks, legal holds, retention/pseudonymization, immutable receipts, owned-location delete versus customer-location detach, provider ambiguity/reconciliation | `NOT_YET_RUN` |
 | Support/SMS | atomic ticket/outbox, external exact-host gate, zero-communication sink, Twilio test/live boundary, monotonic receipts | `NOT_YET_RUN` |
 | Security | route authority, client IP, Turnstile, consent suppression, strong-secret policy, release guard, centralized zero-external-effects evaluator | `NOT_YET_RUN` |
-| Integrated database | exact 102 migrations fresh and history replay, foundation+extensions equality, ACL/RLS/default-ACL oracle, idempotency, atomic failure, forward recovery, zero residue | `NOT_YET_RUN` |
+| Integrated database | exact 103 migrations fresh and history replay, foundation+extensions equality, ACL/RLS/default-ACL oracle, idempotency, atomic failure, forward recovery, zero residue | `NOT_YET_RUN` |
 | Browser/accessibility | public cross-browser desktop/mobile, keyboard, skip links, reduced motion, 200% zoom, Axe, no console/page/request errors | `NOT_YET_RUN` |
 | Safe load | centralized server attestation plus bounded loopback route load; no credentials, provider writes, or communications | `NOT_YET_RUN` |
 
@@ -86,7 +86,7 @@ zero-communication.
 | Staging proof | Required acceptance | Current result |
 |---|---|---|
 | Authority and identity | exact isolated Supabase fingerprint/suffix, exact Vercel project/host, exact sealed commit/tree, no production alias | `NOT_YET_RUN` |
-| Database | empty-platform preflight; transactional 102-migration application; migration history; post-schema/ACL/RLS digest; idempotent replay | `NOT_YET_RUN` |
+| Database | empty-platform preflight; transactional 103-migration application; migration history; post-schema/ACL/RLS digest; idempotent replay | `NOT_YET_RUN` |
 | Synthetic fixture | direct unpaid, direct paid, legacy reconciled, partner, partner-child, admin/operator, attacker/removed member, suspended/deletion lifecycle, failure/recovery records; deterministic exact counts | `NOT_YET_RUN` |
 | Deployment | exact sealed build deployed only to the attested staging target; zero-external-effects endpoint proves every safety control | `NOT_YET_RUN` |
 | Authenticated browser | direct/partner/admin/attacker journeys across desktop/mobile Chromium, Firefox, and WebKit; no skipped authenticated tests | `NOT_YET_RUN` |

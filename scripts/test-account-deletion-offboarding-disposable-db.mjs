@@ -12,6 +12,7 @@ const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
 const proposalPath = process.env.ACCOUNT_DELETION_MIGRATION_PROPOSAL
   ?? path.join(migrationsDir, "20260713026000_add_account_deletion_and_provider_offboarding.sql");
+const requiredFinalMigration = "20260713028000_harden_account_deletion_retention_authority.sql";
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = fs.readdirSync(migrationsDir)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))
@@ -87,7 +88,8 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 102, "test expects the exact 102-migration candidate");
+  assert.equal(migrations.length, 103, "test expects the exact 103-migration candidate");
+  assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
   if (adapter.psql("select exists(select 1 from pg_roles where rolname='postgres');") !== "t") {
@@ -139,6 +141,101 @@ try {
       label: "Replay integrated account-deletion migration a second time",
       timeoutMs: 180_000,
     });
+    session.psql(`
+      set role postgres;
+      grant update(approved_at) on public.account_deletion_retention_configuration to service_role;
+      reset role;
+    `, { label: "Inject a stale column-level service-role retention grant" });
+    assert.equal(lastLine(session.psql(`
+      select has_any_column_privilege(
+        'service_role',
+        'public.account_deletion_retention_configuration',
+        'UPDATE'
+      );
+    `, { label: "Prove the injected column-level grant is effective" })), "t");
+    session.psql(`begin; set role postgres; ${migrationSource(requiredFinalMigration)} reset role; commit;`, {
+      label: "Replay retention-authority hardening over a stale column grant",
+      timeoutMs: 180_000,
+    });
+    assert.equal(lastLine(session.psql(`
+      select concat_ws('|',
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'SELECT'),
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'INSERT'),
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'UPDATE'),
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'DELETE'),
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'TRUNCATE'),
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'REFERENCES'),
+        has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'TRIGGER')
+      );
+    `, { label: "Prove service-role retention authority is read-only" })),
+    "t|f|f|f|f|f|f");
+    assert.equal(lastLine(session.psql(`
+      select concat_ws('|',
+        has_any_column_privilege('service_role', 'public.account_deletion_retention_configuration', 'INSERT'),
+        has_any_column_privilege('service_role', 'public.account_deletion_retention_configuration', 'UPDATE'),
+        has_any_column_privilege('service_role', 'public.account_deletion_retention_configuration', 'REFERENCES')
+      );
+    `, { label: "Prove service-role has no column-level retention writes" })),
+    "f|f|f");
+    for (const apiRole of ["authenticated", "anon"]) {
+      assert.equal(lastLine(session.psql(`
+        select concat_ws('|',
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'SELECT'),
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'INSERT'),
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'UPDATE'),
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'DELETE'),
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'TRUNCATE'),
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'REFERENCES'),
+          has_table_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'TRIGGER')
+        );
+      `, { label: `Prove ${apiRole} has no retention-configuration table authority` })),
+      "f|f|f|f|f|f|f");
+      assert.equal(lastLine(session.psql(`
+        select concat_ws('|',
+          has_any_column_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'SELECT'),
+          has_any_column_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'INSERT'),
+          has_any_column_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'UPDATE'),
+          has_any_column_privilege('${apiRole}', 'public.account_deletion_retention_configuration', 'REFERENCES')
+        );
+      `, { label: `Prove ${apiRole} has no retention-configuration column authority` })),
+      "f|f|f|f");
+    }
+    assert.equal(lastLine(session.psql(`
+      select pg_get_userbyid(class.relowner) || '|' ||
+        has_table_privilege(
+          pg_get_userbyid(class.relowner),
+          'public.account_deletion_retention_configuration',
+          'UPDATE'
+        )::text
+      from pg_class class
+      join pg_namespace namespace on namespace.oid=class.relnamespace
+      where namespace.nspname='public'
+        and class.relname='account_deletion_retention_configuration';
+    `, { label: "Prove the table owner retains retention-policy update authority" })),
+    "postgres|true");
+    assert.equal(lastLine(session.psql(asRole(
+      "service_role",
+      "select count(*) from public.account_deletion_retention_configuration;",
+    ), { label: "Read retention configuration through service role" })), "1");
+    mustFail(session, asRole("service_role", `
+      update public.account_deletion_retention_configuration
+      set policy_version=policy_version
+      where singleton;
+    `), /permission denied/i, "service role changed owner/legal retention authority");
+    for (const apiRole of ["authenticated", "anon"]) {
+      mustFail(session, asRole(apiRole, `
+        select singleton from public.account_deletion_retention_configuration;
+      `), /permission denied/i, `${apiRole} read owner/legal retention authority`);
+    }
+    session.psql(`
+      begin;
+      set role postgres;
+      update public.account_deletion_retention_configuration
+      set policy_version=policy_version
+      where singleton;
+      reset role;
+      rollback;
+    `, { label: "Prove postgres owner can update retention authority" });
     session.psql(`
       set role postgres;
       insert into auth.users(id) values ('${USER_A}'),('${USER_B}');
@@ -537,7 +634,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 102 + two migration-102 replays, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 103 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }

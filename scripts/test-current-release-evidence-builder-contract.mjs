@@ -77,7 +77,7 @@ function trackedIdentity() {
 }
 
 function migrationIdentity() {
-  const name = "20260713027000_add_ghl_location_display_name_finalization.sql";
+  const name = "20260713028000_harden_account_deletion_retention_authority.sql";
   const contents = readFileSync(join(repo, "supabase", "migrations", name));
   const digest = createHash("sha256");
   digest.update(String(Buffer.byteLength(name)));
@@ -136,7 +136,7 @@ try {
   mkdirSync(repo, { recursive: true });
   mkdirSync(external, { recursive: true });
   write(join(repo, "package-lock.json"), { name: "fixture", lockfileVersion: 3, packages: {} });
-  write(join(repo, "supabase", "migrations", "20260713027000_add_ghl_location_display_name_finalization.sql"), "select 1;\n");
+  write(join(repo, "supabase", "migrations", "20260713028000_harden_account_deletion_retention_authority.sql"), "select 1;\n");
   write(join(repo, "README.md"), "current release fixture\n");
   run("git", ["init", "-b", "codex/dealflow-overnight-release-20260712"]);
   run("git", ["add", "."]);

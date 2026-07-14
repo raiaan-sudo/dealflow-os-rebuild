@@ -64,8 +64,8 @@ assert.match(
   /Overall verdict: `NO_GO`/,
 );
 assert.match(migrationContract, /Frozen foundation: `80 MIGRATIONS \/ HISTORICAL_PASS`/);
-assert.match(migrationContract, /Integrated candidate: `102 MIGRATIONS \/ PENDING_FINAL_SEAL`/);
-assert.match(migrationContract, /Exact clean-seal 102-chain proof: `NOT_YET_RUN`/);
+assert.match(migrationContract, /Integrated candidate: `103 MIGRATIONS \/ PENDING_FINAL_SEAL`/);
+assert.match(migrationContract, /Exact clean-seal 103-chain proof: `NOT_YET_RUN`/);
 assert.match(
   migrationContract,
   /retained PostgreSQL 17\.6 evidence\s+for 14 foundation\/adoption\/collision\/RLS\/recovery gates/,
@@ -74,10 +74,17 @@ assert.match(
   migrationContract,
   /`HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions/,
 );
-assert.match(migrationContract, /current source tree contains exactly 102 ordered SQL migrations/);
+assert.match(migrationContract, /current source tree contains exactly 103 ordered SQL migrations/);
+assert.match(migrationContract, /The twenty-three\s+additive extensions after the frozen foundation/);
 assert.match(
   migrationContract,
-  /Current result for the exact final 102-migration seal: `NOT_YET_RUN`/,
+  /103\. `20260713028000_harden_account_deletion_retention_authority\.sql`/,
+);
+assert.match(migrationContract, /only database-owner authority may mutate it/);
+assert.match(migrationContract, /service role retains `INSERT`, `UPDATE`, `DELETE`, or\s+`TRUNCATE` privileges/);
+assert.match(
+  migrationContract,
+  /Current result for the exact final 103-migration seal: `NOT_YET_RUN`/,
 );
 assert.match(
   migrationContract,
@@ -92,5 +99,5 @@ assert.match(
 assert.match(migrationContract, /Forward recovery, not destructive rollback/);
 
 console.log(
-  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation remains historical-only, and the current 102-chain remains NO_GO pending exact seal and drain proof.",
+  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation remains historical-only, and the current 103-chain remains NO_GO pending exact seal and drain proof.",
 );

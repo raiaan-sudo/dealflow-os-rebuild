@@ -56,12 +56,13 @@ provider acceptance, production migration, deployment or release.
 ## Data and proof contract
 
 - The frozen 80-migration recovered foundation remains immutable authority.
-- Twenty-two additive product migrations extend the candidate to exactly 102
+- Twenty-three additive product migrations extend the candidate to exactly 103
   migrations, ending at
-  `20260713027000_add_ghl_location_display_name_finalization.sql`. Migration
+  `20260713028000_harden_account_deletion_retention_authority.sql`. Migration
   100 adds canonical generated-video storage, migration 101 adds durable
-  account deletion and provider offboarding, and migration 102 adds the fenced
-  GHL location display-name finalization operation.
+  account deletion and provider offboarding, migration 102 adds the fenced GHL
+  location display-name finalization operation, and migration 103 removes
+  service-role mutation authority from the owner/legal retention configuration.
 - PostgreSQL 17.6 proof must show fresh application, history replay, and frozen
   foundation followed by all extensions converge to the same public/private
   schema and the same ACL, default-ACL, policy, and function oracle.
@@ -114,13 +115,13 @@ node scripts/staging/apply-fresh-staging-migrations.mjs \
 The broker refuses a dirty or different repository, different round seals,
 an unpinned project identity, a nonempty hosted database, an unpinned local
 PostgreSQL runtime, non-owner-only project authority, or a migration portfolio
-other than the exact 102 reviewed files. It obtains the database password from
+other than the exact 103 reviewed files. It obtains the database password from
 Keychain into process memory and supplies it only to the interactive password
 prompt; the password is not placed in arguments, process environment, evidence,
 or repository files.
 
 The runner includes lint, typecheck, production build, product/security
-contracts, the completion suite, all database suites, the 102-migration
+contracts, the completion suite, all database suites, the 103-migration
 integrated proof, GHL destination fencing, Meta budget safety, Meta activation,
 the customer-authorized optimizer executor, and staging-fixture contracts.
 

@@ -11,6 +11,10 @@ const apiPath = path.join(root, "src/app/api/account-deletion/route.ts");
 const workerPath = path.join(root, "src/app/api/internal/account-deletion-worker/route.ts");
 const systemRunnerPath = path.join(root, "src/app/api/internal/system-jobs/route.ts");
 const migrationPath = path.join(root, "supabase/migrations/20260713026000_add_account_deletion_and_provider_offboarding.sql");
+const retentionAuthorityMigrationPath = path.join(
+  root,
+  "supabase/migrations/20260713028000_harden_account_deletion_retention_authority.sql",
+);
 const vercelPath = path.join(root, "vercel.json");
 const componentPath = path.join(root, "src/components/settings/account-deletion-card.tsx");
 const publicPagePath = path.join(root, "src/components/legal/localized-data-deletion-page.tsx");
@@ -211,6 +215,30 @@ assert.match(migration, /approved_at timestamptz null/);
 assert.match(migration, /account_deletion_retention_approval_pair_check/);
 assert.match(migration, /account_deletion_retention_authority_pending/);
 assert.doesNotMatch(migration, /sha256:7d8ca5de86fe436a9758f96cd02c566bb10c74e176fa874525a87733465bb8d6/);
+const retentionAuthorityMigration = fs.readFileSync(retentionAuthorityMigrationPath, "utf8");
+assert.match(
+  retentionAuthorityMigration,
+  /revoke all privileges on table public\.account_deletion_retention_configuration\s+from public, anon, authenticated, service_role;/,
+);
+assert.match(
+  retentionAuthorityMigration,
+  /grant select on table public\.account_deletion_retention_configuration\s+to service_role;/,
+);
+assert.match(
+  retentionAuthorityMigration,
+  /revoke all privileges \([\s\S]*approved_at[\s\S]*\) on table public\.account_deletion_retention_configuration\s+from public, anon, authenticated, service_role;/,
+);
+assert.match(retentionAuthorityMigration, /has_any_column_privilege\(/);
+assert.match(retentionAuthorityMigration, /account_deletion_retention_service_role_column_write_still_granted/);
+assert.match(retentionAuthorityMigration, /account_deletion_retention_public_column_write_still_granted/);
+for (const privilege of ["INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"]) {
+  assert.match(retentionAuthorityMigration, new RegExp(`['"]${privilege}['"]`));
+}
+assert.match(retentionAuthorityMigration, /account_deletion_retention_owner_update_missing/);
+assert.doesNotMatch(
+  retentionAuthorityMigration,
+  /grant\s+(?:[^;]*\b(?:insert|update|delete|truncate|references|trigger)\b[^;]*)\s+on\s+(?:table\s+)?public\.account_deletion_retention_configuration\s+to\s+service_role/i,
+);
 const component = fs.readFileSync(componentPath, "utf8");
 assert.match(component, /copy\.password/);
 assert.match(component, /ACCOUNT_DELETION_CONFIRMATION_PHRASE/);

@@ -139,5 +139,5 @@ npm run typecheck
 
 Provider acceptance must use only a HighLevel Marketplace sandbox/PIT, clearly
 labeled synthetic records, disabled email/SMS, and no real customer data.
-The acceptance result for the integrated 102-migration candidate is
+The acceptance result for the integrated 103-migration candidate is
 `NOT_YET_RUN`.
