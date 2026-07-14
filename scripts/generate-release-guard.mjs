@@ -43,6 +43,7 @@ const REQUIRED_DEPLOYMENT_CONFIGURATION_POLICIES = [
   "turnstileAllowedHostnamesConfigured",
   "turnstileProductionConfigValid",
   "turnstileSecretKeyNonTest",
+  "turnstileEffectiveLeadSiteKeyNonTest",
   "turnstileSiteKeyNonTest",
 ];
 const REQUIRED_OLD_WORKER_CLASSES = [

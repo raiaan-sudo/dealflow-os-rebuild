@@ -73,7 +73,7 @@
     "test:ghl-production": "node ./scripts/test-ghl-production-contract.mjs",
     "staging:seed": "node ./scripts/seed-isolated-staging.mjs",
     "staging:acceptance": "node ./scripts/staging/run-isolated-staging-acceptance.mjs",
-    "test:staging-acceptance-contract": "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+    "test:staging-acceptance-contract": "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
     "test:system-job-stage-isolation": "node ./scripts/test-system-job-stage-isolation.mjs",
     "test:reporting-worker-capacity": "node ./scripts/test-reporting-worker-capacity.mjs",
     "test:campaign-dashboard-metric-truth": "node ./scripts/test-campaign-dashboard-metric-truth.mjs",

@@ -276,8 +276,45 @@ assert.match(source, /activationTruth\.amount_paid_cents !== 29_700/);
 assert.match(source, /initialCreditTruth\.delta !== 1_000/);
 assert.match(source, /initialCreditTruth\.balance_after !== 1_000/);
 assert.match(source, /commercial_activation_initial_credit:/);
+assert.match(source, /const rlsCreditInput = \{/);
+assert.match(source, /p_reason: "isolated_staging_rls_fixture"/);
+assert.match(source, /p_idempotency_key: `isolated_staging_rls_credit:\$\{IDS\.attackerOrganization\}`/);
+assert.match(source, /admin\.rpc\("grant_user_credits", rlsCreditInput\)/);
+assert.match(source, /rlsCreditReplay\?\.reused_existing !== true/);
+assert.match(source, /\.from\("organization_user_credits"\)/);
+assert.match(source, /rlsCreditFixtures: \{/);
+assert.match(source, /userAId: userId/);
+assert.match(source, /userBId: scenarioUserIds\.attacker/);
+assert.match(source, /ledgerAId: initialCreditTruth\.id/);
+assert.match(source, /ledgerBId: rlsCreditTruth\.id/);
+assert.match(source, /billingAId: IDS\.billing/);
+assert.match(source, /stripeEventAId: rlsStripeA\.id/);
+assert.match(source, /stripeEventBId: rlsStripeB\.id/);
+assert.match(source, /providerUsageLimitAId: rlsProviderA\.limitId/);
+assert.match(source, /providerUsageLimitBId: rlsProviderB\.limitId/);
+assert.match(source, /providerUsageEventAId: rlsProviderA\.eventId/);
+assert.match(source, /providerUsageEventBId: rlsProviderB\.eventId/);
+assert.match(source, /balanceA: rlsCreditBalanceA\.balance/);
+assert.match(source, /balanceB: rlsCreditBalanceB\.balance/);
+assert.match(source, /claim_stripe_webhook_event_v2/);
+assert.match(source, /settle_stripe_webhook_event_v2/);
+assert.match(source, /reserve_provider_usage_attempt_v2/);
+assert.match(source, /settle_provider_usage_attempt_v2/);
+assert.match(source, /prove terminal settlement replay for synthetic provider RLS receipt/);
+assert.match(source, /terminalReplay\.reused_terminal !== true/);
+assert.match(source, /p_credit_amount: 0/);
+assert.match(source, /discover canonical provider RLS receipt/);
+assert.match(source, /\.eq\("idempotency_key", idempotencyKey\)/);
+assert.match(source, /\.eq\("usage_date", eventTruth\.usage_date\)/);
+assert.doesNotMatch(
+  source,
+  /isolated-staging-rls-provider:\$\{organizationId\}:\$\{usageDate\}/,
+  "canonical append-only provider fixtures must not accumulate a new row on a future-day seed replay",
+);
+assert.match(source, /providerMutationPerformed: false/);
+assert.match(source, /The live synthetic RLS credit balances are not exactly scoped/);
+assert.match(source, /replayIdempotent: true/);
 assert.match(source, /request_ghl_provisioning_from_billing_activation_v1/);
-assert.doesNotMatch(source, /grant_user_credits/);
 assert.doesNotMatch(source, /upsert\(admin, "campaign_plans"/);
 assert.match(source, /create \$\{childCampaign\.name\} through entitlement RPC/);
 assert.match(source, /p_campaign_id: childCampaign\.id/);

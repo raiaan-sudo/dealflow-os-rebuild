@@ -117,6 +117,11 @@ assert.match(formSource, /sms_consent: Boolean\(showPhone && normalizedPhone && 
 assert.match(formSource, /turnstile_token: turnstileToken \|\| undefined/, "lead form must submit the verified Turnstile token");
 assert.match(formSource, /data-action="lead_capture"/, "lead form Turnstile action must match the server contract");
 assert.match(formSource, /data-sitekey=\{TURNSTILE_SITE_KEY\}/, "lead form must use the configured public Turnstile site key");
+assert.match(
+  formSource,
+  /NEXT_PUBLIC_LEAD_TURNSTILE_SITE_KEY[\s\S]*NEXT_PUBLIC_TURNSTILE_SITE_KEY/,
+  "lead capture must support a dedicated staging-safe site key without enabling auth CAPTCHA",
+);
 assert.match(formSource, /normalizePublicFunnelLanguage\(language\)/, "lead form must safely normalize unsupported language values");
 assert.match(formSource, /copy\.validationQuestions/, "qualification validation must use localized copy");
 assert.match(formSource, /aria-label=\{copy\.humanVerification\}/, "human verification must have a localized accessible name");

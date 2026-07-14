@@ -23,6 +23,26 @@ const providerIndependentProof = readFileSync(
   join(root, "scripts", "staging", "run-provider-independent-staging-proof.mjs"),
   "utf8",
 );
+const vercelProtectionContract = readFileSync(
+  join(root, "scripts", "staging", "vercel-staging-protection-contract.mjs"),
+  "utf8",
+);
+const vercelProtectionTest = readFileSync(
+  join(root, "scripts", "staging", "test-vercel-staging-protection-contract.mjs"),
+  "utf8",
+);
+const rlsFixtureSmoke = readFileSync(
+  join(root, "scripts", "run-rls-fixture-smoke.mjs"),
+  "utf8",
+);
+const rlsCrossTenant = readFileSync(
+  join(root, "scripts", "check-rls-cross-tenant.mjs"),
+  "utf8",
+);
+const rlsFixtureContract = readFileSync(
+  join(root, "scripts", "lib", "rls-fixture-contract.mjs"),
+  "utf8",
+);
 const browserConfig = readFileSync(join(root, "playwright.staging.config.ts"), "utf8");
 const browserSpec = readFileSync(
   join(root, "tests", "e2e", "dealflow-staging-acceptance.spec.ts"),
@@ -59,6 +79,14 @@ assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-overnight-release-20260
 assert.match(runner, /EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean\.vercel\.app"/);
 assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
 assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);
+assert.match(runner, /STAGING_TURNSTILE_SITE_KEY = "1x00000000000000000000AA"/);
+assert.match(runner, /STAGING_TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA"/);
+assert.match(runner, /STAGING_TURNSTILE_TEST_TOKEN = "XXXX\.DUMMY\.TOKEN\.XXXX"/);
+assert.match(runner, /NEXT_PUBLIC_LEAD_TURNSTILE_SITE_KEY: STAGING_TURNSTILE_SITE_KEY/);
+assert.match(runner, /TURNSTILE_SECRET_KEY: STAGING_TURNSTILE_SECRET_KEY/);
+assert.match(runner, /TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_STAGING_HOST/);
+assert.match(providerIndependentProof, /turnstile_token: STAGING_TURNSTILE_TEST_TOKEN/);
+assert.match(providerIndependentProof, /requires the exact staging Turnstile test token/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_MIGRATION_COUNT = 103/);
@@ -250,6 +278,9 @@ assert.match(
 );
 
 const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
+const protectionIndex = runner.indexOf(
+  "configureHostedStagingProtection(\n    vercel,\n    vercelAuthority.projectId,",
+);
 const roundReaderStart = runner.indexOf("function readValidatedRound(");
 const roundReaderEnd = runner.indexOf("\nfunction childBaseEnvironment", roundReaderStart);
 const roundReaderSource = runner.slice(roundReaderStart, roundReaderEnd);
@@ -265,6 +296,25 @@ const retentionAuthorityIndex = runner.indexOf(
 const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
 const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl)");
 assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
+assert.ok(protectionIndex > releaseCapture, "hosted protection must follow complete local readiness");
+assert.ok(
+  protectionIndex < configureIndex,
+  "isolated staging alias protection must be configured before hosted environment and deployment",
+);
+assert.match(runner, /function configureHostedStagingProtection\(vercel, projectId\)/);
+assert.match(runner, /configureExactStagingVercelProtection\(\{/);
+assert.match(runner, /expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
+assert.match(runner, /expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
+assert.match(runner, /args\.push\("--method", "PATCH", "--input", "-"\)/);
+assert.match(runner, /writeJson\(join\(options\.evidenceDir, "staging-protection\.json"\)/);
+assert.match(runner, /classifyStagingHostReadiness\(\{ status: response\.status \}\)/);
+assert.match(runner, /error instanceof StagingHostRedirectError/);
+assert.match(vercelProtectionContract, /const REQUIRED_PROTECTION_MODE = "preview"/);
+assert.match(vercelProtectionContract, /const REDIRECT_STATUSES = new Set\(\[301, 302, 303, 307, 308\]\)/);
+assert.match(vercelProtectionTest, /wrong input project must be blocked before any API request/);
+assert.match(vercelProtectionTest, /assert\.deepEqual\(call\.body/);
+assert.match(vercelProtectionTest, /\["GET", "PATCH", "GET"\]/);
+assert.match(vercelProtectionTest, /for \(const status of \[301, 302, 303, 307, 308\]\)/);
 assert.match(
   roundReaderSource,
   /assertExactFinalVerificationSummaryPortfolio\(parsed, `\$\{label\} portfolio`\)/,
@@ -393,6 +443,69 @@ assert.match(runner, /\["run", "rls:cross-tenant"\]/);
 assert.match(runner, /\["run", "rls:fixture-smoke"\]/);
 assert.match(runner, /exactZeroResidue/);
 assert.match(runner, /\["run", "operator:debt"\]/);
+assert.match(rlsFixtureSmoke, /cleanupStaleRlsFixtures\(admin\)/);
+assert.match(rlsFixtureSmoke, /createTenantFixtures\(admin, "a", fixtures, identityA\)/);
+assert.match(rlsFixtureSmoke, /loadCanonicalTenant/);
+assert.match(rlsFixtureSmoke, /createFixtureSession\(admin, anon, tenantA\.email\)/);
+assert.match(rlsFixtureSmoke, /create_campaign_plan_with_entitlement_v1/);
+assert.match(rlsFixtureSmoke, /fixtures\.campaignIds\.push\(campaignId\)/);
+assert.match(rlsFixtureSmoke, /campaign entitlement authority returned an invalid tenant binding/);
+assert.match(rlsFixtureSmoke, /\["organization_memberships", "organization_id", fixtures\.orgIds\]/);
+assert.match(rlsFixtureSmoke, /const failures = \[\]/);
+assert.match(rlsFixtureSmoke, /cleanup attempted every tracked resource/);
+assert.match(rlsFixtureSmoke, /platform: "meta_ads"/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_CREDIT_A_USER_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_CREDIT_B_USER_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_CREDIT_A_LEDGER_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_CREDIT_B_LEDGER_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_ORGANIZATION_A_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_ORGANIZATION_B_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_BILLING_A_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_STRIPE_EVENT_A_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_STRIPE_EVENT_B_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_PROVIDER_LIMIT_A_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_PROVIDER_LIMIT_B_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_PROVIDER_EVENT_A_ID/);
+assert.match(rlsFixtureSmoke, /RLS_CANONICAL_PROVIDER_EVENT_B_ID/);
+assert.match(runner, /RLS_CANONICAL_CREDIT_A_USER_ID: seedOne\.rlsCreditFixtures\.userAId/);
+assert.match(runner, /RLS_CANONICAL_CREDIT_B_USER_ID: seedOne\.rlsCreditFixtures\.userBId/);
+assert.match(runner, /RLS_CANONICAL_CREDIT_A_LEDGER_ID: seedOne\.rlsCreditFixtures\.ledgerAId/);
+assert.match(runner, /RLS_CANONICAL_CREDIT_B_LEDGER_ID: seedOne\.rlsCreditFixtures\.ledgerBId/);
+assert.match(runner, /RLS_CANONICAL_ORGANIZATION_A_ID: seedOne\.rlsCreditFixtures\.organizationAId/);
+assert.match(runner, /RLS_CANONICAL_ORGANIZATION_B_ID: seedOne\.rlsCreditFixtures\.organizationBId/);
+assert.match(runner, /RLS_CANONICAL_BILLING_A_ID: seedOne\.rlsCreditFixtures\.billingAId/);
+assert.match(runner, /RLS_CANONICAL_STRIPE_EVENT_A_ID: seedOne\.rlsCreditFixtures\.stripeEventAId/);
+assert.match(runner, /RLS_CANONICAL_PROVIDER_LIMIT_A_ID: seedOne\.rlsCreditFixtures\.providerUsageLimitAId/);
+assert.match(runner, /RLS_CANONICAL_PROVIDER_EVENT_A_ID: seedOne\.rlsCreditFixtures\.providerUsageEventAId/);
+assert.match(runner, /JSON\.stringify\(first\.rlsCreditFixtures\) !== JSON\.stringify\(second\.rlsCreditFixtures\)/);
+assert.match(runner, /Authenticated isolated-staging RLS proofs did not close with exact zero residue/);
+assert.match(runner, /async function resetIsolatedStagingRateLimits\(admin, phase\)/);
+assert.match(runner, /before_provider_independent_journeys/);
+assert.match(runner, /after_provider_independent_journeys/);
+assert.match(runner, /isolated-staging-rate-limit-reset\.json/);
+assert.match(runner, /normalRateLimitImplementationChanged: false/);
+assert.match(runner, /RLS_FIXTURE_DIRECT_MARKERS/);
+assert.match(runner, /RLS_FIXTURE_LEGACY_IMMUTABLE_MARKERS/);
+assert.match(runner, /isRlsFixtureAuthEmail/);
+assert.match(rlsFixtureSmoke, /RLS_FIXTURE_DIRECT_MARKERS/);
+assert.match(rlsFixtureSmoke, /RLS proof failed and fixture cleanup also failed/);
+assert.match(rlsFixtureContract, /leadMessages/);
+assert.match(rlsFixtureContract, /marketingAccounts/);
+assert.match(rlsFixtureContract, /creativeAssets/);
+assert.match(rlsFixtureContract, /billingSubscriptions/);
+assert.match(rlsFixtureContract, /metaLaunchLocks/);
+assert.match(rlsFixtureContract, /legacyStripeWebhookEvents/);
+assert.match(rlsCrossTenant, /table: "organization_user_credits"/);
+assert.match(rlsCrossTenant, /Legacy user credits: User A denied from frozen table/);
+assert.doesNotMatch(
+  rlsFixtureSmoke,
+  /insertOne\(admin, "campaign_plans"/,
+  "hosted RLS proof must respect the canonical campaign entitlement authority",
+);
+assert.doesNotMatch(rlsFixtureSmoke, /insertOne\(admin, "stripe_webhook_events"/);
+assert.doesNotMatch(rlsFixtureSmoke, /insertOne\(admin, "provider_usage_(?:events|limits)"/);
+assert.doesNotMatch(rlsFixtureSmoke, /\["stripe_webhook_events",/);
+assert.doesNotMatch(rlsFixtureSmoke, /\["provider_usage_(?:events|limits)",/);
 
 const loadBody = /async function runHostedLoadProof\(baseUrl\) \{([\s\S]*?)\n\}/.exec(runner)?.[1];
 assert.ok(loadBody, "hosted load proof must remain statically inspectable");
@@ -404,6 +517,11 @@ assert.match(runner, /JSON\.stringify\(countsBefore\) !== JSON\.stringify\(count
 
 assert.match(browserConfig, /retries: 0/);
 assert.match(browserConfig, /forbidOnly: true/);
+assert.doesNotMatch(runner, /--reporter=json/);
+assert.match(runner, /configuredJsonReporter: true/);
+assert.match(runner, /configuredJunitReporter: true/);
+assert.match(runner, /configuredHtmlReporter: true/);
+assert.match(runner, /safe-browser-acceptance-summary\.json/);
 for (const project of ["desktop-chromium", "mobile-chromium", "desktop-firefox", "desktop-webkit"]) {
   assert.match(browserConfig, new RegExp(`name: "${project}"`));
 }
@@ -520,7 +638,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-isolated-staging-acceptance-contract\.mjs"/);
 assert.match(envExample, /^STAGING_PARTNER_APP_URL=$/m);

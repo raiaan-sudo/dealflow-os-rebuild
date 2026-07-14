@@ -66,6 +66,7 @@ const deploymentConfigurationPolicyNames = [
   "turnstileAllowedHostnamesConfigured",
   "turnstileProductionConfigValid",
   "turnstileSecretKeyNonTest",
+  "turnstileEffectiveLeadSiteKeyNonTest",
   "turnstileSiteKeyNonTest",
 ];
 const requiredFailSafeNames = [
@@ -1018,6 +1019,46 @@ try {
         "--target",
         target,
         ...evidenceArguments(invalidTurnstileConfigurationPaths),
+      ],
+      { allowFailure: true },
+    ),
+    "release_guard_deployment_configuration_policy_failed",
+  );
+
+  const testDedicatedLeadTurnstileKeyPaths = createEvidence(target, {
+    privateKey,
+    patches: {
+      environment: {
+        environment: {
+          containsSecretValues: false,
+          stripeLiveMode: true,
+          safeFlagStates: Object.fromEntries(requiredFailSafeNames.map((name) => [name, true])),
+          secretStrengthPolicies: Object.fromEntries(
+            secretStrengthPolicyNames.map((name) => [name, true]),
+          ),
+          configurationPolicies: {
+            ...Object.fromEntries(
+              deploymentConfigurationPolicyNames.map((name) => [name, true]),
+            ),
+            // The legacy/global site key can be production-safe while the
+            // dedicated lead override still serves Cloudflare's test widget.
+            turnstileSiteKeyNonTest: true,
+            turnstileEffectiveLeadSiteKeyNonTest: false,
+          },
+        },
+      },
+    },
+  });
+  assertNoGo(
+    run(
+      process.execPath,
+      [
+        scriptPath,
+        "--baseline",
+        baseline,
+        "--target",
+        target,
+        ...evidenceArguments(testDedicatedLeadTurnstileKeyPaths),
       ],
       { allowFailure: true },
     ),

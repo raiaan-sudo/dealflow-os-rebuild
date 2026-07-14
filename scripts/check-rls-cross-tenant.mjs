@@ -331,13 +331,31 @@ async function main() {
     userBIdEnv: "RLS_PROVIDER_USAGE_EVENT_B_ID",
   });
   await runPair({
-    table: "user_credits",
-    label: "User credits",
-    columns: "user_id,balance",
+    table: "organization_user_credits",
+    label: "Organization user credits",
+    columns: "organization_id,user_id,balance",
     userAIdEnv: "RLS_USER_CREDIT_A_ID",
     userBIdEnv: "RLS_USER_CREDIT_B_ID",
     idColumn: "user_id",
   });
+  const legacyCreditAId = env("RLS_USER_CREDIT_A_ID");
+  const legacyCreditBId = env("RLS_USER_CREDIT_B_ID");
+  if (legacyCreditAId && legacyCreditBId) {
+    await expectDenied("Legacy user credits: User A denied from frozen table", {
+      table: "user_credits",
+      id: legacyCreditAId,
+      idColumn: "user_id",
+      columns: "user_id,balance",
+      jwt: env("RLS_USER_A_JWT"),
+    });
+    await expectDenied("Legacy user credits: User B denied from frozen table", {
+      table: "user_credits",
+      id: legacyCreditBId,
+      idColumn: "user_id",
+      columns: "user_id,balance",
+      jwt: env("RLS_USER_B_JWT"),
+    });
+  }
   await runPair({
     table: "user_credit_ledger",
     label: "User credit ledger",

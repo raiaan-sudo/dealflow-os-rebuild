@@ -10,6 +10,7 @@ const EXPECTED_PROJECT_FINGERPRINT =
 const EXPECTED_PROJECT_SUFFIX = "qibh";
 const RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
+const STAGING_TURNSTILE_TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const IDS = Object.freeze({
   organization: "d1000000-0000-4000-8000-000000000001",
   campaign: "d2000000-0000-4000-8000-000000000001",
@@ -143,6 +144,9 @@ function assertEnvironment() {
   if (process.env.DEALFLOW_DEPLOYMENT_TARGET !== "staging") {
     throw new Error("Provider-independent proof requires the staging deployment target");
   }
+  if (requireEnvironment("STAGING_TURNSTILE_TEST_TOKEN") !== STAGING_TURNSTILE_TEST_TOKEN) {
+    throw new Error("Provider-independent proof requires the exact staging Turnstile test token");
+  }
   for (const name of PROVIDER_ENV_NAMES) {
     if (process.env[name]?.trim()) throw new Error(`Provider credential ${name} is forbidden`);
   }
@@ -269,6 +273,7 @@ async function main() {
     sms_consent: false,
     landing_page_url: `${baseUrl}/f/df-staging-20260712-funnel?utm_source=staging-proof&utm_medium=acceptance`,
     form_started_at: Date.now() - 5_000,
+    turnstile_token: STAGING_TURNSTILE_TEST_TOKEN,
   };
   const captureLead = async () => {
     const response = await fetch(`${baseUrl}/api/lead-capture`, {

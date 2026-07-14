@@ -16,11 +16,22 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+import {
+  RLS_FIXTURE_DIRECT_MARKERS,
+  RLS_FIXTURE_LEGACY_IMMUTABLE_MARKERS,
+  applyRlsFixtureMarker,
+  isRlsFixtureAuthEmail,
+} from "../lib/rls-fixture-contract.mjs";
 
 import {
   isExactCurrentResumeIdentity,
   isExactSafeStagingAuthSurfaceProof,
 } from "./prior-migration-proof-contract.mjs";
+import {
+  StagingHostRedirectError,
+  classifyStagingHostReadiness,
+  configureExactStagingVercelProtection,
+} from "./vercel-staging-protection-contract.mjs";
 
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
@@ -83,11 +94,15 @@ const EXPECTED_DATABASE_TRUST_BUNDLE_SHA256 =
 const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
 const PAID_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000001";
+const PAID_BILLING_ID = "d6000000-0000-4000-8000-000000000001";
 const ATTACKER_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000011";
 const ATTACKER_EMAIL = "dealflow-staging-attacker-20260712@example.com";
 const DELETION_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000019";
 const DELETION_EMAIL = "dealflow-staging-deletion-20260712@example.com";
 const PUBLIC_FUNNEL_SLUG = "df-staging-20260712-funnel";
+const STAGING_TURNSTILE_SITE_KEY = "1x00000000000000000000AA";
+const STAGING_TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA";
+const STAGING_TURNSTILE_TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const EXECUTABLE = process.execPath;
 const failureContext = {
   evidenceDir: null,
@@ -121,7 +136,6 @@ const PROVIDER_SENSITIVE_ENV_NAMES = [
   "STRIPE_TEST_SECRET_KEY",
   "STRIPE_TEST_WEBHOOK_SECRET",
   "SUPPORT_EXTERNAL_DELIVERY_TOKEN",
-  "TURNSTILE_SECRET_KEY",
 ];
 const REQUIRED_FALSE_CONTROLS = [
   "ALLOW_AI_TEXT_GENERATION",
@@ -198,6 +212,7 @@ const HOSTED_SECRET_ENV_NAMES = new Set([
   "STAGING_QA_PASSWORD",
   "PARTNER_ATTRIBUTION_SIGNING_SECRET",
   "INTERNAL_SYSTEM_JOBS_SECRET",
+  "TURNSTILE_SECRET_KEY",
 ]);
 const PRODUCTION_OR_SHARED_HOSTS = new Set([
   "agentdealflow.io",
@@ -475,6 +490,8 @@ function protectedRuntimeValues() {
     process.env.STAGING_QA_PASSWORD,
     process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    STAGING_TURNSTILE_SECRET_KEY,
+    STAGING_TURNSTILE_TEST_TOKEN,
   ];
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
@@ -559,6 +576,9 @@ function hostedStagingEnvironment(projectRef, vercelProjectId) {
     STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
     PARTNER_ATTRIBUTION_SIGNING_SECRET: process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     INTERNAL_SYSTEM_JOBS_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    NEXT_PUBLIC_LEAD_TURNSTILE_SITE_KEY: STAGING_TURNSTILE_SITE_KEY,
+    TURNSTILE_SECRET_KEY: STAGING_TURNSTILE_SECRET_KEY,
+    TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_STAGING_HOST,
     INTERNAL_ADMIN_EMAILS: EXPECTED_OPERATOR_EMAIL,
     ...Object.fromEntries(REQUIRED_FALSE_CONTROLS.map((name) => [name, "false"])),
     ...REQUIRED_EQUAL_CONTROLS,
@@ -779,6 +799,30 @@ function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.reportingFixtures?.freshConfirmed !== true ||
     parsed.reportingFixtures?.staleConfirmed !== true ||
     parsed.reportingFixtures?.failedRefreshPreservesConfirmed !== true ||
+    parsed.rlsCreditFixtures?.userAId !== parsed.scenarios?.paidDirect?.userId ||
+    parsed.rlsCreditFixtures?.organizationAId !== PAID_ORGANIZATION_ID ||
+    parsed.rlsCreditFixtures?.balanceA !== 1_000 ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.ledgerAId ?? "") ||
+    parsed.rlsCreditFixtures?.billingAId !== PAID_BILLING_ID ||
+    parsed.rlsCreditFixtures?.userBId !== parsed.scenarios?.attacker?.userId ||
+    parsed.rlsCreditFixtures?.organizationBId !== ATTACKER_ORGANIZATION_ID ||
+    parsed.rlsCreditFixtures?.balanceB !== 100 ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.ledgerBId ?? "") ||
+    parsed.rlsCreditFixtures?.ledgerAId === parsed.rlsCreditFixtures?.ledgerBId ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.stripeEventAId ?? "") ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.stripeEventBId ?? "") ||
+    parsed.rlsCreditFixtures?.stripeEventAId === parsed.rlsCreditFixtures?.stripeEventBId ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.providerUsageLimitAId ?? "") ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.providerUsageLimitBId ?? "") ||
+    parsed.rlsCreditFixtures?.providerUsageLimitAId ===
+      parsed.rlsCreditFixtures?.providerUsageLimitBId ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.providerUsageEventAId ?? "") ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.rlsCreditFixtures?.providerUsageEventBId ?? "") ||
+    parsed.rlsCreditFixtures?.providerUsageEventAId ===
+      parsed.rlsCreditFixtures?.providerUsageEventBId ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
+    parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
+    parsed.rlsCreditFixtures?.replayIdempotent !== true ||
     parsed.deletionRetentionAuthority?.marker !== SYNTHETIC_RETENTION_AUTHORITY_MARKER ||
     parsed.deletionRetentionAuthority?.authorityHashFingerprint !==
       sha256(`sha256:${sha256(SYNTHETIC_RETENTION_AUTHORITY_MARKER)}`) ||
@@ -841,6 +885,7 @@ function assertSeedReplayIsIdempotent(first, second) {
     JSON.stringify(first.partner) !== JSON.stringify(second.partner) ||
     JSON.stringify(first.partnerTwo) !== JSON.stringify(second.partnerTwo) ||
     JSON.stringify(first.reportingFixtures) !== JSON.stringify(second.reportingFixtures) ||
+    JSON.stringify(first.rlsCreditFixtures) !== JSON.stringify(second.rlsCreditFixtures) ||
     JSON.stringify(first.failureFixtures) !== JSON.stringify(second.failureFixtures) ||
     second.activationReplayIdempotent !== true ||
     second.metaActivationReplayIdempotent !== true
@@ -860,6 +905,7 @@ function runProviderIndependentStagingProof(baseUrl) {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
     INTERNAL_SYSTEM_JOBS_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    STAGING_TURNSTILE_TEST_TOKEN,
     ALLOW_META_LIVE_LAUNCH: "false",
     ALLOW_META_CAPI_EVENTS: "false",
     GHL_SANDBOX_WRITES_ENABLED: "false",
@@ -989,6 +1035,34 @@ function listHostedEnvironmentNames(vercel) {
     throw new Error("Vercel did not return a structured production environment inventory");
   }
   return [...new Set(records.map((record) => record.key ?? record.name).filter(Boolean))].sort();
+}
+
+function configureHostedStagingProtection(vercel, projectId) {
+  return configureExactStagingVercelProtection({
+    projectId,
+    expectedProjectName: EXPECTED_VERCEL_PROJECT_NAME,
+    expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+    expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
+    request({ method, path, body }) {
+      const args = [vercel.path, "api", path, "--raw", "--no-color"];
+      let input;
+      if (method === "PATCH") {
+        args.push("--method", "PATCH", "--input", "-");
+        input = `${JSON.stringify(body)}\n`;
+      }
+      const response = run(EXECUTABLE, args, {
+        label: `${method.toLowerCase()} isolated staging Vercel protection`,
+        env: vercelEnvironment(),
+        input,
+        timeoutMs: 3 * 60_000,
+        secrets: protectedRuntimeValues(),
+      });
+      return parseSingleJsonOutput(
+        response.stdout,
+        `${method.toLowerCase()} isolated staging Vercel protection`,
+      );
+    },
+  });
 }
 
 function configureHostedStagingEnvironment(vercel, environment) {
@@ -1268,10 +1342,11 @@ async function waitForDeployment(url, timeoutMs = 180_000) {
       });
       lastStatus = response.status;
       await response.arrayBuffer();
-      if (response.status >= 200 && response.status < 400) {
+      if (classifyStagingHostReadiness({ status: response.status }) === "ready") {
         return { status: response.status, elapsedMs: Date.now() - startedAt };
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof StagingHostRedirectError) throw error;
       lastStatus = 0;
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
@@ -1364,28 +1439,88 @@ async function captureNoEffectCounts(admin) {
   return counts;
 }
 
-async function captureRlsFixtureResidue(admin) {
-  const queries = {
-    users: admin.from("users").select("id", { count: "exact", head: true }).like("email", "rls-fixture-%"),
-    organizations: admin.from("organizations").select("id", { count: "exact", head: true }).like("slug", "rls-fixture-%"),
-    campaigns: admin.from("campaign_plans").select("id", { count: "exact", head: true }).like("public_slug", "rls-fixture-%"),
-    leads: admin.from("leads").select("id", { count: "exact", head: true }).eq("source", "rls_fixture"),
-    jobs: admin.from("system_jobs").select("id", { count: "exact", head: true }).eq("kind", "rls_fixture"),
-    providerEvents: admin.from("provider_usage_events").select("id", { count: "exact", head: true }).eq("provider", "fixture").like("operation", "rls-%"),
+async function resetIsolatedStagingRateLimits(admin, phase) {
+  const before = await admin
+    .from("rate_limit_buckets")
+    .select("bucket_key", { count: "exact", head: true });
+  if (before.error || typeof before.count !== "number") {
+    throw new Error(`Unable to enumerate isolated staging rate limits during ${phase}`);
+  }
+  const deleted = await admin
+    .from("rate_limit_buckets")
+    .delete()
+    .not("bucket_key", "is", null);
+  if (deleted.error) {
+    throw new Error(`Unable to reset isolated staging rate limits during ${phase}`);
+  }
+  const after = await admin
+    .from("rate_limit_buckets")
+    .select("bucket_key", { count: "exact", head: true });
+  if (after.error || after.count !== 0) {
+    throw new Error(`Isolated staging rate limits did not reset to exact zero during ${phase}`);
+  }
+  return {
+    phase,
+    rowsBefore: before.count,
+    rowsAfter: 0,
+    exactIsolatedProjectOnly: true,
+    productionDataChanged: false,
   };
-  const counts = {};
-  for (const [name, query] of Object.entries(queries)) {
+}
+
+async function captureRlsFixtureResidue(admin) {
+  const count = async (name, query) => {
     const result = await query;
     if (result.error || typeof result.count !== "number") {
       throw new Error(`Unable to verify RLS fixture cleanup for ${name}`);
     }
-    counts[name] = result.count;
+    return result.count;
+  };
+  const counts = {};
+  for (const marker of [
+    ...RLS_FIXTURE_DIRECT_MARKERS,
+    ...RLS_FIXTURE_LEGACY_IMMUTABLE_MARKERS,
+  ]) {
+    counts[marker.key] = await count(
+      marker.key,
+      applyRlsFixtureMarker(
+        admin.from(marker.table).select("id", { count: "exact", head: true }),
+        marker,
+      ),
+    );
   }
-  const authData = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  if (authData.error) throw new Error("Unable to verify RLS auth fixture cleanup");
-  counts.authUsers = authData.data.users.filter((user) =>
-    user.email?.toLowerCase().startsWith("rls-fixture-"),
-  ).length;
+
+  let authFixtureCount = 0;
+  for (let page = 1; ; page += 1) {
+    const authData = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (authData.error) throw new Error(`Unable to verify RLS auth fixture cleanup page ${page}`);
+    authFixtureCount += authData.data.users.filter((user) =>
+      isRlsFixtureAuthEmail(user.email),
+    ).length;
+    if (authData.data.users.length < 200) break;
+  }
+  counts.authUsers = authFixtureCount;
+
+  const organizationMarker = RLS_FIXTURE_DIRECT_MARKERS.find(
+    (marker) => marker.key === "organizations",
+  );
+  const markerOrganizations = await applyRlsFixtureMarker(
+    admin.from("organizations").select("id"),
+    organizationMarker,
+  );
+  if (markerOrganizations.error) {
+    throw new Error("Unable to enumerate RLS fixture organizations for membership cleanup proof");
+  }
+  const markerOrganizationIds = (markerOrganizations.data ?? []).map((row) => row.id);
+  counts.organizationMemberships = markerOrganizationIds.length === 0
+    ? 0
+    : await count(
+      "organization memberships",
+      admin
+        .from("organization_memberships")
+        .select("organization_id", { count: "exact", head: true })
+        .in("organization_id", markerOrganizationIds),
+    );
   return {
     counts,
     exactZeroResidue: Object.values(counts).every((count) => count === 0),
@@ -1424,7 +1559,7 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
   const outputDir = join(evidenceDir, name);
   mkdirSync(outputDir, { mode: 0o700 });
   const binary = join(EXPECTED_REPO, "node_modules", ".bin", "playwright");
-  const result = run(binary, ["test", `--config=${config}`, "--reporter=json"], {
+  run(binary, ["test", `--config=${config}`], {
     label: `${name} zero-skip Playwright suite`,
     env: { ...childBaseEnvironment(), ...environment },
     timeoutMs: 30 * 60_000,
@@ -1435,7 +1570,24 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
       process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     ],
   });
-  const parsed = parseSingleJsonOutput(result.stdout, `${name} Playwright JSON`);
+  const configuredOutputDir = config === "playwright.safe.config.ts"
+    ? environment.SAFE_E2E_OUTPUT_DIR
+    : environment.STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR;
+  const jsonPath = join(
+    configuredOutputDir,
+    config === "playwright.safe.config.ts" ? "playwright-results.json" : "results.json",
+  );
+  const junitPath = join(
+    configuredOutputDir,
+    config === "playwright.safe.config.ts" ? "playwright-results.xml" : "results.xml",
+  );
+  const htmlPath = join(configuredOutputDir, "report", "index.html");
+  for (const artifact of [jsonPath, junitPath, htmlPath]) {
+    if (!existsSync(artifact) || !lstatSync(artifact).isFile() || lstatSync(artifact).isSymbolicLink()) {
+      throw new Error(`${name} did not produce its complete configured reporter portfolio`);
+    }
+  }
+  const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
   const counts = countPlaywrightOutcomes(parsed);
   if (
     counts.tests === 0 ||
@@ -1446,8 +1598,33 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
   ) {
     throw new Error(`${name} did not finish with every browser test passed and zero skipped`);
   }
-  writeJson(join(outputDir, "results.json"), parsed);
-  return counts;
+  let safeAcceptance = null;
+  if (config === "playwright.safe.config.ts") {
+    const safetyPath = join(configuredOutputDir, "safe-browser-acceptance-summary.json");
+    if (!existsSync(safetyPath) || !lstatSync(safetyPath).isFile()) {
+      throw new Error(`${name} did not produce its authenticated safety reporter summary`);
+    }
+    safeAcceptance = JSON.parse(readFileSync(safetyPath, "utf8"));
+    if (
+      safeAcceptance.executionMode !== "hosted_authenticated" ||
+      safeAcceptance.playwrightStatus !== "passed" ||
+      safeAcceptance.authenticatedStatus !== "passed" ||
+      safeAcceptance.authenticatedResultCount < 1 ||
+      safeAcceptance.authenticatedSkippedCount !== 0
+    ) {
+      throw new Error(`${name} custom authenticated safety reporter did not pass exactly`);
+    }
+  }
+  const summary = {
+    ...counts,
+    configuredJsonReporter: true,
+    configuredJunitReporter: true,
+    configuredHtmlReporter: true,
+    configuredSafetyReporter: config === "playwright.safe.config.ts",
+    safeAuthenticatedResultCount: safeAcceptance?.authenticatedResultCount ?? null,
+  };
+  writeJson(join(outputDir, "validated-reporter-summary.json"), summary);
+  return summary;
 }
 
 function browserEnvironment(deploymentUrl, secondPartnerUrl, evidenceDir) {
@@ -1762,6 +1939,13 @@ async function main() {
     },
   };
   writeJson(join(options.evidenceDir, "preflight.json"), preflight);
+
+  failureContext.stage = "hosted_protection_configuration";
+  const hostedProtectionProof = configureHostedStagingProtection(
+    vercel,
+    vercelAuthority.projectId,
+  );
+  writeJson(join(options.evidenceDir, "staging-protection.json"), hostedProtectionProof);
 
   failureContext.stage = "hosted_environment_configuration";
   const hostedEnvironmentProof = configureHostedStagingEnvironment(vercel, hostedEnvironment);
@@ -2145,6 +2329,21 @@ async function main() {
     join(dirname(EXECUTABLE), "npm"),
     ["run", "rls:fixture-smoke"],
     "authenticated isolated-staging RLS fixture and cross-tenant proof",
+    {
+      RLS_CANONICAL_CREDIT_A_USER_ID: seedOne.rlsCreditFixtures.userAId,
+      RLS_CANONICAL_CREDIT_B_USER_ID: seedOne.rlsCreditFixtures.userBId,
+      RLS_CANONICAL_CREDIT_A_LEDGER_ID: seedOne.rlsCreditFixtures.ledgerAId,
+      RLS_CANONICAL_CREDIT_B_LEDGER_ID: seedOne.rlsCreditFixtures.ledgerBId,
+      RLS_CANONICAL_ORGANIZATION_A_ID: seedOne.rlsCreditFixtures.organizationAId,
+      RLS_CANONICAL_ORGANIZATION_B_ID: seedOne.rlsCreditFixtures.organizationBId,
+      RLS_CANONICAL_BILLING_A_ID: seedOne.rlsCreditFixtures.billingAId,
+      RLS_CANONICAL_STRIPE_EVENT_A_ID: seedOne.rlsCreditFixtures.stripeEventAId,
+      RLS_CANONICAL_STRIPE_EVENT_B_ID: seedOne.rlsCreditFixtures.stripeEventBId,
+      RLS_CANONICAL_PROVIDER_LIMIT_A_ID: seedOne.rlsCreditFixtures.providerUsageLimitAId,
+      RLS_CANONICAL_PROVIDER_LIMIT_B_ID: seedOne.rlsCreditFixtures.providerUsageLimitBId,
+      RLS_CANONICAL_PROVIDER_EVENT_A_ID: seedOne.rlsCreditFixtures.providerUsageEventAId,
+      RLS_CANONICAL_PROVIDER_EVENT_B_ID: seedOne.rlsCreditFixtures.providerUsageEventBId,
+    },
   );
   const rlsFixtureResidue = await captureRlsFixtureResidue(admin);
   const rlsDeferralsClosed =
@@ -2161,6 +2360,9 @@ async function main() {
     productionDataAccessed: false,
     syntheticFixtureMutationsOnly: true,
   });
+  if (!rlsDeferralsClosed) {
+    throw new Error("Authenticated isolated-staging RLS proofs did not close with exact zero residue");
+  }
 
   const zeroEffectsStable = await assertHostedZeroEffects(EXPECTED_STAGING_BASE_URL);
   const zeroEffectsPartner = await assertHostedZeroEffects(deployment.deploymentUrl);
@@ -2172,6 +2374,10 @@ async function main() {
     secondPartnerHost: zeroEffectsPartnerTwo,
   });
 
+  const preJourneyRateLimitReset = await resetIsolatedStagingRateLimits(
+    admin,
+    "before_provider_independent_journeys",
+  );
   const providerIndependentProof = runProviderIndependentStagingProof(
     EXPECTED_STAGING_BASE_URL,
   );
@@ -2180,6 +2386,17 @@ async function main() {
     containsRealCustomerData: false,
     productionMutationPerformed: false,
     providerMutationPerformed: false,
+  });
+  const postJourneyRateLimitReset = await resetIsolatedStagingRateLimits(
+    admin,
+    "after_provider_independent_journeys",
+  );
+  writeJson(join(options.evidenceDir, "isolated-staging-rate-limit-reset.json"), {
+    status: "PASS",
+    preJourneyRateLimitReset,
+    postJourneyRateLimitReset,
+    normalRateLimitImplementationChanged: false,
+    productionMutationPerformed: false,
   });
 
   const countsBefore = await captureNoEffectCounts(admin);

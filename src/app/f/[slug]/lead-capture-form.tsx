@@ -17,7 +17,10 @@ type LeadCaptureFormProps = {
 
 const SMS_CONSENT_COPY =
   "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? "";
+const TURNSTILE_SITE_KEY =
+  process.env.NEXT_PUBLIC_LEAD_TURNSTILE_SITE_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ||
+  "";
 
 const FORM_COPY = {
   en: {

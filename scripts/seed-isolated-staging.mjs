@@ -140,8 +140,11 @@ const IDS = Object.freeze({
   staleReportingSnapshot: "d9000000-0000-4000-8000-000000000002",
   failedReportingConfirmedSnapshot: "d9000000-0000-4000-8000-000000000003",
   failedReportingAttemptSnapshot: "d9000000-0000-4000-8000-000000000004",
+  rlsStripeClaimA: "e1000000-0000-4000-8000-000000000001",
+  rlsStripeClaimB: "e1000000-0000-4000-8000-000000000002",
+  rlsProviderSettlementA: "e2000000-0000-4000-8000-000000000001",
+  rlsProviderSettlementB: "e2000000-0000-4000-8000-000000000002",
 });
-
 function requireEnvironment(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
@@ -387,6 +390,341 @@ async function assertExactCount(query, expected, label) {
   if (result.count !== expected) {
     throw new Error(`${label}: expected ${expected}, received ${result.count ?? "unknown"}`);
   }
+}
+
+async function ensureSyntheticStripeRlsReceipt(admin, {
+  suffix,
+  organizationId,
+  subscriptionId,
+  claimToken,
+}) {
+  const eventId = `evt_test_df_staging_rls_${suffix}`;
+  const input = {
+    p_stripe_event_id: eventId,
+    p_stripe_event_type: "dealflow.synthetic.rls_visibility",
+    p_stripe_object_id: `obj_test_df_staging_rls_${suffix}`,
+    p_organization_id: organizationId,
+    p_stripe_subscription_id: subscriptionId,
+    p_payload: {
+      fixture: FIXTURE_LABEL,
+      synthetic: true,
+      livemode: false,
+      purpose: "cross_tenant_rls_visibility",
+    },
+    p_claim_token: claimToken,
+    p_lease_ms: 600_000,
+  };
+  const claimRows = await assertNoError(
+    await admin.rpc("claim_stripe_webhook_event_v2", input),
+    `claim synthetic Stripe RLS receipt ${suffix}`,
+  );
+  const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows;
+  if (!claim?.receipt_id) {
+    throw new Error(`The synthetic Stripe RLS receipt ${suffix} has no durable id`);
+  }
+  if (claim.claim_outcome === "claimed" || claim.claim_outcome === "busy") {
+    if (
+      claim.claim_token !== claimToken ||
+      !Number.isInteger(claim.claim_generation) ||
+      claim.claim_generation < 1
+    ) {
+      throw new Error(`The synthetic Stripe RLS receipt ${suffix} is owned by another claim`);
+    }
+    const settled = await assertNoError(
+      await admin.rpc("settle_stripe_webhook_event_v2", {
+        p_stripe_event_id: eventId,
+        p_claim_token: claim.claim_token,
+        p_claim_generation: claim.claim_generation,
+        p_status: "processed",
+        p_error_code: null,
+        p_error_message: null,
+      }),
+      `settle synthetic Stripe RLS receipt ${suffix}`,
+    );
+    if (settled !== true) {
+      throw new Error(`The synthetic Stripe RLS receipt ${suffix} did not settle exactly once`);
+    }
+  } else if (claim.claim_outcome !== "duplicate" || claim.receipt_status !== "processed") {
+    throw new Error(`The synthetic Stripe RLS receipt ${suffix} is not in a safe terminal state`);
+  }
+
+  const replayRows = await assertNoError(
+    await admin.rpc("claim_stripe_webhook_event_v2", input),
+    `replay synthetic Stripe RLS receipt ${suffix}`,
+  );
+  const replay = Array.isArray(replayRows) ? replayRows[0] : replayRows;
+  if (
+    replay?.claim_outcome !== "duplicate" ||
+    replay?.receipt_id !== claim.receipt_id ||
+    replay?.receipt_status !== "processed"
+  ) {
+    throw new Error(`The synthetic Stripe RLS receipt ${suffix} replay is not idempotent`);
+  }
+
+  const truth = await assertNoError(
+    await admin
+      .from("stripe_webhook_events")
+      .select("id,stripe_event_id,stripe_event_type,stripe_object_id,organization_id,stripe_subscription_id,status,payload")
+      .eq("id", claim.receipt_id)
+      .single(),
+    `read synthetic Stripe RLS receipt ${suffix}`,
+  );
+  if (
+    truth.stripe_event_id !== eventId ||
+    truth.stripe_event_type !== input.p_stripe_event_type ||
+    truth.stripe_object_id !== input.p_stripe_object_id ||
+    truth.organization_id !== organizationId ||
+    truth.stripe_subscription_id !== subscriptionId ||
+    truth.status !== "processed" ||
+    truth.payload?.fixture !== FIXTURE_LABEL ||
+    truth.payload?.synthetic !== true ||
+    truth.payload?.livemode !== false
+  ) {
+    throw new Error(`The synthetic Stripe RLS receipt ${suffix} is not exactly scoped`);
+  }
+  return { id: truth.id, eventId, replayIdempotent: true };
+}
+
+async function ensureSyntheticProviderRlsReceipt(admin, {
+  suffix,
+  organizationId,
+  userId,
+  settlementToken,
+}) {
+  const provider = "isolated_staging_rls";
+  const operation = `tenant_visibility_${suffix}`;
+  const idempotencyKey = `isolated-staging-rls-provider:${organizationId}`;
+  const attemptKey = `${idempotencyKey}:attempt`;
+  const input = {
+    p_organization_id: organizationId,
+    p_user_id: userId,
+    p_campaign_id: null,
+    p_provider: provider,
+    p_operation: operation,
+    p_limit_count: 1,
+    p_idempotency_key: idempotencyKey,
+    p_attempt_key: attemptKey,
+    p_settlement_token: settlementToken,
+    p_estimated_cost: 0,
+    p_credit_amount: 0,
+    p_credit_reason: "isolated_staging_rls_fixture",
+  };
+  const existingEvents = await assertNoError(
+    await admin
+      .from("provider_usage_events")
+      .select("id,organization_id,user_id,campaign_id,provider,operation,idempotency_key,attempt_key,usage_date,status,metadata,settlement_token,settlement_generation,credit_ledger_id,compensation_ledger_id")
+      .eq("idempotency_key", idempotencyKey)
+      .limit(2),
+    `discover canonical provider RLS receipt ${suffix}`,
+  );
+  if (existingEvents.length > 1) {
+    throw new Error(`The synthetic provider RLS receipt ${suffix} is not unique`);
+  }
+
+  let eventId;
+  if (existingEvents.length === 0) {
+    const reservationRows = await assertNoError(
+      await admin.rpc("reserve_provider_usage_attempt_v2", input),
+      `reserve synthetic provider RLS receipt ${suffix}`,
+    );
+    const reservation = Array.isArray(reservationRows) ? reservationRows[0] : reservationRows;
+    if (
+      reservation?.allowed !== true ||
+      reservation.reused_existing !== false ||
+      reservation.event_status !== "reserved" ||
+      reservation.settlement_token !== settlementToken ||
+      reservation.settlement_generation !== 1 ||
+      !reservation.event_id ||
+      !reservation.usage_id
+    ) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} was not reserved exactly once`);
+    }
+    eventId = reservation.event_id;
+
+    const inProgressRows = await assertNoError(
+      await admin.rpc("reserve_provider_usage_attempt_v2", input),
+      `prove in-progress replay for synthetic provider RLS receipt ${suffix}`,
+    );
+    const inProgress = Array.isArray(inProgressRows) ? inProgressRows[0] : inProgressRows;
+    if (
+      inProgress?.allowed !== false ||
+      inProgress.reused_existing !== true ||
+      inProgress.block_reason !== "attempt_in_progress" ||
+      inProgress.event_status !== "reserved" ||
+      inProgress.event_id !== reservation.event_id ||
+      inProgress.usage_id !== reservation.usage_id ||
+      inProgress.settlement_token !== settlementToken ||
+      inProgress.settlement_generation !== 1
+    ) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} in-progress replay was unsafe`);
+    }
+  } else {
+    const existing = existingEvents[0];
+    if (
+      existing.organization_id !== organizationId ||
+      existing.user_id !== userId ||
+      existing.campaign_id !== null ||
+      existing.provider !== provider ||
+      existing.operation !== operation ||
+      existing.idempotency_key !== idempotencyKey ||
+      existing.attempt_key !== attemptKey ||
+      !existing.id
+    ) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} identity collided`);
+    }
+    eventId = existing.id;
+    if (
+      existing.status === "reserved" &&
+      (
+        existing.settlement_token !== settlementToken ||
+        !Number.isInteger(existing.settlement_generation) ||
+        existing.settlement_generation < 1
+      )
+    ) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} is owned by another settlement`);
+    }
+    if (!["reserved", "consumed"].includes(existing.status)) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} is not in a safe state`);
+    }
+  }
+
+  const currentEvent = await assertNoError(
+    await admin
+      .from("provider_usage_events")
+      .select("id,status,settlement_token,settlement_generation")
+      .eq("id", eventId)
+      .single(),
+    `read current synthetic provider RLS receipt ${suffix}`,
+  );
+  if (currentEvent.status === "reserved") {
+    if (
+      currentEvent.settlement_token !== settlementToken ||
+      !Number.isInteger(currentEvent.settlement_generation) ||
+      currentEvent.settlement_generation < 1
+    ) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} cannot be safely resumed`);
+    }
+    const settlementRows = await assertNoError(
+      await admin.rpc("settle_provider_usage_attempt_v2", {
+        p_event_id: eventId,
+        p_organization_id: organizationId,
+        p_user_id: userId,
+        p_settlement_token: settlementToken,
+        p_settlement_generation: currentEvent.settlement_generation,
+        p_outcome: "consumed",
+        p_metadata: {
+          fixture: FIXTURE_LABEL,
+          synthetic: true,
+          providerMutationPerformed: false,
+          purpose: "cross_tenant_rls_visibility",
+        },
+      }),
+      `settle synthetic provider RLS receipt ${suffix}`,
+    );
+    const settlement = Array.isArray(settlementRows) ? settlementRows[0] : settlementRows;
+    if (
+      settlement?.settled !== true ||
+      settlement.event_status !== "consumed" ||
+      settlement.reused_terminal !== false ||
+      settlement.compensated !== false ||
+      settlement.compensation_ledger_id !== null
+    ) {
+      throw new Error(`The synthetic provider RLS receipt ${suffix} did not settle safely`);
+    }
+  } else if (currentEvent.status !== "consumed") {
+    throw new Error(`The synthetic provider RLS receipt ${suffix} is not terminal`);
+  }
+
+  const terminalReplayRows = await assertNoError(
+    await admin.rpc("settle_provider_usage_attempt_v2", {
+      p_event_id: eventId,
+      p_organization_id: organizationId,
+      p_user_id: userId,
+      p_settlement_token: settlementToken,
+      p_settlement_generation: currentEvent.settlement_generation,
+      p_outcome: "consumed",
+      p_metadata: {
+        fixture: FIXTURE_LABEL,
+        synthetic: true,
+        providerMutationPerformed: false,
+        purpose: "cross_tenant_rls_visibility_terminal_replay",
+      },
+    }),
+    `prove terminal settlement replay for synthetic provider RLS receipt ${suffix}`,
+  );
+  const terminalReplay = Array.isArray(terminalReplayRows)
+    ? terminalReplayRows[0]
+    : terminalReplayRows;
+  if (
+    terminalReplay?.settled !== false ||
+    terminalReplay.event_status !== "consumed" ||
+    terminalReplay.reused_terminal !== true ||
+    terminalReplay.compensated !== false ||
+    terminalReplay.compensation_ledger_id !== null ||
+    terminalReplay.credit_balance !== null
+  ) {
+    throw new Error(`The synthetic provider RLS receipt ${suffix} terminal replay was unsafe`);
+  }
+
+  const eventTruth = await assertNoError(
+    await admin
+      .from("provider_usage_events")
+      .select("id,organization_id,user_id,campaign_id,provider,operation,idempotency_key,attempt_key,usage_date,status,metadata,settlement_token,credit_ledger_id,compensation_ledger_id")
+      .eq("id", eventId)
+      .single(),
+    `read synthetic provider RLS event ${suffix}`,
+  );
+  const limitRows = await assertNoError(
+    await admin
+      .from("provider_usage_limits")
+      .select("id,organization_id,user_id,campaign_id,provider,operation,usage_date,usage_count,limit_count")
+      .eq("organization_id", organizationId)
+      .eq("user_id", userId)
+      .is("campaign_id", null)
+      .eq("provider", provider)
+      .eq("operation", operation)
+      .eq("usage_date", eventTruth.usage_date)
+      .limit(2),
+    `read synthetic provider RLS limit ${suffix}`,
+  );
+  if (limitRows.length !== 1) {
+    throw new Error(`The synthetic provider RLS receipt ${suffix} has no exact usage limit`);
+  }
+  const limitTruth = limitRows[0];
+  if (
+    eventTruth.organization_id !== organizationId ||
+    eventTruth.user_id !== userId ||
+    eventTruth.campaign_id !== null ||
+    eventTruth.provider !== provider ||
+    eventTruth.operation !== operation ||
+    eventTruth.idempotency_key !== idempotencyKey ||
+    eventTruth.attempt_key !== attemptKey ||
+    eventTruth.status !== "consumed" ||
+    eventTruth.metadata?.fixture !== FIXTURE_LABEL ||
+    eventTruth.metadata?.synthetic !== true ||
+    eventTruth.metadata?.providerMutationPerformed !== false ||
+    eventTruth.metadata?.purpose !== "cross_tenant_rls_visibility" ||
+    eventTruth.settlement_token !== null ||
+    eventTruth.credit_ledger_id !== null ||
+    eventTruth.compensation_ledger_id !== null ||
+    limitTruth.organization_id !== organizationId ||
+    limitTruth.user_id !== userId ||
+    limitTruth.campaign_id !== null ||
+    limitTruth.provider !== provider ||
+    limitTruth.operation !== operation ||
+    limitTruth.usage_date !== eventTruth.usage_date ||
+    limitTruth.usage_count !== 1 ||
+    limitTruth.limit_count !== 1
+  ) {
+    throw new Error(`The synthetic provider RLS receipt ${suffix} is not exactly scoped`);
+  }
+  return {
+    eventId: eventTruth.id,
+    limitId: limitTruth.id,
+    usageDate: eventTruth.usage_date,
+    replayIdempotent: true,
+    providerMutationPerformed: false,
+  };
 }
 
 async function main() {
@@ -1081,6 +1419,129 @@ async function main() {
     initialCreditTruth.idempotency_key !== `commercial_activation_initial_credit:${IDS.organization}`
   ) {
     throw new Error("The synthetic staging activation did not preserve the exact one-time $10 initial credit truth");
+  }
+
+  const rlsCreditInput = {
+    p_user_id: scenarioUserIds.attacker,
+    p_organization_id: IDS.attackerOrganization,
+    p_amount: 100,
+    p_reason: "isolated_staging_rls_fixture",
+    p_reference_type: "isolated_staging_fixture",
+    p_reference_id: FIXTURE_LABEL,
+    p_idempotency_key: `isolated_staging_rls_credit:${IDS.attackerOrganization}`,
+    p_metadata: {
+      fixture: FIXTURE_LABEL,
+      synthetic: true,
+      purpose: "cross_tenant_credit_visibility_proof",
+    },
+  };
+  const rlsCreditRows = await assertNoError(
+    await admin.rpc("grant_user_credits", rlsCreditInput),
+    "grant exact synthetic cross-tenant RLS credit fixture",
+  );
+  const rlsCredit = Array.isArray(rlsCreditRows) ? rlsCreditRows[0] : rlsCreditRows;
+  if (!rlsCredit?.ledger_id || rlsCredit.balance !== 100) {
+    throw new Error("The synthetic cross-tenant RLS credit fixture did not return exact scoped truth");
+  }
+  const rlsCreditReplayRows = await assertNoError(
+    await admin.rpc("grant_user_credits", rlsCreditInput),
+    "replay exact synthetic cross-tenant RLS credit fixture",
+  );
+  const rlsCreditReplay = Array.isArray(rlsCreditReplayRows)
+    ? rlsCreditReplayRows[0]
+    : rlsCreditReplayRows;
+  if (
+    rlsCreditReplay?.ledger_id !== rlsCredit.ledger_id ||
+    rlsCreditReplay?.balance !== 100 ||
+    rlsCreditReplay?.reused_existing !== true
+  ) {
+    throw new Error("The synthetic cross-tenant RLS credit fixture replay was not idempotent");
+  }
+  const rlsCreditTruth = await assertNoError(
+    await admin
+      .from("user_credit_ledger")
+      .select("id,user_id,organization_id,delta,balance_after,reason,reference_type,reference_id,idempotency_key")
+      .eq("id", rlsCredit.ledger_id)
+      .single(),
+    "read back exact synthetic cross-tenant RLS credit fixture",
+  );
+  const rlsCreditBalance = await assertNoError(
+    await admin
+      .from("organization_user_credits")
+      .select("organization_id,user_id,balance")
+      .eq("organization_id", IDS.attackerOrganization)
+      .eq("user_id", scenarioUserIds.attacker)
+      .single(),
+    "read back exact synthetic cross-tenant RLS credit balance",
+  );
+  if (
+    rlsCreditTruth.user_id !== scenarioUserIds.attacker ||
+    rlsCreditTruth.organization_id !== IDS.attackerOrganization ||
+    rlsCreditTruth.delta !== 100 ||
+    rlsCreditTruth.balance_after !== 100 ||
+    rlsCreditTruth.reason !== "isolated_staging_rls_fixture" ||
+    rlsCreditTruth.reference_type !== "isolated_staging_fixture" ||
+    rlsCreditTruth.reference_id !== FIXTURE_LABEL ||
+    rlsCreditTruth.idempotency_key !==
+      `isolated_staging_rls_credit:${IDS.attackerOrganization}` ||
+    rlsCreditBalance.organization_id !== IDS.attackerOrganization ||
+    rlsCreditBalance.user_id !== scenarioUserIds.attacker ||
+    rlsCreditBalance.balance !== 100
+  ) {
+    throw new Error("The synthetic cross-tenant RLS credit fixture is not exactly scoped");
+  }
+
+  const rlsStripeA = await ensureSyntheticStripeRlsReceipt(admin, {
+    suffix: "a",
+    organizationId: IDS.organization,
+    subscriptionId: stripeSubscriptionId,
+    claimToken: IDS.rlsStripeClaimA,
+  });
+  const rlsStripeB = await ensureSyntheticStripeRlsReceipt(admin, {
+    suffix: "b",
+    organizationId: IDS.attackerOrganization,
+    subscriptionId: null,
+    claimToken: IDS.rlsStripeClaimB,
+  });
+  const rlsProviderA = await ensureSyntheticProviderRlsReceipt(admin, {
+    suffix: "a",
+    organizationId: IDS.organization,
+    userId,
+    settlementToken: IDS.rlsProviderSettlementA,
+  });
+  const rlsProviderB = await ensureSyntheticProviderRlsReceipt(admin, {
+    suffix: "b",
+    organizationId: IDS.attackerOrganization,
+    userId: scenarioUserIds.attacker,
+    settlementToken: IDS.rlsProviderSettlementB,
+  });
+  const rlsCreditBalanceA = await assertNoError(
+    await admin
+      .from("organization_user_credits")
+      .select("organization_id,user_id,balance")
+      .eq("organization_id", IDS.organization)
+      .eq("user_id", userId)
+      .single(),
+    "read live paid-direct RLS credit balance",
+  );
+  const rlsCreditBalanceB = await assertNoError(
+    await admin
+      .from("organization_user_credits")
+      .select("organization_id,user_id,balance")
+      .eq("organization_id", IDS.attackerOrganization)
+      .eq("user_id", scenarioUserIds.attacker)
+      .single(),
+    "read live attacker RLS credit balance",
+  );
+  if (
+    rlsCreditBalanceA.organization_id !== IDS.organization ||
+    rlsCreditBalanceA.user_id !== userId ||
+    rlsCreditBalanceA.balance !== 1_000 ||
+    rlsCreditBalanceB.organization_id !== IDS.attackerOrganization ||
+    rlsCreditBalanceB.user_id !== scenarioUserIds.attacker ||
+    rlsCreditBalanceB.balance !== 100
+  ) {
+    throw new Error("The live synthetic RLS credit balances are not exactly scoped");
   }
 
   const ghlActivationRows = await assertNoError(
@@ -1817,6 +2278,15 @@ async function main() {
   );
   await assertExactCount(
     admin
+      .from("user_credit_ledger")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", IDS.attackerOrganization)
+      .eq("idempotency_key", `isolated_staging_rls_credit:${IDS.attackerOrganization}`),
+    1,
+    "verify exact synthetic cross-tenant RLS credit count",
+  );
+  await assertExactCount(
+    admin
       .from("ghl_billing_activation_requests")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", IDS.organization)
@@ -2047,6 +2517,26 @@ async function main() {
     initialCreditGranted: activation.initial_credit_granted === true,
     initialCreditCents: initialCreditTruth.delta,
     activationReplayIdempotent: true,
+    rlsCreditFixtures: {
+      userAId: userId,
+      organizationAId: IDS.organization,
+      balanceA: rlsCreditBalanceA.balance,
+      ledgerAId: initialCreditTruth.id,
+      billingAId: IDS.billing,
+      userBId: scenarioUserIds.attacker,
+      organizationBId: IDS.attackerOrganization,
+      balanceB: rlsCreditBalanceB.balance,
+      ledgerBId: rlsCreditTruth.id,
+      stripeEventAId: rlsStripeA.id,
+      stripeEventBId: rlsStripeB.id,
+      providerUsageLimitAId: rlsProviderA.limitId,
+      providerUsageLimitBId: rlsProviderB.limitId,
+      providerUsageEventAId: rlsProviderA.eventId,
+      providerUsageEventBId: rlsProviderB.eventId,
+      providerUsageDate: rlsProviderA.usageDate,
+      providerMutationPerformed: false,
+      replayIdempotent: true,
+    },
     ghlActivationRequestId: ghlActivation.request_id,
     ghlActivationStatus: ghlActivation.request_status,
     ghlActivationBlocker: ghlActivation.blocker_code ?? null,
