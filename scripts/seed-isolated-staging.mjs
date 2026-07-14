@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
+import { buildStagingMetaProviderContract } from "./lib/staging-meta-provider-contract.mjs";
+
 const FIXTURE_LABEL = "DF-STAGING-20260712";
 const FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
 const EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example.com";
@@ -1608,6 +1610,13 @@ async function main() {
       daily_budget_minor: String(META_FIXTURE.dailyBudgetCents),
       special_ad_categories: ["HOUSING"],
     },
+    provider_contract: buildStagingMetaProviderContract({
+      objective: "OUTCOME_LEADS",
+      countryCode: "CA",
+      dailyBudgetMinor: String(META_FIXTURE.dailyBudgetCents),
+      adDestination: META_FIXTURE.adDestination,
+      pageId: META_FIXTURE.providerPageId,
+    }),
   };
   const customerApprovalDigest = sha256(JSON.stringify({
     version: 1,
@@ -1699,7 +1708,24 @@ async function main() {
     preauthorization.launch_approval_snapshot?.destination?.ad_destination !== META_FIXTURE.adDestination ||
     preauthorization.launch_approval_snapshot?.destination_url !== destinationUrl ||
     preauthorization.launch_approval_snapshot?.delivery?.daily_budget_minor !== String(META_FIXTURE.dailyBudgetCents) ||
-    preauthorization.launch_approval_snapshot?.delivery?.special_ad_categories?.[0] !== "HOUSING"
+    preauthorization.launch_approval_snapshot?.delivery?.special_ad_categories?.[0] !== "HOUSING" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.campaign?.objective !== "OUTCOME_LEADS" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.campaign?.special_ad_categories?.[0] !== "HOUSING" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.campaign?.special_ad_category_country?.[0] !== "CA" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.campaign?.is_adset_budget_sharing_enabled !== false ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.billing_event !== "IMPRESSIONS" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.optimization_goal !== "LEAD_GENERATION" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.daily_budget_minor !== String(META_FIXTURE.dailyBudgetCents) ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.bid_strategy !== "LOWEST_COST_WITHOUT_CAP" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.targeting?.geo_locations?.countries?.[0] !== "CA" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.destination_type !== "ON_AD" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.promoted_object?.page_id !== META_FIXTURE.providerPageId ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.ad_set?.tracking_specs?.length !== 0 ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.creative?.page_id !== META_FIXTURE.providerPageId ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.creative?.call_to_action_type !== "LEARN_MORE" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.creative?.link !== "https://fb.me/" ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.creative?.cta_link !== null ||
+    preauthorization.launch_approval_snapshot?.provider_contract?.creative?.provider_form_binding !== "provisioning_receipt"
   ) {
     throw new Error("The synthetic staging Meta activation preauthorization is not canonically bound");
   }

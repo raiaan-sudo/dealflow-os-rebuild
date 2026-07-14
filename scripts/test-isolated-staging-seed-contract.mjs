@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildStagingMetaProviderContract } from "./lib/staging-meta-provider-contract.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
 const envExample = readFileSync(join(root, ".env.example"), "utf8");
@@ -170,6 +172,81 @@ assert.doesNotMatch(source, /image_url_sha256/);
 assert.doesNotMatch(source, /example\.invalid/);
 assert.match(source, /form_definition_digest: sha256/);
 assert.match(source, /special_ad_categories: \["HOUSING"\]/);
+assert.match(source, /provider_contract: buildStagingMetaProviderContract\(\{/);
+assert.match(source, /objective: "OUTCOME_LEADS"/);
+assert.match(source, /countryCode: "CA"/);
+assert.match(source, /dailyBudgetMinor: String\(META_FIXTURE\.dailyBudgetCents\)/);
+assert.match(source, /adDestination: META_FIXTURE\.adDestination/);
+assert.match(source, /pageId: META_FIXTURE\.providerPageId/);
+const providerContractInput = Object.freeze({
+  objective: "OUTCOME_LEADS",
+  countryCode: "CA",
+  dailyBudgetMinor: "1000",
+  adDestination: "meta_instant_form",
+  pageId: "900000000000002",
+});
+assert.deepEqual(buildStagingMetaProviderContract(providerContractInput), {
+  campaign: {
+    objective: "OUTCOME_LEADS",
+    special_ad_categories: ["HOUSING"],
+    special_ad_category_country: ["CA"],
+    is_adset_budget_sharing_enabled: false,
+  },
+  ad_set: {
+    billing_event: "IMPRESSIONS",
+    optimization_goal: "LEAD_GENERATION",
+    daily_budget_minor: "1000",
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+    targeting: { geo_locations: { countries: ["CA"] } },
+    destination_type: "ON_AD",
+    promoted_object: { page_id: "900000000000002" },
+    tracking_specs: [],
+  },
+  creative: {
+    page_id: "900000000000002",
+    call_to_action_type: "LEARN_MORE",
+    link: "https://fb.me/",
+    cta_link: null,
+    provider_form_binding: "provisioning_receipt",
+  },
+});
+for (const key of Object.keys(providerContractInput)) {
+  assert.throws(
+    () => buildStagingMetaProviderContract({ ...providerContractInput, [key]: undefined }),
+    /isolated staging Meta provider contract|must be meta_instant_form/,
+    `missing ${key} must fail closed`,
+  );
+}
+for (const [key, value] of [
+  ["objective", "LEADS"],
+  ["countryCode", "Canada"],
+  ["dailyBudgetMinor", "0"],
+  ["dailyBudgetMinor", "10.00"],
+  ["adDestination", "website"],
+  ["pageId", "page-not-numeric"],
+]) {
+  assert.throws(
+    () => buildStagingMetaProviderContract({ ...providerContractInput, [key]: value }),
+    /isolated staging Meta provider contract|must be meta_instant_form/,
+    `invalid ${key} must fail closed`,
+  );
+}
+assert.equal(Object.isFrozen(buildStagingMetaProviderContract(providerContractInput)), true);
+assert.match(
+  activationMigration,
+  /p_launch_approval_snapshot -> 'provider_contract' -> 'campaign'/,
+);
+assert.match(
+  activationMigration,
+  /p_launch_approval_snapshot -> 'provider_contract' -> 'ad_set'/,
+);
+assert.match(
+  activationMigration,
+  /p_launch_approval_snapshot -> 'provider_contract' -> 'creative'/,
+);
+assert.match(source, /provider_contract\?\.campaign\?\.objective !== "OUTCOME_LEADS"/);
+assert.match(source, /provider_contract\?\.ad_set\?\.optimization_goal !== "LEAD_GENERATION"/);
+assert.match(source, /provider_contract\?\.creative\?\.provider_form_binding !== "provisioning_receipt"/);
 assert.match(source, /replay\?\.id !== preauthorization\?\.id/);
 assert.match(source, /read back existing synthetic atomic Meta activation preauthorization/);
 assert.match(source, /read back synthetic atomic launch fixture/);
