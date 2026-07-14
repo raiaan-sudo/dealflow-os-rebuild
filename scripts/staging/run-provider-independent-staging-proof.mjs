@@ -3,6 +3,12 @@
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  SYNTHETIC_PROVIDER_SESSION_BUNDLE_SCHEMA,
+  parseSyntheticProviderSessionBundle,
+} from "./provider-session-bundle-contract.mjs";
+import { parseExactHostedSupabaseProjectUrl } from "./exact-supabase-project-url.mjs";
+
 const FIXTURE = "DF-STAGING-20260712";
 const EXPECTED_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_PROJECT_FINGERPRINT =
@@ -66,11 +72,6 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function projectRef(rawUrl) {
-  const hostname = new URL(rawUrl).hostname.toLowerCase();
-  return /^([a-z0-9-]+)\.supabase\.co$/.exec(hostname)?.[1] ?? null;
-}
-
 function firstRow(value) {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
@@ -87,15 +88,33 @@ async function exactCount(query, expected, label) {
   }
 }
 
-async function signIn(supabaseUrl, anonKey, password, email) {
-  const client = createClient(supabaseUrl, anonKey, {
+async function authenticatedClientFromPortfolio(supabaseUrl, anonKey, portfolio, role, email) {
+  const session = portfolio.roles[role];
+  if (
+    session?.email !== email ||
+    !/^[a-f0-9-]{36}$/i.test(session.userId ?? "") ||
+    typeof session.accessToken !== "string" ||
+    session.accessToken.length < 100 ||
+    !Number.isSafeInteger(session.expiresAt) ||
+    session.expiresAt - Math.floor(Date.now() / 1000) < 15 * 60
+  ) {
+    throw new Error(`Synthetic staging session portfolio is invalid for ${role}`);
+  }
+  const validator = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const result = await client.auth.signInWithPassword({ email, password });
-  if (result.error || !result.data.session?.access_token) {
-    throw new Error(`Synthetic staging sign-in failed for ${email}`);
+  const validated = await validator.auth.getUser(session.accessToken);
+  if (
+    validated.error ||
+    validated.data.user?.id !== session.userId ||
+    validated.data.user?.email?.trim().toLowerCase() !== email
+  ) {
+    throw new Error(`Synthetic staging session identity validation failed for ${role}`);
   }
-  return client;
+  return createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    accessToken: async () => session.accessToken,
+  });
 }
 
 async function callBilling(admin, input, label) {
@@ -111,10 +130,15 @@ async function callBilling(admin, input, label) {
 }
 
 async function callWorker(baseUrl, secret) {
+  const stagingAccessGateSecret = requireEnvironment("STAGING_ACCESS_GATE_SECRET");
   const response = await fetch(
     `${baseUrl}/api/internal/system-jobs?maxCycles=5&staleAfterMs=60000`,
     {
-      headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        Accept: "application/json",
+        "x-dealflow-staging-access": stagingAccessGateSecret,
+      },
       redirect: "error",
     },
   );
@@ -170,19 +194,36 @@ function assertEnvironment() {
 
 async function main() {
   const baseUrl = assertEnvironment();
-  const supabaseUrl = requireEnvironment("NEXT_PUBLIC_SUPABASE_URL");
+  const supabaseTarget = parseExactHostedSupabaseProjectUrl(
+    requireEnvironment("NEXT_PUBLIC_SUPABASE_URL"),
+  );
+  const supabaseUrl = supabaseTarget.url;
   const anonKey = requireEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
   const serviceRole = requireEnvironment("SUPABASE_SERVICE_ROLE_KEY", 32);
-  const password = requireEnvironment("STAGING_QA_PASSWORD", 16);
   const internalSecret = requireEnvironment("INTERNAL_SYSTEM_JOBS_SECRET", 32);
-  const ref = projectRef(supabaseUrl);
-  if (!ref || ref.slice(-4) !== EXPECTED_PROJECT_SUFFIX || sha256(ref) !== EXPECTED_PROJECT_FINGERPRINT) {
+  const ref = supabaseTarget.projectRef;
+  if (ref.slice(-4) !== EXPECTED_PROJECT_SUFFIX || sha256(ref) !== EXPECTED_PROJECT_FINGERPRINT) {
     throw new Error("Provider-independent proof requires the exact isolated qibh project");
   }
+  const sessionPortfolio = parseSyntheticProviderSessionBundle(
+    requireEnvironment("STAGING_SYNTHETIC_PROVIDER_SESSION_BUNDLE"),
+    {
+      projectRef: ref,
+      projectFingerprint: EXPECTED_PROJECT_FINGERPRINT,
+      safeSuffix: EXPECTED_PROJECT_SUFFIX,
+      minimumRemainingLifetimeSeconds: 15 * 60,
+    },
+  );
   const admin = createClient(supabaseUrl, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const paid = await signIn(supabaseUrl, anonKey, password, EMAILS.paid);
+  const paid = await authenticatedClientFromPortfolio(
+    supabaseUrl,
+    anonKey,
+    sessionPortfolio,
+    "paidDirect",
+    EMAILS.paid,
+  );
 
   const subscriptionBefore = await noError(
     await admin
@@ -276,9 +317,14 @@ async function main() {
     turnstile_token: STAGING_TURNSTILE_TEST_TOKEN,
   };
   const captureLead = async () => {
+    const stagingAccessGateSecret = requireEnvironment("STAGING_ACCESS_GATE_SECRET");
     const response = await fetch(`${baseUrl}/api/lead-capture`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "x-dealflow-staging-access": stagingAccessGateSecret,
+      },
       body: JSON.stringify(leadPayload),
       redirect: "error",
     });
@@ -446,8 +492,20 @@ async function main() {
     throw new Error("Synthetic fresh/stale/failed reporting state machine is incomplete");
   }
 
-  const partnerOne = await signIn(supabaseUrl, anonKey, password, EMAILS.partnerOneChild);
-  const partnerTwo = await signIn(supabaseUrl, anonKey, password, EMAILS.partnerTwoChild);
+  const partnerOne = await authenticatedClientFromPortfolio(
+    supabaseUrl,
+    anonKey,
+    sessionPortfolio,
+    "partnerChild",
+    EMAILS.partnerOneChild,
+  );
+  const partnerTwo = await authenticatedClientFromPortfolio(
+    supabaseUrl,
+    anonKey,
+    sessionPortfolio,
+    "partnerChildTwo",
+    EMAILS.partnerTwoChild,
+  );
   const ownPartnerOne = await noError(
     await partnerOne.from("campaign_plans").select("id").eq("id", IDS.partnerOneCampaign).maybeSingle(),
     "read partner one own campaign",
@@ -548,9 +606,14 @@ async function main() {
     0,
     "verify no deletion provider receipt was fabricated",
   );
+  const stagingAccessGateSecret = requireEnvironment("STAGING_ACCESS_GATE_SECRET");
   const deletionWorkerResponse = await fetch(`${baseUrl}/api/internal/account-deletion-worker`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${internalSecret}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${internalSecret}`,
+      "Content-Type": "application/json",
+      "x-dealflow-staging-access": stagingAccessGateSecret,
+    },
     body: "{}",
     redirect: "error",
   });
@@ -630,6 +693,12 @@ async function main() {
       separateChildTenantCount: 2,
       ownCampaignReadable: true,
       crossPartnerCampaignDenied: true,
+    },
+    authentication: {
+      sessionPortfolioSchema: SYNTHETIC_PROVIDER_SESSION_BUNDLE_SCHEMA,
+      reusedRoleCount: 3,
+      passwordSignInCount: 0,
+      rawTokenPersisted: false,
     },
     accountDeletion: {
       requestId: deletionRequest.id,

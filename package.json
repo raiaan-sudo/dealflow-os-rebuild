@@ -6,6 +6,7 @@
     "node": ">=20 <25"
   },
   "scripts": {
+    "prebuild": "node ./scripts/generate-hosted-build-identity.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -73,7 +74,7 @@
     "test:ghl-production": "node ./scripts/test-ghl-production-contract.mjs",
     "staging:seed": "node ./scripts/seed-isolated-staging.mjs",
     "staging:acceptance": "node ./scripts/staging/run-isolated-staging-acceptance.mjs",
-    "test:staging-acceptance-contract": "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+    "test:staging-acceptance-contract": "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
     "test:system-job-stage-isolation": "node ./scripts/test-system-job-stage-isolation.mjs",
     "test:reporting-worker-capacity": "node ./scripts/test-reporting-worker-capacity.mjs",
     "test:campaign-dashboard-metric-truth": "node ./scripts/test-campaign-dashboard-metric-truth.mjs",

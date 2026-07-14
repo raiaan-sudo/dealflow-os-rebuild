@@ -3,10 +3,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { assertZeroExternalEffectsEnvironment } from "./src/lib/safety/zero-external-effects";
+import { assertExactHostedSafeBrowserOrigin } from "./scripts/staging/safe-browser-host-contract.mjs";
 import { LOCAL_SAFE_SERVER_ENVIRONMENT } from "./tests/e2e/safe-browser-environment";
 
 const configuredBaseUrl = process.env.SAFE_E2E_BASE_URL?.trim();
-const baseURL = configuredBaseUrl || "http://127.0.0.1:3410";
+const baseURL = configuredBaseUrl
+  ? assertExactHostedSafeBrowserOrigin(configuredBaseUrl).origin
+  : "http://127.0.0.1:3410";
 const shouldStartServer = !configuredBaseUrl;
 const browserChannel = process.env.SAFE_E2E_BROWSER_CHANNEL?.trim();
 const artifactRoot = process.env.SAFE_E2E_OUTPUT_DIR?.trim() ||

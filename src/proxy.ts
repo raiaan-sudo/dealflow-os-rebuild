@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { isExplicitNonProductionDeployment } from "@/lib/deployment-target";
-import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
+import {
+  isExactIsolatedStagingVercelHost,
+  isExplicitNonProductionDeployment,
+} from "@/lib/deployment-target";
+import {
+  getInternalSystemJobSecrets,
+  getSupabaseEnv,
+  isStrongSecretValue,
+} from "@/lib/env";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import { parseProductLocalePathname } from "@/lib/i18n/routing";
 import {
@@ -60,8 +67,26 @@ const PUBLIC_API_PATHS = new Set([
   "/api/integrations/ghl/embed-context",
   "/api/integrations/ghl/webhook",
 ]);
+const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
+const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";
+const STAGING_IMAGE_OPTIMIZER_SOURCE_PATH =
+  "/staging-image-optimizer-proof.png";
+const STAGING_NATIVE_PROVIDER_CALLBACK_PATHS = new Set([
+  "/api/integrations/ghl/webhook",
+  "/api/meta/data-deletion",
+  "/api/meta/leadgen/webhook",
+  "/api/sms/twilio",
+  "/api/stripe/webhook",
+  "/api/webhooks/twilio/status",
+]);
 
 function isPublicRequest(pathname: string) {
+  if (
+    pathname === STAGING_IMAGE_OPTIMIZER_SOURCE_PATH &&
+    isExactIsolatedStagingVercelHost()
+  ) {
+    return true;
+  }
   if (
     pathname === "/ui-direction" &&
     (process.env.NODE_ENV !== "production" || process.env.UI_DIRECTION_PREVIEW === "1")
@@ -134,6 +159,84 @@ function isAuthorizedInternalRequest(request: NextRequest) {
     configured: secrets.length > 0,
     authorized: secrets.some((secret) => timingSafeTokenEquals(token, secret)),
   };
+}
+
+function getIsolatedStagingAccessDecision(request: NextRequest) {
+  const hostedProductionSlot =
+    process.env.VERCEL_ENV?.trim().toLowerCase() === "production";
+  const explicitlyStaging =
+    process.env.DEALFLOW_DEPLOYMENT_TARGET?.trim().toLowerCase() === "staging";
+  const exactIsolatedStagingHost = isExactIsolatedStagingVercelHost();
+
+  // A production-slot deployment claiming to be staging must never become
+  // public merely because its project identity or attestation is absent or
+  // wrong. True production remains intentionally ungated; staging intent
+  // without exact authority fails closed before any request can pass through.
+  if (hostedProductionSlot && explicitlyStaging && !exactIsolatedStagingHost) {
+    return { required: true, configured: false, authorized: false } as const;
+  }
+
+  if (!exactIsolatedStagingHost) {
+    return { required: false, configured: true, authorized: true } as const;
+  }
+
+  // Next's image optimizer performs an internal request without forwarding the
+  // caller's staging credential. This one non-sensitive PNG is intentionally
+  // public only on the exact staging project so the outer optimizer route can
+  // remain gated and still complete its internal fetch.
+  if (request.nextUrl.pathname === STAGING_IMAGE_OPTIMIZER_SOURCE_PATH) {
+    return { required: false, configured: true, authorized: true } as const;
+  }
+
+  // Provider callbacks cannot attach DealFlow's private staging header. Only
+  // the exact native callback routes bypass this outer gate; each remains
+  // fail-closed behind its provider verify-token or signature contract.
+  if (STAGING_NATIVE_PROVIDER_CALLBACK_PATHS.has(request.nextUrl.pathname)) {
+    return { required: false, configured: true, authorized: true } as const;
+  }
+
+  const secret = process.env.STAGING_ACCESS_GATE_SECRET?.trim() ?? "";
+  const configured = isStrongSecretValue(secret);
+  const headerCandidate = request.headers.get(STAGING_ACCESS_HEADER)?.trim() ?? null;
+  const cookieCandidate = request.cookies.get(STAGING_ACCESS_COOKIE)?.value.trim() ?? null;
+  return {
+    required: true,
+    configured,
+    authorized:
+      configured &&
+      (timingSafeTokenEquals(headerCandidate, secret) ||
+        timingSafeTokenEquals(cookieCandidate, secret)),
+  } as const;
+}
+
+function removeCookieFromRequestHeader(
+  cookieHeader: string | null,
+  cookieName: string,
+) {
+  if (!cookieHeader) return null;
+  const retained = cookieHeader
+    .split(";")
+    .map((segment) => segment.trim())
+    .filter((segment) => {
+      const separator = segment.indexOf("=");
+      const name = separator === -1 ? segment : segment.slice(0, separator);
+      return name !== cookieName;
+    });
+  return retained.length > 0 ? retained.join("; ") : null;
+}
+
+function stripStagingAccessCredentials(requestHeaders: Headers) {
+  requestHeaders.delete(STAGING_ACCESS_HEADER);
+  const sanitizedCookieHeader = removeCookieFromRequestHeader(
+    requestHeaders.get("cookie"),
+    STAGING_ACCESS_COOKIE,
+  );
+  if (sanitizedCookieHeader) {
+    requestHeaders.set("cookie", sanitizedCookieHeader);
+  } else {
+    requestHeaders.delete("cookie");
+  }
+  return requestHeaders;
 }
 
 const ROOT_APP_REDIRECT_HOSTS = new Set([
@@ -445,7 +548,53 @@ function applySecurityHeaders(
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now();
   const nonce = crypto.randomUUID().replace(/-/g, "");
+  const stagingAccess = getIsolatedStagingAccessDecision(request);
+  if (stagingAccess.required && !stagingAccess.configured) {
+    return applySecurityHeaders(
+      request,
+      NextResponse.json(
+        { error: "Isolated staging access is unavailable." },
+        {
+          status: 503,
+          headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+        },
+      ),
+      nonce,
+      null,
+      null,
+      startedAt,
+    );
+  }
+  if (stagingAccess.required && !stagingAccess.authorized) {
+    return applySecurityHeaders(
+      request,
+      NextResponse.json(
+        { error: "Not found." },
+        {
+          status: 404,
+          headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+        },
+      ),
+      nonce,
+      null,
+      null,
+      startedAt,
+    );
+  }
   const rawPathname = request.nextUrl.pathname;
+  if (
+    rawPathname === "/_next" ||
+    rawPathname.startsWith("/_next/")
+  ) {
+    // These paths were historically excluded from the proxy. They must pass
+    // through the staging gate first, then retain production's normal static
+    // handling with the gate header/cookie stripped from the internal request.
+    return NextResponse.next({
+      request: {
+        headers: stripStagingAccessCredentials(new Headers(request.headers)),
+      },
+    });
+  }
   const pathname = getEffectiveProductPathname(request);
   const shouldResolvePartnerDomain = shouldResolvePartnerDomainContext(request);
   const verifiedPartnerContext = shouldResolvePartnerDomain
@@ -488,6 +637,7 @@ export async function proxy(request: NextRequest) {
     );
   };
   const requestHeaders = new Headers(request.headers);
+  stripStagingAccessCredentials(requestHeaders);
   requestHeaders.delete("x-dealflow-verified-partner-domain");
   requestHeaders.delete("x-dealflow-verified-partner-id");
   requestHeaders.delete("x-dealflow-verified-partner-slug");
@@ -703,5 +853,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: ["/:path*"],
 };

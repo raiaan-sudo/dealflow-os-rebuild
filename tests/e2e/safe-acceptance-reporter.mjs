@@ -3,6 +3,20 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 const AUTHENTICATED_SUITE = "authenticated isolated-staging product proof";
+const EXPECTED_PROJECTS = Object.freeze([
+  "desktop-chromium",
+  "mobile-chromium",
+  "desktop-firefox",
+  "desktop-webkit",
+]);
+const EXPECTED_AUTHENTICATED_RESULTS_PER_PROJECT = 4;
+
+export function exactReporterProjectName(test, titlePath = test.titlePath()) {
+  const projectName = test.parent?.project?.()?.name;
+  if (typeof projectName === "string" && projectName.length > 0) return projectName;
+  const fallback = titlePath.find((entry) => EXPECTED_PROJECTS.includes(entry));
+  return fallback ?? null;
+}
 
 export function classifyAuthenticatedAcceptance({
   hosted,
@@ -39,6 +53,29 @@ export function classifyAuthenticatedAcceptance({
       reason: "Hosted authenticated acceptance was not fully green.",
     };
   }
+  const countsByProject = Object.fromEntries(
+    EXPECTED_PROJECTS.map((projectName) => [
+      projectName,
+      authenticatedResults.filter((record) => record.projectName === projectName).length,
+    ]),
+  );
+  const unknownProjectCount = authenticatedResults.filter(
+    (record) => !EXPECTED_PROJECTS.includes(record.projectName),
+  ).length;
+  if (
+    unknownProjectCount !== 0 ||
+    authenticatedResults.length !==
+      EXPECTED_PROJECTS.length * EXPECTED_AUTHENTICATED_RESULTS_PER_PROJECT ||
+    Object.values(countsByProject).some(
+      (count) => count !== EXPECTED_AUTHENTICATED_RESULTS_PER_PROJECT,
+    )
+  ) {
+    return {
+      status: "failed",
+      shouldFail: true,
+      reason: "Hosted authenticated acceptance did not cover the exact four-engine matrix.",
+    };
+  }
   return {
     status: "passed",
     shouldFail: false,
@@ -55,7 +92,7 @@ export default class SafeAcceptanceReporter {
     if (!titlePath.includes(AUTHENTICATED_SUITE)) return;
     this.authenticatedResults.push({
       titlePath,
-      projectName: path[0] ?? null,
+      projectName: exactReporterProjectName(test, path),
       status: result.status,
       retry: result.retry,
     });
@@ -83,6 +120,12 @@ export default class SafeAcceptanceReporter {
       authenticatedSkippedCount: this.authenticatedResults.filter(
         (record) => record.status === "skipped",
       ).length,
+      authenticatedProjectCounts: Object.fromEntries(
+        EXPECTED_PROJECTS.map((projectName) => [
+          projectName,
+          this.authenticatedResults.filter((record) => record.projectName === projectName).length,
+        ]),
+      ),
       authenticatedResults: this.authenticatedResults,
     };
     writeFileSync(

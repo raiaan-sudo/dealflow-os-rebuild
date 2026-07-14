@@ -37,14 +37,14 @@ assert.equal(
   }),
   "staging",
 );
-assert.equal(deployment.isProductionDeployment({ VERCEL_ENV: "production" }), true);
+assert.equal(deployment.isProductionDeployment({ VERCEL_ENV: "production" }), false);
 assert.equal(
   deployment.getDeploymentTarget({
     VERCEL_ENV: "production",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
   }),
-  "production",
-  "a repository target overrode the hosting platform production attestation",
+  "unknown",
+  "repository-controlled metadata must not establish production authority",
 );
 assert.equal(
   deployment.isExplicitNonProductionDeployment({

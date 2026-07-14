@@ -8,6 +8,10 @@ if (!baseURL) {
 }
 
 const expectedHost = "dealflow-os-rebuild-selfserve-clean.vercel.app";
+const expectedPartnerOneHost =
+  "dealflow-os-rebuild-selfserve-clean-partner-one-qibh.vercel.app";
+const expectedPartnerTwoHost =
+  "dealflow-os-rebuild-selfserve-clean-partner-two-qibh.vercel.app";
 const parsedBaseUrl = new URL(baseURL);
 if (
   parsedBaseUrl.protocol !== "https:" ||
@@ -23,12 +27,10 @@ if (!partnerBaseURL) {
 const parsedPartnerBaseUrl = new URL(partnerBaseURL);
 if (
   parsedPartnerBaseUrl.protocol !== "https:" ||
-  parsedPartnerBaseUrl.hostname === expectedHost ||
-  !parsedPartnerBaseUrl.hostname.startsWith("dealflow-os-rebuild-selfserve-clean-") ||
-  !parsedPartnerBaseUrl.hostname.endsWith(".vercel.app") ||
+  parsedPartnerBaseUrl.hostname !== expectedPartnerOneHost ||
   parsedPartnerBaseUrl.origin !== partnerBaseURL
 ) {
-  throw new Error("White-label staging proof requires a distinct deployment-bound Vercel host");
+  throw new Error("White-label staging proof requires the exact app-gated partner-one alias");
 }
 const secondPartnerBaseURL = process.env.STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL?.trim();
 if (!secondPartnerBaseURL) {
@@ -37,10 +39,8 @@ if (!secondPartnerBaseURL) {
 const parsedSecondPartnerBaseUrl = new URL(secondPartnerBaseURL);
 if (
   parsedSecondPartnerBaseUrl.protocol !== "https:" ||
-  parsedSecondPartnerBaseUrl.hostname !==
-    "dealflow-os-rebuild-selfserve-clean-partner-two-qibh.vercel.app" ||
-  parsedSecondPartnerBaseUrl.origin !== secondPartnerBaseURL ||
-  parsedSecondPartnerBaseUrl.hostname === parsedPartnerBaseUrl.hostname
+  parsedSecondPartnerBaseUrl.hostname !== expectedPartnerTwoHost ||
+  parsedSecondPartnerBaseUrl.origin !== secondPartnerBaseURL
 ) {
   throw new Error("Second white-label staging proof requires the exact isolated partner-two alias");
 }

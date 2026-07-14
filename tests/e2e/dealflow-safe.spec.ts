@@ -3,22 +3,55 @@ import {
   test,
   type Page,
   type Response,
+  type Route,
   type TestInfo,
 } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { createHash } from "node:crypto";
 
 import {
   ZERO_EXTERNAL_EFFECTS_ATTESTATION,
   assertZeroExternalEffectsEnvironment,
 } from "../../src/lib/safety/zero-external-effects";
+import {
+  browserCookiesForOrigin,
+  isAllowedStagingTurnstileRequest,
+  parseSyntheticBrowserSessionBundle,
+} from "../../scripts/staging/browser-session-bundle-contract.mjs";
+import {
+  EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN,
+  assertExactHostedSafeBrowserOrigin,
+} from "../../scripts/staging/safe-browser-host-contract.mjs";
+import {
+  installBrowserContextNetworkBoundary,
+  isExactLocalNextDevelopmentWebSocket,
+  safeHttpEvidenceTarget,
+  safeWebSocketEvidenceTarget,
+  scopedStagingAccessHeaders,
+  stagingAccessCookiesForOrigins,
+  STAGING_ACCESS_HEADER,
+} from "../../scripts/staging/browser-context-network-boundary.mjs";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3410";
 const BASE_URL = process.env.SAFE_E2E_BASE_URL?.trim() || DEFAULT_BASE_URL;
 const HOSTED_ACCEPTANCE = Boolean(process.env.SAFE_E2E_BASE_URL?.trim());
 const AUTHENTICATED_STAGING_PROOF_ENABLED = process.env.SAFE_E2E_QA_AUTH === "true";
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
+const EXPECTED_STAGING_PROJECT_FINGERPRINT =
+  "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
+const SAFE_SYNTHETIC_ROLE_EMAILS = Object.freeze({
+  paidDirect: "dealflow-staging-20260712@example.com",
+});
+let cachedSafeBrowserSessionBundle: {
+  roles: Record<"paidDirect", {
+    userId: string;
+    email: string;
+    expiresAt: number;
+    cookies: Array<{ name: string; value: string }>;
+  }>;
+} | null = null;
 
-const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const PRODUCTION_HOSTS = new Set([
   "agentdealflow.io",
   "www.agentdealflow.io",
@@ -42,12 +75,54 @@ type BrowserDiagnostics = {
   pageErrors: string[];
   requestFailures: string[];
   serverFailures: string[];
+  forbiddenHosts: string[];
   forbiddenMutations: string[];
+  blockedWebSockets: string[];
+  allowedDevelopmentWebSockets: string[];
   allowedDraftWrites: string[];
   interceptedTelemetry: string[];
 };
 
 const diagnosticsByPage = new WeakMap<Page, BrowserDiagnostics>();
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function sanitizeBrowserDiagnostic(value: string) {
+  return String(value)
+    .replace(/(?:https?|wss?):\/\/[^\s"'`<>]+/gi, (url) => safeHttpEvidenceTarget(url))
+    .replace(/Bearer\s+[^\s"'`<>]+/gi, "Bearer [REDACTED]")
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED_JWT]")
+    .replace(/sb-[a-z0-9-]+-auth-token(?:\.\d+)?=[^\s;]+/gi, "sb-[REDACTED]-auth-token=[REDACTED]")
+    .slice(0, 2_000);
+}
+
+function getStagingAccessGateSecret() {
+  const secret = process.env.STAGING_ACCESS_GATE_SECRET?.trim() ?? "";
+  if (HOSTED_ACCEPTANCE && secret.length < 43) {
+    throw new Error("Hosted safe browser proof requires the isolated staging access gate");
+  }
+  return secret;
+}
+
+function appRequestHeaders(rawTarget: string, additional: Record<string, string> = {}) {
+  const target = new URL(rawTarget, BASE_URL);
+  if (
+    target.origin !== new URL(BASE_URL).origin ||
+    target.username !== "" ||
+    target.password !== ""
+  ) {
+    throw new Error("Safe APIRequestContext request escaped the exact application origin");
+  }
+  const secret = getStagingAccessGateSecret();
+  return scopedStagingAccessHeaders({
+    headers: additional,
+    rawUrl: target.toString(),
+    applicationOrigin: target.origin,
+    stagingAccessGateSecret: secret,
+  });
+}
 
 function pathnameOf(rawUrl: string) {
   try {
@@ -62,11 +137,32 @@ function isExpectedNavigationAbort(message: string) {
 }
 
 function mutationDisposition(method: string, rawUrl: string) {
-  if (!MUTATING_METHODS.has(method)) return "read" as const;
-
   const requestUrl = new URL(rawUrl);
   const baseUrl = new URL(BASE_URL);
-  const sameOrigin = requestUrl.origin === baseUrl.origin;
+  const sameOrigin =
+    requestUrl.origin === baseUrl.origin &&
+    requestUrl.username === "" &&
+    requestUrl.password === "";
+  const exactProjectRef = process.env.QA_ISOLATED_SUPABASE_PROJECT_REF?.trim();
+  const exactSupabaseAuthRead =
+    Boolean(exactProjectRef) &&
+    requestUrl.origin === `https://${exactProjectRef}.supabase.co` &&
+    requestUrl.username === "" &&
+    requestUrl.password === "" &&
+    requestUrl.pathname === "/auth/v1/user" &&
+    ["GET", "HEAD", "OPTIONS"].includes(method);
+  const exactTurnstileTestRequest = isAllowedStagingTurnstileRequest(
+    requestUrl.toString(),
+    method,
+    HOSTED_ACCEPTANCE &&
+      process.env.STAGING_TURNSTILE_TEST_SITE_KEY === "1x00000000000000000000AA",
+  );
+
+  if (!sameOrigin && !exactSupabaseAuthRead && !exactTurnstileTestRequest) {
+    return "forbidden_host" as const;
+  }
+  if (READ_ONLY_METHODS.has(method)) return "read" as const;
+  if (exactTurnstileTestRequest) return "read" as const;
 
   if (
     sameOrigin &&
@@ -74,14 +170,6 @@ function mutationDisposition(method: string, rawUrl: string) {
     requestUrl.pathname === "/api/onboarding/plan"
   ) {
     return "synthetic_staging_draft" as const;
-  }
-
-  if (
-    sameOrigin &&
-    method === "POST" &&
-    requestUrl.pathname === "/api/internal/qa-auth-session"
-  ) {
-    return "qa_session" as const;
   }
 
   if (
@@ -102,35 +190,69 @@ async function installSafetyHarness(page: Page) {
     pageErrors: [],
     requestFailures: [],
     serverFailures: [],
+    forbiddenHosts: [],
     forbiddenMutations: [],
+    blockedWebSockets: [],
+    allowedDevelopmentWebSockets: [],
     allowedDraftWrites: [],
     interceptedTelemetry: [],
   };
+  const context = page.context();
   diagnosticsByPage.set(page, diagnostics);
 
+  if (HOSTED_ACCEPTANCE) {
+    await context.addCookies(
+      stagingAccessCookiesForOrigins({
+        applicationOrigins: [new URL(BASE_URL).origin],
+        stagingAccessGateSecret: getStagingAccessGateSecret(),
+      }),
+    );
+  }
+
   // Prevent side effects, not merely detect them after the fact. Only the
-  // exact isolated QA session and synthetic onboarding-draft paths may write;
-  // telemetry is fulfilled locally without reaching the application.
-  await page.route("**/*", async (route) => {
-    const request = route.request();
-    const method = request.method().toUpperCase();
-    const disposition = mutationDisposition(method, request.url());
-    const record = `${method} ${request.url()}`;
-    if (disposition === "intercepted_telemetry") {
-      diagnostics.interceptedTelemetry.push(record);
-      await route.fulfill({ status: 204, body: "" });
-      return;
-    }
-    if (disposition === "forbidden") {
-      diagnostics.forbiddenMutations.push(record);
-      await route.abort("blockedbyclient");
-      return;
-    }
-    await route.continue();
+  // synthetic onboarding-draft path may write through browser traffic;
+  // telemetry is fulfilled locally without reaching the application. Install
+  // on BrowserContext so popups and every later page inherit the same policy.
+  await installBrowserContextNetworkBoundary(context, {
+    handleHttpRoute: async (unknownRoute) => {
+      const route = unknownRoute as Route;
+      const request = route.request();
+      const method = request.method().toUpperCase();
+      const disposition = mutationDisposition(method, request.url());
+      const record = `${method} ${safeHttpEvidenceTarget(request.url())}`;
+      if (disposition === "intercepted_telemetry") {
+        diagnostics.interceptedTelemetry.push(record);
+        await route.fulfill({ status: 204, body: "" });
+        return;
+      }
+      if (disposition === "forbidden_host") {
+        if (!diagnostics.forbiddenHosts.includes(record)) {
+          diagnostics.forbiddenHosts.push(record);
+        }
+        await route.abort("blockedbyclient");
+        return;
+      }
+      if (disposition === "forbidden") {
+        if (!diagnostics.forbiddenMutations.includes(record)) {
+          diagnostics.forbiddenMutations.push(record);
+        }
+        await route.abort("blockedbyclient");
+        return;
+      }
+      await route.continue();
+    },
+    recordBlockedWebSocket: (url) => {
+      diagnostics.blockedWebSockets.push(safeWebSocketEvidenceTarget(url));
+    },
+    allowWebSocket: (url) =>
+      !HOSTED_ACCEPTANCE && isExactLocalNextDevelopmentWebSocket(url),
+    recordAllowedWebSocket: (url) => {
+      diagnostics.allowedDevelopmentWebSockets.push(safeWebSocketEvidenceTarget(url));
+    },
   });
 
-  page.on("console", (message) => {
-    const text = message.text();
+  context.on("console", (message) => {
+    const text = sanitizeBrowserDiagnostic(message.text());
     if (/hydration|did not match|server rendered html/i.test(text)) {
       diagnostics.hydrationFailures.push(`${message.type()}: ${text}`);
     }
@@ -139,32 +261,46 @@ async function installSafetyHarness(page: Page) {
     }
   });
 
-  page.on("pageerror", (error) => {
-    diagnostics.pageErrors.push(error.message);
+  context.on("weberror", (webError) => {
+    diagnostics.pageErrors.push(sanitizeBrowserDiagnostic(webError.error().message));
   });
 
-  page.on("requestfailed", (request) => {
-    const message = `${request.method()} ${request.url()} ${
-      request.failure()?.errorText ?? "unknown request failure"
+  context.on("requestfailed", (request) => {
+    const message = `${request.method()} ${safeHttpEvidenceTarget(request.url())} ${
+      sanitizeBrowserDiagnostic(request.failure()?.errorText ?? "unknown request failure")
     }`;
     if (!isExpectedNavigationAbort(message)) {
       diagnostics.requestFailures.push(message);
     }
   });
 
-  page.on("response", (response) => {
+  context.on("response", (response) => {
     if (response.status() >= 500) {
       diagnostics.serverFailures.push(
-        `${response.status()} ${response.request().method()} ${response.url()}`,
+        `${response.status()} ${response.request().method()} ${safeHttpEvidenceTarget(response.url())}`,
       );
     }
   });
 
-  page.on("request", (request) => {
+  context.on("request", (request) => {
     const method = request.method().toUpperCase();
     const disposition = mutationDisposition(method, request.url());
-    const record = `${method} ${request.url()}`;
+    const record = `${method} ${safeHttpEvidenceTarget(request.url())}`;
 
+    if (
+      disposition === "forbidden_host" &&
+      !diagnostics.forbiddenHosts.includes(record)
+    ) {
+      // Redirect targets are observable here even when Playwright does not
+      // re-run the route handler for that redirect hop.
+      diagnostics.forbiddenHosts.push(record);
+    }
+    if (
+      disposition === "forbidden" &&
+      !diagnostics.forbiddenMutations.includes(record)
+    ) {
+      diagnostics.forbiddenMutations.push(record);
+    }
     if (disposition === "synthetic_staging_draft") {
       diagnostics.allowedDraftWrites.push(record);
     }
@@ -180,7 +316,9 @@ function diagnosticsFor(page: Page) {
 function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
   const diagnostics = diagnosticsFor(page);
   const failures = {
+    forbiddenHosts: diagnostics.forbiddenHosts,
     forbiddenMutations: diagnostics.forbiddenMutations,
+    blockedWebSockets: diagnostics.blockedWebSockets,
     hydrationFailures: diagnostics.hydrationFailures,
     pageErrors: diagnostics.pageErrors,
     consoleErrors: diagnostics.consoleErrors,
@@ -370,17 +508,34 @@ async function assertPublicLinksResolve(page: Page) {
   for (const url of safeUrls) {
     const response = await page.request.get(url.toString(), {
       failOnStatusCode: false,
-      maxRedirects: 3,
+      maxRedirects: 0,
+      headers: appRequestHeaders(url.toString()),
     });
     expect(response.status(), `Broken public link: ${url.toString()}`).toBeLessThan(400);
   }
 }
 
+function safeBrowserSessionBundle() {
+  if (cachedSafeBrowserSessionBundle) return cachedSafeBrowserSessionBundle;
+  const raw = process.env.STAGING_SYNTHETIC_BROWSER_SESSION_BUNDLE?.trim();
+  const projectRef = process.env.QA_ISOLATED_SUPABASE_PROJECT_REF?.trim();
+  expect(raw, "The phase-specific safe-browser session bundle is required").toBeTruthy();
+  expect(projectRef, "The exact isolated QA Supabase project ref is required").toBeTruthy();
+  cachedSafeBrowserSessionBundle = parseSyntheticBrowserSessionBundle(raw!, {
+    projectRef: projectRef!,
+    projectFingerprint: EXPECTED_STAGING_PROJECT_FINGERPRINT,
+    safeSuffix: EXPECTED_STAGING_SAFE_SUFFIX,
+    expectedRoleEmails: SAFE_SYNTHETIC_ROLE_EMAILS,
+    minimumRemainingLifetimeSeconds: 10 * 60,
+  }) as typeof cachedSafeBrowserSessionBundle;
+  return cachedSafeBrowserSessionBundle!;
+}
+
 function assertAuthenticatedStagingPreconditions() {
   const base = new URL(BASE_URL);
+  const exactBase = assertExactHostedSafeBrowserOrigin(BASE_URL);
   const target = process.env.DEALFLOW_DEPLOYMENT_TARGET?.trim().toLowerCase();
   const qaProjectRef = process.env.QA_ISOLATED_SUPABASE_PROJECT_REF?.trim();
-  const qaEmail = process.env.QA_EMAIL?.trim();
   const internalSecret = getInternalQaSecret();
 
   expect(
@@ -391,6 +546,7 @@ function assertAuthenticatedStagingPreconditions() {
     ["staging", "preview", "test"],
     "DEALFLOW_DEPLOYMENT_TARGET must explicitly attest a nonproduction target.",
   ).toContain(target);
+  expect(exactBase.origin).toBe(EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN);
   expect(PRODUCTION_HOSTS.has(base.hostname.toLowerCase()), "Authenticated proof is blocked on production hosts.").toBe(false);
   expect(process.env.QA_AUTH_HARNESS_ENABLED, "The QA auth harness must be explicitly enabled.").toBe("true");
   expect(qaProjectRef, "The exact isolated QA Supabase project ref is required.").toBeTruthy();
@@ -398,27 +554,44 @@ function assertAuthenticatedStagingPreconditions() {
     qaProjectRef?.endsWith(EXPECTED_STAGING_SAFE_SUFFIX),
     "The configured QA Supabase project does not match the isolated staging safe suffix.",
   ).toBe(true);
-  expect(qaEmail, "A pre-existing, non-admin synthetic QA email is required.").toBeTruthy();
+  expect(
+    sha256(qaProjectRef ?? ""),
+    "The configured QA Supabase project does not match the exact isolated staging fingerprint.",
+  ).toBe(EXPECTED_STAGING_PROJECT_FINGERPRINT);
   expect(internalSecret, "A restricted internal QA harness secret is required.").toBeTruthy();
+  expect(getStagingAccessGateSecret().length).toBeGreaterThanOrEqual(43);
+  expect(Object.keys(safeBrowserSessionBundle().roles)).toEqual(["paidDirect"]);
 }
 
 function getInternalQaSecret() {
-  return (
-    process.env.SAFE_E2E_INTERNAL_SECRET?.trim() ||
-    process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim() ||
-    ""
-  );
+  return process.env.SAFE_E2E_INTERNAL_SECRET?.trim() ?? "";
 }
 
-async function establishQaSession(page: Page) {
-  const response = await page.request.post("/api/internal/qa-auth-session", {
+async function establishQaHarnessSession(page: Page) {
+  const target = new URL("/api/internal/qa-auth-session", BASE_URL);
+  if (
+    target.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN ||
+    target.pathname !== "/api/internal/qa-auth-session" ||
+    target.search !== "" ||
+    target.hash !== "" ||
+    target.username !== "" ||
+    target.password !== ""
+  ) {
+    throw new Error("QA harness APIRequestContext target was not exact");
+  }
+  const response = await page.request.fetch(target.toString(), {
+    method: "POST",
+    failOnStatusCode: false,
+    maxRedirects: 0,
     headers: {
-      Authorization: `Bearer ${getInternalQaSecret()}`,
-      Accept: "application/json",
+      ...appRequestHeaders(target.toString(), {
+        Authorization: `Bearer ${getInternalQaSecret()}`,
+        Accept: "application/json",
+      }),
     },
   });
-  const payload = (await response.json().catch(() => null)) as
+  expect(response.url(), "QA session harness must not redirect").toBe(target.toString());
+  const payload = await response.json().catch(() => null) as
     | {
         success?: boolean;
         email?: string;
@@ -436,6 +609,23 @@ async function establishQaSession(page: Page) {
   expect(payload?.cookieCount).toBeGreaterThan(0);
   expect(payload?.access_token, "QA harness must never return a raw access token.").toBeUndefined();
   expect(payload?.refresh_token, "QA harness must never return a raw refresh token.").toBeUndefined();
+}
+
+async function establishQaSession(page: Page) {
+  const projectRef = process.env.QA_ISOLATED_SUPABASE_PROJECT_REF?.trim();
+  expect(projectRef).toBeTruthy();
+  const session = safeBrowserSessionBundle().roles.paidDirect;
+  await page.context().addCookies(
+    browserCookiesForOrigin(session, new URL(BASE_URL).origin, projectRef!),
+  );
+}
+
+async function clearExactQaAuthCookies(page: Page) {
+  const projectRef = process.env.QA_ISOLATED_SUPABASE_PROJECT_REF?.trim();
+  expect(projectRef).toBeTruthy();
+  await page.context().clearCookies({
+    name: new RegExp(`^sb-${projectRef}-auth-token(?:\\.\\d+)?$`),
+  });
 }
 
 async function waitForSuccessfulDraftWrite(
@@ -621,13 +811,37 @@ test.describe("authenticated isolated-staging product proof", () => {
     await establishQaSession(page);
   });
 
+  test("restricted QA harness creates a masked non-admin session without returning credentials", async ({ page }) => {
+    await clearExactQaAuthCookies(page);
+    const beforeHarness = await page.request.get("/api/billing/status", {
+      failOnStatusCode: false,
+      maxRedirects: 0,
+      headers: appRequestHeaders("/api/billing/status", { Accept: "application/json" }),
+    });
+    expect(beforeHarness.status(), "QA harness proof must begin unauthenticated").toBe(401);
+    await establishQaHarnessSession(page);
+    const billingResponse = await page.request.get("/api/billing/status", {
+      maxRedirects: 0,
+      headers: appRequestHeaders("/api/billing/status", { Accept: "application/json" }),
+    });
+    expect(billingResponse.status()).toBe(200);
+    expect(await billingResponse.json()).toMatchObject({
+      planTier: "pro",
+      subscriptionStatus: "active",
+      commerciallyActivated: true,
+      launchAllowed: true,
+      launchOverride: false,
+    });
+  });
+
   test("zero-external-effects precondition and paid activation truth are exact", async ({ page }) => {
     expect(process.env.SAFE_E2E_ZERO_EXTERNAL_EFFECTS_ATTESTATION).toBe(
       ZERO_EXTERNAL_EFFECTS_ATTESTATION,
     );
 
     const billingResponse = await page.request.get("/api/billing/status", {
-      headers: { Accept: "application/json" },
+      maxRedirects: 0,
+      headers: appRequestHeaders("/api/billing/status", { Accept: "application/json" }),
     });
     const billing = (await billingResponse.json()) as Record<string, unknown>;
     expect(billingResponse.status()).toBe(200);
@@ -643,7 +857,8 @@ test.describe("authenticated isolated-staging product proof", () => {
     });
 
     const creditsResponse = await page.request.get("/api/billing/credits", {
-      headers: { Accept: "application/json" },
+      maxRedirects: 0,
+      headers: appRequestHeaders("/api/billing/credits", { Accept: "application/json" }),
     });
     const credits = (await creditsResponse.json()) as Record<string, unknown>;
     expect(creditsResponse.status()).toBe(200);

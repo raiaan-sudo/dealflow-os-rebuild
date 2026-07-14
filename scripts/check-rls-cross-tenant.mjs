@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 
 import nextEnv from "@next/env";
+import { createHash } from "node:crypto";
 
-nextEnv.loadEnvConfig(process.cwd());
+const IS_ISOLATED_STAGING_PROOF =
+  process.env.DEALFLOW_DEPLOYMENT_TARGET === "staging";
+if (!IS_ISOLATED_STAGING_PROOF) {
+  nextEnv.loadEnvConfig(process.cwd());
+}
+
+const EXPECTED_STAGING_PROJECT_FINGERPRINT =
+  "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 
 const requiredEnv = [
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -39,6 +47,25 @@ function requireEnv() {
     fail("RLS smoke env", `missing ${missing.join(", ")}`);
     process.exitCode = 1;
     return false;
+  }
+
+  if (IS_ISOLATED_STAGING_PROOF) {
+    let projectRef = null;
+    try {
+      const hostname = new URL(env("NEXT_PUBLIC_SUPABASE_URL")).hostname.toLowerCase();
+      projectRef = /^([a-z0-9-]+)\.supabase\.co$/.exec(hostname)?.[1] ?? null;
+    } catch {
+      projectRef = null;
+    }
+    if (
+      !projectRef?.endsWith("qibh") ||
+      createHash("sha256").update(projectRef ?? "").digest("hex") !==
+        EXPECTED_STAGING_PROJECT_FINGERPRINT
+    ) {
+      fail("RLS smoke env", "not bound to the exact isolated staging project");
+      process.exitCode = 1;
+      return false;
+    }
   }
 
   return true;

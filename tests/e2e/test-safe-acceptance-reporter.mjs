@@ -2,7 +2,24 @@
 
 import assert from "node:assert/strict";
 
-import { classifyAuthenticatedAcceptance } from "./safe-acceptance-reporter.mjs";
+import {
+  classifyAuthenticatedAcceptance,
+  exactReporterProjectName,
+} from "./safe-acceptance-reporter.mjs";
+
+const projects = [
+  "desktop-chromium",
+  "mobile-chromium",
+  "desktop-firefox",
+  "desktop-webkit",
+];
+const exactGreenMatrix = projects.flatMap((projectName) =>
+  Array.from({ length: 4 }, (_, index) => ({
+    projectName,
+    status: "passed",
+    titlePath: `authenticated-${index}`,
+  })),
+);
 
 assert.deepEqual(
   classifyAuthenticatedAcceptance({ hosted: false, authenticatedResults: [] }),
@@ -34,7 +51,7 @@ assert.equal(
 assert.deepEqual(
   classifyAuthenticatedAcceptance({
     hosted: true,
-    authenticatedResults: [{ status: "passed" }, { status: "passed" }],
+    authenticatedResults: exactGreenMatrix,
   }),
   {
     status: "passed",
@@ -42,6 +59,37 @@ assert.deepEqual(
     reason: "Every hosted authenticated test result passed with zero skips.",
   },
 );
+assert.equal(
+  classifyAuthenticatedAcceptance({
+    hosted: true,
+    authenticatedResults: exactGreenMatrix.slice(0, -1),
+  }).shouldFail,
+  true,
+);
+assert.equal(
+  classifyAuthenticatedAcceptance({
+    hosted: true,
+    authenticatedResults: [
+      ...exactGreenMatrix.slice(1),
+      { projectName: "unknown", status: "passed" },
+    ],
+  }).shouldFail,
+  true,
+);
+
+assert.equal(
+  exactReporterProjectName(
+    { parent: { project: () => ({ name: "desktop-firefox" }) }, titlePath: () => [] },
+    ["", "wrong-fallback"],
+  ),
+  "desktop-firefox",
+);
+assert.equal(
+  exactReporterProjectName(
+    { parent: {}, titlePath: () => [] },
+    ["", "desktop-webkit", "dealflow-safe.spec.ts"],
+  ),
+  "desktop-webkit",
+);
 
 console.log("safe browser acceptance reporter: PASS (local deferral is explicit; hosted auth skips fail)");
-

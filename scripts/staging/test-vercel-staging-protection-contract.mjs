@@ -7,6 +7,7 @@ import {
   StagingHostRedirectError,
   classifyStagingHostReadiness,
   configureExactStagingVercelProtection,
+  verifyExactStagingVercelProtection,
 } from "./vercel-staging-protection-contract.mjs";
 
 const projectId = "prj_isolated_staging_fixture";
@@ -19,7 +20,7 @@ const authority = Object.freeze({
   expectedProjectIdFingerprint: sha256(projectId),
   expectedOrganizationIdFingerprint: sha256(organizationId),
 });
-const project = (mode = "preview", overrides = {}) => ({
+const project = (mode = "all_except_custom_domains", overrides = {}) => ({
   id: projectId,
   name: projectName,
   accountId: organizationId,
@@ -29,7 +30,7 @@ const project = (mode = "preview", overrides = {}) => ({
 
 {
   const calls = [];
-  const result = configureExactStagingVercelProtection({
+  const result = await configureExactStagingVercelProtection({
     ...authority,
     request(call) {
       calls.push(call);
@@ -37,7 +38,9 @@ const project = (mode = "preview", overrides = {}) => ({
     },
   });
   assert.equal(result.changed, false);
-  assert.equal(result.requiredMode, "preview");
+  assert.equal(result.requiredMode, "all_except_custom_domains");
+  assert.equal(result.uniqueDeploymentsRemainProtected, true);
+  assert.equal(result.productionAliasesRequireApplicationGate, true);
   assert.deepEqual(calls, [
     { method: "GET", path: `/v9/projects/${projectId}`, body: null },
     { method: "GET", path: `/v9/projects/${projectId}`, body: null },
@@ -47,23 +50,23 @@ const project = (mode = "preview", overrides = {}) => ({
 {
   const calls = [];
   let configured = false;
-  const result = configureExactStagingVercelProtection({
+  const result = await configureExactStagingVercelProtection({
     ...authority,
     request(call) {
       calls.push(call);
       if (call.method === "PATCH") {
         assert.equal(call.path, `/v9/projects/${projectId}`);
         assert.deepEqual(call.body, {
-          ssoProtection: { deploymentType: "preview" },
+          ssoProtection: { deploymentType: "all_except_custom_domains" },
         });
         configured = true;
-        return project("preview");
+        return project("all_except_custom_domains");
       }
-      return project(configured ? "preview" : "all_except_custom_domains");
+      return project(configured ? "all_except_custom_domains" : "preview");
     },
   });
   assert.equal(result.changed, true);
-  assert.equal(result.previousMode, "all_except_custom_domains");
+  assert.equal(result.previousMode, "preview");
   assert.deepEqual(calls.map(({ method, path }) => ({ method, path })), [
     { method: "GET", path: `/v9/projects/${projectId}` },
     { method: "PATCH", path: `/v9/projects/${projectId}` },
@@ -73,8 +76,8 @@ const project = (mode = "preview", overrides = {}) => ({
 
 {
   let calls = 0;
-  assert.throws(
-    () => configureExactStagingVercelProtection({
+  await assert.rejects(
+    configureExactStagingVercelProtection({
       ...authority,
       projectId: "prj_wrong_project",
       request() {
@@ -93,8 +96,8 @@ for (const [label, overrides] of [
   ["organization", { accountId: "team_other" }],
 ]) {
   const calls = [];
-  assert.throws(
-    () => configureExactStagingVercelProtection({
+  await assert.rejects(
+    configureExactStagingVercelProtection({
       ...authority,
       request(call) {
         calls.push(call);
@@ -110,20 +113,47 @@ for (const [label, overrides] of [
 {
   let readCount = 0;
   const calls = [];
-  assert.throws(
-    () => configureExactStagingVercelProtection({
+  await assert.rejects(
+    configureExactStagingVercelProtection({
       ...authority,
       request(call) {
         calls.push(call);
-        if (call.method === "PATCH") return project("preview");
+        if (call.method === "PATCH") return project("all_except_custom_domains");
         readCount += 1;
-        return project(readCount === 1 ? "all_except_custom_domains" : "all");
+        return project(readCount === 1 ? "preview" : "all");
       },
     }),
-    /remain behind Vercel SSO protection/,
+    /did not reach the exact required mode/,
   );
   assert.deepEqual(calls.map((call) => call.method), ["GET", "PATCH", "GET"]);
 }
+
+{
+  const calls = [];
+  const result = await verifyExactStagingVercelProtection({
+    ...authority,
+    request(call) {
+      calls.push(call);
+      return project("all_except_custom_domains");
+    },
+  });
+  assert.equal(result.status, "PASS");
+  assert.equal(result.readOnlyVerification, true);
+  assert.equal(result.changed, false);
+  assert.deepEqual(calls, [
+    { method: "GET", path: `/v9/projects/${projectId}`, body: null },
+  ]);
+}
+
+await assert.rejects(
+  verifyExactStagingVercelProtection({
+    ...authority,
+    request() {
+      return project("preview");
+    },
+  }),
+  /drifted from the exact required mode/,
+);
 
 assert.equal(classifyStagingHostReadiness({ status: 200 }), "ready");
 for (const status of [301, 302, 303, 307, 308]) {
@@ -142,5 +172,5 @@ for (const status of [0, 201, 204, 400, 404, 409, 429, 500, 503]) {
 }
 
 console.log(
-  "isolated staging Vercel protection contract: PASS (pinned project and organization, exact PATCH path/body, post-write verification, preview protection preserved, direct HTTP 200 only, all redirects rejected)",
+  "isolated staging Vercel protection contract: PASS (pinned project and organization, generated deployment URLs remain protected, production aliases require the application gate, exact PATCH and verification, direct HTTP 200 only, all redirects rejected)",
 );

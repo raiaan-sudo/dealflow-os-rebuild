@@ -1,21 +1,17 @@
 import { mkdirSync, lstatSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import {
   ZERO_EXTERNAL_EFFECTS_ATTESTATION,
   assertZeroExternalEffectsEnvironment,
 } from "../../src/lib/safety/zero-external-effects";
-
-const PRODUCTION_HOSTS = new Set([
-  "agentdealflow.io",
-  "www.agentdealflow.io",
-  "app.agentdealflow.io",
-  "internal.agentdealflow.io",
-  "clicktoscale.agentdealflow.io",
-  "onboarding.agentdealflow.io",
-]);
+import { assertExactHostedSafeBrowserOrigin } from "../../scripts/staging/safe-browser-host-contract.mjs";
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
+const EXPECTED_STAGING_PROJECT_FINGERPRINT =
+  "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
+const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 
 function requireValue(name: string) {
   const value = process.env[name]?.trim() ?? "";
@@ -24,12 +20,19 @@ function requireValue(name: string) {
 }
 
 function getInternalSecret() {
-  return (
-    process.env.SAFE_E2E_INTERNAL_SECRET?.trim() ||
-    process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim() ||
-    ""
-  );
+  return process.env.SAFE_E2E_INTERNAL_SECRET?.trim() ?? "";
+}
+
+function getStagingAccessGateSecret() {
+  const secret = process.env.STAGING_ACCESS_GATE_SECRET?.trim() ?? "";
+  if (secret.length < 43) {
+    throw new Error("Hosted acceptance requires the isolated staging access gate.");
+  }
+  return secret;
+}
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function prepareEvidenceDirectory() {
@@ -56,6 +59,7 @@ function prepareEvidenceDirectory() {
 }
 
 async function proveHostedZeroExternalEffects(baseUrl: URL) {
+  const exactBaseUrl = assertExactHostedSafeBrowserOrigin(baseUrl.toString());
   if (process.env.SAFE_E2E_QA_AUTH !== "true") {
     throw new Error(
       "A configured SAFE_E2E_BASE_URL is a hosted acceptance run and requires SAFE_E2E_QA_AUTH=true.",
@@ -66,17 +70,6 @@ async function proveHostedZeroExternalEffects(baseUrl: URL) {
     ZERO_EXTERNAL_EFFECTS_ATTESTATION
   ) {
     throw new Error("Hosted acceptance requires the exact zero-external-effects attestation.");
-  }
-  if (
-    baseUrl.protocol !== "https:" ||
-    PRODUCTION_HOSTS.has(baseUrl.hostname.toLowerCase()) ||
-    Boolean(baseUrl.username) ||
-    Boolean(baseUrl.password) ||
-    (baseUrl.pathname !== "/" && baseUrl.pathname !== "") ||
-    Boolean(baseUrl.search) ||
-    Boolean(baseUrl.hash)
-  ) {
-    throw new Error("Hosted acceptance requires a nonproduction HTTPS base URL.");
   }
   if (process.env.QA_AUTH_HARNESS_ENABLED !== "true") {
     throw new Error("Hosted acceptance requires QA_AUTH_HARNESS_ENABLED=true.");
@@ -89,17 +82,22 @@ async function proveHostedZeroExternalEffects(baseUrl: URL) {
   if (!projectRef.endsWith(EXPECTED_STAGING_SAFE_SUFFIX)) {
     throw new Error("Hosted acceptance is not bound to the isolated staging safe suffix.");
   }
-  requireValue("QA_EMAIL");
+  if (sha256(projectRef) !== EXPECTED_STAGING_PROJECT_FINGERPRINT) {
+    throw new Error("Hosted acceptance is not bound to the exact isolated staging project.");
+  }
   const secret = getInternalSecret();
   if (secret.length < 32) {
     throw new Error("Hosted acceptance requires a restricted internal secret of at least 32 characters.");
   }
+  const stagingAccessGateSecret = getStagingAccessGateSecret();
 
-  const endpoint = new URL("/api/internal/zero-external-effects", baseUrl);
+  const endpoint = new URL("/api/internal/zero-external-effects", exactBaseUrl);
   const response = await fetch(endpoint, {
     method: "GET",
+    redirect: "manual",
     headers: {
       Authorization: `Bearer ${secret}`,
+      [STAGING_ACCESS_HEADER]: stagingAccessGateSecret,
       Accept: "application/json",
     },
     signal: AbortSignal.timeout(20_000),
@@ -114,6 +112,7 @@ async function proveHostedZeroExternalEffects(baseUrl: URL) {
     | null;
   if (
     response.status !== 200 ||
+    response.url !== endpoint.toString() ||
     payload?.ok !== true ||
     payload.attestation !== ZERO_EXTERNAL_EFFECTS_ATTESTATION ||
     !Number.isInteger(payload.checkedControlCount) ||

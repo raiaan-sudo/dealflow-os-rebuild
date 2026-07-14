@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,7 +11,14 @@ import {
   isRlsFixtureAuthEmail,
 } from "./lib/rls-fixture-contract.mjs";
 
-nextEnv.loadEnvConfig(process.cwd());
+const IS_ISOLATED_STAGING_PROOF =
+  process.env.DEALFLOW_DEPLOYMENT_TARGET === "staging";
+if (!IS_ISOLATED_STAGING_PROOF) {
+  nextEnv.loadEnvConfig(process.cwd());
+}
+
+const EXPECTED_STAGING_PROJECT_FINGERPRINT =
+  "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 
 const stamp = Date.now();
 
@@ -21,6 +28,21 @@ function requireEnv(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function assertExactIsolatedStagingProject() {
+  if (!IS_ISOLATED_STAGING_PROOF) return;
+  const hostname = new URL(requireEnv("NEXT_PUBLIC_SUPABASE_URL")).hostname.toLowerCase();
+  const projectRef = /^([a-z0-9-]+)\.supabase\.co$/.exec(hostname)?.[1];
+  const fingerprint = projectRef
+    ? createHash("sha256").update(projectRef).digest("hex")
+    : null;
+  if (
+    !projectRef?.endsWith("qibh") ||
+    fingerprint !== EXPECTED_STAGING_PROJECT_FINGERPRINT
+  ) {
+    throw new Error("RLS fixture proof is not bound to the exact isolated staging project");
+  }
 }
 
 function assertNoError(error, context) {
@@ -45,29 +67,19 @@ async function selectRows(query, context) {
   return data ?? [];
 }
 
-async function createFixtureSession(admin, anon, email) {
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-  });
-  assertNoError(error, `generate fixture session link ${email}`);
-
-  const tokenHash = data.properties?.hashed_token;
-  if (!tokenHash) {
-    throw new Error(`generate fixture session link ${email}: missing token hash`);
+async function validatePreauthenticatedJwt(anon, jwt, expectedUserId, expectedEmail) {
+  if (typeof jwt !== "string" || jwt.length < 100) {
+    throw new Error(`preauthenticated fixture session is missing for ${expectedEmail}`);
   }
-
-  const { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
-    type: "magiclink",
-    token_hash: tokenHash,
-  });
-  assertNoError(verifyError, `verify fixture session ${email}`);
-
-  if (!sessionData.session?.access_token) {
-    throw new Error(`verify fixture session ${email}: missing access token`);
+  const { data, error } = await anon.auth.getUser(jwt);
+  assertNoError(error, `validate preauthenticated fixture session ${expectedEmail}`);
+  if (
+    data.user?.id !== expectedUserId ||
+    data.user?.email?.trim().toLowerCase() !== expectedEmail
+  ) {
+    throw new Error(`preauthenticated fixture session identity mismatch for ${expectedEmail}`);
   }
-
-  return sessionData.session.access_token;
+  return jwt;
 }
 
 async function expectMutationHidden({ jwt, table, idColumn = "id", id, patch }) {
@@ -508,6 +520,7 @@ async function createTenantFixtures(admin, suffix, fixtures, identity) {
 }
 
 async function main() {
+  assertExactIsolatedStagingProject();
   const admin = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: {
       autoRefreshToken: false,
@@ -546,9 +559,19 @@ async function main() {
     const tenantA = await createTenantFixtures(admin, "a", fixtures, identityA);
     const tenantB = await createTenantFixtures(admin, "b", fixtures, identityB);
 
-    const jwtA = await createFixtureSession(admin, anon, tenantA.email);
-    const jwtB = await createFixtureSession(admin, anon, tenantB.email);
-    console.log("INFO  Using admin-generated, non-delivery fixture sessions for the canonical synthetic staging users.");
+    const jwtA = await validatePreauthenticatedJwt(
+      anon,
+      requireEnv("RLS_USER_A_JWT"),
+      tenantA.userId,
+      tenantA.email,
+    );
+    const jwtB = await validatePreauthenticatedJwt(
+      anon,
+      requireEnv("RLS_USER_B_JWT"),
+      tenantB.userId,
+      tenantB.email,
+    );
+    console.log("INFO  Reusing identity-validated, non-delivery in-memory sessions for canonical synthetic staging users.");
 
     await expectMutationHidden({
       jwt: jwtA,

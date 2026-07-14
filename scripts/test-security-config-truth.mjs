@@ -155,7 +155,7 @@ const qaModule = loadTypeScriptModule(qaTestSource, {
 qaProcess.env = { NODE_ENV: "production", QA_AUTH_HARNESS_ENABLED: "true" };
 assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_target_unattested");
 qaProcess.env = { NODE_ENV: "development", VERCEL_ENV: "production", QA_AUTH_HARNESS_ENABLED: "true" };
-assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_production_disabled");
+assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_target_unattested");
 qaProcess.env = { NODE_ENV: "production", DEALFLOW_DEPLOYMENT_TARGET: "staging", QA_AUTH_HARNESS_ENABLED: "true" };
 assert.doesNotThrow(qaModule.assertQaHarnessEnabled);
 qaProcess.env = { NODE_ENV: "development", DEALFLOW_DEPLOYMENT_TARGET: "staging", QA_AUTH_HARNESS_ENABLED: "false" };
@@ -246,9 +246,12 @@ envProcess.env = {
 };
 assert.equal(envModule.getStripeEnv(), null, "production accepted a Stripe test key");
 envProcess.env.STRIPE_SECRET_KEY = "rk_live_production_fixture";
-assert.deepEqual(envModule.getStripeEnv().mode, "live");
-assert.equal(envModule.getStripeEnv().livemode, true);
-assert.equal(envModule.getStripeAccessKeyPrefix(), "df_live");
+assert.equal(
+  envModule.getStripeEnv(),
+  null,
+  "repository-authored production metadata established live billing authority",
+);
+assert.equal(envModule.getStripeAccessKeyPrefix(), null);
 envProcess.env = {
   ...stripeCommonEnv,
   NODE_ENV: "development",
@@ -404,20 +407,18 @@ turnstileProcess.env = {
   NEXT_PUBLIC_APP_URL: "https://app.example.test",
 };
 turnstileProcess.env.TURNSTILE_SECRET_KEY = strongSecret;
-const verifiedTurnstile = await turnstileModule.verifyLeadCaptureTurnstile({
-  token: "candidate-token",
-  remoteIp: "203.0.113.20",
-  fetchImpl: async () =>
-    new Response(
-      JSON.stringify({
-        success: true,
-        hostname: "app.example.test",
-        action: "lead_capture",
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    ),
-});
-assert.deepEqual(verifiedTurnstile, { required: true, verified: true });
+await assert.rejects(
+  () => turnstileModule.verifyLeadCaptureTurnstile({
+    token: "candidate-token",
+    remoteIp: "203.0.113.20",
+    fetchImpl: async () => {
+      throw new Error("an unattested production target must fail before provider access");
+    },
+  }),
+  (error) =>
+    error instanceof TestApiError &&
+    error.code === "lead_turnstile_configuration_missing",
+);
 
 const twilioSource = read("src/app/api/sms/twilio/route.ts");
 const twilioTestSource = twilioSource
@@ -487,8 +488,11 @@ assert.match(leadCaptureSource, /providersDisabled/);
 
 const proxySource = read("src/proxy.ts");
 const proxyModule = loadTypeScriptModule(proxySource);
-assert.deepEqual(proxyModule.config.matcher, ["/((?!_next/static|_next/image).*)"]);
+assert.deepEqual(proxyModule.config.matcher, ["/:path*"]);
 assert.doesNotMatch(proxyModule.config.matcher[0], /svg|png|jpg|jpeg|gif|webp/);
+assert.match(proxySource, /rawPathname === "\/_next"/);
+assert.match(proxySource, /rawPathname\.startsWith\("\/_next\/"\)/);
+assert.match(proxySource, /stripStagingAccessCredentials\(new Headers\(request\.headers\)\)/);
 for (const asset of ["/file.svg", "/globe.svg", "/logo-icon.svg", "/logo.svg", "/next.svg", "/vercel.svg", "/window.svg"]) {
   assert.ok(proxySource.includes(`"${asset}"`), `${asset} must remain explicitly public`);
 }

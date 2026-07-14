@@ -108,12 +108,37 @@ const deploymentTargetExports = loadTsModule(
     "isExactProductionVercelHost",
   ],
 );
+const canonicalStagingProjectId = String(
+  JSON.parse(fs.readFileSync(".vercel/project.json", "utf8")).projectId,
+);
+const scheduledGateDeploymentTarget = {
+  ...deploymentTargetExports,
+  getDeploymentTarget(env) {
+    if (
+      env?.DEALFLOW_TEST_PROTECTED_PRODUCTION_AUTHORITY === "verified" &&
+      env?.VERCEL_ENV === "production" &&
+      env?.DEALFLOW_DEPLOYMENT_TARGET === "production"
+    ) {
+      return "production";
+    }
+    return deploymentTargetExports.getDeploymentTarget(env);
+  },
+  isExactProductionVercelHost(env) {
+    return Boolean(
+      env?.DEALFLOW_TEST_PROTECTED_PRODUCTION_AUTHORITY === "verified" &&
+      env?.VERCEL_ENV === "production" &&
+      env?.DEALFLOW_DEPLOYMENT_TARGET === "production" &&
+      env?.VERCEL_PROJECT_ID &&
+      env.VERCEL_PROJECT_ID === env.DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID,
+    );
+  },
+};
 const {
   getScheduledLaunchExecutionGate,
   getScheduledLaunchRetryDecision,
   SCHEDULED_META_LAUNCH_EXECUTION_ENV,
 } = loadTsModuleWithMocks("src/lib/scheduled-launch-gate.ts", {
-  "@/lib/deployment-target": deploymentTargetExports,
+  "@/lib/deployment-target": scheduledGateDeploymentTarget,
 });
 const directIsPausedMetaStatus = loadTsFunction(
   "src/app/api/campaigns/create/route.ts",
@@ -389,6 +414,7 @@ const productionLaunchEnvironment = {
   VERCEL_PROJECT_ID: "dealflow-production-project",
   DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: "dealflow-production-project",
   DEALFLOW_PRODUCTION_HOST_ATTESTATION: "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1",
+  DEALFLOW_TEST_PROTECTED_PRODUCTION_AUTHORITY: "verified",
   NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
   META_PRODUCTION_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
   META_PRODUCTION_PAUSED_LAUNCH_ATTESTATION:
@@ -401,8 +427,8 @@ const stagingLaunchEnvironment = {
   NODE_ENV: "production",
   VERCEL_ENV: "production",
   DEALFLOW_DEPLOYMENT_TARGET: "staging",
-  VERCEL_PROJECT_ID: "dealflow-isolated-staging-project",
-  DEALFLOW_STAGING_VERCEL_PROJECT_ID: "dealflow-isolated-staging-project",
+  VERCEL_PROJECT_ID: canonicalStagingProjectId,
+  DEALFLOW_STAGING_VERCEL_PROJECT_ID: canonicalStagingProjectId,
   DEALFLOW_STAGING_HOST_ATTESTATION: "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
   NEXT_PUBLIC_SUPABASE_URL: "https://qrstabcdefghijklmnop.supabase.co",
   META_STAGING_ISOLATED_SUPABASE_PROJECT_REF: "qrstabcdefghijklmnop",

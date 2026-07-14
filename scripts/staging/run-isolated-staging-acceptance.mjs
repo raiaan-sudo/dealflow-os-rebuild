@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -11,6 +12,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -31,15 +33,40 @@ import {
   StagingHostRedirectError,
   classifyStagingHostReadiness,
   configureExactStagingVercelProtection,
+  verifyExactStagingVercelProtection,
 } from "./vercel-staging-protection-contract.mjs";
+import {
+  SYNTHETIC_BROWSER_SESSION_BUNDLE_SCHEMA,
+  SYNTHETIC_STAGING_ROLE_EMAILS,
+  validateSyntheticBrowserCookieChunks,
+} from "./browser-session-bundle-contract.mjs";
+import { SYNTHETIC_PROVIDER_SESSION_BUNDLE_SCHEMA } from "./provider-session-bundle-contract.mjs";
+import {
+  UNSEALED_PLAYWRIGHT_FAILURE_POLICY,
+  deleteRegisteredUnsealedPlaywrightArtifactDirectories,
+} from "./unsealed-playwright-artifact-cleanup.mjs";
+import { runInterruptibleCommand } from "./interruptible-command.mjs";
+import { assertApprovedStagingEvidenceRootPath } from "./staging-evidence-root-contract.mjs";
+import { parseExactHostedSupabaseProjectUrl } from "./exact-supabase-project-url.mjs";
+import { assertExactDeployableSourcePathSet } from "./deployable-source-path-set-contract.mjs";
+import { assertExactVercelDryRunSourcePortfolio } from "./vercel-dry-run-source-contract.mjs";
+import { findExactNextStaticChunkPath } from "./next-static-chunk-path.mjs";
 
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_STAGING_BASE_URL = `https://${EXPECTED_STAGING_HOST}`;
+const EXPECTED_PARTNER_ONE_HOST =
+  "dealflow-os-rebuild-selfserve-clean-partner-one-qibh.vercel.app";
+const EXPECTED_PARTNER_ONE_BASE_URL = `https://${EXPECTED_PARTNER_ONE_HOST}`;
 const EXPECTED_SECOND_PARTNER_HOST =
   "dealflow-os-rebuild-selfserve-clean-partner-two-qibh.vercel.app";
 const EXPECTED_SECOND_PARTNER_BASE_URL = `https://${EXPECTED_SECOND_PARTNER_HOST}`;
+const EXPECTED_APP_ALIASES = Object.freeze([
+  Object.freeze({ label: "stable_direct", host: EXPECTED_STAGING_HOST, url: EXPECTED_STAGING_BASE_URL }),
+  Object.freeze({ label: "partner_one", host: EXPECTED_PARTNER_ONE_HOST, url: EXPECTED_PARTNER_ONE_BASE_URL }),
+  Object.freeze({ label: "partner_two", host: EXPECTED_SECOND_PARTNER_HOST, url: EXPECTED_SECOND_PARTNER_BASE_URL }),
+]);
 const EXPECTED_SUPABASE_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh";
@@ -70,6 +97,11 @@ const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
 ]);
 const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
+const HOSTED_RELEASE_IDENTITY_SCHEMA = "dealflow.hosted-release-identity.v1";
+const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
+const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";
+const STAGING_IMAGE_OPTIMIZER_SOURCE_PATH =
+  "/staging-image-optimizer-proof.png";
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const SYNTHETIC_FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
@@ -89,6 +121,12 @@ const EXPECTED_DATABASE_TRUST_BUNDLE_PATH = join(
   "security",
   "supabase-prod-ca-2021.crt",
 );
+const DEPLOYABLE_SOURCE_MANIFEST_PATH = join(
+  EXPECTED_REPO,
+  "config",
+  "release",
+  "deployable-source-manifest.json",
+);
 const EXPECTED_DATABASE_TRUST_BUNDLE_SHA256 =
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7";
 const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
@@ -103,13 +141,113 @@ const PUBLIC_FUNNEL_SLUG = "df-staging-20260712-funnel";
 const STAGING_TURNSTILE_SITE_KEY = "1x00000000000000000000AA";
 const STAGING_TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA";
 const STAGING_TURNSTILE_TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
+const SYNTHETIC_SESSION_PORTFOLIO_SCHEMA =
+  "dealflow.synthetic-staging-session-portfolio.v1";
+const SYNTHETIC_RLS_PROOF_ROLES = Object.freeze([
+  "paidDirect",
+  "attacker",
+]);
+const SYNTHETIC_PROVIDER_PROOF_ROLES = Object.freeze([
+  "paidDirect",
+  "partnerChild",
+  "partnerChildTwo",
+]);
+const SYNTHETIC_MULTI_ROLE_BROWSER_ROLES = Object.freeze(
+  Object.keys(SYNTHETIC_STAGING_ROLE_EMAILS).sort(),
+);
+const SYNTHETIC_SAFE_BROWSER_ROLES = Object.freeze(["paidDirect"]);
 const EXECUTABLE = process.execPath;
 const failureContext = {
   evidenceDir: null,
   stage: "startup",
   identity: null,
   sealCompleted: false,
+  transientSecrets: [],
+  pendingSyntheticUserGlobalSignOuts: [],
+  unsealedPlaywrightArtifactDirectories: [],
+  stagingAliasMutations: [],
+  vercelPath: null,
 };
+const executionAbortController = new AbortController();
+const activeInterruptibleCommands = new Set();
+let terminationRequested = false;
+let terminationRequest = null;
+let resolveTerminationRequest;
+const terminationRequestPromise = new Promise((resolvePromise) => {
+  resolveTerminationRequest = resolvePromise;
+});
+
+function assertExecutionMayContinue() {
+  if (terminationRequested || executionAbortController.signal.aborted) {
+    throw terminationRequest?.error ?? new Error("Staging acceptance termination is in progress");
+  }
+}
+
+function requestExecutionTermination(
+  reason,
+  { terminationKind = "controlled_termination", exitCode = 1 } = {},
+) {
+  if (terminationRequest) return terminationRequest;
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  terminationRequested = true;
+  terminationRequest = Object.freeze({ error, terminationKind, exitCode });
+  if (!executionAbortController.signal.aborted) {
+    executionAbortController.abort(error);
+  }
+  resolveTerminationRequest(terminationRequest);
+  return terminationRequest;
+}
+
+async function drainInterruptibleCommands() {
+  while (activeInterruptibleCommands.size > 0) {
+    await Promise.allSettled([...activeInterruptibleCommands]);
+  }
+}
+
+function combinedAbortSignal({ signal, timeoutMs = 30_000, allowDuringTermination = false } = {}) {
+  const signals = [AbortSignal.timeout(timeoutMs)];
+  if (signal) signals.push(signal);
+  if (!allowDuringTermination) signals.push(executionAbortController.signal);
+  return signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+}
+
+function executionFetch(input, init = {}, timeoutMs = 30_000) {
+  assertExecutionMayContinue();
+  return fetch(input, {
+    ...init,
+    signal: combinedAbortSignal({ signal: init.signal, timeoutMs }),
+  });
+}
+
+function cleanupFetch(input, init = {}, timeoutMs = 10_000) {
+  return fetch(input, {
+    ...init,
+    signal: combinedAbortSignal({
+      signal: init.signal,
+      timeoutMs,
+      allowDuringTermination: true,
+    }),
+  });
+}
+
+async function abortableDelay(delayMs) {
+  assertExecutionMayContinue();
+  await new Promise((resolvePromise, reject) => {
+    let timeout;
+    const finish = () => {
+      executionAbortController.signal.removeEventListener("abort", onAbort);
+      resolvePromise();
+    };
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(terminationRequest?.error ?? new Error("Staging acceptance terminated"));
+    };
+    timeout = setTimeout(finish, delayMs);
+    executionAbortController.signal.addEventListener("abort", onAbort, { once: true });
+    if (executionAbortController.signal.aborted) onAbort();
+  });
+  assertExecutionMayContinue();
+}
 const PROVIDER_SENSITIVE_ENV_NAMES = [
   "META_ACCESS_TOKEN",
   "META_APP_SECRET",
@@ -212,6 +350,7 @@ const HOSTED_SECRET_ENV_NAMES = new Set([
   "STAGING_QA_PASSWORD",
   "PARTNER_ATTRIBUTION_SIGNING_SECRET",
   "INTERNAL_SYSTEM_JOBS_SECRET",
+  "STAGING_ACCESS_GATE_SECRET",
   "TURNSTILE_SECRET_KEY",
 ]);
 const PRODUCTION_OR_SHARED_HOSTS = new Set([
@@ -328,6 +467,15 @@ function sanitize(value, secrets = []) {
     output = output.split(secret).join("[REDACTED_SECRET]");
   }
   return output
+    .replace(
+      /(\"name\"\s*:\s*\"sb-[a-z0-9-]+-auth-token(?:\.\d+)?\"\s*,\s*\"value\"\s*:\s*\")[^\"]+/gi,
+      "$1[REDACTED_AUTH_COOKIE]",
+    )
+    .replace(
+      /sb-[a-z0-9-]+-auth-token(?:\.\d+)?\s*=\s*(?:base64-)?[A-Za-z0-9_-]{24,}/gi,
+      "sb-[REDACTED]-auth-token=[REDACTED_AUTH_COOKIE]",
+    )
+    .replace(/\bbase64-[A-Za-z0-9_-]{24,}/g, "[REDACTED_SSR_AUTH_COOKIE]")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
     .replace(/(?:postgres|postgresql):\/\/[^\s"']+/gi, "[REDACTED_DATABASE_URL]")
     .replace(/\b(?:eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})\b/g, "[REDACTED_JWT]")
@@ -347,6 +495,78 @@ function run(command, args, options = {}) {
   if (result.error || result.status !== 0) {
     const diagnostic = sanitize(
       `${result.error?.message ?? ""}\n${result.stderr ?? ""}\n${result.stdout ?? ""}`,
+      options.secrets,
+    );
+    throw new Error(`${options.label ?? basename(command)} failed: ${diagnostic}`);
+  }
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    status: result.status,
+  };
+}
+
+async function runInterruptible(command, args, options = {}) {
+  assertExecutionMayContinue();
+  const execution = runInterruptibleCommand({
+    command,
+    args,
+    cwd: options.cwd ?? EXPECTED_REPO,
+    env: options.env ?? process.env,
+    input: options.input,
+    timeoutMs: options.timeoutMs ?? 15 * 60_000,
+    maxBuffer: options.maxBuffer ?? 128 * 1024 * 1024,
+    signal: executionAbortController.signal,
+  });
+  activeInterruptibleCommands.add(execution);
+  let result;
+  try {
+    result = await execution;
+  } finally {
+    activeInterruptibleCommands.delete(execution);
+  }
+  if (result.aborted || terminationRequested) {
+    throw new Error(`${options.label ?? basename(command)} stopped for controlled termination`);
+  }
+  if (result.error || result.timedOut || result.status !== 0) {
+    const diagnostic = sanitize(
+      `${result.error?.message ?? ""}\nexit=${String(result.status)} signal=${String(result.signal)}\n${result.stderr ?? ""}\n${result.stdout ?? ""}`,
+      options.secrets,
+    );
+    throw new Error(`${options.label ?? basename(command)} failed: ${diagnostic}`);
+  }
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    status: result.status,
+  };
+}
+
+async function runInterruptibleAllowNonzero(command, args, options = {}) {
+  assertExecutionMayContinue();
+  const execution = runInterruptibleCommand({
+    command,
+    args,
+    cwd: options.cwd ?? EXPECTED_REPO,
+    env: options.env ?? process.env,
+    input: options.input,
+    timeoutMs: options.timeoutMs ?? 15 * 60_000,
+    maxBuffer: options.maxBuffer ?? 128 * 1024 * 1024,
+    signal: executionAbortController.signal,
+  });
+  activeInterruptibleCommands.add(execution);
+  let result;
+  try {
+    result = await execution;
+  } finally {
+    activeInterruptibleCommands.delete(execution);
+  }
+  if (result.aborted || terminationRequested) {
+    throw new Error(`${options.label ?? basename(command)} stopped for controlled termination`);
+  }
+  if (result.error || result.timedOut || result.signal) {
+    const diagnostic = sanitize(
+      `${result.error?.message ?? ""}\nexit=${String(result.status)} signal=${String(result.signal)}\n${result.stderr ?? ""}\n${result.stdout ?? ""}`,
       options.secrets,
     );
     throw new Error(`${options.label ?? basename(command)} failed: ${diagnostic}`);
@@ -396,6 +616,85 @@ function captureTrackedWorktreeIdentity() {
   return { trackedFileCount: entries.length, trackedWorktreeSha256: digest.digest("hex") };
 }
 
+function captureDeployableSourceIdentity() {
+  const manifestBytes = readFileSync(DEPLOYABLE_SOURCE_MANIFEST_PATH);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  if (
+    manifest.schemaVersion !== "dealflow.deployable-source-manifest.v1" ||
+    !Array.isArray(manifest.entries) ||
+    manifest.entryCount !== manifest.entries.length ||
+    !/^[a-f0-9]{64}$/.test(manifest.deployableSourceSha256 ?? "")
+  ) {
+    throw new Error("The deployable source manifest is malformed");
+  }
+  const manifestRelativePath = relative(
+    EXPECTED_REPO,
+    DEPLOYABLE_SOURCE_MANIFEST_PATH,
+  );
+  const trackedPaths = git(
+    ["ls-files", "-z"],
+    "enumerate tracked deployable source paths",
+  ).split("\0").filter(Boolean);
+  const ignoredPaths = new Set(
+    git(
+      ["ls-files", "-ci", "--exclude-from=.vercelignore", "-z"],
+      "enumerate Vercel-ignored tracked source paths",
+    ).split("\0").filter(Boolean),
+  );
+  const expectedTrackedPaths = trackedPaths
+    .filter(
+      (path) =>
+        !ignoredPaths.has(path) &&
+        path !== manifestRelativePath &&
+        path !== ".gitignore",
+    )
+    .sort();
+  const pathSetProof = assertExactDeployableSourcePathSet({
+    manifestPaths: manifest.entries.map((entry) => String(entry?.path ?? "")),
+    expectedTrackedPaths,
+  });
+  const digest = createHash("sha256");
+  let previousPath = "";
+  for (const entry of manifest.entries) {
+    const path = String(entry?.path ?? "");
+    if (
+      !path ||
+      path <= previousPath ||
+      path.startsWith("/") ||
+      path.split("/").includes("..")
+    ) {
+      throw new Error("The deployable source manifest path set is not exact");
+    }
+    previousPath = path;
+    const absolute = resolve(EXPECTED_REPO, path);
+    const stat = lstatSync(absolute);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error(`Deployable source must be a regular file: ${path}`);
+    }
+    const contents = readFileSync(absolute);
+    if (
+      stat.size !== entry.size ||
+      stat.mode !== entry.mode ||
+      sha256(contents) !== entry.sha256
+    ) {
+      throw new Error(`Deployable source differs from its manifest: ${path}`);
+    }
+    digest.update(`${path.length}\0${path}\0${contents.length}\0`);
+    digest.update(contents);
+    digest.update("\0");
+  }
+  const deployableSourceSha256 = digest.digest("hex");
+  if (deployableSourceSha256 !== manifest.deployableSourceSha256) {
+    throw new Error("The deployable source portfolio digest is not exact");
+  }
+  return Object.freeze({
+    deployableSourceSha256,
+    deployableFileCount: manifest.entryCount,
+    deployableManifestSha256: sha256(manifestBytes),
+    deployablePathSetExact: pathSetProof.exactPathSet,
+  });
+}
+
 function captureExactReleaseIdentity() {
   if (realpathSync(process.cwd()) !== realpathSync(EXPECTED_REPO)) {
     throw new Error("Staging acceptance must run from the exact isolated release worktree");
@@ -413,8 +712,24 @@ function captureExactReleaseIdentity() {
   const commit = git(["rev-parse", "--verify", "HEAD"], "read release commit").trim();
   const tree = git(["rev-parse", "--verify", "HEAD^{tree}"], "read release tree").trim();
   const tracked = captureTrackedWorktreeIdentity();
+  const deployable = captureDeployableSourceIdentity();
   const dependencyLockSha256 = sha256(readFileSync(join(EXPECTED_REPO, "package-lock.json")));
-  return Object.freeze({ branch, commit, tree, ...tracked, dependencyLockSha256 });
+  return Object.freeze({
+    branch,
+    commit,
+    tree,
+    ...tracked,
+    dependencyLockSha256,
+    ...deployable,
+  });
+}
+
+function assertExactReleaseIdentityUnchanged(expected, label) {
+  const current = captureExactReleaseIdentity();
+  if (JSON.stringify(current) !== JSON.stringify(expected)) {
+    throw new Error(`${label} no longer matches the exact release identity`);
+  }
+  return current;
 }
 
 function captureMigrationPortfolio() {
@@ -462,6 +777,16 @@ function captureVercelProjectIdentity() {
   ) {
     throw new Error("The Vercel project is not the exact isolated staging project");
   }
+  if (
+    (process.env.VERCEL_PROJECT_ID &&
+      process.env.VERCEL_PROJECT_ID !== String(project.projectId)) ||
+    (process.env.VERCEL_ORG_ID &&
+      process.env.VERCEL_ORG_ID !== String(project.orgId))
+  ) {
+    throw new Error(
+      "Vercel CI project or organization authority conflicts with the validated staging link",
+    );
+  }
   return Object.freeze({
     evidence: Object.freeze({
       projectName: project.projectName,
@@ -473,10 +798,7 @@ function captureVercelProjectIdentity() {
 }
 
 function extractProjectRef(rawUrl) {
-  const url = new URL(rawUrl);
-  const match = /^([a-z0-9-]+)\.supabase\.co$/.exec(url.hostname.toLowerCase());
-  if (!match) throw new Error("NEXT_PUBLIC_SUPABASE_URL is not a hosted Supabase project URL");
-  return match[1];
+  return parseExactHostedSupabaseProjectUrl(rawUrl).projectRef;
 }
 
 function protectedRuntimeValues() {
@@ -490,8 +812,10 @@ function protectedRuntimeValues() {
     process.env.STAGING_QA_PASSWORD,
     process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    process.env.STAGING_ACCESS_GATE_SECRET,
     STAGING_TURNSTILE_SECRET_KEY,
     STAGING_TURNSTILE_TEST_TOKEN,
+    ...failureContext.transientSecrets,
   ];
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
@@ -500,7 +824,7 @@ function protectedRuntimeValues() {
       // Fail-closed environment validation reports malformed URLs separately.
     }
   }
-  return values.filter(Boolean);
+  return [...new Set(values.filter(Boolean))];
 }
 
 function assertFailClosedExecutionEnvironment() {
@@ -561,7 +885,20 @@ function assertFailClosedExecutionEnvironment() {
   return Object.freeze({ projectRef });
 }
 
-function hostedStagingEnvironment(projectRef, vercelProjectId) {
+function withStagingAccess(headers = {}) {
+  return {
+    ...headers,
+    [STAGING_ACCESS_HEADER]: requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43),
+  };
+}
+
+function hostedStagingEnvironment(
+  projectRef,
+  vercelProjectId,
+  identity,
+  vercelDryRunSourceProof,
+  stagingAccessGateSecret,
+) {
   return Object.freeze({
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     DEALFLOW_STAGING_VERCEL_PROJECT_ID: vercelProjectId,
@@ -576,9 +913,29 @@ function hostedStagingEnvironment(projectRef, vercelProjectId) {
     STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
     PARTNER_ATTRIBUTION_SIGNING_SECRET: process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     INTERNAL_SYSTEM_JOBS_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    STAGING_ACCESS_GATE_SECRET: stagingAccessGateSecret,
+    NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT: identity.commit,
+    NEXT_PUBLIC_DEALFLOW_RELEASE_TREE: identity.tree,
+    NEXT_PUBLIC_DEALFLOW_TRACKED_WORKTREE_SHA256:
+      identity.trackedWorktreeSha256,
+    NEXT_PUBLIC_DEALFLOW_TRACKED_FILE_COUNT: String(identity.trackedFileCount),
+    NEXT_PUBLIC_DEALFLOW_DEPENDENCY_LOCK_SHA256:
+      identity.dependencyLockSha256,
+    NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_SOURCE_SHA256:
+      identity.deployableSourceSha256,
+    NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_MANIFEST_SHA256:
+      identity.deployableManifestSha256,
+    NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_FILE_COUNT:
+      String(identity.deployableFileCount),
+    NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256:
+      vercelDryRunSourceProof.sourceSetSha256,
+    NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT:
+      String(vercelDryRunSourceProof.regularFileCount),
     NEXT_PUBLIC_LEAD_TURNSTILE_SITE_KEY: STAGING_TURNSTILE_SITE_KEY,
     TURNSTILE_SECRET_KEY: STAGING_TURNSTILE_SECRET_KEY,
-    TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_STAGING_HOST,
+    TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_APP_ALIASES
+      .map(({ host }) => host)
+      .join(","),
     INTERNAL_ADMIN_EMAILS: EXPECTED_OPERATOR_EMAIL,
     ...Object.fromEntries(REQUIRED_FALSE_CONTROLS.map((name) => [name, "false"])),
     ...REQUIRED_EQUAL_CONTROLS,
@@ -587,24 +944,43 @@ function hostedStagingEnvironment(projectRef, vercelProjectId) {
 }
 
 function prepareEvidenceDirectory(path) {
-  if (!path || !path.startsWith("/private/tmp/dealflow-staging-acceptance-evidence-")) {
-    throw new Error("Evidence must use a new /private/tmp/dealflow-staging-acceptance-evidence-* path");
-  }
-  const relativeToRepo = relative(EXPECTED_REPO, path);
-  if (relativeToRepo === "" || (!relativeToRepo.startsWith(`..${sep}`) && relativeToRepo !== "..")) {
-    throw new Error("Evidence must remain outside the release worktree");
-  }
-  if (existsSync(path)) throw new Error("Evidence directory must not already exist");
-  mkdirSync(path, { recursive: false, mode: 0o700 });
-  chmodSync(path, 0o700);
+  const exactPath = assertApprovedStagingEvidenceRootPath(path);
+  if (existsSync(exactPath)) throw new Error("Evidence directory must not already exist");
+  mkdirSync(exactPath, { recursive: false, mode: 0o700 });
+  chmodSync(exactPath, 0o700);
 }
 
-function writeJson(path, value) {
+function resetEvidenceDirectoryForSafeFailureBundle(reason) {
+  const path = assertApprovedStagingEvidenceRootPath(failureContext.evidenceDir, {
+    mustExist: true,
+  });
+  rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  if (existsSync(path)) {
+    throw new Error("Unsafe failure evidence root remained after deletion");
+  }
+  mkdirSync(path, { recursive: false, mode: 0o700 });
+  chmodSync(path, 0o700);
+  failureContext.unsealedPlaywrightArtifactDirectories = [];
+  return {
+    status: "PASS",
+    disposition: "UNSAFE_PARTIAL_EVIDENCE_DESTROYED_AND_ROOT_RECREATED",
+    reasonSha256: sha256(reason),
+    containsSecrets: false,
+  };
+}
+
+function writeJson(path, value, { allowDuringTermination = false } = {}) {
+  if (terminationRequested && !allowDuringTermination) {
+    throw new Error("Refused an evidence write after termination was requested");
+  }
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   chmodSync(path, 0o600);
 }
 
-function writeTerminalFailureArtifact(sanitizedMessage) {
+function writeTerminalFailureArtifact(
+  sanitizedMessage,
+  { partialBundleSecretStatus = "NOT_PROVEN", evidenceSafety = null } = {},
+) {
   const evidenceDir = failureContext.evidenceDir;
   if (
     !evidenceDir ||
@@ -630,14 +1006,16 @@ function writeTerminalFailureArtifact(sanitizedMessage) {
       "evidence-manifest.json",
       "SHA256SUMS",
     ].filter((name) => existsSync(join(evidenceDir, name))),
-    containsSecrets: false,
+    failureArtifactContainsSecrets: false,
+    partialBundleSecretStatus,
+    evidenceSafety,
     containsRealCustomerData: false,
     productionMutationPerformed: false,
     providerMutationPerformed: false,
     advertisingSpendIncurred: false,
     realCommunicationSent: false,
     productionReleaseAuthorized: false,
-  });
+  }, { allowDuringTermination: true });
   return true;
 }
 
@@ -714,6 +1092,7 @@ function childBaseEnvironment() {
 function authenticatedDatabaseProofEnvironment(extraEnvironment = {}) {
   return {
     ...childBaseEnvironment(),
+    DEALFLOW_DEPLOYMENT_TARGET: "staging",
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -721,28 +1100,46 @@ function authenticatedDatabaseProofEnvironment(extraEnvironment = {}) {
   };
 }
 
-function runCapturedProofCommand(command, args, label, extraEnvironment = {}) {
+async function runCapturedProofCommand(
+  command,
+  args,
+  label,
+  extraEnvironment = {},
+  timeoutMs = 10 * 60_000,
+) {
   const secrets = [
     ...protectedRuntimeValues(),
     ...Object.values(extraEnvironment),
   ];
-  const result = spawnSync(command, args, {
-    cwd: EXPECTED_REPO,
-    env: authenticatedDatabaseProofEnvironment(extraEnvironment),
-    encoding: "utf8",
-    maxBuffer: 128 * 1024 * 1024,
-    timeout: 20 * 60_000,
-  });
-  return {
-    label,
-    status: !result.error && result.status === 0 ? "PASS" : "FAIL",
-    exitCode: result.status,
-    signal: result.signal,
-    diagnostic: sanitize(
-      `${result.error?.message ?? ""}\n${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+  try {
+    const result = await runInterruptible(command, args, {
+      cwd: EXPECTED_REPO,
+      env: authenticatedDatabaseProofEnvironment(extraEnvironment),
+      maxBuffer: 128 * 1024 * 1024,
+      timeoutMs,
+      label,
       secrets,
-    ),
-  };
+    });
+    return {
+      label,
+      status: "PASS",
+      exitCode: result.status,
+      signal: null,
+      diagnostic: sanitize(`${result.stdout}\n${result.stderr}`, secrets),
+    };
+  } catch (error) {
+    if (terminationRequested) throw error;
+    return {
+      label,
+      status: "FAIL",
+      exitCode: null,
+      signal: null,
+      diagnostic: sanitize(
+        error instanceof Error ? error.message : String(error),
+        secrets,
+      ),
+    };
+  }
 }
 
 function seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl) {
@@ -771,14 +1168,18 @@ function parseSingleJsonOutput(output, label) {
   }
 }
 
-function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
+async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
   const secrets = protectedRuntimeValues();
-  const result = run(EXECUTABLE, [join(EXPECTED_REPO, "scripts", "seed-isolated-staging.mjs")], {
-    label: "isolated synthetic staging seed",
-    env: seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl),
-    timeoutMs: 5 * 60_000,
-    secrets,
-  });
+  const result = await runInterruptible(
+    EXECUTABLE,
+    [join(EXPECTED_REPO, "scripts", "seed-isolated-staging.mjs")],
+    {
+      label: "isolated synthetic staging seed",
+      env: seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl),
+      timeoutMs: 5 * 60_000,
+      secrets,
+    },
+  );
   const parsed = parseSingleJsonOutput(result.stdout, "staging seed");
   if (
     parsed.status !== "SEEDED" ||
@@ -895,7 +1296,11 @@ function assertSeedReplayIsIdempotent(first, second) {
   return classifyExactSyntheticRetentionAuthorityReplay(first, second);
 }
 
-function runProviderIndependentStagingProof(baseUrl) {
+async function runProviderIndependentStagingProof(
+  baseUrl,
+  providerSessionBundleJson,
+  providerSessionSecrets,
+) {
   const environment = {
     ...childBaseEnvironment(),
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
@@ -903,9 +1308,10 @@ function runProviderIndependentStagingProof(baseUrl) {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
     INTERNAL_SYSTEM_JOBS_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
     STAGING_TURNSTILE_TEST_TOKEN,
+    STAGING_SYNTHETIC_PROVIDER_SESSION_BUNDLE: providerSessionBundleJson,
     ALLOW_META_LIVE_LAUNCH: "false",
     ALLOW_META_CAPI_EVENTS: "false",
     GHL_SANDBOX_WRITES_ENABLED: "false",
@@ -916,14 +1322,14 @@ function runProviderIndependentStagingProof(baseUrl) {
     ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED: "false",
     GHL_ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED: "false",
   };
-  const result = run(
+  const result = await runInterruptible(
     EXECUTABLE,
     [join(EXPECTED_REPO, "scripts", "staging", "run-provider-independent-staging-proof.mjs")],
     {
       label: "provider-independent isolated staging journey proof",
       env: environment,
       timeoutMs: 10 * 60_000,
-      secrets: protectedRuntimeValues(),
+      secrets: [...protectedRuntimeValues(), ...providerSessionSecrets],
     },
   );
   const parsed = parseSingleJsonOutput(
@@ -955,6 +1361,11 @@ function runProviderIndependentStagingProof(baseUrl) {
     parsed.partnerIsolation?.configuredPartnerCount !== 2 ||
     parsed.partnerIsolation?.separateChildTenantCount !== 2 ||
     parsed.partnerIsolation?.crossPartnerCampaignDenied !== true ||
+    parsed.authentication?.sessionPortfolioSchema !==
+      SYNTHETIC_PROVIDER_SESSION_BUNDLE_SCHEMA ||
+    parsed.authentication?.reusedRoleCount !== 3 ||
+    parsed.authentication?.passwordSignInCount !== 0 ||
+    parsed.authentication?.rawTokenPersisted !== false ||
     parsed.accountDeletion?.taskCount !== 16 ||
     parsed.accountDeletion?.suspended !== true ||
     parsed.accountDeletion?.executionEnabled !== false ||
@@ -1008,6 +1419,63 @@ function locateInstalledVercelCli() {
   return Object.freeze({ ...selected, sha256: sha256(readFileSync(selected.path)) });
 }
 
+async function proveExactVercelDryRunSourcePortfolio(vercel) {
+  const result = await runInterruptible(
+    EXECUTABLE,
+    [
+      vercel.path,
+      "deploy",
+      "--dry",
+      "--format=json",
+      "--no-color",
+      "--yes",
+    ],
+    {
+      label: "inspect exact Vercel deployment source portfolio without upload",
+      env: vercelEnvironment(),
+      timeoutMs: 3 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  const dryRun = parseSingleJsonOutput(
+    result.stdout,
+    "Vercel deployment dry-run source portfolio",
+  );
+  const manifest = JSON.parse(
+    readFileSync(DEPLOYABLE_SOURCE_MANIFEST_PATH, "utf8"),
+  );
+  const proof = assertExactVercelDryRunSourcePortfolio({
+    dryRun,
+    manifest,
+    root: EXPECTED_REPO,
+    manifestRelativePath: relative(
+      EXPECTED_REPO,
+      DEPLOYABLE_SOURCE_MANIFEST_PATH,
+    ),
+  });
+  return Object.freeze({
+    schemaVersion: "dealflow.vercel-dry-run-source-proof.v1",
+    ...proof,
+    vercelCliVersion: vercel.version,
+    vercelCliSha256: vercel.sha256,
+    deploymentCreated: false,
+    uploadPerformed: false,
+    pathNamesPersisted: false,
+    fileContentsPersisted: false,
+  });
+}
+
+function assertExactVercelDryRunProofUnchanged(expected, current, label) {
+  if (
+    expected?.status !== "PASS" ||
+    current?.status !== "PASS" ||
+    JSON.stringify(current) !== JSON.stringify(expected)
+  ) {
+    throw new Error(`${label} no longer matches the exact Vercel source portfolio`);
+  }
+  return current;
+}
+
 function vercelEnvironment() {
   const env = { ...childBaseEnvironment() };
   for (const name of ["VERCEL_TOKEN", "VERCEL_ORG_ID", "VERCEL_PROJECT_ID"]) {
@@ -1016,8 +1484,8 @@ function vercelEnvironment() {
   return env;
 }
 
-function listHostedEnvironmentNames(vercel) {
-  const listed = run(
+async function listHostedEnvironmentNames(vercel) {
+  const listed = await runInterruptible(
     EXECUTABLE,
     [vercel.path, "env", "list", "production", "--format=json", "--no-color"],
     {
@@ -1037,20 +1505,20 @@ function listHostedEnvironmentNames(vercel) {
   return [...new Set(records.map((record) => record.key ?? record.name).filter(Boolean))].sort();
 }
 
-function configureHostedStagingProtection(vercel, projectId) {
-  return configureExactStagingVercelProtection({
+async function configureHostedStagingProtection(vercel, projectId) {
+  return await configureExactStagingVercelProtection({
     projectId,
     expectedProjectName: EXPECTED_VERCEL_PROJECT_NAME,
     expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
     expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
-    request({ method, path, body }) {
+    async request({ method, path, body }) {
       const args = [vercel.path, "api", path, "--raw", "--no-color"];
       let input;
       if (method === "PATCH") {
         args.push("--method", "PATCH", "--input", "-");
         input = `${JSON.stringify(body)}\n`;
       }
-      const response = run(EXECUTABLE, args, {
+      const response = await runInterruptible(EXECUTABLE, args, {
         label: `${method.toLowerCase()} isolated staging Vercel protection`,
         env: vercelEnvironment(),
         input,
@@ -1065,9 +1533,37 @@ function configureHostedStagingProtection(vercel, projectId) {
   });
 }
 
-function configureHostedStagingEnvironment(vercel, environment) {
+async function verifyHostedStagingProtection(vercel, projectId) {
+  return await verifyExactStagingVercelProtection({
+    projectId,
+    expectedProjectName: EXPECTED_VERCEL_PROJECT_NAME,
+    expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+    expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
+    async request({ method, path }) {
+      if (method !== "GET") {
+        throw new Error("Post-deployment Vercel protection verification must be read-only");
+      }
+      const response = await runInterruptible(
+        EXECUTABLE,
+        [vercel.path, "api", path, "--raw", "--no-color"],
+        {
+          label: "read-only post-deployment isolated staging Vercel protection",
+          env: vercelEnvironment(),
+          timeoutMs: 3 * 60_000,
+          secrets: protectedRuntimeValues(),
+        },
+      );
+      return parseSingleJsonOutput(
+        response.stdout,
+        "read-only post-deployment isolated staging Vercel protection",
+      );
+    },
+  });
+}
+
+async function configureHostedStagingEnvironment(vercel, environment) {
   const expectedNames = Object.keys(environment).sort();
-  const existingNames = listHostedEnvironmentNames(vercel);
+  const existingNames = await listHostedEnvironmentNames(vercel);
   const unexpectedNames = existingNames.filter((name) => !expectedNames.includes(name));
   if (unexpectedNames.length > 0) {
     throw new Error(
@@ -1102,7 +1598,7 @@ function configureHostedStagingEnvironment(vercel, environment) {
       "--no-color",
     ];
     if (HOSTED_SECRET_ENV_NAMES.has(name)) args.push("--sensitive");
-    run(EXECUTABLE, args, {
+    await runInterruptible(EXECUTABLE, args, {
       label: `configure isolated staging environment ${name}`,
       env: vercelEnvironment(),
       input: `${value}\n`,
@@ -1110,7 +1606,7 @@ function configureHostedStagingEnvironment(vercel, environment) {
       secrets,
     });
   }
-  const configuredNames = listHostedEnvironmentNames(vercel);
+  const configuredNames = await listHostedEnvironmentNames(vercel);
   if (JSON.stringify(configuredNames) !== JSON.stringify(expectedNames)) {
     throw new Error("The isolated Vercel staging environment inventory is not exact after provisioning");
   }
@@ -1124,11 +1620,11 @@ function configureHostedStagingEnvironment(vercel, environment) {
   };
 }
 
-function fetchAuthoritativeVercelDeployment(vercel, deploymentId, label) {
+async function fetchAuthoritativeVercelDeployment(vercel, deploymentId, label) {
   if (!/^dpl_[A-Za-z0-9]+$/.test(deploymentId)) {
     throw new Error(`${label} returned an invalid Vercel deployment id`);
   }
-  const response = run(
+  const response = await runInterruptible(
     EXECUTABLE,
     [
       vercel.path,
@@ -1154,18 +1650,131 @@ function fetchAuthoritativeVercelDeployment(vercel, deploymentId, label) {
   return deployment;
 }
 
-function deployExactCommit(identity, vercel) {
+function exactAliasRecordPath(aliasHost) {
+  if (!EXPECTED_APP_ALIASES.some(({ host }) => host === aliasHost)) {
+    throw new Error("Vercel alias record read rejected an unregistered host");
+  }
+  return `/v4/aliases/${encodeURIComponent(aliasHost)}`;
+}
+
+function sameExactAliasMapping(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function fetchExactAliasMapping(vercel, alias, label) {
+  if (
+    !EXPECTED_APP_ALIASES.some(
+      ({ host, url }) => host === alias.host && url === alias.url,
+    )
+  ) {
+    throw new Error(`${label} received an unregistered staging alias`);
+  }
+  const result = await runInterruptibleAllowNonzero(
+    EXECUTABLE,
+    [vercel.path, "api", exactAliasRecordPath(alias.host), "--raw", "--no-color"],
+    {
+      label: `${label} authoritative Vercel alias record read`,
+      env: vercelEnvironment(),
+      timeoutMs: 3 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  if (result.status !== 0) {
+    const diagnostic = sanitize(
+      `${result.stderr}\n${result.stdout}`,
+      protectedRuntimeValues(),
+    );
+    if (!/(?:Response Error[^\n]*\b404\b|\b404\b[^\n]*(?:not found|NOT_FOUND))/i.test(diagnostic)) {
+      throw new Error(`${label} authoritative Vercel alias read failed: ${diagnostic}`);
+    }
+    const publicSurface = await requestExactAppAlias(alias);
+    if (
+      publicSurface.status !== 404 ||
+      publicSurface.disposition !== "VERCEL_DEPLOYMENT_NOT_FOUND"
+    ) {
+      throw new Error(`${label} returned 404 authority without an exact closed Vercel surface`);
+    }
+    return null;
+  }
+
+  const record = parseSingleJsonOutput(
+    result.stdout,
+    `${label} authoritative Vercel alias record`,
+  );
+  const deploymentId = record.deploymentId ?? null;
+  const deploymentHost = record.deployment?.url ?? null;
+  if (
+    record.alias !== alias.host ||
+    typeof record.projectId !== "string" ||
+    sha256(record.projectId) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
+    !/^dpl_[A-Za-z0-9]+$/.test(deploymentId ?? "") ||
+    record.deployment?.id !== deploymentId ||
+    typeof deploymentHost !== "string" ||
+    !/^[a-z0-9-]+\.vercel\.app$/i.test(deploymentHost) ||
+    EXPECTED_APP_ALIASES.some(({ host }) => host === deploymentHost) ||
+    PRODUCTION_OR_SHARED_HOSTS.has(deploymentHost)
+  ) {
+    throw new Error(`${label} is not owned by the exact isolated staging project`);
+  }
+  const authoritative = await fetchAuthoritativeVercelDeployment(
+    vercel,
+    deploymentId,
+    `${label} mapped deployment`,
+  );
+  const authoritativeProjectId =
+    authoritative.projectId ?? authoritative.project?.id;
+  if (
+    authoritative.url !== deploymentHost ||
+    sha256(String(authoritativeProjectId)) !==
+      EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT
+  ) {
+    throw new Error(`${label} mapped deployment authority did not match`);
+  }
+  return Object.freeze({
+    deploymentId,
+    deploymentHost,
+    projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+  });
+}
+
+async function proveAuthoritativePreDeployAliasOwnership(vercel) {
+  const aliases = [];
+  for (const alias of EXPECTED_APP_ALIASES) {
+    const priorMapping = await fetchExactAliasMapping(
+      vercel,
+      alias,
+      `${alias.label} pre-deployment alias`,
+    );
+    aliases.push(Object.freeze({
+      label: alias.label,
+      host: alias.host,
+      priorMapping,
+      ownedByDifferentAccessibleProject: false,
+    }));
+  }
+  return Object.freeze({
+    status: "PASS",
+    phase: "immediately_before_protection_and_deployment",
+    aliasCount: aliases.length,
+    aliases,
+    exactIsolatedProjectOnly: true,
+    aliasesCreatedOrChanged: false,
+  });
+}
+
+async function deployExactCommit(identity, vercel) {
   const args = [
     vercel.path,
     "deploy",
     "--prod",
+    "--skip-domain",
     "--yes",
     "--force",
     "--meta", `dealflowCommit=${identity.commit}`,
     "--meta", `dealflowTree=${identity.tree}`,
     "--meta", "dealflowEnvironment=isolated-staging-qibh",
   ];
-  const deployment = run(EXECUTABLE, args, {
+  const deployment = await runInterruptible(EXECUTABLE, args, {
     label: "deploy exact candidate to isolated Vercel staging project",
     env: vercelEnvironment(),
     timeoutMs: 20 * 60_000,
@@ -1182,7 +1791,7 @@ function deployExactCommit(identity, vercel) {
   if (!uniqueDeploymentUrl || PRODUCTION_OR_SHARED_HOSTS.has(uniqueDeploymentUrl.hostname)) {
     throw new Error("Vercel did not return a distinct isolated staging deployment URL");
   }
-  const inspect = run(
+  const inspect = await runInterruptible(
     EXECUTABLE,
     [vercel.path, "inspect", uniqueDeploymentUrl.origin, "--format=json", "--no-color"],
     {
@@ -1194,7 +1803,7 @@ function deployExactCommit(identity, vercel) {
   );
   const inspected = parseSingleJsonOutput(inspect.stdout, "Vercel deployment inspection");
   const deploymentId = inspected.id ?? inspected.uid ?? null;
-  const authoritative = fetchAuthoritativeVercelDeployment(
+  const authoritative = await fetchAuthoritativeVercelDeployment(
     vercel,
     deploymentId,
     "isolated staging deployment",
@@ -1226,109 +1835,421 @@ function deployExactCommit(identity, vercel) {
   };
 }
 
-function proveStableAliasTargetsExactDeployment(identity, deployment, vercel) {
-  const inspect = run(
-    EXECUTABLE,
-    [vercel.path, "inspect", EXPECTED_STAGING_BASE_URL, "--format=json", "--no-color"],
-    {
-      label: "inspect stable isolated-staging alias",
-      env: vercelEnvironment(),
-      timeoutMs: 3 * 60_000,
-      secrets: protectedRuntimeValues(),
-    },
-  );
-  const inspected = parseSingleJsonOutput(inspect.stdout, "stable Vercel alias inspection");
-  const deploymentId = inspected.id ?? inspected.uid ?? null;
-  const authoritative = fetchAuthoritativeVercelDeployment(
+async function configureAndProveAppAlias(
+  identity,
+  deployment,
+  vercel,
+  { aliasLabel, aliasHost, aliasUrl, priorMapping },
+) {
+  if (
+    !EXPECTED_APP_ALIASES.some(({ host, url }) => host === aliasHost && url === aliasUrl) ||
+    new URL(aliasUrl).hostname !== aliasHost ||
+    PRODUCTION_OR_SHARED_HOSTS.has(aliasHost)
+  ) {
+    throw new Error(`The ${aliasLabel} staging app alias is not exact and isolated`);
+  }
+  const exactAlias = EXPECTED_APP_ALIASES.find(({ host }) => host === aliasHost);
+  const mappingImmediatelyBeforeMutation = await fetchExactAliasMapping(
     vercel,
-    deploymentId,
-    "stable isolated-staging alias",
+    exactAlias,
+    `${aliasLabel} immediate pre-mutation alias`,
   );
-  const metadata = authoritative.meta ?? authoritative.metadata ?? {};
-  const projectId = authoritative.projectId ?? authoritative.project?.id;
-  if (
-    deploymentId !== deployment.deploymentId ||
-    authoritative.url !== deployment.deploymentHost ||
-    sha256(String(projectId)) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
-    metadata.dealflowCommit !== identity.commit ||
-    metadata.dealflowTree !== identity.tree ||
-    metadata.dealflowEnvironment !== "isolated-staging-qibh"
-  ) {
-    throw new Error("The stable isolated-staging alias does not target the exact candidate deployment");
+  if (!sameExactAliasMapping(mappingImmediatelyBeforeMutation, priorMapping)) {
+    throw new Error(`${aliasLabel} staging app alias drifted after pre-deployment authority proof`);
   }
-  return {
-    deploymentId,
-    stableHost: EXPECTED_STAGING_HOST,
-    exactCommit: identity.commit,
-    exactTree: identity.tree,
+  const rollbackRecord = {
+    aliasLabel,
+    aliasHost,
+    aliasUrl,
+    priorMapping,
+    intendedDeploymentId: deployment.deploymentId,
+    intendedDeploymentHost: deployment.deploymentHost,
     projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+    intentRegistered: true,
+    mutationCommandCompleted: false,
   };
-}
-
-function configureAndProveSecondPartnerAlias(identity, deployment, vercel) {
-  if (
-    PRODUCTION_OR_SHARED_HOSTS.has(EXPECTED_SECOND_PARTNER_HOST) ||
-    EXPECTED_SECOND_PARTNER_HOST === EXPECTED_STAGING_HOST
-  ) {
-    throw new Error("The second white-label staging alias is not isolated");
-  }
-  run(
+  failureContext.stagingAliasMutations.push(rollbackRecord);
+  await runInterruptible(
     EXECUTABLE,
     [
       vercel.path,
       "alias",
       "set",
       deployment.deploymentHost,
-      EXPECTED_SECOND_PARTNER_HOST,
+      aliasHost,
       "--no-color",
     ],
     {
-      label: "configure second isolated white-label staging alias",
+      label: `configure ${aliasLabel} isolated staging app alias`,
       env: vercelEnvironment(),
       timeoutMs: 3 * 60_000,
       secrets: protectedRuntimeValues(),
     },
   );
-  const inspect = run(
-    EXECUTABLE,
-    [vercel.path, "inspect", EXPECTED_SECOND_PARTNER_BASE_URL, "--format=json", "--no-color"],
-    {
-      label: "inspect second isolated white-label staging alias",
-      env: vercelEnvironment(),
-      timeoutMs: 3 * 60_000,
-      secrets: protectedRuntimeValues(),
-    },
-  );
-  const inspected = parseSingleJsonOutput(
-    inspect.stdout,
-    "second isolated white-label Vercel alias inspection",
-  );
-  const deploymentId = inspected.id ?? inspected.uid ?? null;
-  const authoritative = fetchAuthoritativeVercelDeployment(
+  rollbackRecord.mutationCommandCompleted = true;
+  const currentMapping = await fetchExactAliasMapping(
     vercel,
-    deploymentId,
-    "second isolated white-label staging alias",
+    exactAlias,
+    `${aliasLabel} post-mutation alias`,
   );
-  const metadata = authoritative.meta ?? authoritative.metadata ?? {};
-  const projectId = authoritative.projectId ?? authoritative.project?.id;
   if (
-    deploymentId !== deployment.deploymentId ||
-    authoritative.url !== deployment.deploymentHost ||
-    sha256(String(projectId)) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
-    metadata.dealflowCommit !== identity.commit ||
-    metadata.dealflowTree !== identity.tree ||
-    metadata.dealflowEnvironment !== "isolated-staging-qibh"
+    currentMapping?.deploymentId !== deployment.deploymentId ||
+    currentMapping?.deploymentHost !== deployment.deploymentHost ||
+    currentMapping?.projectIdFingerprint !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT
   ) {
-    throw new Error("The second white-label staging alias does not target the exact candidate deployment");
+    throw new Error(`${aliasLabel} staging app alias does not target the exact candidate deployment`);
   }
   return {
-    deploymentId,
-    aliasUrl: EXPECTED_SECOND_PARTNER_BASE_URL,
-    aliasHost: EXPECTED_SECOND_PARTNER_HOST,
+    deploymentId: currentMapping.deploymentId,
+    aliasLabel,
+    aliasUrl,
+    aliasHost,
     exactCommit: identity.commit,
     exactTree: identity.tree,
     projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
   };
+}
+
+async function requestExactAppAlias(
+  alias,
+  headers = {},
+  { allowDuringTermination = false } = {},
+) {
+  const endpoint = new URL("/privacy", alias.url);
+  if (
+    endpoint.protocol !== "https:" ||
+    endpoint.hostname !== alias.host ||
+    endpoint.port !== "" ||
+    endpoint.username !== "" ||
+    endpoint.password !== "" ||
+    !EXPECTED_APP_ALIASES.some(({ host, url }) => host === alias.host && url === alias.url)
+  ) {
+    throw new Error("Application-gate proof received a non-exact staging alias");
+  }
+  const response = await (allowDuringTermination ? cleanupFetch : executionFetch)(endpoint, {
+    headers: {
+      Accept: "text/html",
+      "User-Agent": "DealFlow-Staging-Acceptance/1.0",
+      ...headers,
+    },
+    redirect: "manual",
+  }, 15_000);
+  const contentType = response.headers.get("content-type") ?? "";
+  const payload = contentType.toLowerCase().includes("application/json")
+    ? await response.json().catch(() => null)
+    : (await response.arrayBuffer(), null);
+  if (
+    response.url !== endpoint.toString() ||
+    response.redirected ||
+    response.headers.has("location")
+  ) {
+    throw new Error(`${alias.label} application-gate request changed URL`);
+  }
+  const vercelDeploymentNotFound =
+    response.status === 404 &&
+    response.headers.get("x-vercel-error") === "DEPLOYMENT_NOT_FOUND";
+  const dealflowApplicationGate =
+    [404, 503].includes(response.status) &&
+    response.headers.get("cache-control")?.includes("no-store") === true &&
+    response.headers.get("x-robots-tag")?.includes("noindex") === true &&
+    ["Not found.", "Isolated staging access is unavailable."].includes(
+      payload?.error,
+    );
+  return {
+    status: response.status,
+    redirected: false,
+    locationPresent: false,
+    responseUrlExact: true,
+    disposition: vercelDeploymentNotFound
+      ? "VERCEL_DEPLOYMENT_NOT_FOUND"
+      : dealflowApplicationGate
+        ? "DEALFLOW_APPLICATION_GATE"
+        : response.status === 200
+          ? "AUTHORIZED_HTTP_200"
+          : "UNRECOGNIZED",
+  };
+}
+
+async function proveClosedPreDeployAppAliasSurface() {
+  if (
+    new Set(EXPECTED_APP_ALIASES.map(({ host }) => host)).size !==
+      EXPECTED_APP_ALIASES.length ||
+    new Set(EXPECTED_APP_ALIASES.map(({ url }) => url)).size !==
+      EXPECTED_APP_ALIASES.length
+  ) {
+    throw new Error("Direct and partner staging aliases must be exactly distinct");
+  }
+  const aliases = [];
+  for (const alias of EXPECTED_APP_ALIASES) {
+    const noGate = await requestExactAppAlias(alias);
+    if (
+      noGate.status !== 404 ||
+      ![
+        "VERCEL_DEPLOYMENT_NOT_FOUND",
+        "DEALFLOW_APPLICATION_GATE",
+      ].includes(noGate.disposition)
+    ) {
+      throw new Error(`${alias.label} was publicly reachable before staging deployment`);
+    }
+    aliases.push({
+      label: alias.label,
+      host: alias.host,
+      noGate,
+    });
+  }
+  return Object.freeze({
+    status: "PASS",
+    phase: "before_environment_and_deployment",
+    aliasCount: aliases.length,
+    aliases,
+    gateCredentialSent: false,
+    publicWindowObserved: false,
+  });
+}
+
+async function proveExactPostDeployAppAliasGate(alias) {
+  const secret = requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43);
+  const noGate = await requestExactAppAlias(alias);
+  const headerGate = await requestExactAppAlias(alias, {
+    [STAGING_ACCESS_HEADER]: secret,
+  });
+  const cookieGate = await requestExactAppAlias(alias, {
+    Cookie: `${STAGING_ACCESS_COOKIE}=${secret}`,
+  });
+  if (
+    noGate.status !== 404 ||
+    noGate.disposition !== "DEALFLOW_APPLICATION_GATE" ||
+    headerGate.status !== 200 ||
+    headerGate.disposition !== "AUTHORIZED_HTTP_200" ||
+    cookieGate.status !== 200 ||
+    cookieGate.disposition !== "AUTHORIZED_HTTP_200"
+  ) {
+    throw new Error(`${alias.label} did not prove the exact closed application gate`);
+  }
+  return Object.freeze({
+    label: alias.label,
+    host: alias.host,
+    noGate,
+    headerGate,
+    cookieGate,
+  });
+}
+
+async function provePostDeployAppAliasGate() {
+  const aliases = [];
+  for (const alias of EXPECTED_APP_ALIASES) {
+    aliases.push(await proveExactPostDeployAppAliasGate(alias));
+  }
+  return Object.freeze({
+    status: "PASS",
+    phase: "after_exact_deployment",
+    aliasCount: aliases.length,
+    aliases,
+    noGateStatus: 404,
+    headerGateStatus: 200,
+    cookieGateStatus: 200,
+    redirectsFollowed: false,
+    secretsPersistedToEvidence: false,
+  });
+}
+
+async function requestExactGatedAsset(alias, resourcePath, headers = {}) {
+  const endpoint = new URL(resourcePath, alias.url);
+  if (
+    endpoint.origin !== alias.url ||
+    !(
+      endpoint.pathname.startsWith("/_next/static/") ||
+      endpoint.pathname === "/_next/image"
+    ) ||
+    endpoint.username !== "" ||
+    endpoint.password !== ""
+  ) {
+    throw new Error("Static gate proof received a non-exact resource path");
+  }
+  const response = await executionFetch(endpoint, {
+    headers: {
+      Accept: "*/*",
+      "User-Agent": "DealFlow-Staging-Static-Gate/1.0",
+      ...headers,
+    },
+    redirect: "manual",
+  }, 20_000);
+  await response.arrayBuffer();
+  if (
+    response.url !== endpoint.toString() ||
+    response.redirected ||
+    response.headers.has("location")
+  ) {
+    throw new Error(`${alias.label} static gate request changed URL`);
+  }
+  return Object.freeze({
+    status: response.status,
+    contentType: (response.headers.get("content-type") ?? "").split(";")[0],
+    redirectFollowed: false,
+    responseUrlExact: true,
+  });
+}
+
+async function requestExactPublicOptimizerSource(alias) {
+  const endpoint = new URL(STAGING_IMAGE_OPTIMIZER_SOURCE_PATH, alias.url);
+  if (
+    endpoint.origin !== alias.url ||
+    endpoint.pathname !== STAGING_IMAGE_OPTIMIZER_SOURCE_PATH ||
+    endpoint.search !== "" ||
+    endpoint.hash !== "" ||
+    endpoint.username !== "" ||
+    endpoint.password !== ""
+  ) {
+    throw new Error("Optimizer source proof received a non-exact staging resource");
+  }
+  const response = await executionFetch(endpoint, {
+    headers: {
+      Accept: "image/png",
+      "User-Agent": "DealFlow-Staging-Optimizer-Source-Proof/1.0",
+    },
+    redirect: "manual",
+  }, 20_000);
+  const body = Buffer.from(await response.arrayBuffer());
+  if (
+    response.url !== endpoint.toString() ||
+    response.redirected ||
+    response.headers.has("location") ||
+    response.status !== 200 ||
+    (response.headers.get("content-type") ?? "").split(";")[0] !== "image/png" ||
+    body.length === 0
+  ) {
+    throw new Error(`${alias.label} exact public optimizer source was not available`);
+  }
+  return Object.freeze({
+    status: response.status,
+    contentType: "image/png",
+    bodySha256: sha256(body),
+    redirectFollowed: false,
+    stagingAccessCredentialSent: false,
+  });
+}
+
+async function provePostDeployStaticAssetGate() {
+  const secret = requiredEnvironment("STAGING_ACCESS_GATE_SECRET", 43);
+  const privacyResponse = await executionFetch(
+    new URL("/privacy", EXPECTED_STAGING_BASE_URL),
+    {
+      headers: withStagingAccess({ Accept: "text/html" }),
+      redirect: "manual",
+    },
+    20_000,
+  );
+  const privacyHtml = await privacyResponse.text();
+  const chunkPath = findExactNextStaticChunkPath(
+    privacyHtml,
+    EXPECTED_STAGING_BASE_URL,
+  );
+  if (privacyResponse.status !== 200 || !chunkPath) {
+    throw new Error("Could not discover a real gated Next.js chunk from the exact deployment");
+  }
+  const imagePath =
+    "/_next/image?url=%2Fstaging-image-optimizer-proof.png&w=32&q=75";
+  const aliases = [];
+  for (const alias of EXPECTED_APP_ALIASES) {
+    const publicOptimizerSource = await requestExactPublicOptimizerSource(alias);
+    const resources = [];
+    for (const [kind, resourcePath] of [["chunk", chunkPath], ["image", imagePath]]) {
+      const noGate = await requestExactGatedAsset(alias, resourcePath);
+      const headerGate = await requestExactGatedAsset(alias, resourcePath, {
+        [STAGING_ACCESS_HEADER]: secret,
+      });
+      const cookieGate = await requestExactGatedAsset(alias, resourcePath, {
+        Cookie: `${STAGING_ACCESS_COOKIE}=${secret}`,
+      });
+      const authorizedTypeIsExact = kind === "chunk"
+        ? /(?:javascript|ecmascript)/i.test(headerGate.contentType) &&
+          /(?:javascript|ecmascript)/i.test(cookieGate.contentType)
+        : headerGate.contentType.startsWith("image/") &&
+          cookieGate.contentType.startsWith("image/");
+      if (
+        noGate.status !== 404 ||
+        headerGate.status !== 200 ||
+        cookieGate.status !== 200 ||
+        !authorizedTypeIsExact
+      ) {
+        throw new Error(`${alias.label} ${kind} resource bypassed or failed the application gate`);
+      }
+      resources.push({ kind, noGate, headerGate, cookieGate });
+    }
+    aliases.push({
+      label: alias.label,
+      host: alias.host,
+      publicOptimizerSource,
+      resources,
+    });
+  }
+  return Object.freeze({
+    status: "PASS",
+    aliasCount: aliases.length,
+    resourceKinds: ["real_next_chunk", "next_image_optimizer"],
+    intentionalPublicResourceCountPerAlias: 1,
+    intentionalPublicResource:
+      "staging_image_optimizer_source_png_only",
+    noGateStatus: 404,
+    headerGateStatus: 200,
+    cookieGateStatus: 200,
+    aliases,
+    resourcePathsPersisted: false,
+    secretsPersistedToEvidence: false,
+  });
+}
+
+async function proveUniqueDeploymentProtectionRedirect(deploymentUrl, deploymentHost) {
+  const base = new URL(deploymentUrl);
+  if (
+    base.protocol !== "https:" ||
+    base.hostname !== deploymentHost ||
+    base.port !== "" ||
+    base.username !== "" ||
+    base.password !== "" ||
+    base.pathname !== "/" ||
+    base.search !== "" ||
+    base.hash !== "" ||
+    EXPECTED_APP_ALIASES.some(({ host }) => host === base.hostname) ||
+    PRODUCTION_OR_SHARED_HOSTS.has(base.hostname)
+  ) {
+    throw new Error("Unique deployment protection proof received a non-exact origin");
+  }
+  const endpoint = new URL("/privacy", base);
+  const response = await executionFetch(endpoint, {
+    headers: {
+      Accept: "text/html",
+      "User-Agent": "DealFlow-Staging-Acceptance/1.0",
+    },
+    redirect: "manual",
+  }, 15_000);
+  await response.arrayBuffer();
+  const rawLocation = response.headers.get("location");
+  let location;
+  try {
+    location = rawLocation ? new URL(rawLocation, endpoint) : null;
+  } catch {
+    location = null;
+  }
+  if (
+    response.url !== endpoint.toString() ||
+    ![301, 302, 303, 307, 308].includes(response.status) ||
+    !location ||
+    location.protocol !== "https:" ||
+    location.username !== "" ||
+    location.password !== "" ||
+    !(location.hostname === "vercel.com" || location.hostname.endsWith(".vercel.com"))
+  ) {
+    throw new Error("Unique deployment did not retain the exact Vercel protection redirect");
+  }
+  return Object.freeze({
+    status: "PASS",
+    deploymentHost,
+    responseStatus: response.status,
+    redirectFollowed: false,
+    protectionLocation: `${location.origin}${location.pathname}`,
+    stagingAccessCredentialSent: false,
+  });
 }
 
 async function waitForDeployment(url, timeoutMs = 180_000) {
@@ -1336,32 +2257,189 @@ async function waitForDeployment(url, timeoutMs = 180_000) {
   let lastStatus = 0;
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(`${url}/privacy`, {
-        headers: { Accept: "text/html", "User-Agent": "DealFlow-Staging-Acceptance/1.0" },
+      const response = await executionFetch(`${url}/privacy`, {
+        headers: withStagingAccess({
+          Accept: "text/html",
+          "User-Agent": "DealFlow-Staging-Acceptance/1.0",
+        }),
         redirect: "manual",
-      });
+      }, 15_000);
       lastStatus = response.status;
       await response.arrayBuffer();
       if (classifyStagingHostReadiness({ status: response.status }) === "ready") {
         return { status: response.status, elapsedMs: Date.now() - startedAt };
       }
     } catch (error) {
+      if (terminationRequested) throw terminationRequest.error;
       if (error instanceof StagingHostRedirectError) throw error;
       lastStatus = 0;
     }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
+    await abortableDelay(2_000);
   }
   throw new Error(`Staging deployment did not become ready; last status ${lastStatus}`);
 }
 
+function exactReleaseIdentityPayload(identity, vercelDryRunSourceProof) {
+  return Object.freeze({
+    commit: identity.commit,
+    tree: identity.tree,
+    trackedWorktreeSha256: identity.trackedWorktreeSha256,
+    trackedFileCount: identity.trackedFileCount,
+    dependencyLockSha256: identity.dependencyLockSha256,
+    deployableSourceSha256: identity.deployableSourceSha256,
+    deployableManifestSha256: identity.deployableManifestSha256,
+    deployableFileCount: identity.deployableFileCount,
+    vercelDryRunSourceSha256: vercelDryRunSourceProof.sourceSetSha256,
+    vercelDryRunFileCount: vercelDryRunSourceProof.regularFileCount,
+  });
+}
+
+async function proveHostedBuildReleaseIdentity(
+  identity,
+  vercelDryRunSourceProof,
+  baseUrl,
+  expectedHost,
+) {
+  const base = new URL(baseUrl);
+  if (
+    base.protocol !== "https:" ||
+    base.hostname !== expectedHost ||
+    base.port !== "" ||
+    base.username !== "" ||
+    base.password !== "" ||
+    base.pathname !== "/" ||
+    base.search !== "" ||
+    base.hash !== "" ||
+    PRODUCTION_OR_SHARED_HOSTS.has(base.hostname)
+  ) {
+    throw new Error("Hosted release identity proof requires an exact isolated HTTPS origin");
+  }
+
+  const endpoint = new URL("/api/internal/release-identity", base);
+  const response = await executionFetch(endpoint, {
+    headers: withStagingAccess({
+      Authorization: `Bearer ${requiredEnvironment("INTERNAL_SYSTEM_JOBS_SECRET", 32)}`,
+      Accept: "application/json",
+      "User-Agent": "DealFlow-Staging-Release-Identity/1.0",
+    }),
+    redirect: "manual",
+  }, 30_000);
+  const contentType = response.headers.get("content-type") ?? "";
+  const payload = contentType.toLowerCase().includes("application/json")
+    ? await response.json().catch(() => null)
+    : null;
+  const expectedRelease = exactReleaseIdentityPayload(
+    identity,
+    vercelDryRunSourceProof,
+  );
+  if (
+    response.status !== 200 ||
+    response.redirected ||
+    response.url !== endpoint.href ||
+    response.headers.has("location") ||
+    payload?.ok !== true ||
+    payload?.schemaVersion !== HOSTED_RELEASE_IDENTITY_SCHEMA ||
+    JSON.stringify(Object.keys(payload ?? {}).sort()) !==
+      JSON.stringify(["ok", "release", "schemaVersion"]) ||
+    JSON.stringify(Object.keys(payload?.release ?? {}).sort()) !==
+      JSON.stringify([
+        "commit",
+        "dependencyLockSha256",
+        "deployableFileCount",
+        "deployableManifestSha256",
+        "deployableSourceSha256",
+        "trackedFileCount",
+        "trackedWorktreeSha256",
+        "tree",
+        "vercelDryRunFileCount",
+        "vercelDryRunSourceSha256",
+      ]) ||
+    JSON.stringify(payload.release) !== JSON.stringify(expectedRelease)
+  ) {
+    throw new Error("Hosted artifact did not return the exact build-injected release identity");
+  }
+
+  const buildArtifactEndpoint = new URL(
+    "/.well-known/dealflow-hosted-build-identity.json",
+    base,
+  );
+  const buildArtifactResponse = await executionFetch(buildArtifactEndpoint, {
+    headers: withStagingAccess({
+      Accept: "application/json",
+      "User-Agent": "DealFlow-Staging-Build-Source-Identity/1.0",
+    }),
+    redirect: "manual",
+  }, 30_000);
+  const buildArtifactContentType =
+    buildArtifactResponse.headers.get("content-type") ?? "";
+  const buildArtifact = buildArtifactContentType
+    .toLowerCase()
+    .includes("application/json")
+    ? await buildArtifactResponse.json().catch(() => null)
+    : null;
+  if (
+    buildArtifactResponse.status !== 200 ||
+    buildArtifactResponse.redirected ||
+    buildArtifactResponse.url !== buildArtifactEndpoint.href ||
+    buildArtifactResponse.headers.has("location") ||
+    buildArtifact?.schemaVersion !==
+      "dealflow.hosted-build-source-identity.v1" ||
+    buildArtifact?.status !== "HOSTED_SOURCE_VERIFIED" ||
+    buildArtifact?.generatedInsideBuild !== true ||
+    buildArtifact?.expectedIdentityMatched !== true ||
+    buildArtifact?.deployablePathSetVerified !== true ||
+    buildArtifact?.predeployPathSetProofBound !== true ||
+    buildArtifact?.manifestSha256 !== identity.deployableManifestSha256 ||
+    buildArtifact?.deployableSourceSha256 !== identity.deployableSourceSha256 ||
+    buildArtifact?.deployableFileCount !== identity.deployableFileCount ||
+    buildArtifact?.vercelDryRunSourceSha256 !==
+      vercelDryRunSourceProof.sourceSetSha256 ||
+    buildArtifact?.vercelDryRunFileCount !==
+      vercelDryRunSourceProof.regularFileCount ||
+    JSON.stringify(buildArtifact?.release) !== JSON.stringify(expectedRelease)
+  ) {
+    throw new Error(
+      "Hosted artifact did not prove the source portfolio generated inside its build",
+    );
+  }
+
+  return Object.freeze({
+    status: "PASS",
+    origin: base.origin,
+    endpointPath: endpoint.pathname,
+    httpStatus: response.status,
+    redirectFollowed: false,
+    responseUrlExact: true,
+    schemaVersion: payload.schemaVersion,
+    release: expectedRelease,
+    runtimeGitMetadataTrustedAsArtifactProof: false,
+    buildInjectedIdentityMatched: true,
+    buildGeneratedSourcePortfolioMatched: true,
+    buildGeneratedIdentityEndpointPath: buildArtifactEndpoint.pathname,
+    deployableManifestSha256: identity.deployableManifestSha256,
+    deployableSourceSha256: identity.deployableSourceSha256,
+    deployableFileCount: identity.deployableFileCount,
+    vercelDryRunSourceSha256: vercelDryRunSourceProof.sourceSetSha256,
+    vercelDryRunFileCount: vercelDryRunSourceProof.regularFileCount,
+  });
+}
+
 async function assertHostedZeroEffects(baseUrl) {
   const secret = requiredEnvironment("INTERNAL_SYSTEM_JOBS_SECRET", 32);
-  const response = await fetch(`${baseUrl}/api/internal/zero-external-effects`, {
-    headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" },
-  });
+  const endpoint = new URL("/api/internal/zero-external-effects", baseUrl);
+  const response = await executionFetch(endpoint, {
+    headers: withStagingAccess({
+      Authorization: `Bearer ${secret}`,
+      Accept: "application/json",
+    }),
+    redirect: "manual",
+  }, 30_000);
   const payload = await response.json().catch(() => null);
   if (
     response.status !== 200 ||
+    response.redirected ||
+    response.url !== endpoint.href ||
+    response.headers.has("location") ||
     payload?.ok !== true ||
     payload?.attestation !== ZERO_EXTERNAL_EFFECTS_ATTESTATION ||
     !Array.isArray(payload?.failedControls) ||
@@ -1379,41 +2457,528 @@ async function assertHostedZeroEffects(baseUrl) {
   };
 }
 
-function createStagingAdminClient() {
+function createStagingAdminClient({ allowDuringTermination = false } = {}) {
   return createClient(
     requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL"),
     requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY", 32),
-    { auth: { persistSession: false, autoRefreshToken: false } },
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: allowDuringTermination ? cleanupFetch : executionFetch },
+    },
   );
 }
 
-async function createSyntheticRlsSessions(admin) {
+function createStagingAnonClient(supabaseUrl, anonKey, { allowDuringTermination = false } = {}) {
+  return createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: allowDuringTermination ? cleanupFetch : executionFetch },
+  });
+}
+
+function rememberTransientSecrets(values) {
+  failureContext.transientSecrets = [
+    ...new Set([
+      ...failureContext.transientSecrets,
+      ...values.filter((value) => typeof value === "string" && value.length > 0),
+    ]),
+  ];
+}
+
+function validateSyntheticSessionRoleNames(roleNames) {
+  const normalized = [...new Set(roleNames)].sort();
+  if (
+    normalized.length === 0 ||
+    normalized.length !== roleNames.length ||
+    normalized.some((role) => !SYNTHETIC_STAGING_ROLE_EMAILS[role])
+  ) {
+    throw new Error("Synthetic session phase does not contain exact known roles");
+  }
+  return normalized;
+}
+
+async function createSyntheticSessionPortfolio(
+  admin,
+  seed,
+  { phase, roleNames: requestedRoleNames, minimumRequiredLifetimeSeconds },
+) {
+  assertExecutionMayContinue();
+  if (!/^[a-z0-9_]+$/.test(phase ?? "")) {
+    throw new Error("Synthetic session phase is invalid");
+  }
+  if (
+    !Number.isSafeInteger(minimumRequiredLifetimeSeconds) ||
+    minimumRequiredLifetimeSeconds < 15 * 60
+  ) {
+    throw new Error("Synthetic session phase requires a safe positive lifetime");
+  }
+  const roleNames = validateSyntheticSessionRoleNames(requestedRoleNames);
   const supabaseUrl = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
-  const password = requiredEnvironment("STAGING_QA_PASSWORD", 16);
-  const createSession = async (email) => {
-    const anon = createClient(supabaseUrl, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const signedIn = await anon.auth.signInWithPassword({ email, password });
-    if (signedIn.data.session?.access_token) return signedIn.data.session.access_token;
-    if (!/captcha/i.test(signedIn.error?.message ?? "")) {
-      throw new Error(`Unable to create synthetic RLS session for ${email}`);
+  const projectRef = extractProjectRef(supabaseUrl);
+  const sessions = {};
+  let minimumObservedLifetimeSeconds = Number.POSITIVE_INFINITY;
+
+  for (const role of roleNames) {
+    const email = SYNTHETIC_STAGING_ROLE_EMAILS[role];
+    const expectedUserId = seed.scenarios?.[role]?.userId;
+    if (!/^[a-f0-9-]{36}$/i.test(expectedUserId ?? "")) {
+      throw new Error(`Synthetic session portfolio is missing the seeded ${role} identity`);
     }
+    const existing = await admin.auth.admin.getUserById(expectedUserId);
+    assertExecutionMayContinue();
+    if (
+      existing.error ||
+      existing.data.user?.id !== expectedUserId ||
+      existing.data.user?.email?.trim().toLowerCase() !== email
+    ) {
+      throw new Error(`Synthetic session portfolio identity mismatch for ${role}`);
+    }
+
+    const anon = createStagingAnonClient(supabaseUrl, anonKey);
     const link = await admin.auth.admin.generateLink({ type: "magiclink", email });
+    assertExecutionMayContinue();
     const tokenHash = link.data.properties?.hashed_token;
     if (link.error || !tokenHash) {
-      throw new Error(`Unable to create CAPTCHA-safe synthetic RLS session for ${email}`);
+      throw new Error(`Unable to create non-delivering synthetic session for ${role}`);
     }
     const verified = await anon.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
-    if (verified.error || !verified.data.session?.access_token) {
-      throw new Error(`Unable to verify CAPTCHA-safe synthetic RLS session for ${email}`);
+    const session = verified.data.session;
+    const user = verified.data.user;
+    rememberTransientSecrets([
+      session?.access_token,
+      session?.refresh_token,
+    ]);
+    if (session?.access_token) {
+      failureContext.pendingSyntheticUserGlobalSignOuts.push({
+        phase,
+        role,
+        userId: expectedUserId,
+        email,
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token ?? null,
+        accessJwtExpiresAt: Number(session.expires_at),
+      });
     }
-    return verified.data.session.access_token;
+    assertExecutionMayContinue();
+    if (
+      verified.error ||
+      !session?.access_token ||
+      !session.refresh_token ||
+      user?.id !== expectedUserId ||
+      user.email?.trim().toLowerCase() !== email
+    ) {
+      throw new Error(`Unable to verify exact synthetic session identity for ${role}`);
+    }
+    const expiresAt = Number(session.expires_at);
+    const remainingLifetimeSeconds = expiresAt - Math.floor(Date.now() / 1000);
+    if (
+      !Number.isSafeInteger(expiresAt) ||
+      remainingLifetimeSeconds < minimumRequiredLifetimeSeconds
+    ) {
+      throw new Error(`Synthetic session for ${role} does not have a safe proof lifetime`);
+    }
+    minimumObservedLifetimeSeconds = Math.min(
+      minimumObservedLifetimeSeconds,
+      remainingLifetimeSeconds,
+    );
+
+    const cookieMap = new Map();
+    const ssr = createServerClient(supabaseUrl, anonKey, {
+      global: { fetch: executionFetch },
+      cookieOptions: {
+        path: "/",
+        sameSite: "none",
+        secure: true,
+        partitioned: true,
+      },
+      cookies: {
+        getAll() {
+          return [...cookieMap].map(([name, value]) => ({ name, value }));
+        },
+        setAll(cookiesToSet) {
+          for (const cookie of cookiesToSet) {
+            if (cookie.options?.maxAge === 0 || cookie.value === "") {
+              cookieMap.delete(cookie.name);
+            } else {
+              cookieMap.set(cookie.name, cookie.value);
+            }
+          }
+        },
+      },
+    });
+    const cookieSession = await ssr.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+    assertExecutionMayContinue();
+    if (
+      cookieSession.error ||
+      cookieSession.data.user?.id !== expectedUserId ||
+      cookieMap.size === 0 ||
+      ![...cookieMap.keys()].every((name) => name.startsWith(`sb-${projectRef}-auth-token`))
+    ) {
+      throw new Error(`Unable to create exact SSR cookie session for ${role}`);
+    }
+    const cookies = validateSyntheticBrowserCookieChunks(
+      [...cookieMap].map(([name, value]) => ({ name, value })),
+      projectRef,
+    );
+    rememberTransientSecrets(cookies.map((cookie) => cookie.value));
+    sessions[role] = {
+      userId: expectedUserId,
+      email,
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      expiresAt,
+      cookies,
+    };
+  }
+
+  const internalBundle = {
+    schemaVersion: SYNTHETIC_SESSION_PORTFOLIO_SCHEMA,
+    projectFingerprint: EXPECTED_SUPABASE_FINGERPRINT,
+    safeSuffix: EXPECTED_SUPABASE_SAFE_SUFFIX,
+    projectRef,
+    roles: sessions,
   };
   return {
-    userA: await createSession(EXPECTED_QA_EMAIL),
-    userB: await createSession(ATTACKER_EMAIL),
+    phase,
+    roleNames,
+    internalBundle,
+    attestation: {
+      status: "PASS",
+      schemaVersion: SYNTHETIC_SESSION_PORTFOLIO_SCHEMA,
+      phase,
+      roleNames,
+      roleCount: roleNames.length,
+      exactSeedIdentityCount: roleNames.length,
+      nonDeliveringAdminMagicLinkCount: roleNames.length,
+      portfolioPasswordSignInCount: 0,
+      minimumRequiredLifetimeSeconds,
+      minimumObservedLifetimeSeconds,
+      rawTokenPersisted: false,
+      rawCookiePersisted: false,
+      accessJwtImmediateRevocationSupported: false,
+      accessJwtDispositionAfterGlobalSignOut: "VALID_UNTIL_EXPIRY",
+      productionIdentityUsed: false,
+    },
+  };
+}
+
+function providerSessionBundle(portfolio) {
+  const roleNames = ["paidDirect", "partnerChild", "partnerChildTwo"];
+  if (roleNames.some((role) => !portfolio.internalBundle.roles[role])) {
+    throw new Error("Provider proof session phase is incomplete");
+  }
+  const bundle = {
+    schemaVersion: SYNTHETIC_PROVIDER_SESSION_BUNDLE_SCHEMA,
+    projectFingerprint: EXPECTED_SUPABASE_FINGERPRINT,
+    safeSuffix: EXPECTED_SUPABASE_SAFE_SUFFIX,
+    projectRef: portfolio.internalBundle.projectRef,
+    roles: Object.fromEntries(roleNames.map((role) => {
+      const session = portfolio.internalBundle.roles[role];
+      return [role, {
+        userId: session.userId,
+        email: session.email,
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt,
+      }];
+    })),
+  };
+  const json = JSON.stringify(bundle);
+  const secrets = [
+    json,
+    ...roleNames.map((role) => portfolio.internalBundle.roles[role].accessToken),
+  ];
+  rememberTransientSecrets(secrets);
+  return { json, secrets };
+}
+
+function browserSessionBundle(portfolio) {
+  const bundle = {
+    schemaVersion: SYNTHETIC_BROWSER_SESSION_BUNDLE_SCHEMA,
+    projectFingerprint: EXPECTED_SUPABASE_FINGERPRINT,
+    safeSuffix: EXPECTED_SUPABASE_SAFE_SUFFIX,
+    projectRef: portfolio.internalBundle.projectRef,
+    roles: Object.fromEntries(portfolio.roleNames.map((role) => {
+      const session = portfolio.internalBundle.roles[role];
+      return [role, {
+        userId: session.userId,
+        email: session.email,
+        expiresAt: session.expiresAt,
+        cookies: session.cookies,
+      }];
+    })),
+  };
+  const json = JSON.stringify(bundle);
+  const secrets = [
+    json,
+    ...portfolio.roleNames.flatMap((role) =>
+      portfolio.internalBundle.roles[role].cookies.map((cookie) => cookie.value),
+    ),
+  ];
+  rememberTransientSecrets(secrets);
+  return { json, secrets };
+}
+
+async function revokeSyntheticSessionPhase(
+  admin,
+  phase,
+  { allowDuringTermination = false } = {},
+) {
+  const target = failureContext.pendingSyntheticUserGlobalSignOuts.filter(
+    (session) => session.phase === phase,
+  );
+  if (target.length === 0) {
+    throw new Error(`Synthetic session phase ${phase} has no pending user sign-outs`);
+  }
+  const cleaned = new Set();
+  const refreshRevocationProven = new Set();
+  const failures = [];
+  const supabaseUrl = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
+  const anonKey = requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
+  const revokeOne = async (session) => {
+    try {
+      const result = await admin.auth.admin.signOut(session.accessToken, "global");
+      if (result.error) {
+        failures.push(`${session.role}: ${result.error.message}`);
+      } else {
+        if (!session.refreshToken) {
+          cleaned.add(session);
+          refreshRevocationProven.add(session);
+          return;
+        }
+        const refreshProbe = createStagingAnonClient(supabaseUrl, anonKey, {
+          allowDuringTermination,
+        });
+        const refreshed = await refreshProbe.auth.refreshSession({
+          refresh_token: session.refreshToken,
+        });
+        rememberTransientSecrets([
+          refreshed.data.session?.access_token,
+          refreshed.data.session?.refresh_token,
+        ]);
+        const invalidRefreshAuthorityProven =
+          refreshed.error?.status === 400 &&
+          (
+            ["refresh_token_not_found", "refresh_token_already_used"].includes(
+              refreshed.error.code ?? "",
+            ) ||
+            /^Invalid Refresh Token: Refresh Token (?:Not Found|Already Used)$/i.test(
+              refreshed.error.message ?? "",
+            )
+          ) &&
+          !refreshed.data.session;
+        if (invalidRefreshAuthorityProven) {
+          cleaned.add(session);
+          refreshRevocationProven.add(session);
+        } else if (refreshed.error || !refreshed.data.session) {
+          failures.push(
+            `${session.role}: refresh-token invalidation could not be distinguished from provider or transport failure`,
+          );
+        } else {
+          const containment = await admin.auth.admin.signOut(
+            refreshed.data.session.access_token,
+            "global",
+          );
+          if (!containment.error) cleaned.add(session);
+          failures.push(`${session.role}: refresh token remained usable after global sign-out`);
+        }
+      }
+    } catch (error) {
+      failures.push(
+        `${session.role}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+  if (allowDuringTermination) {
+    await Promise.all(target.map((session) => revokeOne(session)));
+  } else {
+    for (const session of target) {
+      await revokeOne(session);
+      assertExecutionMayContinue();
+    }
+  }
+  failureContext.pendingSyntheticUserGlobalSignOuts =
+    failureContext.pendingSyntheticUserGlobalSignOuts.filter(
+      (session) => !cleaned.has(session),
+    );
+  if (failures.length > 0) {
+    throw new Error(
+      `Synthetic user global sign-out failed for ${phase}: ${failures.join(" | ")}`,
+    );
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const latestAccessJwtExpiryUnix = target.reduce(
+    (latest, session) => Math.max(latest, session.accessJwtExpiresAt || 0),
+    0,
+  );
+  return {
+    phase,
+    globalSignOutRequestedUserCount: target.length,
+    globalSignOutAcceptedUserCount: cleaned.size,
+    globalRefreshTokenScope: true,
+    pendingGlobalSignOutUserCountAfterCleanup:
+      failureContext.pendingSyntheticUserGlobalSignOuts.length,
+    refreshTokenInvalidationProbeCount: refreshRevocationProven.size,
+    allSyntheticUserRefreshTokensRevoked:
+      refreshRevocationProven.size === target.length,
+    accessJwtImmediateRevocationSupported: false,
+    accessJwtDisposition: "VALID_UNTIL_EXPIRY",
+    latestAccessJwtExpiryUnix,
+    maxResidualAccessJwtLifetimeSeconds: Math.max(0, latestAccessJwtExpiryUnix - now),
+    rawSessionSecretsPersistedToEvidence: false,
+    productionIdentityAffected: false,
+  };
+}
+
+async function revokeAllPendingSyntheticUserRefreshSessions(admin) {
+  const phases = [
+    ...new Set(
+      failureContext.pendingSyntheticUserGlobalSignOuts.map((session) => session.phase),
+    ),
+  ].sort();
+  const results = [];
+  const failures = [];
+  for (const phase of phases) {
+    try {
+      results.push(await revokeSyntheticSessionPhase(admin, phase, {
+        allowDuringTermination: true,
+      }));
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (
+    failures.length > 0 ||
+    failureContext.pendingSyntheticUserGlobalSignOuts.length !== 0
+  ) {
+    throw new Error(
+      `Synthetic refresh-session emergency cleanup remained incomplete: ${failures.join(" | ")}`,
+    );
+  }
+  return {
+    status: "PASS",
+    phaseResults: results,
+    pendingGlobalSignOutUserCountAfterCleanup: 0,
+    allSyntheticUserRefreshTokensRevoked: true,
+    accessJwtImmediateRevocationSupported: false,
+    accessJwtDisposition: "VALID_UNTIL_EXPIRY",
+    productionIdentityAffected: false,
+  };
+}
+
+async function waitForLateBrowserAuthRequestsToSettle(delayMs = 35_000) {
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
+  return delayMs;
+}
+
+async function finalSyntheticUserGlobalSignOutSweep(admin, affectedSessions) {
+  const users = [...new Map(
+    affectedSessions.map((session) => [session.role, {
+      role: session.role,
+      userId: session.userId,
+      email: session.email,
+    }]),
+  ).values()].sort((left, right) => left.role.localeCompare(right.role));
+  const supabaseUrl = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
+  const anonKey = requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
+  const failures = [];
+  const results = await Promise.all(users.map(async (user) => {
+    try {
+      const existing = await admin.auth.admin.getUserById(user.userId);
+      if (
+        existing.error ||
+        existing.data.user?.id !== user.userId ||
+        existing.data.user?.email?.trim().toLowerCase() !== user.email
+      ) {
+        throw new Error("synthetic identity no longer matches");
+      }
+      const link = await admin.auth.admin.generateLink({
+        type: "magiclink",
+        email: user.email,
+      });
+      const tokenHash = link.data.properties?.hashed_token;
+      if (link.error || !tokenHash) {
+        throw new Error("non-delivering containment link was not created");
+      }
+      const anon = createStagingAnonClient(supabaseUrl, anonKey, {
+        allowDuringTermination: true,
+      });
+      const verified = await anon.auth.verifyOtp({
+        type: "magiclink",
+        token_hash: tokenHash,
+      });
+      const session = verified.data.session;
+      rememberTransientSecrets([
+        session?.access_token,
+        session?.refresh_token,
+      ]);
+      if (
+        verified.error ||
+        !session?.access_token ||
+        !session.refresh_token ||
+        verified.data.user?.id !== user.userId
+      ) {
+        throw new Error("containment session was not established");
+      }
+      const signOut = await admin.auth.admin.signOut(session.access_token, "global");
+      if (signOut.error) {
+        throw new Error(`final global sign-out failed: ${signOut.error.message}`);
+      }
+      const probe = createStagingAnonClient(supabaseUrl, anonKey, {
+        allowDuringTermination: true,
+      });
+      const refreshed = await probe.auth.refreshSession({
+        refresh_token: session.refresh_token,
+      });
+      rememberTransientSecrets([
+        refreshed.data.session?.access_token,
+        refreshed.data.session?.refresh_token,
+      ]);
+      const invalidated =
+        refreshed.error?.status === 400 &&
+        (["refresh_token_not_found", "refresh_token_already_used"].includes(
+          refreshed.error.code ?? "",
+        ) ||
+          /^Invalid Refresh Token: Refresh Token (?:Not Found|Already Used)$/i.test(
+            refreshed.error.message ?? "",
+          )) &&
+        !refreshed.data.session;
+      if (!invalidated) {
+        if (refreshed.data.session?.access_token) {
+          await admin.auth.admin.signOut(
+            refreshed.data.session.access_token,
+            "global",
+          );
+        }
+        throw new Error("final refresh-token invalidation probe did not pass");
+      }
+      return { role: user.role, status: "PASS" };
+    } catch (error) {
+      failures.push(
+        `${user.role}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { role: user.role, status: "FAILED" };
+    }
+  }));
+  if (failures.length > 0) {
+    throw new Error(`Final synthetic user containment sweep failed: ${failures.join(" | ")}`);
+  }
+  const roles = new Set(users.map((user) => user.role));
+  failureContext.pendingSyntheticUserGlobalSignOuts =
+    failureContext.pendingSyntheticUserGlobalSignOuts.filter(
+      (session) => !roles.has(session.role),
+    );
+  return {
+    status: "PASS",
+    affectedSyntheticUserCount: users.length,
+    finalGlobalSignOutAcceptedUserCount: results.length,
+    finalRefreshInvalidationProbeCount: results.length,
+    allRefreshTokensIssuedBeforeFinalSweepRevoked: true,
+    unboundedFutureRemoteIssuanceClaimed: false,
+    rawSessionSecretsPersistedToEvidence: false,
+    productionIdentityAffected: false,
   };
 }
 
@@ -1443,13 +3008,16 @@ async function resetIsolatedStagingRateLimits(admin, phase) {
   const before = await admin
     .from("rate_limit_buckets")
     .select("bucket_key", { count: "exact", head: true });
+  assertExecutionMayContinue();
   if (before.error || typeof before.count !== "number") {
     throw new Error(`Unable to enumerate isolated staging rate limits during ${phase}`);
   }
+  assertExecutionMayContinue();
   const deleted = await admin
     .from("rate_limit_buckets")
     .delete()
     .not("bucket_key", "is", null);
+  assertExecutionMayContinue();
   if (deleted.error) {
     throw new Error(`Unable to reset isolated staging rate limits during ${phase}`);
   }
@@ -1528,7 +3096,14 @@ async function captureRlsFixtureResidue(admin) {
 }
 
 function countPlaywrightOutcomes(value) {
-  const counts = { tests: 0, passed: 0, failed: 0, skipped: 0, interrupted: 0 };
+  const counts = {
+    tests: 0,
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+    interrupted: 0,
+    projectCounts: {},
+  };
   const visit = (node) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) {
@@ -1538,6 +3113,10 @@ function countPlaywrightOutcomes(value) {
     if (Array.isArray(node.tests)) {
       for (const testCase of node.tests) {
         counts.tests += 1;
+        const projectName = typeof testCase.projectName === "string"
+          ? testCase.projectName
+          : "__missing_project__";
+        counts.projectCounts[projectName] = (counts.projectCounts[projectName] ?? 0) + 1;
         if (testCase.expectedStatus === "skipped") counts.skipped += 1;
         const results = Array.isArray(testCase.results) ? testCase.results : [];
         const last = results.at(-1);
@@ -1552,14 +3131,70 @@ function countPlaywrightOutcomes(value) {
     }
   };
   visit(value);
+  counts.projectCounts = Object.fromEntries(
+    Object.entries(counts.projectCounts).sort(([left], [right]) =>
+      left.localeCompare(right)
+    ),
+  );
   return counts;
 }
 
-function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
+function registerUnsealedPlaywrightArtifactDirectories(evidenceDir, paths) {
+  assertExecutionMayContinue();
+  const exactRoot = resolve(evidenceDir);
+  for (const path of paths) {
+    const exactPath = resolve(path);
+    const relativePath = relative(exactRoot, exactPath);
+    if (
+      !relativePath ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${sep}`) ||
+      resolve(exactRoot, relativePath) !== exactPath
+    ) {
+      throw new Error("Playwright artifact directory must be a strict evidence child");
+    }
+    if (!failureContext.unsealedPlaywrightArtifactDirectories.includes(exactPath)) {
+      failureContext.unsealedPlaywrightArtifactDirectories.push(exactPath);
+    }
+  }
+}
+
+function deleteAllRegisteredUnsealedPlaywrightArtifacts() {
+  const evidenceDir = failureContext.evidenceDir;
+  const registered = [...failureContext.unsealedPlaywrightArtifactDirectories];
+  if (!evidenceDir) {
+    if (registered.length > 0) {
+      throw new Error("Registered Playwright artifacts have no controlling evidence root");
+    }
+    return {
+      status: "PASS",
+      policy: UNSEALED_PLAYWRIGHT_FAILURE_POLICY,
+      registeredDirectoryCount: 0,
+      deletedDirectoryCount: 0,
+      remainingDirectoryCount: 0,
+      rawReporterArtifactsRetained: false,
+    };
+  }
+  const disposition = deleteRegisteredUnsealedPlaywrightArtifactDirectories({
+    evidenceDir,
+    registeredDirectories: registered,
+  });
+  failureContext.unsealedPlaywrightArtifactDirectories = [];
+  return disposition;
+}
+
+async function runPlaywrightSuite({ name, config, environment, evidenceDir, secrets = [] }) {
   const outputDir = join(evidenceDir, name);
   mkdirSync(outputDir, { mode: 0o700 });
   const binary = join(EXPECTED_REPO, "node_modules", ".bin", "playwright");
-  run(binary, ["test", `--config=${config}`], {
+  const configuredOutputDir = config === "playwright.safe.config.ts"
+    ? environment.SAFE_E2E_OUTPUT_DIR
+    : environment.STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR;
+  registerUnsealedPlaywrightArtifactDirectories(evidenceDir, [
+    outputDir,
+    configuredOutputDir,
+  ]);
+  await runInterruptible(binary, ["test", `--config=${config}`], {
     label: `${name} zero-skip Playwright suite`,
     env: { ...childBaseEnvironment(), ...environment },
     timeoutMs: 30 * 60_000,
@@ -1567,12 +3202,18 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
     secrets: [
       process.env.STAGING_QA_PASSWORD,
       process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+      process.env.STAGING_ACCESS_GATE_SECRET,
       process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
+      ...secrets,
     ],
   });
-  const configuredOutputDir = config === "playwright.safe.config.ts"
-    ? environment.SAFE_E2E_OUTPUT_DIR
-    : environment.STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR;
+  assertEvidenceSanitized(configuredOutputDir, [
+    process.env.STAGING_QA_PASSWORD,
+    process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    process.env.STAGING_ACCESS_GATE_SECRET,
+    process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
+    ...secrets,
+  ]);
   const jsonPath = join(
     configuredOutputDir,
     config === "playwright.safe.config.ts" ? "playwright-results.json" : "results.json",
@@ -1589,12 +3230,19 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
   }
   const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
   const counts = countPlaywrightOutcomes(parsed);
+  const expectedProjectCounts = {
+    "desktop-chromium": 14,
+    "desktop-firefox": 14,
+    "desktop-webkit": 14,
+    "mobile-chromium": 14,
+  };
   if (
-    counts.tests === 0 ||
+    counts.tests !== 56 ||
     counts.failed !== 0 ||
     counts.skipped !== 0 ||
     counts.interrupted !== 0 ||
-    counts.passed !== counts.tests
+    counts.passed !== counts.tests ||
+    JSON.stringify(counts.projectCounts) !== JSON.stringify(expectedProjectCounts)
   ) {
     throw new Error(`${name} did not finish with every browser test passed and zero skipped`);
   }
@@ -1609,8 +3257,15 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
       safeAcceptance.executionMode !== "hosted_authenticated" ||
       safeAcceptance.playwrightStatus !== "passed" ||
       safeAcceptance.authenticatedStatus !== "passed" ||
-      safeAcceptance.authenticatedResultCount < 1 ||
-      safeAcceptance.authenticatedSkippedCount !== 0
+      safeAcceptance.authenticatedResultCount !== 16 ||
+      safeAcceptance.authenticatedSkippedCount !== 0 ||
+      JSON.stringify(safeAcceptance.authenticatedProjectCounts) !==
+        JSON.stringify({
+          "desktop-chromium": 4,
+          "mobile-chromium": 4,
+          "desktop-firefox": 4,
+          "desktop-webkit": 4,
+        })
     ) {
       throw new Error(`${name} custom authenticated safety reporter did not pass exactly`);
     }
@@ -1627,28 +3282,44 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
   return summary;
 }
 
-function browserEnvironment(deploymentUrl, secondPartnerUrl, evidenceDir) {
+function multiRoleBrowserEnvironment(
+  deploymentUrl,
+  secondPartnerUrl,
+  evidenceDir,
+  browserSessionBundleJson,
+) {
   return {
     CI: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
-    SAFE_E2E_BASE_URL: EXPECTED_STAGING_BASE_URL,
-    SAFE_E2E_QA_AUTH: "true",
-    SAFE_E2E_ZERO_EXTERNAL_EFFECTS_ATTESTATION: ZERO_EXTERNAL_EFFECTS_ATTESTATION,
-    SAFE_E2E_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
-    SAFE_E2E_OUTPUT_DIR: join(evidenceDir, "safe-product-browser-artifacts"),
-    QA_AUTH_HARNESS_ENABLED: "true",
     QA_ISOLATED_SUPABASE_PROJECT_REF: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
-    QA_EMAIL: EXPECTED_QA_EMAIL,
     STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
-    PARTNER_ATTRIBUTION_SIGNING_SECRET: process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
-    INTERNAL_ADMIN_EMAILS: process.env.INTERNAL_ADMIN_EMAILS,
+    STAGING_SYNTHETIC_BROWSER_SESSION_BUNDLE: browserSessionBundleJson,
+    STAGING_TURNSTILE_TEST_SITE_KEY: STAGING_TURNSTILE_SITE_KEY,
     STAGING_ACCEPTANCE_EXECUTION: "true",
     STAGING_ACCEPTANCE_BASE_URL: EXPECTED_STAGING_BASE_URL,
     STAGING_ACCEPTANCE_PARTNER_BASE_URL: deploymentUrl,
     STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL: secondPartnerUrl,
-    STAGING_ACCEPTANCE_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    SAFE_E2E_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
     STAGING_ACCEPTANCE_ZERO_EXTERNAL_EFFECTS_ATTESTATION: ZERO_EXTERNAL_EFFECTS_ATTESTATION,
     STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR: join(evidenceDir, "multi-role-browser-artifacts"),
+  };
+}
+
+function safeProductBrowserEnvironment(evidenceDir, browserSessionBundleJson) {
+  return {
+    CI: "1",
+    DEALFLOW_DEPLOYMENT_TARGET: "staging",
+    QA_AUTH_HARNESS_ENABLED: "true",
+    QA_ISOLATED_SUPABASE_PROJECT_REF: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
+    SAFE_E2E_BASE_URL: EXPECTED_STAGING_BASE_URL,
+    SAFE_E2E_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
+    SAFE_E2E_OUTPUT_DIR: join(evidenceDir, "safe-product-browser-artifacts"),
+    SAFE_E2E_QA_AUTH: "true",
+    SAFE_E2E_ZERO_EXTERNAL_EFFECTS_ATTESTATION: ZERO_EXTERNAL_EFFECTS_ATTESTATION,
+    STAGING_SYNTHETIC_BROWSER_SESSION_BUNDLE: browserSessionBundleJson,
+    STAGING_TURNSTILE_TEST_SITE_KEY: STAGING_TURNSTILE_SITE_KEY,
   };
 }
 
@@ -1674,18 +3345,38 @@ async function runBoundedPool(items, concurrency, worker) {
 async function timedFetch(url, init, expectedHeaders = {}, acceptedStatuses = [200]) {
   const startedAt = performance.now();
   try {
-    const response = await fetch(url, init);
+    const endpoint = new URL(url);
+    const response = await executionFetch(endpoint, {
+      ...init,
+      headers: withStagingAccess(init.headers ?? {}),
+      redirect: "manual",
+    }, 30_000);
     await response.arrayBuffer();
     const headersMatch = Object.entries(expectedHeaders)
       .every(([name, value]) => response.headers.get(name) === value);
+    const responseUrlExact =
+      !response.redirected &&
+      response.url === endpoint.href &&
+      !response.headers.has("location");
     return {
-      ok: acceptedStatuses.includes(response.status) && headersMatch,
+      ok:
+        acceptedStatuses.includes(response.status) &&
+        headersMatch &&
+        responseUrlExact,
       status: response.status,
       durationMs: performance.now() - startedAt,
       headersMatch,
+      responseUrlExact,
     };
-  } catch {
-    return { ok: false, status: 0, durationMs: performance.now() - startedAt, headersMatch: false };
+  } catch (error) {
+    if (terminationRequested) throw terminationRequest.error;
+    return {
+      ok: false,
+      status: 0,
+      durationMs: performance.now() - startedAt,
+      headersMatch: false,
+      responseUrlExact: false,
+    };
   }
 }
 
@@ -1790,6 +3481,8 @@ function assertEvidenceSanitized(evidenceDir, secrets) {
     /(?:postgres|postgresql):\/\/[^\s"']+/i,
     /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/,
     /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{12,}\b/i,
+    /\bbase64-[A-Za-z0-9_-]{24,}/,
+    /sb-[a-z0-9-]+-auth-token(?:\.\d+)?[\s\S]{0,160}(?:base64-)?[A-Za-z0-9_-]{24,}/i,
   ];
   let scannedFileCount = 0;
   for (const path of listEvidenceFiles(evidenceDir)) {
@@ -1810,7 +3503,15 @@ function assertEvidenceSanitized(evidenceDir, secrets) {
   return { scannedFileCount, exactProtectedValueCount: exactForbiddenValues.length };
 }
 
-function sealEvidenceBundle(evidenceDir, summary, secrets) {
+function sealEvidenceBundle(
+  evidenceDir,
+  summary,
+  secrets,
+  { allowDuringTermination = false } = {},
+) {
+  if (terminationRequested && !allowDuringTermination) {
+    throw new Error("Refused to seal normal evidence after termination was requested");
+  }
   enforcePrivateModes(evidenceDir);
   const sanitization = assertEvidenceSanitized(evidenceDir, secrets);
   const preManifestFiles = listEvidenceFiles(evidenceDir)
@@ -1830,7 +3531,7 @@ function sealEvidenceBundle(evidenceDir, summary, secrets) {
     realCommunicationSent: false,
     sanitization,
     files: records,
-  });
+  }, { allowDuringTermination });
   const checksumFiles = listEvidenceFiles(evidenceDir).filter((path) => path !== "SHA256SUMS");
   const lines = checksumFiles.map((path) => `${sha256(readFileSync(join(evidenceDir, path)))}  ${path}`);
   writeFileSync(join(evidenceDir, "SHA256SUMS"), `${lines.join("\n")}\n`, {
@@ -1880,12 +3581,22 @@ async function main() {
   const vercelAuthority = captureVercelProjectIdentity();
   const vercelProject = vercelAuthority.evidence;
   const execution = assertFailClosedExecutionEnvironment();
+  const vercel = locateInstalledVercelCli();
+  failureContext.vercelPath = vercel.path;
+  failureContext.stage = "vercel_dry_run_source_portfolio";
+  const vercelDryRunSourceProof =
+    await proveExactVercelDryRunSourcePortfolio(vercel);
+  const stagingAccessGateSecret = randomBytes(48).toString("base64url");
+  process.env.STAGING_ACCESS_GATE_SECRET = stagingAccessGateSecret;
+  failureContext.transientSecrets.push(stagingAccessGateSecret);
   const hostedEnvironment = hostedStagingEnvironment(
     execution.projectRef,
     vercelAuthority.projectId,
+    identity,
+    vercelDryRunSourceProof,
+    stagingAccessGateSecret,
   );
   const hostedEnvironmentNames = Object.keys(hostedEnvironment).sort();
-  const vercel = locateInstalledVercelCli();
   const roundOne = readValidatedRound(
     options.roundOne,
     identity,
@@ -1916,10 +3627,13 @@ async function main() {
     supabaseProjectFingerprint: sha256(execution.projectRef),
     supabaseSafeSuffix: execution.projectRef.slice(-4),
     stableStagingHost: EXPECTED_STAGING_HOST,
+    partnerOneStagingHost: EXPECTED_PARTNER_ONE_HOST,
+    partnerTwoStagingHost: EXPECTED_SECOND_PARTNER_HOST,
     directAndPartnerHostsMustBeDistinct: true,
     hostedEnvironmentVariableCount: hostedEnvironmentNames.length,
     hostedEnvironmentNameSetSha256: sha256(hostedEnvironmentNames.join("\n")),
     hostedEnvironmentValuesPersistedToEvidence: false,
+    vercelDryRunSourceProof,
     roundOne,
     roundTwo,
     executionFlags: {
@@ -1939,16 +3653,24 @@ async function main() {
     },
   };
   writeJson(join(options.evidenceDir, "preflight.json"), preflight);
-
-  failureContext.stage = "hosted_protection_configuration";
-  const hostedProtectionProof = configureHostedStagingProtection(
-    vercel,
-    vercelAuthority.projectId,
+  writeJson(
+    join(options.evidenceDir, "vercel-dry-run-source-proof.json"),
+    vercelDryRunSourceProof,
   );
-  writeJson(join(options.evidenceDir, "staging-protection.json"), hostedProtectionProof);
+
+  failureContext.stage = "predeploy_closed_alias_surface";
+  const preDeployClosedAliasSurface =
+    await proveClosedPreDeployAppAliasSurface();
+  writeJson(
+    join(options.evidenceDir, "predeploy-closed-alias-surface.json"),
+    preDeployClosedAliasSurface,
+  );
 
   failureContext.stage = "hosted_environment_configuration";
-  const hostedEnvironmentProof = configureHostedStagingEnvironment(vercel, hostedEnvironment);
+  const hostedEnvironmentProof = await configureHostedStagingEnvironment(
+    vercel,
+    hostedEnvironment,
+  );
   if (hostedEnvironmentProof.providerCredentialNamesPresent) {
     throw new Error("Provider credentials are forbidden from isolated staging acceptance");
   }
@@ -1977,7 +3699,7 @@ async function main() {
       options.priorMigrationProofDir,
     );
   }
-  run(
+  await runInterruptible(
     EXECUTABLE,
     migrationBrokerArgs,
     {
@@ -2128,7 +3850,7 @@ async function main() {
     options.evidenceDir,
     "retention-authority",
   );
-  run(
+  await runInterruptible(
     EXECUTABLE,
     [
       join(
@@ -2278,27 +4000,187 @@ async function main() {
     );
   }
 
+  failureContext.stage = "predeployment_alias_authority";
+  const preDeployAliasAuthority =
+    await proveAuthoritativePreDeployAliasOwnership(vercel);
+  writeJson(
+    join(options.evidenceDir, "predeploy-alias-authority.json"),
+    preDeployAliasAuthority,
+  );
+  const priorAliasMapping = (aliasHost) => {
+    const record = preDeployAliasAuthority.aliases.find(
+      ({ host }) => host === aliasHost,
+    );
+    if (!record) throw new Error("Pre-deployment alias authority record is missing");
+    return record.priorMapping;
+  };
+
+  failureContext.stage = "predeployment_staging_protection_configuration";
+  const preDeploymentProtectionProof = await configureHostedStagingProtection(
+    vercel,
+    vercelAuthority.projectId,
+  );
+  failureContext.stage = "immediate_predeployment_source_revalidation";
+  const immediatePreDeploymentIdentity = assertExactReleaseIdentityUnchanged(
+    identity,
+    "Immediate pre-deployment release source",
+  );
+  const immediatePreDeploymentVercelDryRunSourceProof =
+    assertExactVercelDryRunProofUnchanged(
+      vercelDryRunSourceProof,
+      await proveExactVercelDryRunSourcePortfolio(vercel),
+      "Immediate pre-deployment Vercel dry-run source",
+    );
   failureContext.stage = "staging_deployment";
-  const deployment = deployExactCommit(identity, vercel);
-  const uniqueReady = await waitForDeployment(deployment.deploymentUrl);
+  const deployment = await deployExactCommit(identity, vercel);
+  failureContext.stage = "postdeployment_source_revalidation";
+  const postDeploymentIdentity = assertExactReleaseIdentityUnchanged(
+    identity,
+    "Post-deployment release source",
+  );
+  const sourceRevalidationProof = Object.freeze({
+    status: "PASS",
+    initialIdentity: identity,
+    immediatePreDeploymentIdentity,
+    postDeploymentIdentity,
+    initialVercelDryRunSourceProof: vercelDryRunSourceProof,
+    immediatePreDeploymentVercelDryRunSourceProof,
+    exactIdentityBeforeAndAfterUpload: true,
+    exactVercelSourcePortfolioRevalidatedImmediatelyBeforeUpload: true,
+  });
+  writeJson(
+    join(options.evidenceDir, "deployment-source-revalidation.json"),
+    sourceRevalidationProof,
+  );
+  failureContext.stage = "postdeployment_staging_protection_verification";
+  const postDeploymentProtectionProof = await verifyHostedStagingProtection(
+    vercel,
+    vercelAuthority.projectId,
+  );
+  const hostedProtectionProof = Object.freeze({
+    status: "PASS",
+    configuredBeforeDeployment: true,
+    verifiedUnchangedAfterDeployment: true,
+    preDeployment: preDeploymentProtectionProof,
+    postDeployment: postDeploymentProtectionProof,
+  });
+  writeJson(join(options.evidenceDir, "staging-protection.json"), hostedProtectionProof);
+  failureContext.stage = "unique_deployment_protection_verification";
+  const uniqueDeploymentProtection =
+    await proveUniqueDeploymentProtectionRedirect(
+      deployment.deploymentUrl,
+      deployment.deploymentHost,
+    );
+  const stableAlias = await configureAndProveAppAlias(
+    identity,
+    deployment,
+    vercel,
+    {
+      aliasLabel: "stable_direct",
+      aliasHost: EXPECTED_STAGING_HOST,
+      aliasUrl: EXPECTED_STAGING_BASE_URL,
+      priorMapping: priorAliasMapping(EXPECTED_STAGING_HOST),
+    },
+  );
+  const stableGateImmediatelyAfterAlias =
+    await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0]);
+  const stableIdentityImmediatelyAfterAlias =
+    await proveHostedBuildReleaseIdentity(
+      identity,
+      vercelDryRunSourceProof,
+      EXPECTED_STAGING_BASE_URL,
+      EXPECTED_STAGING_HOST,
+    );
+  const partnerOneAlias = await configureAndProveAppAlias(
+    identity,
+    deployment,
+    vercel,
+    {
+      aliasLabel: "partner_one",
+      aliasHost: EXPECTED_PARTNER_ONE_HOST,
+      aliasUrl: EXPECTED_PARTNER_ONE_BASE_URL,
+      priorMapping: priorAliasMapping(EXPECTED_PARTNER_ONE_HOST),
+    },
+  );
+  const partnerOneGateImmediatelyAfterAlias =
+    await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[1]);
+  const partnerOneIdentityImmediatelyAfterAlias =
+    await proveHostedBuildReleaseIdentity(
+      identity,
+      vercelDryRunSourceProof,
+      partnerOneAlias.aliasUrl,
+      partnerOneAlias.aliasHost,
+    );
+  const secondPartnerAlias = await configureAndProveAppAlias(
+    identity,
+    deployment,
+    vercel,
+    {
+      aliasLabel: "partner_two",
+      aliasHost: EXPECTED_SECOND_PARTNER_HOST,
+      aliasUrl: EXPECTED_SECOND_PARTNER_BASE_URL,
+      priorMapping: priorAliasMapping(EXPECTED_SECOND_PARTNER_HOST),
+    },
+  );
+  const secondPartnerGateImmediatelyAfterAlias =
+    await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[2]);
+  const secondPartnerIdentityImmediatelyAfterAlias =
+    await proveHostedBuildReleaseIdentity(
+      identity,
+      vercelDryRunSourceProof,
+      secondPartnerAlias.aliasUrl,
+      secondPartnerAlias.aliasHost,
+    );
   const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL);
-  const stableAlias = proveStableAliasTargetsExactDeployment(identity, deployment, vercel);
-  const secondPartnerAlias = configureAndProveSecondPartnerAlias(identity, deployment, vercel);
+  const partnerOneReady = await waitForDeployment(partnerOneAlias.aliasUrl);
   const secondPartnerReady = await waitForDeployment(secondPartnerAlias.aliasUrl);
+  const postDeployAppAliasGate = await provePostDeployAppAliasGate();
+  writeJson(
+    join(options.evidenceDir, "postdeploy-app-alias-gate.json"),
+    postDeployAppAliasGate,
+  );
+  const postDeployStaticAssetGate = await provePostDeployStaticAssetGate();
+  writeJson(
+    join(options.evidenceDir, "postdeploy-static-asset-gate.json"),
+    postDeployStaticAssetGate,
+  );
+  const hostedBuildIdentity = Object.freeze({
+    status: "PASS",
+    stableAlias: stableIdentityImmediatelyAfterAlias,
+    partnerOneAlias: partnerOneIdentityImmediatelyAfterAlias,
+    secondPartnerAlias: secondPartnerIdentityImmediatelyAfterAlias,
+    allOriginsMatchOneExactBuildIdentity: true,
+    runtimeGitMetadataTrustedAsArtifactProof: false,
+  });
   writeJson(join(options.evidenceDir, "deployment.json"), {
     ...deployment,
-    uniqueReady,
+    uniqueDeploymentProtection,
+    stableGateImmediatelyAfterAlias,
+    stableIdentityImmediatelyAfterAlias,
     stableReady,
     stableAlias,
+    partnerOneAlias,
+    partnerOneGateImmediatelyAfterAlias,
+    partnerOneIdentityImmediatelyAfterAlias,
+    partnerOneReady,
     secondPartnerAlias,
+    secondPartnerGateImmediatelyAfterAlias,
+    secondPartnerIdentityImmediatelyAfterAlias,
     secondPartnerReady,
+    postDeployAppAliasGate,
+    postDeployStaticAssetGate,
+    hostedBuildIdentity,
+    preDeployClosedAliasSurface,
+    preDeployAliasAuthority,
+    hostedProtectionProof,
+    sourceRevalidationProof,
     productionCustomerHost: false,
     isolatedStagingProject: true,
   });
 
   failureContext.stage = "synthetic_staging_seed";
-  const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl);
-  const seedTwo = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl);
+  const seedOne = await runSeed(partnerOneAlias.aliasUrl, secondPartnerAlias.aliasUrl);
+  const seedTwo = await runSeed(partnerOneAlias.aliasUrl, secondPartnerAlias.aliasUrl);
   const retentionAuthorityReplayMode = assertSeedReplayIsIdempotent(seedOne, seedTwo);
   writeJson(join(options.evidenceDir, "synthetic-seed.json"), {
     status: "PASS",
@@ -2313,19 +4195,37 @@ async function main() {
 
   failureContext.stage = "provider_independent_acceptance";
   const admin = createStagingAdminClient();
-  const rlsSessions = await createSyntheticRlsSessions(admin);
-  const rlsCrossTenantProof = runCapturedProofCommand(
+  const syntheticSessionLifecycle = [];
+  const rlsCrossTenantPortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
+    phase: "rls_cross_tenant",
+    roleNames: SYNTHETIC_RLS_PROOF_ROLES,
+    minimumRequiredLifetimeSeconds: 30 * 60,
+  });
+  syntheticSessionLifecycle.push(rlsCrossTenantPortfolio.attestation);
+  const rlsCrossTenantProof = await runCapturedProofCommand(
     join(dirname(EXECUTABLE), "npm"),
     ["run", "rls:cross-tenant"],
     "authenticated isolated-staging exact cross-tenant proof",
     {
-      RLS_USER_A_JWT: rlsSessions.userA,
-      RLS_USER_B_JWT: rlsSessions.userB,
+      RLS_USER_A_JWT:
+        rlsCrossTenantPortfolio.internalBundle.roles.paidDirect.accessToken,
+      RLS_USER_B_JWT:
+        rlsCrossTenantPortfolio.internalBundle.roles.attacker.accessToken,
       RLS_ORG_A_ID: PAID_ORGANIZATION_ID,
       RLS_ORG_B_ID: ATTACKER_ORGANIZATION_ID,
     },
   );
-  const rlsFixtureProof = runCapturedProofCommand(
+  syntheticSessionLifecycle.push(
+    await revokeSyntheticSessionPhase(admin, "rls_cross_tenant"),
+  );
+
+  const rlsFixturePortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
+    phase: "rls_fixture",
+    roleNames: SYNTHETIC_RLS_PROOF_ROLES,
+    minimumRequiredLifetimeSeconds: 30 * 60,
+  });
+  syntheticSessionLifecycle.push(rlsFixturePortfolio.attestation);
+  const rlsFixtureProof = await runCapturedProofCommand(
     join(dirname(EXECUTABLE), "npm"),
     ["run", "rls:fixture-smoke"],
     "authenticated isolated-staging RLS fixture and cross-tenant proof",
@@ -2343,9 +4243,14 @@ async function main() {
       RLS_CANONICAL_PROVIDER_LIMIT_B_ID: seedOne.rlsCreditFixtures.providerUsageLimitBId,
       RLS_CANONICAL_PROVIDER_EVENT_A_ID: seedOne.rlsCreditFixtures.providerUsageEventAId,
       RLS_CANONICAL_PROVIDER_EVENT_B_ID: seedOne.rlsCreditFixtures.providerUsageEventBId,
+      RLS_USER_A_JWT: rlsFixturePortfolio.internalBundle.roles.paidDirect.accessToken,
+      RLS_USER_B_JWT: rlsFixturePortfolio.internalBundle.roles.attacker.accessToken,
     },
   );
   const rlsFixtureResidue = await captureRlsFixtureResidue(admin);
+  syntheticSessionLifecycle.push(
+    await revokeSyntheticSessionPhase(admin, "rls_fixture"),
+  );
   const rlsDeferralsClosed =
     rlsCrossTenantProof.status === "PASS" &&
     rlsFixtureProof.status === "PASS" &&
@@ -2365,21 +4270,30 @@ async function main() {
   }
 
   const zeroEffectsStable = await assertHostedZeroEffects(EXPECTED_STAGING_BASE_URL);
-  const zeroEffectsPartner = await assertHostedZeroEffects(deployment.deploymentUrl);
+  const zeroEffectsPartner = await assertHostedZeroEffects(partnerOneAlias.aliasUrl);
   const zeroEffectsPartnerTwo = await assertHostedZeroEffects(secondPartnerAlias.aliasUrl);
   writeJson(join(options.evidenceDir, "hosted-zero-external-effects.json"), {
     status: "PASS",
     stableDirectHost: zeroEffectsStable,
-    uniquePartnerHost: zeroEffectsPartner,
+    partnerOneHost: zeroEffectsPartner,
     secondPartnerHost: zeroEffectsPartnerTwo,
   });
 
+  const providerPortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
+    phase: "provider_independent",
+    roleNames: SYNTHETIC_PROVIDER_PROOF_ROLES,
+    minimumRequiredLifetimeSeconds: 30 * 60,
+  });
+  const providerBundle = providerSessionBundle(providerPortfolio);
+  syntheticSessionLifecycle.push(providerPortfolio.attestation);
   const preJourneyRateLimitReset = await resetIsolatedStagingRateLimits(
     admin,
     "before_provider_independent_journeys",
   );
-  const providerIndependentProof = runProviderIndependentStagingProof(
+  const providerIndependentProof = await runProviderIndependentStagingProof(
     EXPECTED_STAGING_BASE_URL,
+    providerBundle.json,
+    providerBundle.secrets,
   );
   writeJson(join(options.evidenceDir, "provider-independent-journeys.json"), {
     ...providerIndependentProof,
@@ -2398,24 +4312,96 @@ async function main() {
     normalRateLimitImplementationChanged: false,
     productionMutationPerformed: false,
   });
+  syntheticSessionLifecycle.push(
+    await revokeSyntheticSessionPhase(admin, "provider_independent"),
+  );
 
   const countsBefore = await captureNoEffectCounts(admin);
-  const browserEnv = browserEnvironment(
-    deployment.deploymentUrl,
+  const multiRolePortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
+    phase: "multi_role_browser",
+    roleNames: SYNTHETIC_MULTI_ROLE_BROWSER_ROLES,
+    minimumRequiredLifetimeSeconds: 50 * 60,
+  });
+  const multiRoleBundle = browserSessionBundle(multiRolePortfolio);
+  syntheticSessionLifecycle.push(multiRolePortfolio.attestation);
+  const multiRoleEnvironment = multiRoleBrowserEnvironment(
+    partnerOneAlias.aliasUrl,
     secondPartnerAlias.aliasUrl,
     options.evidenceDir,
+    multiRoleBundle.json,
   );
-  const safeProductBrowser = runPlaywrightSuite({
-    name: "safe-product-browser",
-    config: "playwright.safe.config.ts",
-    environment: browserEnv,
-    evidenceDir: options.evidenceDir,
-  });
-  const multiRoleBrowser = runPlaywrightSuite({
+  const multiRoleBrowser = await runPlaywrightSuite({
     name: "multi-role-browser",
     config: "playwright.staging.config.ts",
-    environment: browserEnv,
+    environment: multiRoleEnvironment,
     evidenceDir: options.evidenceDir,
+    secrets: multiRoleBundle.secrets,
+  });
+  syntheticSessionLifecycle.push(
+    await revokeSyntheticSessionPhase(admin, "multi_role_browser"),
+  );
+
+  const safePortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
+    phase: "safe_browser",
+    roleNames: SYNTHETIC_SAFE_BROWSER_ROLES,
+    minimumRequiredLifetimeSeconds: 50 * 60,
+  });
+  const safeBundle = browserSessionBundle(safePortfolio);
+  syntheticSessionLifecycle.push(safePortfolio.attestation);
+  const safeBrowserEnvironment = safeProductBrowserEnvironment(
+    options.evidenceDir,
+    safeBundle.json,
+  );
+  const safeProductBrowser = await runPlaywrightSuite({
+    name: "safe-product-browser",
+    config: "playwright.safe.config.ts",
+    environment: safeBrowserEnvironment,
+    evidenceDir: options.evidenceDir,
+    secrets: safeBundle.secrets,
+  });
+  syntheticSessionLifecycle.push(
+    await revokeSyntheticSessionPhase(admin, "safe_browser"),
+  );
+  if (failureContext.pendingSyntheticUserGlobalSignOuts.length !== 0) {
+    throw new Error(
+      "Synthetic session lifecycle did not close with zero pending global sign-outs",
+    );
+  }
+  const sessionCleanupPhases = syntheticSessionLifecycle.filter(
+    (entry) => entry.accessJwtDisposition === "VALID_UNTIL_EXPIRY",
+  );
+  const portfolioAccessJwtMaxResidualLifetimeSeconds = sessionCleanupPhases.reduce(
+    (maximum, entry) => Math.max(maximum, entry.maxResidualAccessJwtLifetimeSeconds ?? 0),
+    0,
+  );
+  const portfolioSessionCount = (2 * SYNTHETIC_RLS_PROOF_ROLES.length) +
+    SYNTHETIC_PROVIDER_PROOF_ROLES.length +
+    SYNTHETIC_MULTI_ROLE_BROWSER_ROLES.length +
+    SYNTHETIC_SAFE_BROWSER_ROLES.length;
+  const browserProjectCount = 4;
+  writeJson(join(options.evidenceDir, "synthetic-session-portfolio-attestation.json"), {
+    status: "PASS",
+    schemaVersion: SYNTHETIC_SESSION_PORTFOLIO_SCHEMA,
+    phaseSpecificJustInTimeSessions: true,
+    phases: syntheticSessionLifecycle,
+    portfolioSessionCount,
+    portfolioPasswordSignInCount: 0,
+    browserCredentialPasswordSessionCount: browserProjectCount,
+    qaHarnessAdminMagicLinkSessionCount: browserProjectCount,
+    totalSyntheticAuthSessionIssuanceCount:
+      portfolioSessionCount + (2 * browserProjectCount),
+    pendingGlobalSignOutUserCountAfterCleanup: 0,
+    refreshTokenReuseAcrossProofPhases: false,
+    everySyntheticUserRefreshSessionGloballySignedOutAfterItsPhase: true,
+    globalScopeCoveredBrowserCredentialAndHarnessRefreshSessions: true,
+    accessJwtImmediateRevocationClaimed: false,
+    accessJwtDispositionAfterSignOut: "VALID_UNTIL_EXPIRY",
+    portfolioAccessJwtMaxResidualLifetimeSeconds,
+    browserAdditionalAccessJwtExpiryPersisted: false,
+    exactGlobalResidualAccessJwtLifetimeClaimed: false,
+    rawTokenPersisted: false,
+    rawCookiePersisted: false,
+    productionIdentityUsed: false,
   });
   writeJson(join(options.evidenceDir, "browser-summary.json"), {
     status: "PASS",
@@ -2432,12 +4418,12 @@ async function main() {
     localizedPublicAndAuthenticatedJourneys: true,
     reducedMotionKeyboardZoomAndAxe: true,
     directHost: EXPECTED_STAGING_BASE_URL,
-    partnerHost: deployment.deploymentUrl,
+    partnerHost: partnerOneAlias.aliasUrl,
     partnerTwoHost: secondPartnerAlias.aliasUrl,
     hostIsolationProven:
       new Set([
         EXPECTED_STAGING_BASE_URL,
-        deployment.deploymentUrl,
+        partnerOneAlias.aliasUrl,
         secondPartnerAlias.aliasUrl,
       ]).size === 3,
   });
@@ -2457,7 +4443,7 @@ async function main() {
     customerLeadWritePerformed: false,
   });
 
-  const operatorDebtProof = runCapturedProofCommand(
+  const operatorDebtProof = await runCapturedProofCommand(
     join(dirname(EXECUTABLE), "npm"),
     ["run", "operator:debt"],
     "authenticated isolated-staging operator debt proof",
@@ -2475,7 +4461,8 @@ async function main() {
     throw new Error("The exact candidate identity changed during staging acceptance");
   }
   const productionGateMatrix = {
-    exactCandidateAndSchema: "PASS",
+    exactCandidateAndSchema:
+      hostedBuildIdentity.status === "PASS" ? "PASS" : "FAIL",
     syntheticRetentionOwnerAuthority: "PASS",
     isolatedHostedDeployment: "PASS",
     tenSyntheticRoleFixtures: "PASS",
@@ -2530,11 +4517,15 @@ async function main() {
     identity,
     migrations,
     deployment,
+    hostedBuildIdentity,
     syntheticScenarioCount: 10,
     seedReplayIdempotent: true,
     syntheticRetentionOwnerAuthorityPassed: true,
     syntheticRetentionAuthorityInstallationMode: retentionAuthorityMode,
     hostedZeroExternalEffectsPassed: true,
+    preDeployPublicWindowAbsent: true,
+    threeAliasApplicationGatePassed: true,
+    uniqueDeploymentProtectionPassed: true,
     crossBrowserZeroSkipPassed: true,
     hostedLoadPassed: true,
     noEffectCountsUnchanged: true,
@@ -2562,8 +4553,10 @@ async function main() {
     process.env.STAGING_QA_PASSWORD,
     process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    ...failureContext.transientSecrets,
   ]);
   failureContext.sealCompleted = true;
+  failureContext.unsealedPlaywrightArtifactDirectories = [];
   process.stdout.write(`${JSON.stringify({
     status: summary.status,
     verdict: summary.verdict,
@@ -2573,18 +4566,538 @@ async function main() {
     migrationCount: migrations.migrationCount,
     deploymentId: deployment.deploymentId,
     stableStagingHost: EXPECTED_STAGING_HOST,
-    partnerStagingHost: deployment.deploymentHost,
+    partnerStagingHost: partnerOneAlias.aliasHost,
+    partnerTwoStagingHost: secondPartnerAlias.aliasHost,
     seal,
   })}\n`);
 }
 
-main().catch((error) => {
-  const sanitizedMessage = sanitize(error instanceof Error ? error.message : String(error), protectedRuntimeValues());
-  try {
-    writeTerminalFailureArtifact(sanitizedMessage);
-  } catch {
-    // A failure artifact must never mask or replace the controlling failure.
+function readExactAliasMappingDuringRollback(alias, label) {
+  const result = spawnSync(
+    EXECUTABLE,
+    [
+      failureContext.vercelPath,
+      "api",
+      exactAliasRecordPath(alias.host),
+      "--raw",
+      "--no-color",
+    ],
+    {
+      cwd: EXPECTED_REPO,
+      env: vercelEnvironment(),
+      encoding: "utf8",
+      timeout: 3 * 60_000,
+      maxBuffer: 4 * 1024 * 1024,
+    },
+  );
+  const diagnostic = sanitize(
+    `${result.error?.message ?? ""}\n${result.stderr ?? ""}\n${result.stdout ?? ""}`,
+    protectedRuntimeValues(),
+  );
+  if (result.error || result.signal || result.status == null) {
+    throw new Error(`${label} authoritative rollback read failed: ${diagnostic}`);
   }
-  process.stderr.write(`${sanitizedMessage}\n`);
+  if (result.status !== 0) {
+    if (!/(?:Response Error[^\n]*\b404\b|\b404\b[^\n]*(?:not found|NOT_FOUND))/i.test(diagnostic)) {
+      throw new Error(`${label} authoritative rollback read failed: ${diagnostic}`);
+    }
+    return null;
+  }
+  const record = parseSingleJsonOutput(
+    result.stdout,
+    `${label} authoritative rollback alias record`,
+  );
+  const deploymentId = record.deploymentId ?? null;
+  const deploymentHost = record.deployment?.url ?? null;
+  if (
+    record.alias !== alias.host ||
+    typeof record.projectId !== "string" ||
+    sha256(record.projectId) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
+    !/^dpl_[A-Za-z0-9]+$/.test(deploymentId ?? "") ||
+    record.deployment?.id !== deploymentId ||
+    typeof deploymentHost !== "string" ||
+    !/^[a-z0-9-]+\.vercel\.app$/i.test(deploymentHost) ||
+    EXPECTED_APP_ALIASES.some(({ host }) => host === deploymentHost) ||
+    PRODUCTION_OR_SHARED_HOSTS.has(deploymentHost)
+  ) {
+    throw new Error(`${label} did not return the exact isolated staging alias authority`);
+  }
+  const deploymentResult = spawnSync(
+    EXECUTABLE,
+    [
+      failureContext.vercelPath,
+      "api",
+      `/v13/deployments/${deploymentId}`,
+      "--raw",
+      "--no-color",
+    ],
+    {
+      cwd: EXPECTED_REPO,
+      env: vercelEnvironment(),
+      encoding: "utf8",
+      timeout: 3 * 60_000,
+      maxBuffer: 4 * 1024 * 1024,
+    },
+  );
+  if (
+    deploymentResult.error ||
+    deploymentResult.signal ||
+    deploymentResult.status !== 0
+  ) {
+    const deploymentDiagnostic = sanitize(
+      `${deploymentResult.error?.message ?? ""}\n${deploymentResult.stderr ?? ""}\n${deploymentResult.stdout ?? ""}`,
+      protectedRuntimeValues(),
+    );
+    throw new Error(`${label} mapped deployment rollback read failed: ${deploymentDiagnostic}`);
+  }
+  const authoritative = parseSingleJsonOutput(
+    deploymentResult.stdout,
+    `${label} mapped deployment rollback record`,
+  );
+  const authoritativeProjectId =
+    authoritative.projectId ?? authoritative.project?.id;
+  if (
+    authoritative.id !== deploymentId ||
+    authoritative.url !== deploymentHost ||
+    sha256(String(authoritativeProjectId)) !==
+      EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT
+  ) {
+    throw new Error(`${label} mapped deployment rollback authority did not match`);
+  }
+  return Object.freeze({
+    deploymentId,
+    deploymentHost,
+    projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+  });
+}
+
+async function rollbackCreatedStagingAliasesAfterFailure() {
+  const mutations = [...failureContext.stagingAliasMutations].reverse();
+  if (mutations.length === 0) {
+    return Object.freeze({ status: "NOT_REQUIRED", aliasCount: 0, aliases: [] });
+  }
+  if (!failureContext.vercelPath) {
+    throw new Error("Staging alias rollback authority was not retained");
+  }
+  const aliases = [];
+  for (const mutation of mutations) {
+    const alias = EXPECTED_APP_ALIASES.find(
+      ({ host, url }) => host === mutation.aliasHost && url === mutation.aliasUrl,
+    );
+    if (!alias) {
+      throw new Error("Staging alias rollback rejected an unregistered host");
+    }
+    const intendedMapping = Object.freeze({
+      deploymentId: mutation.intendedDeploymentId,
+      deploymentHost: mutation.intendedDeploymentHost,
+      projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+    });
+    const mappingBeforeRollback = readExactAliasMappingDuringRollback(
+      alias,
+      `${mutation.aliasLabel} pre-rollback`,
+    );
+    if (
+      !sameExactAliasMapping(mappingBeforeRollback, mutation.priorMapping) &&
+      !sameExactAliasMapping(mappingBeforeRollback, intendedMapping)
+    ) {
+      throw new Error(`${mutation.aliasLabel} alias drifted outside the registered staging mutation`);
+    }
+
+    let rollbackCommand = "none_required";
+    let rollbackExitStatus = null;
+    if (!sameExactAliasMapping(mappingBeforeRollback, mutation.priorMapping)) {
+      const args = mutation.priorMapping
+        ? [
+            failureContext.vercelPath,
+            "alias",
+            "set",
+            mutation.priorMapping.deploymentHost,
+            mutation.aliasHost,
+            "--no-color",
+          ]
+        : [
+            failureContext.vercelPath,
+            "alias",
+            "rm",
+            mutation.aliasHost,
+            "--yes",
+            "--no-color",
+          ];
+      rollbackCommand = mutation.priorMapping
+        ? "restore_prior_mapping"
+        : "remove_new_mapping";
+      const rollback = spawnSync(EXECUTABLE, args, {
+        cwd: EXPECTED_REPO,
+        env: vercelEnvironment(),
+        encoding: "utf8",
+        timeout: 3 * 60_000,
+        maxBuffer: 4 * 1024 * 1024,
+      });
+      rollbackExitStatus = rollback.status;
+      if (rollback.error || rollback.signal || rollback.status !== 0) {
+        const diagnostic = sanitize(
+          `${rollback.error?.message ?? ""}\n${rollback.stderr ?? ""}\n${rollback.stdout ?? ""}`,
+          protectedRuntimeValues(),
+        );
+        throw new Error(`${mutation.aliasLabel} alias rollback command failed: ${diagnostic}`);
+      }
+    }
+
+    const mappingAfterRollback = readExactAliasMappingDuringRollback(
+      alias,
+      `${mutation.aliasLabel} post-rollback`,
+    );
+    const authoritativePriorMappingRestored = sameExactAliasMapping(
+      mappingAfterRollback,
+      mutation.priorMapping,
+    );
+    const publicSurface = await requestExactAppAlias(alias, {}, {
+      allowDuringTermination: true,
+    });
+    const publiclyContained =
+      publicSurface.status === 404 &&
+      ["VERCEL_DEPLOYMENT_NOT_FOUND", "DEALFLOW_APPLICATION_GATE"].includes(
+        publicSurface.disposition,
+      );
+    aliases.push({
+      aliasLabel: mutation.aliasLabel,
+      aliasHost: mutation.aliasHost,
+      rollbackCommand,
+      rollbackExitStatus,
+      authoritativePriorMappingRestored,
+      publicContainmentDisposition: publicSurface.disposition,
+      publiclyContained,
+    });
+    if (!authoritativePriorMappingRestored || !publiclyContained) {
+      throw new Error(`Staging alias rollback did not restore and contain ${mutation.aliasHost}`);
+    }
+    failureContext.stagingAliasMutations =
+      failureContext.stagingAliasMutations.filter(
+        (record) => record.aliasHost !== mutation.aliasHost,
+      );
+  }
+  return Object.freeze({
+    status: "PASS",
+    aliasCount: aliases.length,
+    aliases,
+    authoritativePriorMappingsRestored: true,
+    publicContainmentProvenSeparately: true,
+    protectionModeChangedDuringRollback: false,
+    productionOrSharedAliasChanged: false,
+  });
+}
+
+let terminalFailurePromise = null;
+
+async function finalizeFailure(error, { terminationKind = "main_rejection" } = {}) {
+  const pendingBeforeCleanup =
+    failureContext.pendingSyntheticUserGlobalSignOuts.length;
+  const affectedSyntheticSessions =
+    failureContext.pendingSyntheticUserGlobalSignOuts.map((session) => ({
+      role: session.role,
+      userId: session.userId,
+      email: session.email,
+    }));
+  const registeredReporterDirectoryCount =
+    failureContext.unsealedPlaywrightArtifactDirectories.length;
+  let aliasRollback = null;
+  let aliasRollbackError = null;
+  try {
+    aliasRollback = await rollbackCreatedStagingAliasesAfterFailure();
+  } catch (cleanupError) {
+    aliasRollbackError = cleanupError instanceof Error
+      ? cleanupError.message
+      : String(cleanupError);
+  }
+  let reporterCleanup = null;
+  let reporterCleanupError = null;
+  if (!failureContext.sealCompleted && registeredReporterDirectoryCount > 0) {
+    try {
+      reporterCleanup = deleteAllRegisteredUnsealedPlaywrightArtifacts();
+    } catch (cleanupError) {
+      reporterCleanupError = cleanupError instanceof Error
+        ? cleanupError.message
+        : String(cleanupError);
+    }
+  }
+  let emergencyCleanup = null;
+  let emergencyCleanupError = null;
+  let lateBrowserAuthSettleMs = 0;
+  let finalContainmentSweep = null;
+  let finalContainmentSweepError = null;
+  if (pendingBeforeCleanup > 0) {
+    try {
+      emergencyCleanup = await revokeAllPendingSyntheticUserRefreshSessions(
+        createStagingAdminClient({ allowDuringTermination: true }),
+      );
+    } catch (cleanupError) {
+      emergencyCleanupError = cleanupError instanceof Error
+        ? cleanupError.message
+        : String(cleanupError);
+    }
+    if (registeredReporterDirectoryCount > 0) {
+      lateBrowserAuthSettleMs = await waitForLateBrowserAuthRequestsToSettle();
+      try {
+        finalContainmentSweep = await finalSyntheticUserGlobalSignOutSweep(
+          createStagingAdminClient({ allowDuringTermination: true }),
+          affectedSyntheticSessions,
+        );
+      } catch (cleanupError) {
+        finalContainmentSweepError = cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError);
+      }
+    }
+  }
+  let sanitizedMessage = sanitize(
+    `${error instanceof Error ? error.message : String(error)}${
+      emergencyCleanupError ? ` | emergency cleanup: ${emergencyCleanupError}` : ""
+    }${
+      finalContainmentSweepError
+        ? ` | final containment sweep: ${finalContainmentSweepError}`
+        : ""
+    }${
+      reporterCleanupError ? ` | reporter cleanup: ${reporterCleanupError}` : ""
+    }${
+      aliasRollbackError ? ` | alias rollback: ${aliasRollbackError}` : ""
+    }`,
+    [...protectedRuntimeValues(), ...failureContext.transientSecrets],
+  );
+  let failureEvidenceSealError = null;
+  try {
+    const evidenceDir = failureContext.evidenceDir;
+    if (evidenceDir && existsSync(evidenceDir) && !failureContext.sealCompleted) {
+      const unsafePartialReasons = [];
+      if (reporterCleanupError) {
+        unsafePartialReasons.push(`reporter_cleanup:${reporterCleanupError}`);
+      }
+      const partialSealArtifacts = [
+        "FINAL_SUMMARY.json",
+        "evidence-manifest.json",
+        "SHA256SUMS",
+      ].filter((name) => existsSync(join(evidenceDir, name)));
+      if (partialSealArtifacts.length > 0) {
+        unsafePartialReasons.push(`partial_seal:${partialSealArtifacts.join(",")}`);
+      }
+
+      let evidenceSafety;
+      if (unsafePartialReasons.length === 0) {
+        try {
+          enforcePrivateModes(evidenceDir);
+          const sanitization = assertEvidenceSanitized(
+            evidenceDir,
+            protectedRuntimeValues(),
+          );
+          evidenceSafety = {
+            status: "PASS",
+            disposition: "RETAINED_SANITIZED_PARTIAL_EVIDENCE",
+            sanitization,
+            containsSecrets: false,
+          };
+        } catch (scanError) {
+          unsafePartialReasons.push(
+            `sanitization:${scanError instanceof Error ? scanError.message : String(scanError)}`,
+          );
+        }
+      }
+      if (!evidenceSafety) {
+        evidenceSafety = resetEvidenceDirectoryForSafeFailureBundle(
+          unsafePartialReasons.join(" | "),
+        );
+      }
+
+      writeJson(
+        join(evidenceDir, "STAGING_ALIAS_FAILURE_ROLLBACK.json"),
+        {
+          status: aliasRollbackError ? "FAILED" : aliasRollback?.status ?? "NOT_REQUIRED",
+          rollback: aliasRollback,
+          sanitizedRollbackErrorSha256: aliasRollbackError
+            ? sha256(sanitize(aliasRollbackError, protectedRuntimeValues()))
+            : null,
+          protectionModeChangedDuringRollback: false,
+          productionOrSharedAliasChanged: false,
+        },
+        { allowDuringTermination: true },
+      );
+
+      if (pendingBeforeCleanup > 0) {
+      writeJson(
+        join(evidenceDir, "SYNTHETIC_SESSION_FAILURE_CLEANUP.json"),
+        {
+          status:
+            emergencyCleanupError || finalContainmentSweepError
+              ? "FAILED"
+              : "PASS",
+          pendingGlobalSignOutUserCountBeforeCleanup: pendingBeforeCleanup,
+          pendingGlobalSignOutUserCountAfterCleanup:
+            failureContext.pendingSyntheticUserGlobalSignOuts.length,
+          phaseResults: emergencyCleanup?.phaseResults ?? [],
+          lateBrowserAuthSettleMs,
+          finalContainmentSweep,
+          sanitizedFinalContainmentSweepErrorSha256: finalContainmentSweepError
+            ? sha256(sanitize(finalContainmentSweepError, protectedRuntimeValues()))
+            : null,
+          sanitizedCleanupErrorSha256: emergencyCleanupError
+            ? sha256(sanitize(emergencyCleanupError, protectedRuntimeValues()))
+            : null,
+          allObservedPortfolioRefreshTokensRevoked:
+            !emergencyCleanupError &&
+            failureContext.pendingSyntheticUserGlobalSignOuts.length === 0,
+          allRefreshTokensIssuedBeforeFinalSweepRevoked:
+            finalContainmentSweep?.allRefreshTokensIssuedBeforeFinalSweepRevoked ??
+            (registeredReporterDirectoryCount === 0 && !emergencyCleanupError),
+          unboundedFutureRemoteIssuanceClaimed: false,
+          accessJwtImmediateRevocationSupported: false,
+          accessJwtDisposition: "VALID_UNTIL_EXPIRY",
+          sessionCleanupArtifactContainsSecrets: false,
+          rawSessionSecretPersistedByCleanupArtifact: false,
+          productionIdentityAffected: false,
+        },
+        { allowDuringTermination: true },
+      );
+      }
+      if (registeredReporterDirectoryCount > 0) {
+      writeJson(
+        join(evidenceDir, "UNSEALED_PLAYWRIGHT_FAILURE_CLEANUP.json"),
+        {
+          status: "PASS",
+          terminationKind,
+          policy: UNSEALED_PLAYWRIGHT_FAILURE_POLICY,
+          registeredDirectoryCount: registeredReporterDirectoryCount,
+          deletedDirectoryCount: reporterCleanup?.deletedDirectoryCount ?? null,
+          remainingDirectoryCount: 0,
+          initialTargetedCleanupStatus: reporterCleanupError ? "FAILED" : "PASS",
+          sanitizedCleanupErrorSha256: reporterCleanupError
+            ? sha256(sanitize(reporterCleanupError, protectedRuntimeValues()))
+            : null,
+          evidenceRootResetApplied:
+            evidenceSafety.disposition ===
+            "UNSAFE_PARTIAL_EVIDENCE_DESTROYED_AND_ROOT_RECREATED",
+          rawReporterArtifactsRetained: false,
+          cleanupDispositionArtifactContainsSecrets: false,
+          retainedReporterSecretStatus: "CLEAN",
+        },
+        { allowDuringTermination: true },
+      );
+      }
+      writeTerminalFailureArtifact(sanitizedMessage, {
+        partialBundleSecretStatus: "CLEAN",
+        evidenceSafety,
+      });
+      const failureSummary = {
+        schemaVersion: "dealflow.isolated-staging-acceptance-failure-summary.v1",
+        status: "FAILED",
+        stage: failureContext.stage || null,
+        terminationKind,
+        evidenceSafety,
+        productionMutationPerformed: false,
+        providerMutationPerformed: false,
+        advertisingSpendIncurred: false,
+        realCommunicationSent: false,
+        productionReleaseAuthorized: false,
+      };
+      const failureSeal = sealEvidenceBundle(
+        evidenceDir,
+        failureSummary,
+        protectedRuntimeValues(),
+        { allowDuringTermination: true },
+      );
+      failureContext.sealCompleted = true;
+      failureContext.unsealedPlaywrightArtifactDirectories = [];
+      process.stderr.write(
+        `${JSON.stringify({ status: "FAILED", evidenceDirectory: evidenceDir, seal: failureSeal })}\n`,
+      );
+    }
+  } catch (failureEvidenceError) {
+    failureEvidenceSealError = failureEvidenceError instanceof Error
+      ? failureEvidenceError.message
+      : String(failureEvidenceError);
+    sanitizedMessage = sanitize(
+      `${sanitizedMessage} | failure evidence seal: ${failureEvidenceSealError}`,
+      protectedRuntimeValues(),
+    );
+  }
+  failureContext.transientSecrets = [];
+  failureContext.pendingSyntheticUserGlobalSignOuts = [];
+  try {
+    process.stderr.write(`${sanitizedMessage}\n`);
+  } catch {
+    // Terminal output failure must not bypass cleanup.
+  }
+}
+
+function finalizeFailureOnce(error, metadata) {
+  if (!terminalFailurePromise) {
+    terminalFailurePromise = finalizeFailure(error, metadata);
+  }
+  return terminalFailurePromise;
+}
+
+function installCatchableTerminationHandler(signal, exitCode) {
+  process.once(signal, () => {
+    requestExecutionTermination(new Error(`Caught ${signal}`), {
+      terminationKind: `signal_${signal.toLowerCase()}`,
+      exitCode,
+    });
+  });
+}
+
+installCatchableTerminationHandler("SIGINT", 130);
+installCatchableTerminationHandler("SIGTERM", 143);
+installCatchableTerminationHandler("SIGHUP", 129);
+process.once("uncaughtException", (error) => {
+  requestExecutionTermination(error, {
+    terminationKind: "uncaught_exception",
+    exitCode: 1,
+  });
+});
+process.once("unhandledRejection", (reason) => {
+  requestExecutionTermination(reason, {
+    terminationKind: "unhandled_rejection",
+    exitCode: 1,
+  });
+});
+
+async function controlMainExecution() {
+  const mainOutcomePromise = main().then(
+    () => ({ type: "success" }),
+    (error) => ({ type: "failure", error }),
+  );
+  const firstOutcome = await Promise.race([
+    mainOutcomePromise,
+    terminationRequestPromise.then((request) => ({ type: "termination", request })),
+  ]);
+  if (firstOutcome.type === "success" && !terminationRequest) return;
+  if (firstOutcome.type === "failure") {
+    requestExecutionTermination(firstOutcome.error, {
+      terminationKind: "main_rejection",
+      exitCode: 1,
+    });
+  }
+
+  await drainInterruptibleCommands();
+  const finalMainOutcome = firstOutcome.type === "termination"
+    ? await mainOutcomePromise
+    : firstOutcome;
+  await drainInterruptibleCommands();
+  const request = terminationRequest ?? requestExecutionTermination(
+    finalMainOutcome.error ?? new Error("Staging acceptance terminated"),
+    { terminationKind: "main_rejection", exitCode: 1 },
+  );
+  const failure = request.error ?? finalMainOutcome.error;
+  await finalizeFailureOnce(failure, {
+    terminationKind: request.terminationKind,
+  });
+  process.exitCode = request.exitCode;
+}
+
+void controlMainExecution().catch((error) => {
   process.exitCode = 1;
+  try {
+    process.stderr.write(
+      `${sanitize(error instanceof Error ? error.message : String(error), protectedRuntimeValues())}\n`,
+    );
+  } catch {
+    // The process exit code remains authoritative if even terminal reporting fails.
+  }
 });

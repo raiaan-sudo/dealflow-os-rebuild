@@ -40,6 +40,15 @@ const expectedPublicApiMethodGuards = new Map([
 ]);
 
 const expectedInternalApiRoutes = new Map([
+  ["/api/internal/release-identity", {
+    methods: new Set(["GET"]),
+    requiredCalls: [
+      "assertInternalSystemRequest",
+      "assertHostedReleaseIdentityAuthority",
+      "readExactBuildReleaseIdentity",
+    ],
+    requiredEnv: [],
+  }],
   ["/api/internal/qa-auth-session", {
     methods: new Set(["POST"]),
     requiredCalls: ["assertInternalSystemRequest"],

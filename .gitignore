@@ -6,7 +6,7 @@ node_modules/
 out/
 
 # production
-build/
+/build/
 dist/
 
 # local env
@@ -35,3 +35,4 @@ recovery-report.json
 .vercel
 .env*
 /test-results/
+/public/.well-known/dealflow-hosted-build-identity.json

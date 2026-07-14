@@ -33,6 +33,14 @@ const REQUIRED_FINAL_VERIFICATION_SCHEMA = "dealflow.final-verification.v3";
 const REQUIRED_STAGING_SCHEMA = "dealflow.isolated-staging-acceptance-summary.v1";
 const REQUIRED_CHECKPOINT_SCHEMA = "dealflow.release-checkpoint.v1";
 const REQUIRED_PRODUCTION_SCHEMA = "dealflow.production-release-attestation.v1";
+const PRODUCTION_TRUST = Object.freeze({
+  status: "NOT_PROVEN",
+  plainAttestationInformationalOnly: true,
+  cryptographicallyProtectedTrustVerified: false,
+  releaseAuthorized: false,
+  reason:
+    "This builder has no protected external cryptographic trust input. A caller-authored production attestation cannot authorize release.",
+});
 
 const CAPABILITIES = Object.freeze([
   {
@@ -103,6 +111,33 @@ const PRODUCTION_GATES = Object.freeze([
   "monitoringAndRollback",
 ]);
 
+const REQUIRED_STAGING_RUNNER_GATES = Object.freeze([
+  "exactCandidateAndSchema",
+  "syntheticRetentionOwnerAuthority",
+  "isolatedHostedDeployment",
+  "tenSyntheticRoleFixtures",
+  "authenticatedDirectEntitlementBoundaries",
+  "twoWhiteLabelHostsBrandingAndChildTenantIsolation",
+  "crossTenantBrowserBoundary",
+  "authenticatedRlsFixtureAndCleanup",
+  "zeroExternalEffects",
+  "readOnlyHostedLoad",
+  "workerExecutionRetryReplayDeadLetterAndCrashRecovery",
+  "operatorDebtAndRecoveryJourneys",
+  "realSyntheticLeadCapturePersistenceAndDuplicateReplay",
+  "supportInternalNonDeliveringInboxLifecycle",
+  "reportingFreshStaleAndFailedRefreshStateHandling",
+  "billingCancellationStaleEventReactivationAndReplayProjection",
+  "accountDeletionRequestSuspensionAndDisabledWorkerBoundary",
+  "ghlSandboxProvisioningFunnelsAndLeadDelivery",
+  "metaSandboxLaunchLeadgenReportingAndOptimization",
+  "stripeTestCheckoutAndSignedWebhook",
+  "creativeProviderGenerationAndPersistence",
+  "twilioTestTransportAndConsentLifecycle",
+  "accountDeletionProviderOffboardingCompletion",
+  "liveMetaReportingReconciliation",
+]);
+
 const STAGING_JOURNEYS = Object.freeze([
   ["JOURNEY-01", "New direct realtor signup", "authenticatedDirectEntitlementBoundaries"],
   ["JOURNEY-02", "Successful Stripe test payment", "stripeTestCheckoutWebhookAndLifecycle"],
@@ -111,11 +146,11 @@ const STAGING_JOURNEYS = Object.freeze([
   ["JOURNEY-05", "Automatic GHL location provisioning", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
   ["JOURNEY-06", "Snapshot/object/custom-value verification", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
   ["JOURNEY-07", "Verified GHL-hosted funnel and form", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
-  ["JOURNEY-08", "Actual GHL-hosted form submission", "realSyntheticLeadCapturePersistenceAndDelivery"],
+  ["JOURNEY-08", "Actual GHL-hosted form submission", "ghlInboundAttributionAndReconciliation"],
   ["JOURNEY-09", "Native GHL contact creation", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
   ["JOURNEY-10", "Native GHL opportunity creation", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
   ["JOURNEY-11", "Native GHL workflow trigger", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
-  ["JOURNEY-12", "DealFlow webhook attribution and reporting", "liveReportingReconciliation"],
+  ["JOURNEY-12", "DealFlow webhook attribution and reporting", "ghlInboundAttributionAndReconciliation"],
   ["JOURNEY-13", "No duplicate outbound GHL job for GHL-native lead", "ghlSandboxProvisioningFunnelsAndLeadDelivery"],
   ["JOURNEY-14", "Automatic Meta Instant Form provisioning", "metaSandboxLaunchLeadgenReportingAndOptimization"],
   ["JOURNEY-15", "Meta webhook persistence and deduplication", "metaSandboxLaunchLeadgenReportingAndOptimization"],
@@ -132,7 +167,7 @@ const STAGING_JOURNEYS = Object.freeze([
   ["JOURNEY-26", "French and Spanish journeys", "crossTenantBrowserBoundary"],
   ["JOURNEY-27", "Support journey through non-delivering sink", "supportDeliverySinkAndOperatorLifecycle"],
   ["JOURNEY-28", "Cancellation/reactivation", "stripeTestCheckoutWebhookAndLifecycle"],
-  ["JOURNEY-29", "Deletion/provider-offboarding", "supportDeliverySinkAndOperatorLifecycle"],
+  ["JOURNEY-29", "Deletion/provider-offboarding", "deletionAndProviderOffboarding"],
   ["JOURNEY-30", "Cross-tenant attack denial", "authenticatedRlsFixtureAndCleanup"],
   ["JOURNEY-31", "Provider timeout and recovery", "workerExecutionRetryAndDeadLetterRecovery"],
   ["JOURNEY-32", "Duplicate webhook replay", "workerExecutionRetryAndDeadLetterRecovery"],
@@ -154,13 +189,48 @@ function sha256File(path) {
 }
 
 function json(path, label = path) {
-  let parsed;
+  return jsonBytes(readFileSync(path), label);
+}
+
+function jsonBytes(contents, label) {
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(contents.toString("utf8"));
   } catch (error) {
     fail(`${label} is not valid JSON: ${error.message}`);
   }
-  return parsed;
+}
+
+function snapshotFile(path, label) {
+  if (!path || !existsSync(path)) fail(`${label} must be an existing regular file`);
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink()) fail(`${label} must be a regular non-symlink file`);
+  if (stat.size === 0) fail(`${label} is empty`);
+  if (stat.size > 0 && stat.blocks === 0) fail(`${label} is a probable dataless file`);
+  const contents = readFileSync(path);
+  assertSafeArtifact(path, contents);
+  return Object.freeze({
+    path,
+    bytes: contents.length,
+    sha256: sha256(contents),
+    contents,
+    parsed: jsonBytes(contents, label),
+  });
+}
+
+function assertFileSnapshotUnchanged(snapshot, label) {
+  if (!existsSync(snapshot.path)) fail(`${label} disappeared during bundle assembly`);
+  const stat = lstatSync(snapshot.path);
+  if (!stat.isFile() || stat.isSymbolicLink()) fail(`${label} changed file type during bundle assembly`);
+  const contents = readFileSync(snapshot.path);
+  if (contents.length !== snapshot.bytes || sha256(contents) !== snapshot.sha256) {
+    fail(`${label} changed during bundle assembly`);
+  }
+}
+
+function writeFileSnapshot(path, snapshot) {
+  writeFileSync(path, snapshot.contents, { mode: 0o600, flag: "wx" });
+  chmodSync(path, 0o600);
+  if (sha256File(path) !== snapshot.sha256) fail(`Snapshotted evidence changed while writing ${path}`);
 }
 
 function assertHex(value, label, lengths = [40, 64]) {
@@ -171,7 +241,11 @@ function assertHex(value, label, lengths = [40, 64]) {
 }
 
 function normalizeStatus(value, label) {
-  const normalized = value === "FAIL" ? "FAILED" : value;
+  const normalized = value === "FAIL"
+    ? "FAILED"
+    : typeof value === "string" && value.startsWith("BLOCKED_")
+      ? "BLOCKED"
+      : value;
   if (!ALLOWED_STATUSES.has(normalized)) fail(`${label} has unsupported status ${String(value)}`);
   return normalized;
 }
@@ -305,10 +379,23 @@ function captureMigrations(root) {
     digest.update("\0");
     return { name, bytes: contents.length, sha256: sha256(contents) };
   });
+  const priorDigest = createHash("sha256");
+  for (const record of records.slice(0, -1)) {
+    const contents = readFileSync(join(directory, record.name));
+    priorDigest.update(String(Buffer.byteLength(record.name)));
+    priorDigest.update("\0");
+    priorDigest.update(record.name);
+    priorDigest.update("\0");
+    priorDigest.update(String(contents.length));
+    priorDigest.update("\0");
+    priorDigest.update(contents);
+    priorDigest.update("\0");
+  }
   return {
     migrationCount: records.length,
     finalMigration: records.at(-1).name,
     migrationPortfolioSha256: digest.digest("hex"),
+    priorMigrationPortfolioSha256: priorDigest.digest("hex"),
     files: records,
   };
 }
@@ -426,6 +513,27 @@ function combineStatuses(statuses, label) {
   return "NOT_PROVEN";
 }
 
+function priorMigrationFilesMatch(priorApplication, migrations) {
+  const expected = migrations.files.slice(0, -1);
+  return (
+    Array.isArray(priorApplication?.migrationFiles) &&
+    priorApplication.migrationFiles.length === expected.length &&
+    priorApplication.migrationFiles.every((record, index) =>
+      record?.file === expected[index].name &&
+      record?.version === expected[index].name.slice(0, 14) &&
+      record?.sha256 === expected[index].sha256)
+  );
+}
+
+function exactForwardMigrationMatches(record, migrations) {
+  const expected = migrations.files.at(-1);
+  return (
+    record?.file === expected.name &&
+    record?.version === expected.name.slice(0, 14) &&
+    record?.sha256 === expected.sha256
+  );
+}
+
 function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
   const summary = json(join(directory, "FINAL_SUMMARY.json"), "staging final summary");
   if (summary.schemaVersion !== REQUIRED_STAGING_SCHEMA) fail("Staging final summary schema is unsupported");
@@ -441,7 +549,17 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
   if (!gate.productionGateMatrix || typeof gate.productionGateMatrix !== "object") {
     fail("Staging production gate matrix is missing");
   }
-  for (const [name, status] of Object.entries(gate.productionGateMatrix)) normalizeStatus(status, `staging gate ${name}`);
+  const normalizedRunnerGates = Object.fromEntries(
+    Object.entries(gate.productionGateMatrix).map(([name, status]) => [
+      name,
+      normalizeStatus(status, `staging gate ${name}`),
+    ]),
+  );
+  for (const name of REQUIRED_STAGING_RUNNER_GATES) {
+    if (!Object.hasOwn(gate.productionGateMatrix, name)) {
+      fail(`Staging production gate matrix lacks current runner gate ${name}`);
+    }
+  }
   if (
     !preflight.roundOne ||
     !preflight.roundTwo ||
@@ -477,9 +595,30 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
       migrations.migrationPortfolioSha256 &&
     migrationSummary.priorApplication?.normalizedSchemaSha256 ===
       migrationSummary.normalizedSchemaSha256;
+  const exactForwardMigrationApplication =
+    migrationSummary.migrationMode === "APPLY_FORWARD_EXACT" &&
+    migrationSummary.forwardOnly === true &&
+    migrationSummary.priorMigrationCount === migrations.migrationCount - 1 &&
+    migrationSummary.forwardMigrationCount === 1 &&
+    exactForwardMigrationMatches(migrationSummary.forwardMigration, migrations) &&
+    migrationSummary.remoteMutationStarted === true &&
+    migrationSummary.remoteMutationCompleted === true &&
+    migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.remoteStateVerificationStatus ===
+      "EXACT_FORWARD_COMMITTED_PORTFOLIO" &&
+    migrationSummary.priorApplication?.remoteMutationCompleted === true &&
+    migrationSummary.priorApplication?.migrationCount === migrations.migrationCount - 1 &&
+    priorMigrationFilesMatch(migrationSummary.priorApplication, migrations) &&
+    migrationSummary.priorApplication?.migrationPortfolioSha256 ===
+      migrations.priorMigrationPortfolioSha256 &&
+    /^[a-f0-9]{64}$/.test(
+      migrationSummary.priorApplication?.normalizedSchemaSha256 ?? "",
+    );
   if (
     migrationSummary.status !== "PASS" ||
-    (!freshAtomicMigrationApplication && !verifiedExistingExactMigrationApplication) ||
+    (!freshAtomicMigrationApplication &&
+      !verifiedExistingExactMigrationApplication &&
+      !exactForwardMigrationApplication) ||
     migrationSummary.headCommit !== identity.commit ||
     migrationSummary.headTree !== identity.tree ||
     migrationSummary.migrationCount !== migrations.migrationCount ||
@@ -502,7 +641,24 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
         "EXACT_EXISTING_COMMITTED_PORTFOLIO" &&
       migrationProof.priorApplication?.manifestSha256 ===
         migrationSummary.priorApplication?.manifestSha256
-    : migrationProof.migrationMode == null;
+    : exactForwardMigrationApplication
+      ? migrationProof.migrationMode === "APPLY_FORWARD_EXACT" &&
+        migrationProof.forwardOnly === true &&
+        migrationProof.priorMigrationCount === migrations.migrationCount - 1 &&
+        migrationProof.forwardMigrationCount === 1 &&
+        exactForwardMigrationMatches(migrationProof.forwardMigration, migrations) &&
+        migrationProof.remoteMutationStarted === true &&
+        migrationProof.remoteMutationCompleted === true &&
+        migrationProof.portfolioApplicationRemoteMutationCompleted === true &&
+        migrationProof.remoteStateVerification?.status ===
+          "EXACT_FORWARD_COMMITTED_PORTFOLIO" &&
+        migrationProof.priorApplication?.manifestSha256 ===
+          migrationSummary.priorApplication?.manifestSha256 &&
+        priorMigrationFilesMatch(migrationProof.priorApplication, migrations) &&
+        Array.isArray(migrationProof.applied) &&
+        migrationProof.applied.length === 1 &&
+        exactForwardMigrationMatches(migrationProof.applied[0], migrations)
+      : migrationProof.migrationMode == null;
   if (
     migrationProof.status !== "PASS" ||
     !detailedMigrationModeMatches ||
@@ -520,11 +676,27 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
   const browser = json(join(directory, "browser-summary.json"), "staging browser summary");
   if (browser.status !== "PASS") fail("Staging browser summary is not PASS");
   const derivedGates = {
-    ...gate.productionGateMatrix,
+    ...normalizedRunnerGates,
+    whiteLabelHostAndBranding:
+      normalizedRunnerGates.twoWhiteLabelHostsBrandingAndChildTenantIsolation,
+    realSyntheticLeadCapturePersistenceAndDelivery:
+      normalizedRunnerGates.realSyntheticLeadCapturePersistenceAndDuplicateReplay,
+    stripeTestCheckoutWebhookAndLifecycle: combineStatuses([
+      normalizedRunnerGates.stripeTestCheckoutAndSignedWebhook,
+      normalizedRunnerGates.billingCancellationStaleEventReactivationAndReplayProjection,
+    ], "Stripe test checkout, webhook and lifecycle"),
+    supportDeliverySinkAndOperatorLifecycle:
+      normalizedRunnerGates.supportInternalNonDeliveringInboxLifecycle,
+    liveReportingReconciliation: combineStatuses([
+      normalizedRunnerGates.reportingFreshStaleAndFailedRefreshStateHandling,
+      normalizedRunnerGates.liveMetaReportingReconciliation,
+    ], "live reporting reconciliation"),
+    workerExecutionRetryAndDeadLetterRecovery:
+      normalizedRunnerGates.workerExecutionRetryReplayDeadLetterAndCrashRecovery,
     ghlInboundAttributionAndReconciliation: combineStatuses([
-      gate.productionGateMatrix.ghlSandboxProvisioningFunnelsAndLeadDelivery,
-      gate.productionGateMatrix.realSyntheticLeadCapturePersistenceAndDelivery,
-      gate.productionGateMatrix.liveReportingReconciliation,
+      normalizedRunnerGates.ghlSandboxProvisioningFunnelsAndLeadDelivery,
+      normalizedRunnerGates.realSyntheticLeadCapturePersistenceAndDuplicateReplay,
+      normalizedRunnerGates.reportingFreshStaleAndFailedRefreshStateHandling,
     ], "GHL inbound attribution and reconciliation"),
     multilingualProductJourneys:
       browser.localizedPublicAndAuthenticatedJourneys === true &&
@@ -532,14 +704,17 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
         ? "PASS"
         : "NOT_PROVEN",
     deletionAndProviderOffboarding:
-      gate.productionGateMatrix.deletionAndProviderOffboarding ?? "NOT_PROVEN",
+      combineStatuses([
+        normalizedRunnerGates.accountDeletionRequestSuspensionAndDisabledWorkerBoundary,
+        normalizedRunnerGates.accountDeletionProviderOffboardingCompletion,
+      ], "account deletion and provider offboarding"),
   };
   const seal = verifyChecksums(directory);
   return { summary, preflight, gate, migrationSummary, migrationProof, browser, derivedGates, seal };
 }
 
-function validateCheckpoint(path, identity) {
-  const checkpoint = json(path, "release checkpoint record");
+function validateCheckpoint(snapshot, identity) {
+  const checkpoint = snapshot.parsed;
   if (checkpoint.schemaVersion !== REQUIRED_CHECKPOINT_SCHEMA || checkpoint.status !== "PASS") {
     fail("Release checkpoint record must be a PASS dealflow.release-checkpoint.v1 record");
   }
@@ -553,10 +728,11 @@ function validateCheckpoint(path, identity) {
   return checkpoint;
 }
 
-function validateProduction(path, identity, migrations) {
-  if (!path) return null;
-  const attestation = json(path, "production attestation");
+function validateProduction(snapshot, identity, migrations) {
+  if (!snapshot) return null;
+  const attestation = snapshot.parsed;
   if (attestation.schemaVersion !== REQUIRED_PRODUCTION_SCHEMA) fail("Production attestation schema is unsupported");
+  normalizeStatus(attestation.status, "production attestation status");
   assertIdentity(identity, attestation.identity, "production attestation");
   assertMigrations(migrations, attestation.migrations, "production attestation");
   assertHex(attestation.schemaDigest, "production normalized schema digest", [64]);
@@ -630,15 +806,15 @@ function assertSafeArtifact(path, contents) {
     /postgres(?:ql)?:\/\/[^\s"']+/i,
     /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/,
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-    /\b(?:api[_-]?key|access[_-]?token|service[_-]?role[_-]?key|client[_-]?secret|password)\s*[=:]\s*["']?(?!\[?REDACTED|false\b|null\b)[A-Za-z0-9._~+/-]{12,}/i,
+    /\b(?:api[_-]?key|access[_-]?token|service[_-]?role[_-]?key|client[_-]?secret|password)\b["']?\s*[=:]\s*["']?(?!\[?REDACTED|false\b|null\b)[A-Za-z0-9._~+/-]{12,}/i,
   ];
   const protectedIdentifierPatterns = [
     /https?:\/\/[a-z0-9]{20}\.supabase\.co\b/i,
-    /\b(?:projectRef|supabaseProjectRef|protectedProjectRef)\s*[=:]\s*["']?[a-z0-9]{20}\b/i,
+    /\b(?:projectRef|supabaseProjectRef|protectedProjectRef)\b["']?\s*[=:]\s*["']?[a-z0-9]{20}\b/i,
   ];
   const customerPatterns = [
-    /\b(?:customerEmail|customer_email|leadEmail|lead_email)\s*[=:]\s*["']?(?![^\s"']+@(?:example\.com|example\.test|agentdealflow\.test))[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
-    /\b(?:customerPhone|customer_phone|leadPhone|lead_phone)\s*[=:]\s*["']?\+?[1-9][0-9 ()-]{8,}\b/i,
+    /\b(?:customerEmail|customer_email|leadEmail|lead_email)\b["']?\s*[=:]\s*["']?(?![^\s"']+@(?:example\.com|example\.test|agentdealflow\.test))[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+    /\b(?:customerPhone|customer_phone|leadPhone|lead_phone)\b["']?\s*[=:]\s*["']?\+?[1-9][0-9 ()-]{8,}\b/i,
   ];
   if (secretPatterns.some((pattern) => pattern.test(text))) fail(`Probable secret rejected in ${path}`);
   if (protectedIdentifierPatterns.some((pattern) => pattern.test(text))) fail(`Full protected identifier rejected in ${path}`);
@@ -695,15 +871,17 @@ function statusFromGate(gates, key) {
 function buildCapabilityMatrix(stagingGates, production) {
   return CAPABILITIES.map((capability) => {
     const stagingStatus = statusFromGate(stagingGates, capability.stagingGate);
-    const productionStatus = production?.capabilityMatrix?.[capability.id]
+    const reportedProductionStatus = production?.capabilityMatrix?.[capability.id]
       ? normalizeStatus(production.capabilityMatrix[capability.id], `production capability ${capability.id}`)
       : "NOT_PROVEN";
+    const productionStatus = "NOT_PROVEN";
     return {
       id: capability.id,
       capability: capability.name,
       implementationProof: "PASS",
       stagingProof: stagingStatus,
       productionProof: productionStatus,
+      reportedProductionProof: reportedProductionStatus,
       finalStatus:
         productionStatus === "PASS" && stagingStatus === "PASS"
           ? "PASS"
@@ -718,22 +896,31 @@ function buildCapabilityMatrix(stagingGates, production) {
 }
 
 function buildProviderMatrix(stagingGates, production) {
-  return PROVIDER_GATES.map(([provider, gate]) => ({
-    provider,
-    localContract: "PASS",
-    stagingAcceptance: statusFromGate(stagingGates, gate),
-    productionAcceptance: production?.providerMatrix?.[provider]
+  return PROVIDER_GATES.map(([provider, gate]) => {
+    const reportedProductionAcceptance = production?.providerMatrix?.[provider]
       ? normalizeStatus(production.providerMatrix[provider], `production provider ${provider}`)
-      : "NOT_PROVEN",
-    evidence: `proof/staging/production-gate-matrix.json#${gate}`,
-  }));
+      : "NOT_PROVEN";
+    return {
+      provider,
+      localContract: "PASS",
+      stagingAcceptance: statusFromGate(stagingGates, gate),
+      productionAcceptance: "NOT_PROVEN",
+      reportedProductionAcceptance,
+      evidence: `proof/staging/production-gate-matrix.json#${gate}`,
+    };
+  });
 }
 
 function buildProductionMatrix(production) {
   return PRODUCTION_GATES.map((gate) => ({
     gate,
-    status: production ? normalizeStatus(production.productionGateMatrix[gate], `production gate ${gate}`) : "NOT_PROVEN",
-    evidence: production ? "inputs/production-attestation.json" : "No production attestation supplied",
+    status: "NOT_PROVEN",
+    reportedStatus: production
+      ? normalizeStatus(production.productionGateMatrix[gate], `production gate ${gate}`)
+      : "NOT_PROVEN",
+    evidence: production
+      ? "inputs/production-attestation.json (informational, untrusted)"
+      : "No production attestation supplied",
   }));
 }
 
@@ -783,7 +970,15 @@ function allPass(rows, key = "status") {
   return rows.length > 0 && rows.every((row) => row[key] === "PASS");
 }
 
+function assertSanitizedBundle(root) {
+  for (const record of inventory(root)) {
+    assertSafeArtifact(record.path, readFileSync(record.absolute));
+    assertSafeArtifact(`${record.path} path`, Buffer.from(record.path));
+  }
+}
+
 function seal(root, metadata) {
+  assertSanitizedBundle(root);
   const records = inventory(root).filter((record) => !["evidence-manifest.json", "SHA256SUMS"].includes(record.path));
   writeJson(join(root, "evidence-manifest.json"), {
     schemaVersion: "dealflow.current-release-evidence-manifest.v1",
@@ -793,6 +988,7 @@ function seal(root, metadata) {
     staleHistoricalEvidenceIncluded: false,
     files: records.map(({ path, bytes, sha256: hash }) => ({ path, bytes, sha256: hash })),
   });
+  assertSanitizedBundle(root);
   const checksumRecords = inventory(root).filter((record) => record.path !== "SHA256SUMS");
   writeFileSync(
     join(root, "SHA256SUMS"),
@@ -870,12 +1066,19 @@ function main() {
 
   const identity = captureRepository(root);
   const migrations = captureMigrations(root);
+  const checkpointSnapshot = snapshotFile(
+    options.checkpointRecord,
+    "release checkpoint record",
+  );
+  const productionSnapshot = options.productionAttestation
+    ? snapshotFile(options.productionAttestation, "production attestation")
+    : null;
   const roundOne = validateRound(options.roundOne, "1", identity, migrations);
   const roundTwo = validateRound(options.roundTwo, "2", identity, migrations);
   if (roundOne.summarySha256 === roundTwo.summarySha256) fail("Two distinct final-verification summaries are required");
   const staging = validateStaging(options.staging, identity, migrations, roundOne, roundTwo);
-  const checkpoint = validateCheckpoint(options.checkpointRecord, identity);
-  const production = validateProduction(options.productionAttestation, identity, migrations);
+  const checkpoint = validateCheckpoint(checkpointSnapshot, identity);
+  const production = validateProduction(productionSnapshot, identity, migrations);
 
   const sourceSnapshots = {
     roundOne: snapshotInput(options.roundOne),
@@ -887,20 +1090,9 @@ function main() {
   const providers = buildProviderMatrix(stagingGates, production);
   const productionMatrix = buildProductionMatrix(production);
   const journeys = buildJourneys(stagingGates);
-  const productionGo = Boolean(
-    production &&
-    production.status === "PASS" &&
-    production.releaseAuthorized === true &&
-    production.schemaDigest === staging.migrationSummary.normalizedSchemaSha256 &&
-    /^[0-9a-f]{64}$/.test(production.environmentFingerprint ?? "") &&
-    production.deployment?.status === "READY" &&
-    production.deployment?.aliasStatus === "PASS" &&
-    staging.summary.safeAcceptanceHarnessStatus === "PASS" &&
-    Object.values(stagingGates).every((status) => status === "PASS") &&
-    allPass(productionMatrix) &&
-    capabilities.every((row) => row.productionProof === "PASS") &&
-    providers.every((row) => row.productionAcceptance === "PASS"),
-  );
+  // A plain JSON attestation is retained only as operator-provided context. It
+  // is not a protected external trust root and can never authorize production.
+  const productionGo = false;
   const verdict = productionGo ? "GO" : "NO_GO";
   const temporary = `${options.output}.partial-${process.pid}`;
   if (existsSync(temporary)) fail("Temporary evidence path already exists");
@@ -911,11 +1103,17 @@ function main() {
     copyProof(options.roundTwo, join(temporary, "proof", "final-verification-round-2"), sourceSnapshots.roundTwo);
     copyProof(options.staging, join(temporary, "proof", "staging"), sourceSnapshots.staging);
     mkdirSync(join(temporary, "inputs"), { recursive: true, mode: 0o700 });
-    copyFileSync(options.checkpointRecord, join(temporary, "inputs", "checkpoint-record.json"));
-    chmodSync(join(temporary, "inputs", "checkpoint-record.json"), 0o600);
+    assertFileSnapshotUnchanged(checkpointSnapshot, "Release checkpoint record");
+    writeFileSnapshot(
+      join(temporary, "inputs", "checkpoint-record.json"),
+      checkpointSnapshot,
+    );
     if (production) {
-      copyFileSync(options.productionAttestation, join(temporary, "inputs", "production-attestation.json"));
-      chmodSync(join(temporary, "inputs", "production-attestation.json"), 0o600);
+      assertFileSnapshotUnchanged(productionSnapshot, "Production attestation");
+      writeFileSnapshot(
+        join(temporary, "inputs", "production-attestation.json"),
+        productionSnapshot,
+      );
     }
 
     const localResults = [roundOne, roundTwo].map((round) => ({
@@ -928,7 +1126,17 @@ function main() {
       summarySha256: round.summarySha256,
       evidence: `proof/final-verification-round-${round.summary.round}/verification-summary.json`,
     }));
-    const issues = [];
+    const issues = [{
+      id: "ISSUE-001",
+      scope: "PRODUCTION_TRUST",
+      status: "NOT_PROVEN",
+      severity: "P0",
+      blocker:
+        "No builder-verified protected cryptographic production trust root was supplied; plain JSON is informational only.",
+      evidence: production
+        ? "inputs/production-attestation.json (informational, untrusted)"
+        : "No production attestation supplied",
+    }];
     for (const row of capabilities.filter((item) => item.finalStatus !== "PASS")) {
       issues.push({ id: `ISSUE-${String(issues.length + 1).padStart(3, "0")}`, scope: row.id, status: row.finalStatus, severity: "P1", blocker: `${row.capability}: production proof is ${row.productionProof}`, evidence: row.evidence });
     }
@@ -953,13 +1161,17 @@ function main() {
       },
       production: production
         ? {
-            identity: production.identity,
-            schemaDigest: production.schemaDigest,
-            environmentFingerprint: production.environmentFingerprint ?? "NOT_PROVEN",
-            deployment: production.deployment ?? { status: "NOT_PROVEN" },
-            featureFlags: production.featureFlags ?? { status: "NOT_PROVEN" },
+            trust: PRODUCTION_TRUST,
+            reportedIdentity: production.identity,
+            reportedSchemaDigest: production.schemaDigest,
+            reportedEnvironmentFingerprint:
+              production.environmentFingerprint ?? "NOT_PROVEN",
+            reportedDeployment:
+              production.deployment ?? { status: "NOT_PROVEN" },
+            reportedFeatureFlags:
+              production.featureFlags ?? { status: "NOT_PROVEN" },
           }
-        : { status: "NOT_PROVEN" },
+        : { trust: PRODUCTION_TRUST, status: "NOT_PROVEN" },
     };
     const snapshot = {
       schemaVersion: "dealflow.current-release.snapshot.v1",
@@ -988,18 +1200,21 @@ function main() {
       },
       production: {
         attestationSupplied: Boolean(production),
-        releaseAuthorized: production?.releaseAuthorized === true,
+        trust: PRODUCTION_TRUST,
+        releaseAuthorized: false,
+        reportedReleaseAuthorized: production?.releaseAuthorized === true,
         gates: productionMatrix,
       },
       issueBlockerCount: issues.length,
       confirmation: {
-        advertisingSpendIncurred: production?.effects?.advertisingSpendIncurred ?? "NOT_PROVEN",
-        advertisingSpendAmount: production?.effects?.advertisingSpendAmount ?? "NOT_PROVEN",
-        realCommunicationsSent: production?.effects?.realCommunicationsSent ?? "NOT_PROVEN",
-        realCommunicationsCount: production?.effects?.realCommunicationsCount ?? "NOT_PROVEN",
-        liveStripeMutationPerformed: production?.effects?.liveStripeMutationPerformed ?? "NOT_PROVEN",
-        realCustomerOrProviderRecordsChanged: production?.effects?.realCustomerOrProviderRecordsChanged ?? "NOT_PROVEN",
+        advertisingSpendIncurred: "NOT_PROVEN",
+        advertisingSpendAmount: "NOT_PROVEN",
+        realCommunicationsSent: "NOT_PROVEN",
+        realCommunicationsCount: "NOT_PROVEN",
+        liveStripeMutationPerformed: "NOT_PROVEN",
+        realCustomerOrProviderRecordsChanged: "NOT_PROVEN",
       },
+      reportedConfirmation: production?.effects ?? { status: "NOT_PROVEN" },
     };
 
     writeText(join(temporary, "00_EXECUTIVE_VERDICT.md"), `# DealFlow current release verdict\n\n**${verdict}**\n\nThe bundle contains only evidence bound to commit \`${identity.commit}\`, tree \`${identity.tree}\`, and the exact ${migrations.migrationCount}-migration portfolio. ${productionGo ? "Every required production, provider, backup, drain, canary and capability gate is explicitly PASS." : "Production release is not proven. Missing provider or production evidence remains NO_GO and is not relabeled as success."}\n`);
@@ -1019,9 +1234,13 @@ function main() {
     assertInputUnchanged(options.roundOne, sourceSnapshots.roundOne, "Verification round one evidence");
     assertInputUnchanged(options.roundTwo, sourceSnapshots.roundTwo, "Verification round two evidence");
     assertInputUnchanged(options.staging, sourceSnapshots.staging, "Staging evidence");
+    assertFileSnapshotUnchanged(checkpointSnapshot, "Release checkpoint record");
+    if (productionSnapshot) {
+      assertFileSnapshotUnchanged(productionSnapshot, "Production attestation");
+    }
     const finalIdentity = captureRepository(root);
     if (JSON.stringify(finalIdentity) !== JSON.stringify(identity)) fail("Repository identity changed during bundle assembly");
-    for (const record of inventory(temporary)) assertSafeArtifact(record.path, readFileSync(record.absolute));
+    assertSanitizedBundle(temporary);
     const sealed = seal(temporary, {
       verdict,
       headCommit: identity.commit,

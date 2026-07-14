@@ -26,8 +26,31 @@ function loadTs(file, mocks = {}) {
 }
 
 const deployment = loadTs("src/lib/deployment-target.ts");
+const canonicalStagingProjectId = String(
+  JSON.parse(fs.readFileSync(".vercel/project.json", "utf8")).projectId,
+);
+const gateDeployment = {
+  ...deployment,
+  getDeploymentTarget(env) {
+    if (
+      env?.DEALFLOW_TEST_PROTECTED_PRODUCTION_AUTHORITY === "verified" &&
+      env?.VERCEL_ENV === "production" &&
+      env?.DEALFLOW_DEPLOYMENT_TARGET === "production"
+    ) {
+      return "production";
+    }
+    return deployment.getDeploymentTarget(env);
+  },
+  isExactProductionVercelHost(env) {
+    return Boolean(
+      env?.DEALFLOW_TEST_PROTECTED_PRODUCTION_AUTHORITY === "verified" &&
+      env?.VERCEL_PROJECT_ID &&
+      env.VERCEL_PROJECT_ID === env.DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID,
+    );
+  },
+};
 const gate = loadTs("src/lib/meta-campaign-activation-gate.ts", {
-  "@/lib/deployment-target": deployment,
+  "@/lib/deployment-target": gateDeployment,
 });
 
 const allowedProduction = {
@@ -37,6 +60,7 @@ const allowedProduction = {
   DEALFLOW_DEPLOYMENT_TARGET: "production",
   DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: "vercel-production-project",
   DEALFLOW_PRODUCTION_HOST_ATTESTATION: deployment.DEALFLOW_PRODUCTION_HOST_ATTESTATION_VALUE,
+  DEALFLOW_TEST_PROTECTED_PRODUCTION_AUTHORITY: "verified",
   ALLOW_META_LIVE_LAUNCH: "true",
   ALLOW_META_DUE_ACTIVATION: "true",
   ALLOW_META_PRODUCTION_DUE_ACTIVATION: "true",
@@ -53,11 +77,11 @@ assert.equal(gate.getMetaCampaignActivationGate(allowedProduction).allowed, true
 assert.equal(deployment.getDeploymentTarget({
   ...allowedProduction,
   DEALFLOW_DEPLOYMENT_TARGET: "staging",
-}), "production", "a production Vercel project cannot self-declassify to staging");
+}), "unknown", "an unattested production Vercel project cannot self-authorize or self-declassify");
 assert.equal(gate.getMetaCampaignActivationGate({
   ...allowedProduction,
   DEALFLOW_DEPLOYMENT_TARGET: "staging",
-}).reason, "production_host_attestation_missing", "conflicting target metadata must block production activation");
+}).reason, "unsupported_deployment_target", "conflicting target metadata must block production activation");
 assert.equal(gate.getMetaCampaignActivationGate({
   ...allowedProduction,
   VERCEL_ENV: "preview",
@@ -66,9 +90,10 @@ assert.equal(gate.getMetaCampaignActivationGate({
 assert.equal(gate.getMetaCampaignActivationGate({
   ...allowedProduction,
   VERCEL_ENV: "production",
-  VERCEL_PROJECT_ID: "vercel-isolated-staging-project",
+  VERCEL_PROJECT_ID: canonicalStagingProjectId,
   DEALFLOW_DEPLOYMENT_TARGET: "staging",
-  DEALFLOW_STAGING_VERCEL_PROJECT_ID: "vercel-isolated-staging-project",
+  DEALFLOW_STAGING_VERCEL_PROJECT_ID:
+    canonicalStagingProjectId,
   DEALFLOW_STAGING_HOST_ATTESTATION: deployment.DEALFLOW_STAGING_HOST_ATTESTATION_VALUE,
   ALLOW_META_PRODUCTION_DUE_ACTIVATION: "false",
   ALLOW_META_STAGING_DUE_ACTIVATION: "true",

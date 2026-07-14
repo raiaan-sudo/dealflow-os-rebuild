@@ -1,0 +1,365 @@
+#!/usr/bin/env node
+
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
+
+import { assertExactDeployableSourcePathSet } from "./staging/deployable-source-path-set-contract.mjs";
+
+const SCHEMA = "dealflow.deployable-source-manifest.v1";
+const ARTIFACT_SCHEMA = "dealflow.hosted-build-source-identity.v1";
+const MANIFEST_RELATIVE_PATH = "config/release/deployable-source-manifest.json";
+const ARTIFACT_RELATIVE_PATH =
+  "public/.well-known/dealflow-hosted-build-identity.json";
+const STAGING_HOST_ATTESTATION =
+  "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1";
+const STAGING_PROJECT_ID_SHA256 =
+  "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
+const VERCEL_DEFAULT_IGNORED_TRACKED_PATHS = new Set([".gitignore"]);
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function assertSafeRelativePath(path) {
+  if (
+    typeof path !== "string" ||
+    path.length === 0 ||
+    path.startsWith("/") ||
+    path === ".." ||
+    path.startsWith(`..${sep}`) ||
+    path.includes("\\") ||
+    path.split("/").includes("..")
+  ) {
+    throw new Error("Deployable source manifest contains an unsafe path");
+  }
+  return path;
+}
+
+function readExactRegularFile(root, path) {
+  assertSafeRelativePath(path);
+  const realRoot = realpathSync(root);
+  const absolute = resolve(realRoot, path);
+  const rootPrefix = `${realRoot}${sep}`;
+  if (!absolute.startsWith(rootPrefix)) {
+    throw new Error(`Deployable source path escapes the repository: ${path}`);
+  }
+  if (!existsSync(absolute)) {
+    throw new Error(`Deployable source file is missing: ${path}`);
+  }
+  const stat = lstatSync(absolute);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`Deployable source must be a regular file: ${path}`);
+  }
+  if (!realpathSync(absolute).startsWith(rootPrefix)) {
+    throw new Error(`Deployable source resolves outside the repository: ${path}`);
+  }
+  return { contents: readFileSync(absolute), size: stat.size, mode: stat.mode };
+}
+
+function portfolioDigest(entries, root, { verifyDeclared = true } = {}) {
+  const digest = createHash("sha256");
+  let previous = "";
+  const normalized = [];
+  for (const entry of entries) {
+    const path = assertSafeRelativePath(entry?.path);
+    if (path <= previous) {
+      throw new Error("Deployable source manifest paths must be unique and sorted");
+    }
+    previous = path;
+    const file = readExactRegularFile(root, path);
+    const fileSha256 = sha256(file.contents);
+    if (
+      verifyDeclared &&
+      (entry.size !== file.size ||
+        entry.mode !== file.mode ||
+        entry.sha256 !== fileSha256)
+    ) {
+      throw new Error(`Deployable source file does not match its manifest: ${path}`);
+    }
+    digest.update(`${path.length}\0${path}\0${file.size}\0`);
+    digest.update(file.contents);
+    digest.update("\0");
+    normalized.push({
+      path,
+      size: file.size,
+      mode: file.mode,
+      sha256: fileSha256,
+    });
+  }
+  return {
+    entries: normalized,
+    deployableSourceSha256: digest.digest("hex"),
+  };
+}
+
+function gitNullList(root, args, label) {
+  const result = spawnSync("/usr/bin/git", args, {
+    cwd: root,
+    encoding: "buffer",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`${label} failed`);
+  }
+  return result.stdout
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
+}
+
+function canonicalTrackedDeployablePaths(root) {
+  const tracked = gitNullList(
+    root,
+    ["ls-files", "-z"],
+    "Tracked source enumeration",
+  );
+  const ignored = new Set(
+    gitNullList(
+      root,
+      ["ls-files", "-ci", "--exclude-from=.vercelignore", "-z"],
+      "Vercel ignore enumeration",
+    ),
+  );
+  return tracked
+    .filter(
+      (path) => !ignored.has(path) && path !== MANIFEST_RELATIVE_PATH,
+    )
+    .filter(
+      (path) => !VERCEL_DEFAULT_IGNORED_TRACKED_PATHS.has(path),
+    )
+    .sort();
+}
+
+function writeManifest(root) {
+  const paths = canonicalTrackedDeployablePaths(root);
+  const portfolio = portfolioDigest(
+    paths.map((path) => ({ path })),
+    root,
+    { verifyDeclared: false },
+  );
+  const manifest = {
+    schemaVersion: SCHEMA,
+    generatedFrom: "git_tracked_files_minus_vercelignore_and_manifest",
+    entryCount: portfolio.entries.length,
+    deployableSourceSha256: portfolio.deployableSourceSha256,
+    entries: portfolio.entries,
+  };
+  const path = join(root, MANIFEST_RELATIVE_PATH);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
+  process.stdout.write(
+    `deployable source manifest written: ${manifest.entryCount} files ${manifest.deployableSourceSha256}\n`,
+  );
+}
+
+function requiredHostedValue(name, pattern) {
+  const value = process.env[name]?.trim() ?? "";
+  if (!pattern.test(value)) {
+    throw new Error(`Hosted build requires exact ${name}`);
+  }
+  return value;
+}
+
+function normalizedEnvironmentValue(name) {
+  return process.env[name]?.trim() ?? "";
+}
+
+function exactProjectBinding(expectedProjectName, attestationName, attestation) {
+  const actualProjectId = normalizedEnvironmentValue("VERCEL_PROJECT_ID");
+  const expectedProjectId = normalizedEnvironmentValue(expectedProjectName);
+  return Boolean(
+    actualProjectId &&
+      expectedProjectId &&
+      actualProjectId === expectedProjectId &&
+      normalizedEnvironmentValue(attestationName) === attestation,
+  );
+}
+
+function classifyBuildTarget() {
+  const hosted =
+    normalizedEnvironmentValue("VERCEL") === "1" ||
+    Boolean(normalizedEnvironmentValue("VERCEL_ENV"));
+  if (!hosted) return Object.freeze({ hosted: false, kind: "local" });
+
+  const vercelEnvironment = normalizedEnvironmentValue("VERCEL_ENV").toLowerCase();
+  const deploymentTarget = normalizedEnvironmentValue(
+    "DEALFLOW_DEPLOYMENT_TARGET",
+  ).toLowerCase();
+  const exactStaging =
+    vercelEnvironment === "production" &&
+    deploymentTarget === "staging" &&
+    exactProjectBinding(
+      "DEALFLOW_STAGING_VERCEL_PROJECT_ID",
+      "DEALFLOW_STAGING_HOST_ATTESTATION",
+      STAGING_HOST_ATTESTATION,
+    ) &&
+    sha256(normalizedEnvironmentValue("VERCEL_PROJECT_ID")) ===
+      STAGING_PROJECT_ID_SHA256;
+
+  if (vercelEnvironment === "production") {
+    if (deploymentTarget === "production") {
+      throw new Error(
+        "Hosted production build lacks a builder-verified protected external release trust root",
+      );
+    }
+    if (!exactStaging) {
+      throw new Error(
+        "Hosted production build requires the immutable exact DealFlow staging project binding and host attestation",
+      );
+    }
+    return Object.freeze({
+      hosted: true,
+      kind: "exact_staging",
+    });
+  }
+
+  const stagingClaimed =
+    deploymentTarget === "staging" ||
+    Boolean(normalizedEnvironmentValue("DEALFLOW_STAGING_VERCEL_PROJECT_ID")) ||
+    Boolean(normalizedEnvironmentValue("DEALFLOW_STAGING_HOST_ATTESTATION"));
+  if (stagingClaimed) {
+    throw new Error(
+      "Hosted staging build is partially or incorrectly attested",
+    );
+  }
+
+  return Object.freeze({ hosted: true, kind: "generic_non_release" });
+}
+
+function exactReleaseIdentity() {
+  return {
+    commit: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT",
+      /^[a-f0-9]{40,64}$/,
+    ),
+    tree: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_RELEASE_TREE",
+      /^[a-f0-9]{40,64}$/,
+    ),
+    trackedWorktreeSha256: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_TRACKED_WORKTREE_SHA256",
+      /^[a-f0-9]{64}$/,
+    ),
+    trackedFileCount: Number(
+      requiredHostedValue(
+        "NEXT_PUBLIC_DEALFLOW_TRACKED_FILE_COUNT",
+        /^[1-9][0-9]*$/,
+      ),
+    ),
+    dependencyLockSha256: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_DEPENDENCY_LOCK_SHA256",
+      /^[a-f0-9]{64}$/,
+    ),
+    deployableSourceSha256: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_SOURCE_SHA256",
+      /^[a-f0-9]{64}$/,
+    ),
+    deployableManifestSha256: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_MANIFEST_SHA256",
+      /^[a-f0-9]{64}$/,
+    ),
+    deployableFileCount: Number(
+      requiredHostedValue(
+        "NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_FILE_COUNT",
+        /^[1-9][0-9]*$/,
+      ),
+    ),
+    vercelDryRunSourceSha256: requiredHostedValue(
+      "NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256",
+      /^[a-f0-9]{64}$/,
+    ),
+    vercelDryRunFileCount: Number(
+      requiredHostedValue(
+        "NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT",
+        /^[1-9][0-9]*$/,
+      ),
+    ),
+  };
+}
+
+function verifyAndGenerateArtifact(root) {
+  const manifestPath = join(root, MANIFEST_RELATIVE_PATH);
+  const manifestBytes = readFileSync(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  if (
+    manifest.schemaVersion !== SCHEMA ||
+    !Array.isArray(manifest.entries) ||
+    manifest.entryCount !== manifest.entries.length ||
+    !/^[a-f0-9]{64}$/.test(manifest.deployableSourceSha256 ?? "")
+  ) {
+    throw new Error("Deployable source manifest is malformed");
+  }
+  const portfolio = portfolioDigest(manifest.entries, root);
+  if (portfolio.deployableSourceSha256 !== manifest.deployableSourceSha256) {
+    throw new Error("Deployable source portfolio digest does not match its manifest");
+  }
+  const manifestSha256 = sha256(manifestBytes);
+  const target = classifyBuildTarget();
+  if (!target.hosted) {
+    assertExactDeployableSourcePathSet({
+      manifestPaths: manifest.entries.map((entry) => entry.path),
+      expectedTrackedPaths: canonicalTrackedDeployablePaths(root),
+    });
+  }
+  const exactHostedRelease = target.kind === "exact_staging";
+  const release = exactHostedRelease ? exactReleaseIdentity() : null;
+  if (
+    exactHostedRelease &&
+    (release.deployableSourceSha256 !== portfolio.deployableSourceSha256 ||
+      release.deployableManifestSha256 !== manifestSha256 ||
+      release.deployableFileCount !== manifest.entryCount)
+  ) {
+    throw new Error("Hosted build source portfolio does not match the local release authority");
+  }
+  const artifact = {
+    schemaVersion: ARTIFACT_SCHEMA,
+    status: exactHostedRelease
+      ? "HOSTED_SOURCE_VERIFIED"
+      : target.hosted
+        ? "NOT_APPLICABLE_UNVERIFIED"
+        : "LOCAL_SOURCE_VERIFIED",
+    generatedInsideBuild: true,
+    manifestSha256,
+    deployableSourceSha256: portfolio.deployableSourceSha256,
+    deployableFileCount: manifest.entryCount,
+    release,
+    targetClassification: target.kind,
+    expectedIdentityMatched: exactHostedRelease,
+    deployablePathSetVerified: !target.hosted || exactHostedRelease,
+    predeployPathSetProofBound: exactHostedRelease,
+    vercelDryRunSourceSha256:
+      release?.vercelDryRunSourceSha256 ?? null,
+    vercelDryRunFileCount: release?.vercelDryRunFileCount ?? null,
+  };
+  const artifactPath = join(root, ARTIFACT_RELATIVE_PATH);
+  mkdirSync(dirname(artifactPath), { recursive: true });
+  writeFileSync(artifactPath, `${JSON.stringify(artifact)}\n`, { mode: 0o644 });
+  process.stdout.write(
+    `hosted build source identity: ${artifact.status} ${artifact.deployableFileCount} files\n`,
+  );
+}
+
+const rootArgumentIndex = process.argv.indexOf("--root");
+const root = rootArgumentIndex >= 0
+  ? resolve(process.argv[rootArgumentIndex + 1] ?? "")
+  : process.cwd();
+if (!existsSync(root) || !lstatSync(root).isDirectory()) {
+  throw new Error("Build identity root must be an existing directory");
+}
+if (process.argv.includes("--write-manifest")) {
+  if (realpathSync(root) !== realpathSync(process.cwd())) {
+    throw new Error("Manifest writes are allowed only in the current release worktree");
+  }
+  writeManifest(root);
+} else {
+  verifyAndGenerateArtifact(root);
+}

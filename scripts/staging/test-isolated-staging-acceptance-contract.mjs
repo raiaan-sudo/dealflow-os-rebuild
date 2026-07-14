@@ -48,6 +48,59 @@ const browserSpec = readFileSync(
   join(root, "tests", "e2e", "dealflow-staging-acceptance.spec.ts"),
   "utf8",
 );
+const safeBrowserSpec = readFileSync(
+  join(root, "tests", "e2e", "dealflow-safe.spec.ts"),
+  "utf8",
+);
+const globalSafetyPreflight = readFileSync(
+  join(root, "tests", "e2e", "global-safety-preflight.ts"),
+  "utf8",
+);
+const safeBrowserConfig = readFileSync(join(root, "playwright.safe.config.ts"), "utf8");
+const browserSessionContract = readFileSync(
+  join(root, "scripts", "staging", "browser-session-bundle-contract.mjs"),
+  "utf8",
+);
+const browserContextBoundary = readFileSync(
+  join(root, "scripts", "staging", "browser-context-network-boundary.mjs"),
+  "utf8",
+);
+const browserContextBoundaryTest = readFileSync(
+  join(root, "scripts", "staging", "test-browser-context-network-boundary.mjs"),
+  "utf8",
+);
+const reporterCleanupContract = readFileSync(
+  join(root, "scripts", "staging", "unsealed-playwright-artifact-cleanup.mjs"),
+  "utf8",
+);
+const reporterCleanupTest = readFileSync(
+  join(root, "scripts", "staging", "test-unsealed-playwright-artifact-cleanup.mjs"),
+  "utf8",
+);
+const safeBrowserHostContract = readFileSync(
+  join(root, "scripts", "staging", "safe-browser-host-contract.mjs"),
+  "utf8",
+);
+const safeBrowserHostTest = readFileSync(
+  join(root, "scripts", "staging", "test-safe-browser-host-contract.mjs"),
+  "utf8",
+);
+const interruptibleCommand = readFileSync(
+  join(root, "scripts", "staging", "interruptible-command.mjs"),
+  "utf8",
+);
+const interruptibleCommandTest = readFileSync(
+  join(root, "scripts", "staging", "test-interruptible-command.mjs"),
+  "utf8",
+);
+const evidenceRootContract = readFileSync(
+  join(root, "scripts", "staging", "staging-evidence-root-contract.mjs"),
+  "utf8",
+);
+const evidenceRootTest = readFileSync(
+  join(root, "scripts", "staging", "test-staging-evidence-root-contract.mjs"),
+  "utf8",
+);
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const envExample = readFileSync(join(root, ".env.example"), "utf8");
 const completionSuite = readFileSync(join(root, "scripts", "test-dealflow-completion.mjs"), "utf8");
@@ -84,9 +137,160 @@ assert.match(runner, /STAGING_TURNSTILE_SECRET_KEY = "1x000000000000000000000000
 assert.match(runner, /STAGING_TURNSTILE_TEST_TOKEN = "XXXX\.DUMMY\.TOKEN\.XXXX"/);
 assert.match(runner, /NEXT_PUBLIC_LEAD_TURNSTILE_SITE_KEY: STAGING_TURNSTILE_SITE_KEY/);
 assert.match(runner, /TURNSTILE_SECRET_KEY: STAGING_TURNSTILE_SECRET_KEY/);
-assert.match(runner, /TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_STAGING_HOST/);
+assert.match(runner, /TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_APP_ALIASES/);
+assert.match(runner, /\.map\(\(\{ host \}\) => host\)/);
+assert.match(runner, /\.join\(","\)/);
 assert.match(providerIndependentProof, /turnstile_token: STAGING_TURNSTILE_TEST_TOKEN/);
 assert.match(providerIndependentProof, /requires the exact staging Turnstile test token/);
+assert.match(runner, /STAGING_SYNTHETIC_PROVIDER_SESSION_BUNDLE: providerSessionBundleJson/);
+assert.match(runner, /STAGING_SYNTHETIC_BROWSER_SESSION_BUNDLE: browserSessionBundleJson/);
+assert.match(browserSpec, /installBrowserContextNetworkBoundary\(context/);
+assert.match(safeBrowserSpec, /installBrowserContextNetworkBoundary\(context/);
+assert.doesNotMatch(browserSpec, /page\.route\("\*\*\/\*"/);
+assert.doesNotMatch(safeBrowserSpec, /page\.route\("\*\*\/\*"/);
+assert.match(browserSpec, /blockedWebSockets/);
+assert.match(safeBrowserSpec, /blockedWebSockets/);
+assert.match(safeBrowserSpec, /const READ_ONLY_METHODS = new Set\(\["GET", "HEAD", "OPTIONS"\]\)/);
+assert.match(safeBrowserSpec, /requestUrl\.username === ""/);
+assert.match(browserSpec, /!\["GET", "HEAD", "OPTIONS"\]\.includes\(method\)/);
+assert.match(browserSpec, /url\.username === ""/);
+assert.match(browserSpec, /scopedStagingAccessHeaders\(\{/);
+assert.match(safeBrowserSpec, /scopedStagingAccessHeaders\(\{/);
+assert.match(browserSpec, /stagingAccessCookiesForOrigins\(\{/);
+assert.match(safeBrowserSpec, /stagingAccessCookiesForOrigins\(\{/);
+const multiRoleBoundarySource = browserSpec.slice(
+  browserSpec.indexOf("async function installFailClosedNetworkBoundary("),
+  browserSpec.indexOf("function assertDiagnosticsClean("),
+);
+const safeBoundarySource = safeBrowserSpec.slice(
+  safeBrowserSpec.indexOf("async function installSafetyHarness("),
+  safeBrowserSpec.indexOf("function diagnosticsFor("),
+);
+for (const [label, source] of [
+  ["multi-role", multiRoleBoundarySource],
+  ["safe", safeBoundarySource],
+]) {
+  assert.match(source, /context\.addCookies\(/, `${label} boundary must install host-only gate cookies`);
+  assert.match(source, /await route\.continue\(\)/, `${label} boundary must continue without header overrides`);
+  assert.match(source, /context\.on\("request"/, `${label} boundary must detect redirect targets`);
+  assert.doesNotMatch(
+    source,
+    /scopedStagingAccessHeaders|route\.continue\(\{\s*headers/,
+    `${label} boundary must not carry gate headers through redirects`,
+  );
+}
+assert.match(browserSpec, /stagingAppHeaders\(/);
+assert.match(safeBrowserSpec, /appRequestHeaders\(/);
+assert.match(browserContextBoundary, /context\.route\("\*\*\/\*"/);
+assert.match(browserContextBoundary, /context\.routeWebSocket\(\/\.\*\//);
+assert.match(browserContextBoundary, /webSocketRoute\.close\(/);
+assert.match(browserContextBoundaryTest, /forbidden\.example\/popup/);
+assert.match(browserContextBoundaryTest, /wss:\/\/user:secret@forbidden\.example/);
+assert.match(browserContextBoundaryTest, /WebSocket evidence must not retain credentials/);
+assert.match(browserContextBoundaryTest, /staging access gate leaked to/);
+assert.match(browserContextBoundaryTest, /stagingAccessCookiesForOrigins\(\{/);
+assert.match(browserContextBoundaryTest, /Object\.hasOwn\(cookie, "domain"\)/);
+assert.match(browserContextBoundaryTest, /source\.localhost/);
+assert.match(browserContextBoundaryTest, /target\.localhost/);
+assert.match(browserContextBoundaryTest, /provider-return/);
+assert.match(browserContextBoundaryTest, /provider-callback/);
+assert.match(browserContextBoundaryTest, /project\.supabase\.co/);
+assert.match(browserContextBoundaryTest, /challenges\.cloudflare\.com/);
+assert.match(browserContextBoundaryTest, /user:pass@staging\.example\.test/);
+assert.match(runner, /nonDeliveringAdminMagicLinkCount: roleNames.length/);
+assert.match(runner, /portfolioPasswordSignInCount: 0/);
+assert.match(runner, /rawTokenPersisted: false/);
+assert.match(runner, /rawCookiePersisted: false/);
+assert.match(
+  runner,
+  /phase: "rls_cross_tenant",[\s\S]{0,200}minimumRequiredLifetimeSeconds: 30 \* 60/,
+);
+assert.match(
+  runner,
+  /phase: "rls_fixture",[\s\S]{0,200}minimumRequiredLifetimeSeconds: 30 \* 60/,
+);
+assert.match(
+  runner,
+  /phase: "provider_independent",[\s\S]{0,200}minimumRequiredLifetimeSeconds: 30 \* 60/,
+);
+assert.match(
+  runner,
+  /phase: "multi_role_browser",[\s\S]{0,200}minimumRequiredLifetimeSeconds: 50 \* 60/,
+);
+assert.match(
+  runner,
+  /phase: "safe_browser",[\s\S]{0,200}minimumRequiredLifetimeSeconds: 50 \* 60/,
+);
+assert.match(runner, /phaseSpecificJustInTimeSessions: true/);
+assert.match(runner, /everySyntheticUserRefreshSessionGloballySignedOutAfterItsPhase: true/);
+assert.match(runner, /accessJwtImmediateRevocationClaimed: false/);
+assert.match(runner, /accessJwtDispositionAfterSignOut: "VALID_UNTIL_EXPIRY"/);
+assert.match(runner, /portfolioAccessJwtMaxResidualLifetimeSeconds/);
+assert.match(runner, /exactGlobalResidualAccessJwtLifetimeClaimed: false/);
+assert.match(runner, /browserAdditionalAccessJwtExpiryPersisted: false/);
+assert.match(runner, /portfolioSessionCount/);
+assert.match(runner, /browserCredentialPasswordSessionCount: browserProjectCount/);
+assert.match(runner, /qaHarnessAdminMagicLinkSessionCount: browserProjectCount/);
+assert.doesNotMatch(runner, /everySyntheticUserSessionGloballyRevokedAfterItsPhase/);
+assert.doesNotMatch(runner, /activeSyntheticSessions/);
+assert.match(runner, /refreshTokenReuseAcrossProofPhases: false/);
+assert.match(runner, /failureContext.transientSecrets/);
+assert.match(runner, /admin\.auth\.admin\.signOut\(session\.accessToken, "global"\)/);
+assert.match(runner, /refresh_token_not_found/);
+assert.match(runner, /refresh_token_already_used/);
+assert.match(runner, /refreshed\.error\?\.status === 400/);
+assert.match(runner, /refresh-token invalidation could not be distinguished from provider or transport failure/);
+assert.match(runner, /revokeAllPendingSyntheticUserRefreshSessions/);
+assert.match(providerIndependentProof, /validator\.auth\.getUser\(session\.accessToken\)/);
+assert.doesNotMatch(providerIndependentProof, /signInWithPassword/);
+assert.doesNotMatch(providerIndependentProof, /STAGING_QA_PASSWORD/);
+const multiRoleEnvironmentSource = runner.slice(
+  runner.indexOf("function multiRoleBrowserEnvironment("),
+  runner.indexOf("function safeProductBrowserEnvironment("),
+);
+const safeEnvironmentSource = runner.slice(
+  runner.indexOf("function safeProductBrowserEnvironment("),
+  runner.indexOf("function percentile("),
+);
+assert.match(multiRoleEnvironmentSource, /STAGING_QA_PASSWORD/);
+assert.match(multiRoleEnvironmentSource, /SAFE_E2E_INTERNAL_SECRET/);
+assert.doesNotMatch(multiRoleEnvironmentSource, /STAGING_ACCEPTANCE_INTERNAL_SECRET/);
+assert.doesNotMatch(multiRoleEnvironmentSource, /PARTNER_ATTRIBUTION_SIGNING_SECRET/);
+assert.doesNotMatch(multiRoleEnvironmentSource, /INTERNAL_ADMIN_EMAILS/);
+assert.match(safeEnvironmentSource, /SAFE_E2E_INTERNAL_SECRET/);
+assert.doesNotMatch(safeEnvironmentSource, /STAGING_QA_PASSWORD/);
+assert.doesNotMatch(safeEnvironmentSource, /PARTNER_ATTRIBUTION_SIGNING_SECRET/);
+assert.doesNotMatch(safeEnvironmentSource, /INTERNAL_ADMIN_EMAILS/);
+assert.doesNotMatch(safeEnvironmentSource, /STAGING_ACCEPTANCE_INTERNAL_SECRET/);
+assert.doesNotMatch(safeEnvironmentSource, /QA_EMAIL/);
+assert.match(multiRoleEnvironmentSource, /STAGING_ACCESS_GATE_SECRET/);
+assert.match(safeEnvironmentSource, /STAGING_ACCESS_GATE_SECRET/);
+assert.match(safeBrowserSpec, /page\.request\.fetch\(target\.toString\(\), \{/);
+assert.match(safeBrowserSpec, /target\.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN/);
+assert.match(safeBrowserSpec, /target\.pathname !== "\/api\/internal\/qa-auth-session"/);
+assert.match(safeBrowserSpec, /maxRedirects: 0/);
+const qaHarnessClientSource = safeBrowserSpec.slice(
+  safeBrowserSpec.indexOf("async function establishQaHarnessSession("),
+  safeBrowserSpec.indexOf("async function establishQaSession("),
+);
+assert.doesNotMatch(qaHarnessClientSource, /page\.evaluate/);
+assert.doesNotMatch(safeBrowserSpec, /process\.env\.INTERNAL_SYSTEM_JOBS_SECRET/);
+assert.doesNotMatch(safeBrowserSpec, /process\.env\.CRON_SECRET/);
+assert.doesNotMatch(globalSafetyPreflight, /process\.env\.INTERNAL_SYSTEM_JOBS_SECRET/);
+assert.doesNotMatch(globalSafetyPreflight, /process\.env\.CRON_SECRET/);
+assert.doesNotMatch(browserSpec, /STAGING_ACCEPTANCE_INTERNAL_SECRET/);
+assert.equal(
+  (safeBrowserSpec.match(/page\.request\.(?:get|fetch)\s*\(/g) ?? []).length,
+  (safeBrowserSpec.match(/maxRedirects:\s*0/g) ?? []).length,
+  "every safe APIRequestContext call carrying the staging gate must refuse redirects",
+);
+assert.equal(
+  (browserSpec.match(/page\.request\.(?:get|fetch)\s*\(/g) ?? []).length,
+  (browserSpec.match(/maxRedirects:\s*0/g) ?? []).length,
+  "every staging APIRequestContext call carrying the staging gate must refuse redirects",
+);
+assert.match(globalSafetyPreflight, /redirect: "manual"/);
+assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_MIGRATION_COUNT = 103/);
@@ -248,6 +452,9 @@ for (const exactControl of [
   assert.match(runner, new RegExp(`${exactControl}:`), `missing exact control ${exactControl}`);
 }
 assert.match(runner, /DEALFLOW_STAGING_VERCEL_PROJECT_ID: vercelProjectId/);
+assert.match(runner, /process\.env\.VERCEL_PROJECT_ID !== String\(project\.projectId\)/);
+assert.match(runner, /process\.env\.VERCEL_ORG_ID !== String\(project\.orgId\)/);
+assert.match(runner, /authority conflicts with the validated staging link/);
 assert.match(runner, /DEALFLOW_STAGING_HOST_ATTESTATION: "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1"/);
 assert.match(runner, /QA_AUTH_HARNESS_ENABLED: "true"/);
 assert.match(runner, /INTERNAL_SYSTEM_JOBS_SECRET/);
@@ -274,12 +481,21 @@ for (const protectedName of [
 }
 assert.match(
   runner,
-  /sanitize\(error instanceof Error \? error\.message : String\(error\), protectedRuntimeValues\(\)\)/,
+  /\[\.\.\.protectedRuntimeValues\(\), \.\.\.failureContext\.transientSecrets\]/,
 );
 
-const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
-const protectionIndex = runner.indexOf(
-  "configureHostedStagingProtection(\n    vercel,\n    vercelAuthority.projectId,",
+const configureIndex = runner.indexOf("await configureHostedStagingEnvironment(");
+const vercelDryRunIndex = runner.indexOf(
+  "await proveExactVercelDryRunSourcePortfolio(vercel)",
+);
+const predeployAliasAuthorityIndex = runner.indexOf(
+  "await proveAuthoritativePreDeployAliasOwnership(vercel)",
+);
+const predeploymentProtectionIndex = runner.indexOf(
+  "const preDeploymentProtectionProof = await configureHostedStagingProtection(",
+);
+const postdeploymentProtectionIndex = runner.indexOf(
+  "const postDeploymentProtectionProof = await verifyHostedStagingProtection(",
 );
 const roundReaderStart = runner.indexOf("function readValidatedRound(");
 const roundReaderEnd = runner.indexOf("\nfunction childBaseEnvironment", roundReaderStart);
@@ -293,23 +509,115 @@ const migrationIndex = runner.indexOf("const migrationBrokerArgs = [");
 const retentionAuthorityIndex = runner.indexOf(
   'failureContext.stage = "synthetic_retention_owner_authority"',
 );
-const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
-const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl)");
-assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
-assert.ok(protectionIndex > releaseCapture, "hosted protection must follow complete local readiness");
-assert.ok(
-  protectionIndex < configureIndex,
-  "isolated staging alias protection must be configured before hosted environment and deployment",
+const deployIndex = runner.indexOf("const deployment = await deployExactCommit(identity, vercel)");
+const immediatePreDeployIdentityIndex = runner.indexOf(
+  'failureContext.stage = "immediate_predeployment_source_revalidation"',
 );
-assert.match(runner, /function configureHostedStagingProtection\(vercel, projectId\)/);
+const immediatePreDeployDryRunIndex = runner.indexOf(
+  "const immediatePreDeploymentVercelDryRunSourceProof =",
+);
+const postDeployIdentityIndex = runner.indexOf(
+  'failureContext.stage = "postdeployment_source_revalidation"',
+);
+const predeployClosedSurfaceIndex = runner.indexOf(
+  "await proveClosedPreDeployAppAliasSurface()",
+);
+const uniqueProtectionIndex = runner.indexOf(
+  "await proveUniqueDeploymentProtectionRedirect(",
+);
+const stableGateIndex = runner.indexOf(
+  "await proveExactPostDeployAppAliasGate(EXPECTED_APP_ALIASES[0])",
+);
+const stableIdentityIndex = runner.indexOf(
+  "const stableIdentityImmediatelyAfterAlias =",
+);
+const partnerOneAliasIndex = runner.indexOf("const partnerOneAlias =");
+const partnerOneGateIndex = runner.indexOf(
+  "const partnerOneGateImmediatelyAfterAlias =",
+);
+const partnerOneIdentityIndex = runner.indexOf(
+  "const partnerOneIdentityImmediatelyAfterAlias =",
+);
+const partnerTwoAliasIndex = runner.indexOf("const secondPartnerAlias =");
+const partnerTwoGateIndex = runner.indexOf(
+  "const secondPartnerGateImmediatelyAfterAlias =",
+);
+const partnerTwoIdentityIndex = runner.indexOf(
+  "const secondPartnerIdentityImmediatelyAfterAlias =",
+);
+const firstReadinessIndex = runner.indexOf(
+  "const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL)",
+);
+const seedIndex = runner.indexOf("const seedOne = await runSeed(");
+assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
+assert.ok(
+  vercelDryRunIndex > releaseCapture && vercelDryRunIndex < configureIndex,
+  "Vercel's exact no-upload source inventory must pass before hosted environment configuration",
+);
+assert.match(runner, /"deploy",\s*"--dry",\s*"--format=json"/);
+assert.match(runner, /assertExactVercelDryRunSourcePortfolio\(\{/);
+assert.match(runner, /NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256:/);
+assert.match(runner, /NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT:/);
+assert.match(runner, /buildArtifact\?\.deployablePathSetVerified !== true/);
+assert.match(runner, /buildArtifact\?\.predeployPathSetProofBound !== true/);
+assert.match(runner, /vercel-dry-run-source-proof\.json/);
+assert.ok(
+  predeployClosedSurfaceIndex > releaseCapture && predeployClosedSurfaceIndex < configureIndex,
+  "all three app aliases must prove closed before hosted environment or deployment work",
+);
+assert.ok(
+  predeployAliasAuthorityIndex < predeploymentProtectionIndex &&
+    predeploymentProtectionIndex < deployIndex &&
+    deployIndex < postdeploymentProtectionIndex &&
+    postdeploymentProtectionIndex < uniqueProtectionIndex &&
+    uniqueProtectionIndex < stableGateIndex &&
+    stableGateIndex < stableIdentityIndex &&
+    stableIdentityIndex < firstReadinessIndex,
+  "standard protection, the unique redirect, and the stable app gate and identity must be proven before app-alias readiness",
+);
+assert.ok(
+  predeploymentProtectionIndex < immediatePreDeployIdentityIndex &&
+    immediatePreDeployIdentityIndex < immediatePreDeployDryRunIndex &&
+    immediatePreDeployDryRunIndex < deployIndex &&
+    deployIndex < postDeployIdentityIndex &&
+    postDeployIdentityIndex < postdeploymentProtectionIndex,
+  "exact source identity and Vercel dry-run portfolio must be revalidated immediately before upload and source identity rechecked immediately after",
+);
+assert.match(runner, /function assertExactReleaseIdentityUnchanged\(expected, label\)/);
+assert.match(runner, /JSON\.stringify\(current\) !== JSON\.stringify\(expected\)/);
+assert.match(runner, /function assertExactVercelDryRunProofUnchanged\(expected, current, label\)/);
+assert.match(runner, /await proveExactVercelDryRunSourcePortfolio\(vercel\)/);
+assert.match(runner, /deployment-source-revalidation\.json/);
+assert.match(runner, /exactIdentityBeforeAndAfterUpload: true/);
+assert.match(
+  runner,
+  /exactVercelSourcePortfolioRevalidatedImmediatelyBeforeUpload: true/,
+);
+assert.ok(
+  stableIdentityIndex < partnerOneAliasIndex &&
+    partnerOneAliasIndex < partnerOneGateIndex &&
+    partnerOneGateIndex < partnerOneIdentityIndex &&
+    partnerOneIdentityIndex < partnerTwoAliasIndex &&
+    partnerTwoAliasIndex < partnerTwoGateIndex &&
+    partnerTwoGateIndex < partnerTwoIdentityIndex &&
+    partnerTwoIdentityIndex < firstReadinessIndex,
+  "each exact alias must prove its gate and build identity before the next alias can be assigned",
+);
+assert.match(runner, /async function configureHostedStagingProtection\(vercel, projectId\)/);
 assert.match(runner, /configureExactStagingVercelProtection\(\{/);
 assert.match(runner, /expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
 assert.match(runner, /args\.push\("--method", "PATCH", "--input", "-"\)/);
-assert.match(runner, /writeJson\(join\(options\.evidenceDir, "staging-protection\.json"\)/);
+assert.match(
+  runner,
+  /writeJson\(\s*join\(options\.evidenceDir, "staging-protection\.json"\)/,
+);
 assert.match(runner, /classifyStagingHostReadiness\(\{ status: response\.status \}\)/);
 assert.match(runner, /error instanceof StagingHostRedirectError/);
-assert.match(vercelProtectionContract, /const REQUIRED_PROTECTION_MODE = "preview"/);
+assert.match(
+  vercelProtectionContract,
+  /const REQUIRED_PROTECTION_MODE = "all_except_custom_domains"/,
+);
 assert.match(vercelProtectionContract, /const REDIRECT_STATUSES = new Set\(\[301, 302, 303, 307, 308\]\)/);
 assert.match(vercelProtectionTest, /wrong input project must be blocked before any API request/);
 assert.match(vercelProtectionTest, /assert\.deepEqual\(call\.body/);
@@ -402,6 +710,7 @@ assert.match(runner, /input: `\$\{value\}\\n`/);
 assert.match(runner, /HOSTED_SECRET_ENV_NAMES\.has\(name\).*--sensitive/s);
 assert.match(runner, /isolated Vercel staging environment inventory is not exact after provisioning/);
 assert.match(runner, /"deploy",\s*"--prod"/);
+assert.match(runner, /"--prod",\s*"--skip-domain"/);
 assert.match(runner, /dealflowEnvironment=isolated-staging-qibh/);
 assert.match(runner, /"inspect", uniqueDeploymentUrl\.origin, "--format=json"/);
 assert.match(runner, /function fetchAuthoritativeVercelDeployment/);
@@ -411,18 +720,67 @@ assert.match(runner, /const projectId = authoritative\.projectId \?\? authoritat
 assert.match(runner, /const metadata = authoritative\.meta \?\? authoritative\.metadata \?\? \{\}/);
 assert.match(runner, /metadata\.dealflowCommit !== identity\.commit/);
 assert.match(runner, /metadata\.dealflowTree !== identity\.tree/);
-assert.match(runner, /function proveStableAliasTargetsExactDeployment/);
-assert.match(runner, /deploymentId !== deployment\.deploymentId/);
-assert.match(runner, /authoritative\.url !== deployment\.deploymentHost/);
-assert.match(runner, /stable isolated-staging alias does not target the exact candidate deployment/);
-assert.match(runner, /function configureAndProveSecondPartnerAlias/);
+assert.match(runner, /currentMapping\?\.deploymentId !== deployment\.deploymentId/);
+assert.match(runner, /currentMapping\?\.deploymentHost !== deployment\.deploymentHost/);
+assert.match(runner, /record\.deployment\?\.id !== deploymentId/);
+assert.match(runner, /`\/v4\/aliases\/\$\{encodeURIComponent\(aliasHost\)\}`/);
+assert.match(runner, /predeploy-alias-authority\.json/);
+assert.match(runner, /configuredBeforeDeployment: true/);
+assert.match(runner, /verifiedUnchangedAfterDeployment: true/);
+assert.match(runner, /read-only post-deployment isolated staging Vercel protection/);
+assert.match(runner, /function configureAndProveAppAlias/);
+assert.match(runner, /function proveAuthoritativePreDeployAliasOwnership/);
+assert.match(runner, /failureContext\.stagingAliasMutations\.push\(rollbackRecord\)/);
+assert.match(runner, /async function rollbackCreatedStagingAliasesAfterFailure/);
+assert.match(runner, /rollback\.error \|\| rollback\.signal \|\| rollback\.status !== 0/);
+assert.match(runner, /authoritativePriorMappingRestored/);
+assert.match(runner, /publicContainmentProvenSeparately: true/);
+assert.doesNotMatch(runner, /createdStagingAliases/);
+const aliasConfigurationSource = runner.slice(
+  runner.indexOf("async function configureAndProveAppAlias("),
+  runner.indexOf("async function requestExactAppAlias("),
+);
+assert.ok(
+  aliasConfigurationSource.indexOf("failureContext.stagingAliasMutations.push(rollbackRecord)") <
+    aliasConfigurationSource.indexOf('"alias",\n      "set"'),
+  "rollback intent must be registered before the alias mutation command",
+);
+const aliasRollbackSource = runner.slice(
+  runner.indexOf("function readExactAliasMappingDuringRollback("),
+  runner.indexOf("let terminalFailurePromise = null"),
+);
+assert.match(aliasRollbackSource, /spawnSync\(/);
+assert.match(aliasRollbackSource, /record\.deployment\?\.id !== deploymentId/);
+assert.match(aliasRollbackSource, /`\/v13\/deployments\/\$\{deploymentId\}`/);
+assert.doesNotMatch(aliasRollbackSource, /configureHostedStagingProtection|--method|PATCH/);
 assert.match(runner, /"alias",\s*"set"/);
+assert.match(runner, /dealflow-os-rebuild-selfserve-clean-partner-one-qibh\.vercel\.app/);
 assert.match(runner, /dealflow-os-rebuild-selfserve-clean-partner-two-qibh\.vercel\.app/);
-assert.match(runner, /second white-label staging alias does not target the exact candidate deployment/);
+assert.match(browserSpec, /dealflow-os-rebuild-selfserve-clean-partner-one-qibh\.vercel\.app/);
+assert.match(browserSpec, /dealflow-os-rebuild-selfserve-clean-partner-two-qibh\.vercel\.app/);
+assert.match(browserConfig, /dealflow-os-rebuild-selfserve-clean-partner-one-qibh\.vercel\.app/);
+assert.match(browserConfig, /dealflow-os-rebuild-selfserve-clean-partner-two-qibh\.vercel\.app/);
+assert.match(runner, /staging app alias does not target the exact candidate deployment/);
 
 assert.equal(
-  (runner.match(/runSeed\(deployment\.deploymentUrl, secondPartnerAlias\.aliasUrl\)/g) ?? []).length,
+  (runner.match(/runSeed\(partnerOneAlias\.aliasUrl, secondPartnerAlias\.aliasUrl\)/g) ?? []).length,
   2,
+);
+assert.match(runner, /function proveClosedPreDeployAppAliasSurface/);
+assert.match(runner, /function provePostDeployAppAliasGate/);
+assert.match(runner, /function proveUniqueDeploymentProtectionRedirect/);
+assert.match(runner, /function provePostDeployStaticAssetGate/);
+assert.match(runner, /findExactNextStaticChunkPath/);
+assert.match(runner, /\/_next\/image\?url=%2Fstaging-image-optimizer-proof\.png/);
+assert.match(runner, /postdeploy-static-asset-gate\.json/);
+assert.match(runner, /noGate\.status !== 404/);
+assert.match(runner, /headerGate\.status !== 200/);
+assert.match(runner, /cookieGate\.status !== 200/);
+assert.match(runner, /!\[301, 302, 303, 307, 308\]\.includes\(response\.status\)/);
+assert.doesNotMatch(runner, /const uniqueReady = await waitForDeployment/);
+assert.doesNotMatch(
+  runner,
+  /proveHostedBuildReleaseIdentity\(\s*identity,\s*deployment\.deploymentUrl/,
 );
 assert.match(runner, /assertSeedReplayIsIdempotent\(seedOne, seedTwo\)/);
 assert.match(runner, /function classifyExactSyntheticRetentionAuthorityReplay/);
@@ -446,7 +804,18 @@ assert.match(runner, /\["run", "operator:debt"\]/);
 assert.match(rlsFixtureSmoke, /cleanupStaleRlsFixtures\(admin\)/);
 assert.match(rlsFixtureSmoke, /createTenantFixtures\(admin, "a", fixtures, identityA\)/);
 assert.match(rlsFixtureSmoke, /loadCanonicalTenant/);
-assert.match(rlsFixtureSmoke, /createFixtureSession\(admin, anon, tenantA\.email\)/);
+assert.match(rlsFixtureSmoke, /validatePreauthenticatedJwt/);
+assert.match(rlsFixtureSmoke, /anon\.auth\.getUser\(jwt\)/);
+assert.match(rlsFixtureSmoke, /requireEnv\("RLS_USER_A_JWT"\)/);
+assert.match(rlsFixtureSmoke, /requireEnv\("RLS_USER_B_JWT"\)/);
+for (const rlsSource of [rlsFixtureSmoke, rlsCrossTenant]) {
+  assert.match(rlsSource, /IS_ISOLATED_STAGING_PROOF/);
+  assert.match(rlsSource, /EXPECTED_STAGING_PROJECT_FINGERPRINT/);
+  assert.match(rlsSource, /projectRef\?\.endsWith\("qibh"\)/);
+  assert.match(rlsSource, /if \(!IS_ISOLATED_STAGING_PROOF\) \{[\s\S]*?loadEnvConfig/);
+}
+assert.match(runner, /DEALFLOW_DEPLOYMENT_TARGET: "staging"/);
+assert.doesNotMatch(rlsFixtureSmoke, /generateLink|verifyOtp|signInWithPassword/);
 assert.match(rlsFixtureSmoke, /create_campaign_plan_with_entitlement_v1/);
 assert.match(rlsFixtureSmoke, /fixtures\.campaignIds\.push\(campaignId\)/);
 assert.match(rlsFixtureSmoke, /campaign entitlement authority returned an invalid tenant binding/);
@@ -526,7 +895,7 @@ for (const project of ["desktop-chromium", "mobile-chromium", "desktop-firefox",
   assert.match(browserConfig, new RegExp(`name: "${project}"`));
 }
 assert.doesNotMatch(browserSpec, /test\.(?:skip|fixme)\s*\(/);
-assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 12);
+assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 14);
 for (const role of [
   "newDirect",
   "paidDirect",
@@ -537,13 +906,86 @@ for (const role of [
   "partnerChildTwo",
   "operator",
   "attacker",
+  "deletion",
 ]) {
-  assert.match(browserSpec, new RegExp(`${role}:`));
+  assert.match(browserSessionContract, new RegExp(`${role}:`));
 }
+assert.equal((browserSpec.match(/await credentialSignIn\(/g) ?? []).length, 1);
+assert.equal((browserSpec.match(/await openAuthenticatedSession\(/g) ?? []).length, 11);
+assert.deepEqual(
+  [...new Set(
+    [...browserSpec.matchAll(/await openAuthenticatedSession\(\s*page,\s*"([A-Za-z]+)"/g)]
+      .map((match) => match[1]),
+  )].sort(),
+  [
+    "attacker",
+    "deletion",
+    "legacy",
+    "operator",
+    "paidDirect",
+    "partnerAdmin",
+    "partnerAdminTwo",
+    "partnerChild",
+    "partnerChildTwo",
+  ].sort(),
+  "every non-password synthetic role must be exercised by the browser suite",
+);
+assert.match(browserSpec, /credentialSignIn\(page, ROLE_EMAILS\.newDirect/);
+assert.match(browserSpec, /browserCookiesForOrigin\(session/);
+assert.doesNotMatch(browserSpec, /localStorage\.setItem\([^\n]*auth-token/);
+assert.match(browserSessionContract, /3_180/);
+assert.match(browserSessionContract, /cookie chunks are not contiguous from zero/);
+assert.match(browserSessionContract, /official base64url SSR data/);
+assert.match(browserSessionContract, /challenges\.cloudflare\.com/);
+assert.match(browserSessionContract, /url\.origin !== "https:\/\/challenges\.cloudflare\.com"/);
+assert.match(browserSessionContract, /url\.username !== ""/);
+assert.match(browserSessionContract, /\/turnstile\/v0\/api\.js/);
+assert.match(browserSessionContract, /\/cdn-cgi\/challenge-platform\//);
+assert.match(browserSpec, /public funnel renders the official staging Turnstile test widget/);
+assert.match(safeBrowserSpec, /establishQaSession/);
+assert.match(safeBrowserSpec, /establishQaHarnessSession/);
+assert.match(safeBrowserSpec, /restricted QA harness creates a masked non-admin session/);
+assert.match(safeBrowserSpec, /clearExactQaAuthCookies/);
+assert.match(safeBrowserSpec, /QA harness proof must begin unauthenticated/);
+assert.match(safeBrowserSpec, /page\.request\.fetch\(target\.toString\(\), \{/);
+const safeMutationDispositionSource = safeBrowserSpec.slice(
+  safeBrowserSpec.indexOf("function mutationDisposition("),
+  safeBrowserSpec.indexOf("async function installSafetyHarness("),
+);
+assert.doesNotMatch(safeMutationDispositionSource, /qa_session|qa-auth-session/);
+assert.doesNotMatch(
+  safeBrowserSpec,
+  /page\.request\.(?:post|put|patch|delete)\s*\(/i,
+  "safe browser mutations must pass through the page route firewall",
+);
+assert.match(safeBrowserSpec, /sha256\(qaProjectRef \?\? ""\)/);
+assert.match(safeBrowserSpec, /EXPECTED_STAGING_PROJECT_FINGERPRINT/);
+assert.match(safeBrowserSpec, /safeHttpEvidenceTarget\(request\.url\(\)\)/);
+assert.match(browserContextBoundary, /export function safeHttpEvidenceTarget/);
+assert.match(browserContextBoundaryTest, /user:secret@forbidden\.example/);
+assert.match(globalSafetyPreflight, /sha256\(projectRef\) !== EXPECTED_STAGING_PROJECT_FINGERPRINT/);
+assert.doesNotMatch(safeBrowserSpec, /establishPreauthenticatedPaidSession/);
 assert.match(browserSpec, /sha256\(projectRef\).*EXPECTED_SUPABASE_FINGERPRINT/s);
-assert.match(browserSpec, /url\.hostname === `\$\{exactProjectRef\}\.supabase\.co`/);
+assert.match(browserSpec, /url\.origin === `https:\/\/\$\{exactProjectRef\}\.supabase\.co`/);
+assert.match(browserSpec, /activeApplicationOrigin/);
+assert.match(browserSpec, /url\.pathname === "\/auth\/v1\/user"/);
+assert.match(browserSpec, /url\.searchParams\.get\("grant_type"\) === "password"/);
+assert.doesNotMatch(browserSpec, /url\.pathname\.startsWith\("\/auth\/v1\/"\)/);
 assert.match(browserSpec, /blockedMutations/);
 assert.match(browserSpec, /forbiddenHosts/);
+assert.match(safeBrowserSpec, /forbiddenHosts/);
+assert.match(safeBrowserSpec, /requestUrl\.pathname === "\/auth\/v1\/user"/);
+assert.doesNotMatch(safeBrowserSpec, /requestUrl\.pathname\.startsWith\("\/auth\/v1\/"\)/);
+assert.match(safeBrowserSpec, /assertExactHostedSafeBrowserOrigin\(BASE_URL\)/);
+assert.match(globalSafetyPreflight, /assertExactHostedSafeBrowserOrigin\(baseUrl\.toString\(\)\)/);
+assert.match(safeBrowserConfig, /assertExactHostedSafeBrowserOrigin\(configuredBaseUrl\)/);
+assert.match(
+  safeBrowserHostContract,
+  /https:\/\/dealflow-os-rebuild-selfserve-clean\.vercel\.app/,
+);
+assert.match(safeBrowserHostContract, /url\.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN/);
+assert.match(safeBrowserHostTest, /\.vercel\.app:444/);
+assert.match(safeBrowserHostTest, /evil\.example\.com/);
 assert.match(browserSpec, /LOCALIZED_PRODUCT_COPY/);
 assert.match(browserSpec, /EN FR ES public product routes/);
 assert.match(browserSpec, /paid realtor can use authenticated EN FR ES dashboards/);
@@ -554,6 +996,8 @@ assert.match(browserSpec, /Confirmed state is stale/);
 assert.match(browserSpec, /Showing last confirmed Meta data/);
 assert.match(browserSpec, /PARTNER_TWO_CAMPAIGN_ID/);
 assert.match(browserSpec, /STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL/);
+assert.match(browserSpec, /account-deletion realtor is suspended from product and API access/);
+assert.match(browserSpec, /account_deletion_workspace_suspended/);
 
 assert.match(runner, /runProviderIndependentStagingProof/);
 assert.match(runner, /provider-independent-journeys\.json/);
@@ -577,6 +1021,9 @@ assert.match(providerIndependentProof, /captureTableState/);
 assert.match(providerIndependentProof, /providerTableStateUnchanged: true/);
 assert.match(providerIndependentProof, /failedRefreshPreservedLastConfirmed: true/);
 assert.match(providerIndependentProof, /crossPartnerCampaignDenied: true/);
+assert.match(providerIndependentProof, /reusedRoleCount: 3/);
+assert.match(providerIndependentProof, /passwordSignInCount: 0/);
+assert.match(providerIndependentProof, /rawTokenPersisted: false/);
 assert.match(providerIndependentProof, /create_account_deletion_request_v1/);
 assert.match(providerIndependentProof, /authority\.grace_days !== 0/);
 assert.match(providerIndependentProof, /authority\.financial_retention_days !== 365/);
@@ -608,6 +1055,27 @@ assert.match(runner, /productionReleaseAuthorized: false/);
 
 assert.match(runner, /function assertEvidenceSanitized/);
 assert.match(runner, /Evidence sanitization rejected an exact protected value/);
+assert.match(runner, /REDACTED_SSR_AUTH_COOKIE/);
+assert.match(runner, /\\bbase64-\[A-Za-z0-9_-\]\{24,\}/);
+assert.match(runner, /registerUnsealedPlaywrightArtifactDirectories/);
+assert.match(runner, /deleteAllRegisteredUnsealedPlaywrightArtifacts/);
+assert.match(runner, /UNSEALED_PLAYWRIGHT_FAILURE_POLICY/);
+assert.match(runner, /failureContext\.unsealedPlaywrightArtifactDirectories = \[\]/);
+assert.match(runner, /resetEvidenceDirectoryForSafeFailureBundle/);
+assert.match(runner, /UNSAFE_PARTIAL_EVIDENCE_DESTROYED_AND_ROOT_RECREATED/);
+assert.match(runner, /RETAINED_SANITIZED_PARTIAL_EVIDENCE/);
+assert.match(runner, /failure-summary\.v1/);
+assert.match(runner, /const failureSeal = sealEvidenceBundle/);
+assert.match(reporterCleanupContract, /refused_outside_evidence_path/);
+assert.match(reporterCleanupContract, /remainingDirectoryCount: 0/);
+assert.match(reporterCleanupTest, /valid roots must still be purged after a bad path/);
+assert.match(reporterCleanupTest, /failure\.png/);
+assert.match(runner, /assertApprovedStagingEvidenceRootPath/);
+assert.match(evidenceRootContract, /parent !== EXACT_TEMP_ROOT/);
+assert.match(evidenceRootContract, /realpathSync\(parent\) !== EXACT_TEMP_ROOT/);
+assert.match(evidenceRootContract, /real non-symlink directory/);
+assert.match(evidenceRootTest, /symlinkParent/);
+assert.match(evidenceRootTest, /direct child of the real private temp root/);
 assert.match(runner, /evidence-manifest\.json/);
 assert.match(runner, /SHA256SUMS/);
 assert.match(runner, /containsSecrets: false/);
@@ -616,9 +1084,11 @@ assert.match(runner, /productionMutationPerformed: false/);
 assert.match(runner, /providerMutationPerformed: false/);
 assert.match(runner, /chmodSync\(path, 0o600\)/);
 assert.match(runner, /chmodSync\(path, 0o700\)/);
-assert.match(runner, /function writeTerminalFailureArtifact\(sanitizedMessage\)/);
+assert.match(runner, /function writeTerminalFailureArtifact\(/);
 assert.match(runner, /STAGING_FAILURE\.json/);
 assert.match(runner, /sanitizedErrorSha256: sha256\(sanitizedMessage\)/);
+assert.match(runner, /failureArtifactContainsSecrets: false/);
+assert.match(runner, /partialBundleSecretStatus/);
 assert.match(runner, /candidateIdentity: identity/);
 assert.match(runner, /failureContext\.sealCompleted/);
 assert.match(runner, /partialSealArtifactsPresent/);
@@ -630,7 +1100,45 @@ assert.doesNotMatch(
 );
 assert.match(runner, /failureContext\.evidenceDir = options\.evidenceDir/);
 assert.match(runner, /failureContext\.stage = "synthetic_staging_seed"/);
-assert.match(runner, /writeTerminalFailureArtifact\(sanitizedMessage\)/);
+assert.match(runner, /writeTerminalFailureArtifact\(sanitizedMessage,/);
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  assert.match(runner, new RegExp(`installCatchableTerminationHandler\\("${signal}"`));
+}
+assert.match(runner, /process\.once\("uncaughtException"/);
+assert.match(runner, /process\.once\("unhandledRejection"/);
+assert.match(runner, /finalizeFailureOnce/);
+assert.match(runner, /terminationRequestPromise/);
+assert.match(runner, /requestExecutionTermination\(firstOutcome\.error/);
+assert.match(runner, /await drainInterruptibleCommands\(\)/);
+assert.match(runner, /const finalMainOutcome = firstOutcome\.type === "termination"/);
+assert.match(runner, /global: \{ fetch: allowDuringTermination \? cleanupFetch : executionFetch \}/);
+assert.match(runner, /createStagingAdminClient\(\{ allowDuringTermination: true \}\)/);
+assert.match(runner, /executionFetch\(`\$\{url\}\/privacy`/);
+assert.match(runner, /assertExecutionMayContinue\(\);[\s\S]{0,180}const deleted = await admin/);
+assert.doesNotMatch(
+  runner,
+  /process\.once\(signal, \(\) => \{[\s\S]{0,220}finalizeFailureOnce/,
+  "signal handlers must only request termination; sealing waits for main quiescence",
+);
+assert.match(runner, /const rlsCrossTenantProof = await runCapturedProofCommand/);
+assert.match(runner, /const rlsFixtureProof = await runCapturedProofCommand/);
+assert.match(runner, /const providerIndependentProof = await runProviderIndependentStagingProof/);
+assert.match(runner, /const multiRoleBrowser = await runPlaywrightSuite/);
+assert.match(runner, /const safeProductBrowser = await runPlaywrightSuite/);
+assert.match(runner, /const operatorDebtProof = await runCapturedProofCommand/);
+assert.doesNotMatch(
+  runner,
+  /\brun\(EXECUTABLE/,
+  "all staging and remote child commands must use the interruptible boundary",
+);
+assert.match(interruptibleCommand, /detached: process\.platform !== "win32"/);
+assert.match(interruptibleCommand, /process\.kill\(-child\.pid, requestedSignal\)/);
+assert.match(interruptibleCommand, /killTree\("SIGKILL"\)/);
+assert.match(interruptibleCommandTest, /orphan-grandchild-sentinel/);
+assert.match(interruptibleCommandTest, /nonzero-parent-orphan-sentinel/);
+assert.match(interruptibleCommandTest, /output-limit force kill was not bounded/);
+assert.match(interruptibleCommandTest, /timed out after 100ms/);
+assert.match(runner, /process\.exitCode = request\.exitCode/);
 
 assert.equal(
   packageJson.scripts["staging:acceptance"],
@@ -638,8 +1146,22 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
+assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-browser-session-bundle-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-browser-context-network-boundary\.mjs"/);
+assert.match(completionSuite, /"staging\/test-staging-evidence-root-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-interruptible-command\.mjs"/);
+assert.match(completionSuite, /"staging\/test-unsealed-playwright-artifact-cleanup\.mjs"/);
+assert.match(completionSuite, /"staging\/test-deployable-source-path-set-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-vercel-dry-run-source-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-exact-supabase-project-url\.mjs"/);
+assert.match(completionSuite, /"staging\/test-next-static-chunk-path\.mjs"/);
+assert.match(completionSuite, /"staging\/test-isolated-staging-access-gate\.mjs"/);
+assert.match(completionSuite, /"staging\/test-hosted-build-identity-generator\.mjs"/);
+assert.match(completionSuite, /"staging\/test-release-identity-route-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-isolated-staging-acceptance-contract\.mjs"/);
 assert.match(envExample, /^STAGING_PARTNER_APP_URL=$/m);
 assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);

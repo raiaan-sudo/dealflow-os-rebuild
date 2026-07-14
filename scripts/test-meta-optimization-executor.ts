@@ -4,11 +4,15 @@ import { evaluateMetaOptimizationExecutionGate } from "../src/lib/meta-optimizat
 import { evaluateRealtorOptimizationPolicy } from "../src/lib/optimization-engine/realtor-policy";
 import type { ApprovedOptimizationPolicy } from "../src/lib/optimization-engine/safety-policy";
 
+const canonicalStagingProjectId = String(
+  JSON.parse(readFileSync(".vercel/project.json", "utf8")).projectId,
+);
+
 const stagingHost = {
   VERCEL_ENV: "production",
   DEALFLOW_DEPLOYMENT_TARGET: "staging",
-  VERCEL_PROJECT_ID: "staging-project",
-  DEALFLOW_STAGING_VERCEL_PROJECT_ID: "staging-project",
+  VERCEL_PROJECT_ID: canonicalStagingProjectId,
+  DEALFLOW_STAGING_VERCEL_PROJECT_ID: canonicalStagingProjectId,
   DEALFLOW_STAGING_HOST_ATTESTATION: "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
   META_OPTIMIZATION_EXECUTION_MODE: "sandbox",
   ALLOW_META_SANDBOX_OPTIMIZATION: "true",
@@ -44,10 +48,10 @@ const productionHost = {
   META_OPTIMIZATION_PRODUCTION_ACCOUNT_IDS: "act_99100000001,99200000001",
 };
 assert.deepEqual(evaluateMetaOptimizationExecutionGate(productionHost), {
-  enabled: true,
-  environment: "production",
-  accountIds: ["99100000001", "99200000001"],
-  blockedReason: null,
+  enabled: false,
+  environment: null,
+  accountIds: [],
+  blockedReason: "exact_optimizer_host_attestation_required",
 });
 for (const key of [
   "DEALFLOW_PRODUCTION_HOST_ATTESTATION",

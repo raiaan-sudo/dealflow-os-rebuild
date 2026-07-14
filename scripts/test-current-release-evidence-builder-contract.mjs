@@ -84,18 +84,41 @@ function trackedIdentity() {
 }
 
 function migrationIdentity() {
-  const name = "20260713028000_harden_account_deletion_retention_authority.sql";
-  const contents = readFileSync(join(repo, "supabase", "migrations", name));
+  const names = readdirSync(join(repo, "supabase", "migrations"))
+    .filter((name) => /^\d{14}_.+\.sql$/.test(name))
+    .sort();
   const digest = createHash("sha256");
-  digest.update(String(Buffer.byteLength(name)));
-  digest.update("\0");
-  digest.update(name);
-  digest.update("\0");
-  digest.update(String(contents.length));
-  digest.update("\0");
-  digest.update(contents);
-  digest.update("\0");
-  return { migrationCount: 1, finalMigration: name, migrationPortfolioSha256: digest.digest("hex") };
+  const files = names.map((name) => {
+    const contents = readFileSync(join(repo, "supabase", "migrations", name));
+    digest.update(String(Buffer.byteLength(name)));
+    digest.update("\0");
+    digest.update(name);
+    digest.update("\0");
+    digest.update(String(contents.length));
+    digest.update("\0");
+    digest.update(contents);
+    digest.update("\0");
+    return { name, bytes: contents.length, sha256: sha256(contents) };
+  });
+  const priorDigest = createHash("sha256");
+  for (const file of files.slice(0, -1)) {
+    const contents = readFileSync(join(repo, "supabase", "migrations", file.name));
+    priorDigest.update(String(Buffer.byteLength(file.name)));
+    priorDigest.update("\0");
+    priorDigest.update(file.name);
+    priorDigest.update("\0");
+    priorDigest.update(String(contents.length));
+    priorDigest.update("\0");
+    priorDigest.update(contents);
+    priorDigest.update("\0");
+  }
+  return {
+    migrationCount: files.length,
+    finalMigration: files.at(-1).name,
+    migrationPortfolioSha256: digest.digest("hex"),
+    priorMigrationPortfolioSha256: priorDigest.digest("hex"),
+    files,
+  };
 }
 
 function inventory(directory) {
@@ -143,6 +166,7 @@ try {
   mkdirSync(repo, { recursive: true });
   mkdirSync(external, { recursive: true });
   write(join(repo, "package-lock.json"), { name: "fixture", lockfileVersion: 3, packages: {} });
+  write(join(repo, "supabase", "migrations", "20260713027000_prior_fixture.sql"), "select 0;\n");
   write(join(repo, "supabase", "migrations", "20260713028000_harden_account_deletion_retention_authority.sql"), "select 1;\n");
   write(join(repo, "README.md"), "current release fixture\n");
   run("git", ["init", "-b", "codex/dealflow-overnight-release-20260712"]);
@@ -213,25 +237,35 @@ try {
 
   const stagingGates = {
     exactCandidateAndSchema: "PASS",
+    syntheticRetentionOwnerAuthority: "PASS",
     isolatedHostedDeployment: "PASS",
-    sevenSyntheticRoleFixtures: "PASS",
+    tenSyntheticRoleFixtures: "PASS",
     authenticatedDirectEntitlementBoundaries: "PASS",
-    whiteLabelHostAndBranding: "PASS",
+    twoWhiteLabelHostsBrandingAndChildTenantIsolation: "PASS",
     crossTenantBrowserBoundary: "PASS",
     authenticatedRlsFixtureAndCleanup: "PASS",
     zeroExternalEffects: "PASS",
     readOnlyHostedLoad: "PASS",
-    workerExecutionRetryAndDeadLetterRecovery: "PASS",
+    workerExecutionRetryReplayDeadLetterAndCrashRecovery: "PASS",
     operatorDebtAndRecoveryJourneys: "PASS",
-    realSyntheticLeadCapturePersistenceAndDelivery: "PASS",
-    ghlSandboxProvisioningFunnelsAndLeadDelivery: "PASS",
-    metaSandboxLaunchLeadgenReportingAndOptimization: "PASS",
-    stripeTestCheckoutWebhookAndLifecycle: "PASS",
-    creativeProviderGenerationAndPersistence: "PASS",
-    twilioTestTransportAndConsentLifecycle: "PASS",
-    supportDeliverySinkAndOperatorLifecycle: "PASS",
-    liveReportingReconciliation: "PASS",
-    deletionAndProviderOffboarding: "PASS",
+    realSyntheticLeadCapturePersistenceAndDuplicateReplay: "PASS",
+    supportInternalNonDeliveringInboxLifecycle: "PASS",
+    reportingFreshStaleAndFailedRefreshStateHandling: "PASS",
+    billingCancellationStaleEventReactivationAndReplayProjection: "PASS",
+    accountDeletionRequestSuspensionAndDisabledWorkerBoundary: "PASS",
+    ghlSandboxProvisioningFunnelsAndLeadDelivery:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    metaSandboxLaunchLeadgenReportingAndOptimization:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    stripeTestCheckoutAndSignedWebhook:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    creativeProviderGenerationAndPersistence:
+      "BLOCKED_EXTERNAL_PROVIDER_AND_PAID_ACTION_AUTHORITY",
+    twilioTestTransportAndConsentLifecycle:
+      "BLOCKED_EXTERNAL_PROVIDER_AND_COMMUNICATION_AUTHORITY",
+    accountDeletionProviderOffboardingCompletion:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    liveMetaReportingReconciliation: "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
   };
   const staging = join(external, "staging");
   write(join(staging, "FINAL_SUMMARY.json"), {
@@ -319,6 +353,16 @@ try {
   if (snapshot.systemsOfRecordAndLeadPaths.leadPaths.length !== 3 || snapshot.staging.providerMatrix.length !== 6 || snapshot.production.gates.length !== 9) {
     throw new Error("systems/provider/production matrices are incomplete");
   }
+  if (
+    snapshot.staging.providerMatrix.find((row) => row.provider === "GHL")
+      ?.stagingAcceptance !== "BLOCKED" ||
+    snapshot.capabilities.find((row) => row.id === "CAP-01")?.stagingProof !==
+      "BLOCKED" ||
+    snapshot.capabilities.find((row) => row.id === "CAP-07")?.stagingProof !==
+      "PASS"
+  ) {
+    throw new Error("Current runner BLOCKED_* statuses or derived gates were not normalized exactly");
+  }
   assertChecksums(output);
   assertMode(output, 0o700);
   for (const record of inventory(output)) assertMode(record.absolute, 0o600);
@@ -385,11 +429,93 @@ try {
   }
   assertChecksums(resumedOutput);
 
+  const forwardStaging = join(external, "forward-staging");
+  cpSync(staging, forwardStaging, { recursive: true });
+  rmSync(join(forwardStaging, "evidence-manifest.json"));
+  rmSync(join(forwardStaging, "SHA256SUMS"));
+  const priorMigration = migrations.files.at(0);
+  const forwardMigration = migrations.files.at(-1);
+  const forwardPriorApplication = {
+    manifestSha256: sha256("sealed exact prior migration application"),
+    migrationPortfolioSha256: migrations.priorMigrationPortfolioSha256,
+    normalizedSchemaSha256: sha256("normalized prior staging schema"),
+    remoteMutationCompleted: true,
+    migrationCount: migrations.migrationCount - 1,
+    migrationFiles: [{
+      version: priorMigration.name.slice(0, 14),
+      file: priorMigration.name,
+      sha256: priorMigration.sha256,
+    }],
+  };
+  const exactForwardMigration = {
+    version: forwardMigration.name.slice(0, 14),
+    file: forwardMigration.name,
+    sha256: forwardMigration.sha256,
+  };
+  const forwardSummaryPath = join(
+    forwardStaging,
+    "migration-proof",
+    "staging-migration-summary.json",
+  );
+  const forwardSummary = JSON.parse(readFileSync(forwardSummaryPath, "utf8"));
+  write(forwardSummaryPath, {
+    ...forwardSummary,
+    migrationMode: "APPLY_FORWARD_EXACT",
+    forwardOnly: true,
+    priorMigrationCount: migrations.migrationCount - 1,
+    forwardMigrationCount: 1,
+    forwardMigration: exactForwardMigration,
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+    portfolioApplicationRemoteMutationCompleted: true,
+    remoteStateVerificationStatus: "EXACT_FORWARD_COMMITTED_PORTFOLIO",
+    priorApplication: forwardPriorApplication,
+  });
+  const forwardProofPath = join(
+    forwardStaging,
+    "migration-proof",
+    "staging-migration-proof.json",
+  );
+  const forwardProof = JSON.parse(readFileSync(forwardProofPath, "utf8"));
+  write(forwardProofPath, {
+    ...forwardProof,
+    migrationMode: "APPLY_FORWARD_EXACT",
+    forwardOnly: true,
+    priorMigrationCount: migrations.migrationCount - 1,
+    forwardMigrationCount: 1,
+    forwardMigration: exactForwardMigration,
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+    portfolioApplicationRemoteMutationCompleted: true,
+    remoteStateVerification: { status: "EXACT_FORWARD_COMMITTED_PORTFOLIO" },
+    priorApplication: forwardPriorApplication,
+    applied: [exactForwardMigration],
+  });
+  sealStaging(forwardStaging);
+  const forwardOutput = join(external, "forward-no-go-bundle");
+  run(process.execPath, [
+    builder,
+    "--round-one", join(external, "round-1"),
+    "--round-two", join(external, "round-2"),
+    "--staging", forwardStaging,
+    "--checkpoint-record", checkpointPath,
+    "--output", forwardOutput,
+  ]);
+  const forwardSnapshot = JSON.parse(
+    readFileSync(join(forwardOutput, "dealflow-release.snapshot.json"), "utf8"),
+  );
+  if (forwardSnapshot.verdict !== "NO_GO") {
+    throw new Error("Exact forward-only migration application was not accepted");
+  }
+  assertChecksums(forwardOutput);
+
   const productionPath = join(external, "production.json");
   write(productionPath, {
     schemaVersion: "dealflow.production-release-attestation.v1",
     status: "PASS",
     releaseAuthorized: true,
+    cryptographicallyProtectedTrustVerified: true,
+    builderVerifiedTrust: true,
     identity,
     migrations,
     schemaDigest: sha256("normalized staging schema"),
@@ -418,7 +544,7 @@ try {
       realCustomerOrProviderRecordsChanged: false,
     },
   });
-  const goOutput = join(external, "go-bundle");
+  const fabricatedPassOutput = join(external, "fabricated-pass-bundle");
   run(process.execPath, [
     builder,
     "--round-one", join(external, "round-1"),
@@ -426,10 +552,85 @@ try {
     "--staging", staging,
     "--checkpoint-record", checkpointPath,
     "--production-attestation", productionPath,
-    "--output", goOutput,
+    "--output", fabricatedPassOutput,
   ]);
-  const goSnapshot = JSON.parse(readFileSync(join(goOutput, "dealflow-release.snapshot.json"), "utf8"));
-  if (goSnapshot.verdict !== "GO") throw new Error("Complete PASS production attestation did not produce GO");
+  const fabricatedPassSnapshot = JSON.parse(
+    readFileSync(join(fabricatedPassOutput, "dealflow-release.snapshot.json"), "utf8"),
+  );
+  if (
+    fabricatedPassSnapshot.verdict !== "NO_GO" ||
+    fabricatedPassSnapshot.production.releaseAuthorized !== false ||
+    fabricatedPassSnapshot.production.reportedReleaseAuthorized !== true ||
+    fabricatedPassSnapshot.production.trust.cryptographicallyProtectedTrustVerified !== false ||
+    fabricatedPassSnapshot.capabilities.some((row) => row.productionProof !== "NOT_PROVEN") ||
+    fabricatedPassSnapshot.capabilities.some((row) => row.reportedProductionProof !== "PASS") ||
+    fabricatedPassSnapshot.staging.providerMatrix.some((row) => row.productionAcceptance !== "NOT_PROVEN") ||
+    fabricatedPassSnapshot.staging.providerMatrix.some((row) => row.reportedProductionAcceptance !== "PASS") ||
+    fabricatedPassSnapshot.production.gates.some((row) => row.status !== "NOT_PROVEN") ||
+    fabricatedPassSnapshot.production.gates.some((row) => row.reportedStatus !== "PASS") ||
+    fabricatedPassSnapshot.confirmation.advertisingSpendIncurred !== "NOT_PROVEN" ||
+    fabricatedPassSnapshot.reportedConfirmation.advertisingSpendIncurred !== false
+  ) {
+    throw new Error("Caller-authored all-PASS production JSON was incorrectly trusted");
+  }
+  const fabricatedIssues = JSON.parse(
+    readFileSync(
+      join(fabricatedPassOutput, "02_FINAL_ISSUE_BLOCKER_LEDGER.json"),
+      "utf8",
+    ),
+  );
+  if (!fabricatedIssues.some((issue) => issue.scope === "PRODUCTION_TRUST" && issue.severity === "P0")) {
+    throw new Error("Untrusted production attestation lacks its P0 trust blocker");
+  }
+  assertChecksums(fabricatedPassOutput);
+
+  const secretCheckpointPath = join(external, "secret-checkpoint.json");
+  write(secretCheckpointPath, {
+    ...JSON.parse(readFileSync(checkpointPath, "utf8")),
+    extra: "Authorization: Bearer synthetic-but-secret-shaped-token-123456",
+  });
+  run(process.execPath, [builder, "--round-one", join(external, "round-1"), "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", secretCheckpointPath, "--output", join(external, "must-not-exist-secret-checkpoint")], {
+    expectFailure: true,
+    match: /Probable secret rejected/,
+  });
+
+  const customerProductionPath = join(external, "customer-production.json");
+  write(customerProductionPath, {
+    ...JSON.parse(readFileSync(productionPath, "utf8")),
+    customerEmail: "real.person@private-domain.com",
+  });
+  run(process.execPath, [builder, "--round-one", join(external, "round-1"), "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--production-attestation", customerProductionPath, "--output", join(external, "must-not-exist-customer-production")], {
+    expectFailure: true,
+    match: /Probable customer data rejected/,
+  });
+
+  const protectedProductionPath = join(external, "protected-production.json");
+  write(protectedProductionPath, {
+    ...JSON.parse(readFileSync(productionPath, "utf8")),
+    projectRef: "abcdefghijklmnopqrst",
+  });
+  run(process.execPath, [builder, "--round-one", join(external, "round-1"), "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--production-attestation", protectedProductionPath, "--output", join(external, "must-not-exist-protected-production")], {
+    expectFailure: true,
+    match: /Full protected identifier rejected/,
+  });
+
+  const incompleteGateStaging = join(external, "incomplete-gate-staging");
+  cpSync(staging, incompleteGateStaging, { recursive: true });
+  rmSync(join(incompleteGateStaging, "evidence-manifest.json"));
+  rmSync(join(incompleteGateStaging, "SHA256SUMS"));
+  const incompleteGateSummaryPath = join(incompleteGateStaging, "FINAL_SUMMARY.json");
+  const incompleteGateSummary = JSON.parse(readFileSync(incompleteGateSummaryPath, "utf8"));
+  delete incompleteGateSummary.productionGateMatrix.liveMetaReportingReconciliation;
+  write(incompleteGateSummaryPath, incompleteGateSummary);
+  const incompleteGateMatrixPath = join(incompleteGateStaging, "production-gate-matrix.json");
+  const incompleteGateMatrix = JSON.parse(readFileSync(incompleteGateMatrixPath, "utf8"));
+  delete incompleteGateMatrix.productionGateMatrix.liveMetaReportingReconciliation;
+  write(incompleteGateMatrixPath, incompleteGateMatrix);
+  sealStaging(incompleteGateStaging);
+  run(process.execPath, [builder, "--round-one", join(external, "round-1"), "--round-two", join(external, "round-2"), "--staging", incompleteGateStaging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-incomplete-gates")], {
+    expectFailure: true,
+    match: /lacks current runner gate liveMetaReportingReconciliation/,
+  });
 
   const tamperedPortfolioRound = join(external, "tampered-portfolio-round");
   cpSync(join(external, "round-1"), tamperedPortfolioRound, { recursive: true });
@@ -511,7 +712,7 @@ try {
     match: /symlink/,
   });
 
-  process.stdout.write("current release evidence builder contract: PASS (NO_GO/GO classification, exact identity and schema binding, recursive sanitized proof copy, complete matrices, private modes, manifest/checksums, and fail-closed drift/unhashed/secret/customer/protected-ref/empty/symlink tests)\n");
+  process.stdout.write("current release evidence builder contract: PASS (fail-closed production trust, current runner-shaped gates and blockers, fresh/resumed/forward migration modes, exact identity and schema binding, recursive sanitized proof copy, complete matrices, private modes, manifest/checksums, and adversarial drift/unhashed/secret/customer/protected-ref/empty/symlink tests)\n");
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
