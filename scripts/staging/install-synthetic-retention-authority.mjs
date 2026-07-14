@@ -15,6 +15,8 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg || process.argv.length !== 6) {
   throw new Error(
@@ -206,6 +208,10 @@ function assertExternalFile(path, label) {
 function readRound(path, expectedRound, identity, migrations) {
   assertExternalFile(path, `Verification round ${expectedRound}`);
   const value = JSON.parse(readFileSync(path, "utf8"));
+  assertExactFinalVerificationSummaryPortfolio(
+    value,
+    `Verification round ${expectedRound} portfolio`,
+  );
   if (
     value.schemaVersion !== "dealflow.final-verification.v3" ||
     String(value.round) !== expectedRound ||
@@ -235,7 +241,6 @@ function readRound(path, expectedRound, identity, migrations) {
         record.status !== "passed" ||
         record.exitCode !== 0 ||
         record.postCommandRepositoryInvariant !== "passed" ||
-        record.evidenceQualification !== "exact_local_command" ||
         record.safeEnvironmentProfile !== "provider_credentials_and_application_secrets_omitted" ||
         record.workingDirectory !== expectedRepo ||
         record.headCommit !== identity.headCommit ||
@@ -520,12 +525,13 @@ begin
     or has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'TRUNCATE')
     or has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'REFERENCES')
     or has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'TRIGGER')
+    or has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'MAINTAIN')
     or has_any_column_privilege('service_role', 'public.account_deletion_retention_configuration', 'INSERT,UPDATE,REFERENCES') then
     raise exception using errcode='42501', message='dealflow_retention_acl_not_hardened';
   end if;
   foreach api_role in array array['anon','authenticated'] loop
     foreach forbidden_privilege in array array[
-      'SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'
+      'SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'
     ] loop
       if has_table_privilege(
         api_role,
@@ -675,11 +681,12 @@ select json_build_object(
   'serviceRoleTruncate', has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'TRUNCATE'),
   'serviceRoleReferences', has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'REFERENCES'),
   'serviceRoleTrigger', has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'TRIGGER'),
+  'serviceRoleMaintain', has_table_privilege('service_role', 'public.account_deletion_retention_configuration', 'MAINTAIN'),
   'serviceRoleColumnWritePrivilege', has_any_column_privilege('service_role', 'public.account_deletion_retention_configuration', 'INSERT,UPDATE,REFERENCES'),
   'anonAnyPrivilege', has_any_column_privilege('anon', 'public.account_deletion_retention_configuration', 'SELECT,INSERT,UPDATE,REFERENCES')
-    or has_table_privilege('anon', 'public.account_deletion_retention_configuration', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+    or has_table_privilege('anon', 'public.account_deletion_retention_configuration', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'),
   'authenticatedAnyPrivilege', has_any_column_privilege('authenticated', 'public.account_deletion_retention_configuration', 'SELECT,INSERT,UPDATE,REFERENCES')
-    or has_table_privilege('authenticated', 'public.account_deletion_retention_configuration', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+    or has_table_privilege('authenticated', 'public.account_deletion_retention_configuration', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'),
   'publicAclPresent', exists (
     select 1 from pg_class class
     join pg_namespace namespace on namespace.oid=class.relnamespace
@@ -821,6 +828,7 @@ try {
     databaseResult.serviceRoleTruncate !== false ||
     databaseResult.serviceRoleReferences !== false ||
     databaseResult.serviceRoleTrigger !== false ||
+    databaseResult.serviceRoleMaintain !== false ||
     databaseResult.serviceRoleColumnWritePrivilege !== false ||
     databaseResult.anonAnyPrivilege !== false ||
     databaseResult.authenticatedAnyPrivilege !== false ||
@@ -891,6 +899,7 @@ const proof = {
     truncate: false,
     references: false,
     trigger: false,
+    maintain: false,
   },
   serviceRoleSelectOnly: true,
   serviceRoleColumnWritePrivilegesPresent: false,

@@ -20,6 +20,8 @@ import {
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 
+import { assertExactFinalVerificationSummaryPortfolio } from "./lib/final-verification-command-contract.mjs";
+
 const ALLOWED_STATUSES = new Set([
   "PASS",
   "FAILED",
@@ -342,6 +344,10 @@ function assertMigrations(expected, actual, label) {
 function validateRound(directory, expectedRound, identity, migrations) {
   const summaryPath = join(directory, "verification-summary.json");
   const summary = json(summaryPath, `verification round ${expectedRound} summary`);
+  assertExactFinalVerificationSummaryPortfolio(
+    summary,
+    `Verification round ${expectedRound} release-evidence portfolio`,
+  );
   if (summary.schemaVersion !== REQUIRED_FINAL_VERIFICATION_SCHEMA || String(summary.round) !== expectedRound) {
     fail(`Verification round ${expectedRound} has the wrong schema or round identity`);
   }

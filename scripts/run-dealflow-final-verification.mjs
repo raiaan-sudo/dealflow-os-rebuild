@@ -6,6 +6,11 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+import {
+  assertExactFinalVerificationCommandPortfolio,
+  finalVerificationEvidenceQualification,
+  formatFinalVerificationCommandTuple,
+} from "./lib/final-verification-command-contract.mjs";
 import { requireFinalVerificationNativeEnvironment } from "./lib/final-verification-environment.mjs";
 
 const root = process.cwd();
@@ -153,6 +158,11 @@ const commands = [
   ["npm", ["run", "test:sms-receipts"]],
   ["node", ["scripts/test-lead-tracking-health.mjs"]],
 ];
+
+const commandPortfolio = assertExactFinalVerificationCommandPortfolio(
+  commands.map(formatFinalVerificationCommandTuple),
+  "Tracked final-verification runner portfolio",
+);
 
 const environmentOnlyDeferrals = Object.freeze([
   {
@@ -491,12 +501,7 @@ for (let index = 0; index < commands.length; index += 1) {
     durationMs: Date.now() - startedMs,
     exitCode,
     status: exitCode === 0 ? "passed" : "failed",
-    evidenceQualification:
-      command === "npm run test:e2e:safe"
-        ? "local_public_pass_authenticated_deferred"
-        : command === "npm run schema:check"
-          ? "local_migration_inventory_only_remote_schema_deferred"
-          : "exact_local_command",
+    evidenceQualification: finalVerificationEvidenceQualification(command),
     postCommandRepositoryInvariant: invariantError ? "failed" : "passed",
     log: logName,
   });
@@ -539,6 +544,7 @@ const summary = {
     ? sanitize(invariantFailure.message)
     : null,
   plannedCommandCount: commands.length,
+  commandPortfolioSha256: commandPortfolio.commandPortfolioSha256,
   startedAt: records[0]?.startedAt ?? new Date().toISOString(),
   completedAt: records.at(-1)?.completedAt ?? new Date().toISOString(),
   commandCount: records.length,

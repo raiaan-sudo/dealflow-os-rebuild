@@ -18,6 +18,12 @@ import { dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 
+import {
+  FINAL_VERIFICATION_COMMAND_PORTFOLIO,
+  FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+  finalVerificationEvidenceQualification,
+} from "./lib/final-verification-command-contract.mjs";
+
 const builder = resolve("scripts/build-current-release-evidence.mjs");
 const root = mkdtempSync(join(tmpdir(), "dealflow-current-evidence-contract-"));
 const repo = join(root, "repo");
@@ -151,7 +157,23 @@ try {
     dependencyLockSha256: sha256(readFileSync(join(repo, "package-lock.json"))),
   };
   const migrations = migrationIdentity();
-  const records = [{ command: "fixture", status: "passed", exitCode: 0, postCommandRepositoryInvariant: "passed" }];
+  const records = FINAL_VERIFICATION_COMMAND_PORTFOLIO.map((command, index) => ({
+    command,
+    status: "passed",
+    exitCode: 0,
+    evidenceQualification: finalVerificationEvidenceQualification(command),
+    postCommandRepositoryInvariant: "passed",
+    safeEnvironmentProfile: "provider_credentials_and_application_secrets_omitted",
+    workingDirectory: repo,
+    headCommit: identity.commit,
+    headTree: identity.tree,
+    trackedWorktreeSha256: identity.trackedWorktreeSha256,
+    trackedFileCount: identity.trackedFileCount,
+    dependencyLockSha256: identity.dependencyLockSha256,
+    migrationCount: migrations.migrationCount,
+    migrationPortfolioSha256: migrations.migrationPortfolioSha256,
+    log: `${String(index + 1).padStart(2, "0")}-fixture.log`,
+  }));
   const roundSummarySha256 = {};
   for (const round of ["1", "2"]) {
     write(join(external, `round-${round}`, "verification-summary.json"), {
@@ -165,9 +187,10 @@ try {
       dependencyLockSha256: identity.dependencyLockSha256,
       ...migrations,
       repositoryInvariant: "passed",
-      plannedCommandCount: 1,
-      commandCount: 1,
-      passedCount: 1,
+      plannedCommandCount: records.length,
+      commandCount: records.length,
+      passedCount: records.length,
+      commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
       failedCount: 0,
       blockedCount: 3,
       environmentOnlyDeferredCount: 3,
@@ -405,10 +428,32 @@ try {
   const goSnapshot = JSON.parse(readFileSync(join(goOutput, "dealflow-release.snapshot.json"), "utf8"));
   if (goSnapshot.verdict !== "GO") throw new Error("Complete PASS production attestation did not produce GO");
 
+  const tamperedPortfolioRound = join(external, "tampered-portfolio-round");
+  cpSync(join(external, "round-1"), tamperedPortfolioRound, { recursive: true });
+  const tamperedPortfolio = JSON.parse(
+    readFileSync(join(tamperedPortfolioRound, "verification-summary.json"), "utf8"),
+  );
+  [tamperedPortfolio.records[4], tamperedPortfolio.records[5]] = [
+    tamperedPortfolio.records[5],
+    tamperedPortfolio.records[4],
+  ];
+  writeFileSync(
+    join(tamperedPortfolioRound, "verification-summary.json"),
+    `${JSON.stringify(tamperedPortfolio, null, 2)}\n`,
+  );
+  run(process.execPath, [builder, "--round-one", tamperedPortfolioRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-command-portfolio")], {
+    expectFailure: true,
+    match: /does not match the exact final-verification command contract/,
+  });
+
   const mismatchRound = join(external, "mismatch-round");
   cpSync(join(external, "round-1"), mismatchRound, { recursive: true });
   const mismatch = JSON.parse(readFileSync(join(mismatchRound, "verification-summary.json"), "utf8"));
   mismatch.headTree = "0".repeat(40);
+  mismatch.records = mismatch.records.map((record) => ({
+    ...record,
+    headTree: mismatch.headTree,
+  }));
   writeFileSync(join(mismatchRound, "verification-summary.json"), `${JSON.stringify(mismatch, null, 2)}\n`);
   run(process.execPath, [builder, "--round-one", mismatchRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-identity")], {
     expectFailure: true,

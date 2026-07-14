@@ -104,10 +104,17 @@ requireMarker(/expectedPriorFinalMigration[\s\S]+20260713027000_add_ghl_location
 requireMarker(/requiredFinalMigration[\s\S]+20260713028000_harden_account_deletion_retention_authority\.sql/, "the final migration 103 pin");
 requireMarker(/Two distinct final-verification summaries are required/, "two distinct verification rounds");
 requireMarker(/summary\.schemaVersion !== "dealflow\.final-verification\.v3"/, "verification summary schema binding");
+requireMarker(/final-verification-command-contract\.mjs/, "shared exact command-portfolio contract");
+requireMarker(
+  /assertExactFinalVerificationSummaryPortfolio\([\s\S]+summary,[\s\S]+`Verification round \$\{expectedRound\} portfolio`/,
+  "exact ordered command-portfolio validation",
+);
 requireMarker(/NO_GO_AUTHENTICATED_PROOF_DEFERRED/, "hosted-only local-gate status binding");
 requireMarker(/expectedHostedVerificationDeferrals/, "hosted-only deferral allowlist");
 requireMarker(/summary\.blockedCount !== expectedHostedVerificationDeferrals\.length/, "exact hosted blocker count");
 requireMarker(/item\.status !== "authenticated_deferred"/, "authenticated deferral status binding");
+requireMarker(/record\.exitCode !== 0/, "zero command-exit receipt binding");
+requireMarker(/record\.workingDirectory !== expectedRepo/, "exact release working-directory binding");
 for (const deferredCommand of [
   "npm run rls:cross-tenant",
   "npm run rls:fixture-smoke",
@@ -177,6 +184,26 @@ requireMarker(/Buffer\.concat\(\[password, Buffer\.from\("\\n"\), sqlInput\]\)/,
 requireMarker(/spawnSync\(command, \["--password", \.\.\.args\]/, "forced PostgreSQL password prompt");
 requireMarker(/password\.fill\(0\)/, "password-buffer zeroing");
 requireMarker(/inputBuffer\.fill\(0\)/, "combined-input-buffer zeroing");
+
+const verificationReaderStart = source.indexOf("function readPassingVerificationSummary(");
+const verificationReaderEnd = source.indexOf("\nfunction assertOutsideRelease", verificationReaderStart);
+const verificationReaderSource = source.slice(verificationReaderStart, verificationReaderEnd);
+const verificationRoundsIndex = source.indexOf(
+  "const verificationRounds = roundSummaryPaths.map(",
+);
+const evidencePreparationIndex = source.indexOf("prepareEvidenceDirectory();");
+const projectAuthorityIndex = source.indexOf("const projectRecordStat = lstatSync(projectRecordPath)");
+assert.match(
+  verificationReaderSource,
+  /assertExactFinalVerificationSummaryPortfolio\([\s\S]+summary,[\s\S]+`Verification round \$\{expectedRound\} portfolio`/,
+  "the executed migration round reader must enforce the shared exact portfolio",
+);
+assert.ok(
+  verificationRoundsIndex >= 0 &&
+    verificationRoundsIndex < evidencePreparationIndex &&
+    evidencePreparationIndex < projectAuthorityIndex,
+  "both exact verification rounds must fail closed before evidence setup or project/database authority access",
+);
 
 requireMarker(/function captureBrokerSourceIdentity\(\)/, "broker self-identity capture");
 requireMarker(/fileURLToPath\(import\.meta\.url\)/, "invoked-source identity");

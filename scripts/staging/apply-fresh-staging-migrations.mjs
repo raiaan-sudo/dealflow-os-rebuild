@@ -16,6 +16,8 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+
 import {
   classifyExactStagingAuthSurface,
   classifyPriorMigrationEvidence,
@@ -304,6 +306,10 @@ function readPassingVerificationSummary(path, expectedRound) {
     throw new Error(`Verification round ${expectedRound} summary must be a real file`);
   }
   const summary = JSON.parse(readFileSync(path, "utf8"));
+  assertExactFinalVerificationSummaryPortfolio(
+    summary,
+    `Verification round ${expectedRound} portfolio`,
+  );
   if (
     summary.schemaVersion !== "dealflow.final-verification.v3" ||
     String(summary.round) !== expectedRound ||
@@ -327,7 +333,11 @@ function readPassingVerificationSummary(path, expectedRound) {
     summary.records[0]?.command !== "npm ci --ignore-scripts --no-audit --no-fund" ||
     summary.records[1]?.command !== "npm ls --all" ||
     summary.records.some(
-      (record) => record.status !== "passed" || record.postCommandRepositoryInvariant !== "passed",
+      (record) =>
+        record.status !== "passed" ||
+        record.exitCode !== 0 ||
+        record.postCommandRepositoryInvariant !== "passed" ||
+        record.workingDirectory !== expectedRepo,
     )
   ) {
     throw new Error(`Verification round ${expectedRound} is not a complete passing exact-seal proof`);

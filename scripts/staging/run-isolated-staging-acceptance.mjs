@@ -15,6 +15,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
+import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+
 import {
   isExactCurrentResumeIdentity,
   isExactSafeStagingAuthSurfaceProof,
@@ -624,6 +626,7 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
     throw new Error(`${label} must be an existing regular file`);
   }
   const parsed = JSON.parse(readFileSync(path, "utf8"));
+  assertExactFinalVerificationSummaryPortfolio(parsed, `${label} portfolio`);
   if (
     parsed.schemaVersion !== "dealflow.final-verification.v3" ||
     String(parsed.round) !== expectedRound ||
@@ -652,7 +655,11 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
     parsed.records[0]?.command !== "npm ci --ignore-scripts --no-audit --no-fund" ||
     parsed.records[1]?.command !== "npm ls --all" ||
     parsed.records.some(
-      (record) => record.status !== "passed" || record.postCommandRepositoryInvariant !== "passed",
+      (record) =>
+        record.status !== "passed" ||
+        record.exitCode !== 0 ||
+        record.postCommandRepositoryInvariant !== "passed" ||
+        record.workingDirectory !== EXPECTED_REPO,
     )
   ) {
     throw new Error(`${label} is not an exact passing release-seal summary`);
@@ -2053,6 +2060,17 @@ async function main() {
     retentionAuthoritySummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     retentionAuthoritySummary.migrationPortfolioSha256 !==
       migrations.migrationPortfolioSha256 ||
+    JSON.stringify(retentionAuthoritySummary.serviceRolePrivileges) !==
+      JSON.stringify({
+        select: true,
+        insert: false,
+        update: false,
+        delete: false,
+        truncate: false,
+        references: false,
+        trigger: false,
+        maintain: false,
+      }) ||
     retentionAuthoritySummary.serviceRoleSelectOnly !== true ||
     retentionAuthoritySummary.serviceRoleColumnWritePrivilegesPresent !== false ||
     retentionAuthoritySummary.anonPrivilegesPresent !== false ||

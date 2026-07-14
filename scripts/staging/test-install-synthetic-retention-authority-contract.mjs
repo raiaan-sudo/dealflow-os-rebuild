@@ -32,6 +32,10 @@ assert.equal(
 assert.match(source, /expectedBranch = "codex\/dealflow-overnight-release-20260712"/);
 assert.match(source, /requires a clean release worktree/);
 assert.match(source, /dealflow\.final-verification\.v3/);
+assert.match(source, /final-verification-command-contract\.mjs/);
+assert.match(source, /assertExactFinalVerificationSummaryPortfolio/);
+assert.match(source, /`Verification round \$\{expectedRound\} portfolio`/);
+assert.doesNotMatch(source, /hasExactVerificationEvidenceQualification/);
 assert.match(source, /Two distinct exact verification rounds are required/);
 assert.match(source, /captureRoundEvidenceIdentity/);
 assert.match(source, /Verification evidence contains a symlink/);
@@ -67,6 +71,7 @@ for (const privilege of [
   "TRUNCATE",
   "REFERENCES",
   "TRIGGER",
+  "MAINTAIN",
 ]) {
   assert.match(
     source,
@@ -75,6 +80,7 @@ for (const privilege of [
 }
 assert.match(source, /has_any_column_privilege\('service_role'/);
 assert.match(source, /serviceRoleColumnWritePrivilege/);
+assert.match(source, /serviceRoleMaintain/);
 assert.match(source, /serviceRoleColumnWritePrivilegesPresent: false/);
 assert.match(source, /dealflow_retention_api_role_column_acl_present/);
 assert.match(source, /dealflow_retention_public_column_acl_present/);
@@ -103,5 +109,23 @@ assert.match(source, /publicAclPresent: false/);
 assert.match(source, /relationOwner: "postgres"/);
 assert.match(source, /RETENTION_AUTHORITY_FAILURE\.json/);
 assert.match(source, /SHA256SUMS/);
+
+const roundReaderStart = source.indexOf("function readRound(");
+const roundReaderEnd = source.indexOf("\nfunction captureRoundEvidenceIdentity", roundReaderStart);
+const roundReaderSource = source.slice(roundReaderStart, roundReaderEnd);
+const roundValidationIndex = source.indexOf("const rounds = roundPaths.map(");
+const evidencePreparationIndex = source.indexOf("prepareEvidenceDirectory();");
+const databaseExecutionIndex = source.indexOf("const databaseExecution = runOwnerTransaction(");
+assert.match(
+  roundReaderSource,
+  /assertExactFinalVerificationSummaryPortfolio\([\s\S]+value,[\s\S]+`Verification round \$\{expectedRound\} portfolio`/,
+  "the executed retention round reader must enforce the shared exact portfolio",
+);
+assert.ok(
+  roundValidationIndex >= 0 &&
+    roundValidationIndex < evidencePreparationIndex &&
+    evidencePreparationIndex < databaseExecutionIndex,
+  "both exact verification rounds must fail closed before evidence setup or the staging owner transaction",
+);
 
 process.stdout.write("staging synthetic retention authority owner-broker contract: PASS\n");

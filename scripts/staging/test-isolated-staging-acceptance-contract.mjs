@@ -177,6 +177,8 @@ assert.match(runner, /Tracked staging source must be a regular file/);
 assert.match(runner, /The exact \$\{EXPECTED_MIGRATION_COUNT\}-migration portfolio is required/);
 
 assert.match(runner, /dealflow\.final-verification\.v3/);
+assert.match(runner, /final-verification-command-contract\.mjs/);
+assert.match(runner, /assertExactFinalVerificationSummaryPortfolio\(parsed, `\$\{label\} portfolio`\)/);
 assert.match(runner, /NO_GO_AUTHENTICATED_PROOF_DEFERRED/);
 for (const deferred of [
   "npm run rls:cross-tenant",
@@ -187,7 +189,10 @@ for (const deferred of [
 }
 assert.match(runner, /parsed\.blockedCount !== EXPECTED_HOSTED_DEFERRALS\.length/);
 assert.match(runner, /item\.status !== "authenticated_deferred"/);
-assert.match(runner, /record\.status !== "passed" \|\| record\.postCommandRepositoryInvariant !== "passed"/);
+assert.match(runner, /record\.status !== "passed"/);
+assert.match(runner, /record\.exitCode !== 0/);
+assert.match(runner, /record\.postCommandRepositoryInvariant !== "passed"/);
+assert.match(runner, /record\.workingDirectory !== EXPECTED_REPO/);
 
 for (const control of [
   "ALLOW_BILLING_ADMIN_OVERRIDE",
@@ -245,6 +250,14 @@ assert.match(
 );
 
 const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
+const roundReaderStart = runner.indexOf("function readValidatedRound(");
+const roundReaderEnd = runner.indexOf("\nfunction childBaseEnvironment", roundReaderStart);
+const roundReaderSource = runner.slice(roundReaderStart, roundReaderEnd);
+const roundOneValidationIndex = runner.indexOf("const roundOne = readValidatedRound(");
+const roundTwoValidationIndex = runner.indexOf("const roundTwo = readValidatedRound(");
+const stagingEvidencePreparationIndex = runner.indexOf(
+  "prepareEvidenceDirectory(options.evidenceDir)",
+);
 const migrationIndex = runner.indexOf("const migrationBrokerArgs = [");
 const retentionAuthorityIndex = runner.indexOf(
   'failureContext.stage = "synthetic_retention_owner_authority"',
@@ -252,6 +265,18 @@ const retentionAuthorityIndex = runner.indexOf(
 const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
 const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl)");
 assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
+assert.match(
+  roundReaderSource,
+  /assertExactFinalVerificationSummaryPortfolio\(parsed, `\$\{label\} portfolio`\)/,
+  "the executed round reader must enforce the shared exact portfolio",
+);
+assert.ok(
+  releaseCapture < roundOneValidationIndex &&
+    roundOneValidationIndex < roundTwoValidationIndex &&
+    roundTwoValidationIndex < stagingEvidencePreparationIndex &&
+    stagingEvidencePreparationIndex < configureIndex,
+  "both exact ordered verification rounds must fail closed before evidence setup or hosted staging configuration",
+);
 assert.ok(migrationIndex > configureIndex, "migration apply must follow exact hosted config provisioning");
 assert.ok(
   retentionAuthorityIndex > migrationIndex,
@@ -268,6 +293,7 @@ assert.match(
   "the staging parent must forward the pinned PostgreSQL runtime to the migration broker",
 );
 assert.match(runner, /install-synthetic-retention-authority\.mjs/);
+assert.match(runner, /retentionAuthoritySummary\.serviceRolePrivileges/);
 assert.match(runner, /retention-authority-summary\.json/);
 assert.match(runner, /Synthetic retention authority evidence directory is not the exact sealed set/);
 assert.match(runner, /expectedRetentionChecksum/);
