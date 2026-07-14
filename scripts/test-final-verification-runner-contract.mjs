@@ -116,6 +116,11 @@ const exactSummary = {
     command,
     status: "authenticated_deferred",
   })),
+  localGateStatus: "NO_GO_AUTHENTICATED_PROOF_DEFERRED",
+  stagingAdvancementAuthorized: false,
+  exactSealCommandPortfolioStatus: "passed_with_mandatory_hosted_proof_blockers",
+  authenticatedBrowserStatus: "authenticated_deferred_to_isolated_hosted_staging",
+  remoteSchemaStatus: "authenticated_deferred_to_isolated_hosted_staging",
   records: exactRecords,
 };
 const exactSummarySnapshot = JSON.stringify(exactSummary);
@@ -217,6 +222,15 @@ expectPortfolioRejection((candidate) => {
 });
 expectPortfolioRejection((candidate) => {
   candidate.environmentOnlyDeferrals[0].status = "different_status";
+});
+expectPortfolioRejection((candidate) => {
+  candidate.localGateStatus = "GO";
+});
+expectPortfolioRejection((candidate) => {
+  candidate.stagingAdvancementAuthorized = true;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.exactSealCommandPortfolioStatus = "passed";
 });
 assert.throws(
   () => assertExactFinalVerificationSummaryPortfolio(null),

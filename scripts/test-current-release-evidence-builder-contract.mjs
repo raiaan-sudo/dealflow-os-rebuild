@@ -200,7 +200,10 @@ try {
         status: "authenticated_deferred",
       })),
       localGateStatus: "NO_GO_AUTHENTICATED_PROOF_DEFERRED",
+      stagingAdvancementAuthorized: false,
       exactSealCommandPortfolioStatus: "passed_with_mandatory_hosted_proof_blockers",
+      authenticatedBrowserStatus: "authenticated_deferred_to_isolated_hosted_staging",
+      remoteSchemaStatus: "authenticated_deferred_to_isolated_hosted_staging",
       records,
       uniqueRoundEvidence: round,
     });

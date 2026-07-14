@@ -193,6 +193,14 @@ export function assertExactFinalVerificationSummaryPortfolio(
     summary.environmentOnlyDeferrals.some(
       (item) => item?.status !== "authenticated_deferred",
     ) ||
+    summary.localGateStatus !== "NO_GO_AUTHENTICATED_PROOF_DEFERRED" ||
+    summary.stagingAdvancementAuthorized !== false ||
+    summary.exactSealCommandPortfolioStatus !==
+      "passed_with_mandatory_hosted_proof_blockers" ||
+    summary.authenticatedBrowserStatus !==
+      "authenticated_deferred_to_isolated_hosted_staging" ||
+    summary.remoteSchemaStatus !==
+      "authenticated_deferred_to_isolated_hosted_staging" ||
     !Array.isArray(summary.records) ||
     summary.records.length !== FINAL_VERIFICATION_COMMAND_COUNT
   ) {

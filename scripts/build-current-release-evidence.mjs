@@ -363,7 +363,7 @@ function validateRound(directory, expectedRound, identity, migrations) {
     !Array.isArray(summary.environmentOnlyDeferrals) ||
     summary.environmentOnlyDeferrals.length !== summary.blockedCount ||
     summary.exactSealCommandPortfolioStatus !== "passed_with_mandatory_hosted_proof_blockers" ||
-    !["NO_GO_AUTHENTICATED_PROOF_DEFERRED", "GO"].includes(summary.localGateStatus) ||
+    summary.localGateStatus !== "NO_GO_AUTHENTICATED_PROOF_DEFERRED" ||
     !Array.isArray(summary.records) ||
     summary.records.length !== summary.commandCount ||
     summary.records.some(
