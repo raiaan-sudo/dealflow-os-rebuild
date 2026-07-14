@@ -237,6 +237,7 @@ try {
   write(join(staging, "screenshots", "dashboard.png"), Buffer.from([137, 80, 78, 71, 1, 2, 3]));
   write(join(staging, "migration-proof", "staging-migration-summary.json"), {
     status: "PASS",
+    remoteMutationStarted: true,
     remoteMutationCompleted: true,
     headCommit: identity.commit,
     headTree: identity.tree,
@@ -295,6 +296,68 @@ try {
   assertChecksums(output);
   assertMode(output, 0o700);
   for (const record of inventory(output)) assertMode(record.absolute, 0o600);
+
+  const resumedStaging = join(external, "resumed-staging");
+  cpSync(staging, resumedStaging, { recursive: true });
+  rmSync(join(resumedStaging, "evidence-manifest.json"));
+  rmSync(join(resumedStaging, "SHA256SUMS"));
+  const priorApplication = {
+    manifestSha256: sha256("sealed prior atomic application manifest"),
+    migrationPortfolioSha256: migrations.migrationPortfolioSha256,
+    normalizedSchemaSha256: sha256("normalized staging schema"),
+    remoteMutationCompleted: true,
+  };
+  const resumedMigrationSummaryPath = join(
+    resumedStaging,
+    "migration-proof",
+    "staging-migration-summary.json",
+  );
+  const resumedMigrationSummary = JSON.parse(
+    readFileSync(resumedMigrationSummaryPath, "utf8"),
+  );
+  write(resumedMigrationSummaryPath, {
+    ...resumedMigrationSummary,
+    migrationMode: "VERIFY_EXISTING_EXACT",
+    verificationReadOnly: true,
+    remoteMutationStarted: false,
+    remoteMutationCompleted: false,
+    portfolioApplicationRemoteMutationCompleted: true,
+    remoteStateVerificationStatus: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+    priorApplication,
+  });
+  const resumedMigrationProofPath = join(
+    resumedStaging,
+    "migration-proof",
+    "staging-migration-proof.json",
+  );
+  const resumedMigrationProof = JSON.parse(readFileSync(resumedMigrationProofPath, "utf8"));
+  write(resumedMigrationProofPath, {
+    ...resumedMigrationProof,
+    migrationMode: "VERIFY_EXISTING_EXACT",
+    verificationReadOnly: true,
+    remoteMutationStarted: false,
+    remoteMutationCompleted: false,
+    portfolioApplicationRemoteMutationCompleted: true,
+    remoteStateVerification: { status: "EXACT_EXISTING_COMMITTED_PORTFOLIO" },
+    priorApplication,
+  });
+  sealStaging(resumedStaging);
+  const resumedOutput = join(external, "resumed-no-go-bundle");
+  run(process.execPath, [
+    builder,
+    "--round-one", join(external, "round-1"),
+    "--round-two", join(external, "round-2"),
+    "--staging", resumedStaging,
+    "--checkpoint-record", checkpointPath,
+    "--output", resumedOutput,
+  ]);
+  const resumedSnapshot = JSON.parse(
+    readFileSync(join(resumedOutput, "dealflow-release.snapshot.json"), "utf8"),
+  );
+  if (resumedSnapshot.verdict !== "NO_GO") {
+    throw new Error("Read-only exact existing migration verification was not accepted");
+  }
+  assertChecksums(resumedOutput);
 
   const productionPath = join(external, "production.json");
   write(productionPath, {

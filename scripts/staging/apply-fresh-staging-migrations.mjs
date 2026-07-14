@@ -16,11 +16,23 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const [repoArg, evidenceArg, roundOneArg, roundTwoArg] = process.argv.slice(2);
+const [repoArg, evidenceArg, roundOneArg, roundTwoArg, ...modeArgs] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg) {
   throw new Error(
-    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json>",
+    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir>]",
   );
+}
+let priorMigrationProofDir = null;
+if (modeArgs.length > 0) {
+  if (
+    modeArgs.length !== 2 ||
+    modeArgs[0] !== "--verify-existing-exact" ||
+    !modeArgs[1] ||
+    modeArgs[1].startsWith("--")
+  ) {
+    throw new Error("The only supported resume mode is --verify-existing-exact with one prior proof directory");
+  }
+  priorMigrationProofDir = resolve(modeArgs[1]);
 }
 
 const repo = resolve(repoArg);
@@ -35,6 +47,14 @@ const keychainAccount = "dealflow-staging-20260712";
 const expectedProjectFingerprint =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const expectedProjectSafeSuffix = "qibh";
+const expectedPriorApplicationCommit = "e776f38b5302dda525d51cf03e4668568e272a77";
+const expectedPriorApplicationTree = "0fcf11214ed3ae097003f737077cd7c67cdedfb7";
+const expectedPriorManifestSha256 =
+  "877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4";
+const expectedPriorProofSha256 =
+  "49670dbf4d4be8ab59d7a3778cbbe5e751c486bd2d59faed02f4ae0d44b23590";
+const expectedPriorSummarySha256 =
+  "d7e8bc08ef1d0cd12a03ec97b99eb979a9c9a738b709c35c59a215c7255b85c9";
 const exactMigrationCount = 102;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -505,6 +525,9 @@ const databaseEnv = {
   PGDATABASE: "postgres",
   PGSSLMODE: "require",
   PGPASSFILE: "/private/tmp/dealflow-staging-intentionally-absent-pgpass",
+  ...(priorMigrationProofDir
+    ? { PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=300000" }
+    : {}),
 };
 
 function readKeychainPasswordBuffer() {
@@ -782,6 +805,205 @@ function isExactCommittedPortfolioState(state) {
     state.storageObjectCount === 0;
 }
 
+function hasExactMigrationHistory(state) {
+  return state.historyTableExists === true &&
+    state.migrationHistoryCount === migrations.length &&
+    JSON.stringify(state.migrationHistoryVersions) ===
+      JSON.stringify(migrations.map((name) => name.slice(0, 14)));
+}
+
+function captureNormalizedSchemaDump() {
+  return runPostgresCommand(
+    pgDump,
+    [
+      "--schema-only",
+      "--no-owner",
+      "--no-comments",
+      "--no-security-labels",
+      "--no-publications",
+      "--no-subscriptions",
+      "--schema=public",
+      "--schema=private",
+    ],
+    { timeoutMs: 300_000, errorLabel: "Remote schema dump failed" },
+  )
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        !line.startsWith("\\restrict ") &&
+        !line.startsWith("\\unrestrict ") &&
+        !line.startsWith("-- Dumped from") &&
+        !line.startsWith("-- Dumped by"),
+    )
+    .join("\n")
+    .trim();
+}
+
+function loadAndValidatePriorMigrationProof() {
+  if (!priorMigrationProofDir) return null;
+  const directoryStat = lstatSync(priorMigrationProofDir);
+  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+    throw new Error("Prior migration proof must be a real directory");
+  }
+  assertOutsideRelease(priorMigrationProofDir, "Prior migration proof directory");
+  if (realpathSync(priorMigrationProofDir) === realpathSync(evidenceDir)) {
+    throw new Error("Prior and current migration evidence directories must be distinct");
+  }
+  const requiredNames = new Set([
+    "evidence-manifest.json",
+    "evidence-manifest.pre-mutation.json",
+    "staging-broker-preflight.json",
+    "staging-migration-proof.json",
+    "staging-migration-summary.json",
+    "staging-migration-summary.pre-mutation.json",
+    "staging-mutation-started.json",
+    "staging-mutation-status.json",
+    "staging-remote-read-started.json",
+  ]);
+  const actualNames = readdirSync(priorMigrationProofDir);
+  if (
+    actualNames.length !== requiredNames.size ||
+    actualNames.some((name) => !requiredNames.has(name))
+  ) {
+    throw new Error("Prior migration proof directory does not contain the exact sealed artifact set");
+  }
+  const readPriorArtifact = (name) => {
+    if (!requiredNames.has(name) || !/^[a-z0-9][a-z0-9._-]+\.json$/.test(name)) {
+      throw new Error("Prior migration proof contains an unsupported artifact name");
+    }
+    const path = join(priorMigrationProofDir, name);
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile() || (stat.mode & 0o077) !== 0) {
+      throw new Error("Prior migration proof artifacts must be real owner-only files");
+    }
+    const contents = readFileSync(path);
+    return { contents, parsed: JSON.parse(contents.toString("utf8")) };
+  };
+  const manifestArtifact = readPriorArtifact("evidence-manifest.json");
+  const manifest = manifestArtifact.parsed;
+  if (
+    manifest.schemaVersion !== "dealflow.staging-evidence-manifest.v1" ||
+    manifest.status !== "PASS" ||
+    manifest.remoteMutationCompleted !== true ||
+    !Array.isArray(manifest.artifacts) ||
+    manifest.artifacts.length !== requiredNames.size - 1
+  ) {
+    throw new Error("Prior migration proof manifest is not a successful atomic application seal");
+  }
+  const declared = new Set();
+  for (const record of manifest.artifacts) {
+    if (
+      !record ||
+      typeof record.path !== "string" ||
+      record.path === "evidence-manifest.json" ||
+      !requiredNames.has(record.path) ||
+      declared.has(record.path) ||
+      !/^[a-f0-9]{64}$/.test(record.sha256 ?? "") ||
+      !Number.isSafeInteger(record.bytes) ||
+      record.bytes <= 0
+    ) {
+      throw new Error("Prior migration proof manifest contains an invalid artifact record");
+    }
+    const artifact = readPriorArtifact(record.path);
+    if (artifact.contents.byteLength !== record.bytes || sha256(artifact.contents) !== record.sha256) {
+      throw new Error("Prior migration proof artifact does not match its sealed digest");
+    }
+    declared.add(record.path);
+  }
+  if (
+    [...requiredNames]
+      .filter((name) => name !== "evidence-manifest.json")
+      .some((name) => !declared.has(name))
+  ) {
+    throw new Error("Prior migration proof manifest does not seal every required artifact");
+  }
+  const proofArtifact = readPriorArtifact("staging-migration-proof.json");
+  const summaryArtifact = readPriorArtifact("staging-migration-summary.json");
+  const proof = proofArtifact.parsed;
+  const summary = summaryArtifact.parsed;
+  if (
+    sha256(manifestArtifact.contents) !== expectedPriorManifestSha256 ||
+    sha256(proofArtifact.contents) !== expectedPriorProofSha256 ||
+    sha256(summaryArtifact.contents) !== expectedPriorSummarySha256
+  ) {
+    throw new Error("Prior migration proof does not match the exact pinned application seal");
+  }
+  const expectedApplied = migrationIdentity.records.map((record) => ({
+    version: record.name.slice(0, 14),
+    file: record.name,
+    sha256: record.sha256,
+  }));
+  if (
+    proof.schemaVersion !== "dealflow.isolated-staging-migration-proof.v1" ||
+    proof.status !== "PASS" ||
+    summary.schemaVersion !== "dealflow.staging-migration-summary.v1" ||
+    summary.status !== "PASS" ||
+    summary.remoteMutationStarted !== true ||
+    summary.remoteMutationCompleted !== true ||
+    summary.singleOuterTransaction !== true ||
+    summary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
+    proof.singleOuterTransaction !== true ||
+    proof.migrationHistoryReceiptsInsideOuterTransaction !== true ||
+    proof.projectFingerprint !== expectedProjectFingerprint ||
+    summary.projectFingerprint !== expectedProjectFingerprint ||
+    proof.safeSuffix !== expectedProjectSafeSuffix ||
+    summary.safeSuffix !== expectedProjectSafeSuffix ||
+    proof.releaseBranch !== releaseIdentity.branch ||
+    summary.releaseBranch !== releaseIdentity.branch ||
+    proof.migrationCount !== migrationIdentity.migrationCount ||
+    summary.migrationCount !== migrationIdentity.migrationCount ||
+    proof.migrationHistoryCount !== migrationIdentity.migrationCount ||
+    summary.migrationHistoryCount !== migrationIdentity.migrationCount ||
+    proof.migrationPortfolioSha256 !== migrationIdentity.migrationPortfolioSha256 ||
+    summary.migrationPortfolioSha256 !== migrationIdentity.migrationPortfolioSha256 ||
+    proof.lastCommittedVersion !== requiredFinalMigration.slice(0, 14) ||
+    summary.lastCommittedVersion !== requiredFinalMigration.slice(0, 14) ||
+    proof.headCommit !== summary.headCommit ||
+    proof.headTree !== summary.headTree ||
+    proof.headCommit !== expectedPriorApplicationCommit ||
+    proof.headTree !== expectedPriorApplicationTree ||
+    proof.normalizedSchemaSha256 !== summary.normalizedSchemaSha256 ||
+    !/^[a-f0-9]{40}$/.test(proof.headCommit ?? "") ||
+    !/^[a-f0-9]{40}$/.test(proof.headTree ?? "") ||
+    !/^[a-f0-9]{64}$/.test(proof.normalizedSchemaSha256 ?? "") ||
+    proof.remoteStateVerification?.status !== "EXACT_COMMITTED_PORTFOLIO" ||
+    proof.remoteStateVerification?.exactCommittedPortfolioState !== true ||
+    !/^[a-f0-9]{64}$/.test(
+      proof.remoteStateVerification?.state?.structuralCatalogSha256 ?? "",
+    ) ||
+    JSON.stringify(proof.applied) !== JSON.stringify(expectedApplied)
+  ) {
+    throw new Error("Prior migration proof is not bound to the exact successful portfolio application");
+  }
+  const priorTree = git(
+    ["rev-parse", "--verify", `${proof.headCommit}^{tree}`],
+    "Unable to verify the prior application commit",
+  ).trim();
+  if (priorTree !== proof.headTree) {
+    throw new Error("Prior migration proof commit and tree do not match retained Git history");
+  }
+  git(
+    ["merge-base", "--is-ancestor", proof.headCommit, releaseIdentity.headCommit],
+    "Prior migration application is not an ancestor of the current exact seal",
+  );
+  return Object.freeze({
+    manifestSha256: sha256(manifestArtifact.contents),
+    proofSha256: sha256(proofArtifact.contents),
+    summarySha256: sha256(summaryArtifact.contents),
+    priorEvidenceDirectoryName: basename(priorMigrationProofDir),
+    priorEvidencePathSha256: sha256(realpathSync(priorMigrationProofDir)),
+    applicationCommit: proof.headCommit,
+    applicationTree: proof.headTree,
+    migrationPortfolioSha256: proof.migrationPortfolioSha256,
+    normalizedSchemaSha256: proof.normalizedSchemaSha256,
+    structuralCatalogSha256:
+      proof.remoteStateVerification.state.structuralCatalogSha256,
+    singleOuterTransaction: true,
+    migrationHistoryReceiptsInsideOuterTransaction: true,
+    remoteMutationCompleted: true,
+  });
+}
+
 // This portfolio is written and sealed before even the first remote read. The
 // immutable pre-mutation artifacts prove exactly which tracked broker could
 // later cross the database mutation boundary.
@@ -791,6 +1013,226 @@ const brokerEvidenceIdentity = {
   sha256: brokerSourceIdentity.sha256,
   bytes: brokerSourceIdentity.bytes,
 };
+
+if (priorMigrationProofDir) {
+  const priorApplication = loadAndValidatePriorMigrationProof();
+  const common = {
+    migrationMode: "VERIFY_EXISTING_EXACT",
+    verificationReadOnly: true,
+    remoteMutationStarted: false,
+    remoteMutationCompleted: false,
+    portfolioApplicationRemoteMutationCompleted: true,
+    broker: brokerEvidenceIdentity,
+    brokerSourceSha256: brokerSourceIdentity.sha256,
+    runtime: process.version,
+    expectedPostgresVersion: "17.6",
+    projectFingerprint: sha256(projectRef),
+    safeSuffix: projectRef.slice(-4),
+    releaseBranch: releaseIdentity.branch,
+    headCommit: releaseIdentity.headCommit,
+    headTree: releaseIdentity.headTree,
+    trackedWorktreeSha256: releaseIdentity.trackedWorktreeSha256,
+    trackedFileCount: releaseIdentity.trackedFileCount,
+    dependencyLockSha256,
+    postgresBinarySha256,
+    migrationCount: migrationIdentity.migrationCount,
+    migrationPortfolioSha256: migrationIdentity.migrationPortfolioSha256,
+    verificationRoundSummarySha256,
+    priorApplication,
+  };
+  const preflightRecord = writeJsonEvidence("staging-broker-preflight.json", {
+    schemaVersion: "dealflow.staging-broker-preflight.v1",
+    status: "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
+    remoteReadStarted: false,
+    ...common,
+  });
+  const preflightSummaryRecord = writeJsonEvidence(
+    "staging-migration-summary.pre-mutation.json",
+    {
+      schemaVersion: "dealflow.staging-migration-summary.v1",
+      status: "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
+      remoteReadStarted: false,
+      ...common,
+    },
+  );
+  const preflightManifestRecord = writeJsonEvidence(
+    "evidence-manifest.pre-mutation.json",
+    {
+      schemaVersion: "dealflow.staging-evidence-manifest.v1",
+      status: "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
+      remoteMutationStarted: false,
+      remoteMutationCompleted: false,
+      broker: brokerEvidenceIdentity,
+      brokerSourceSha256: brokerSourceIdentity.sha256,
+      artifacts: [preflightRecord, preflightSummaryRecord],
+    },
+  );
+  assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
+  const readStartedRecord = writeJsonEvidence("staging-remote-read-started.json", {
+    schemaVersion: "dealflow.staging-remote-read-status.v1",
+    status: "REMOTE_READ_STARTED_EXISTING_EXACT_VERIFICATION",
+    remoteReadStarted: true,
+    ...common,
+  });
+  try {
+    const existingServerVersion = sql(
+      "show server_version;",
+      "Existing staging PostgreSQL version check",
+    );
+    if (!existingServerVersion.startsWith("17.6")) {
+      throw new Error("The existing staging PostgreSQL version does not match exact 17.6");
+    }
+    const existingState = captureRemoteStructuralState("Existing staging exact verification");
+    if (!hasExactMigrationHistory(existingState)) {
+      throw new Error("Existing staging migration history does not match the exact portfolio");
+    }
+    if (existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256) {
+      throw new Error("Existing staging structural catalog drifted from the sealed application proof");
+    }
+    const existingDump = captureNormalizedSchemaDump();
+    const existingSchemaSha256 = sha256(existingDump);
+    if (existingSchemaSha256 !== priorApplication.normalizedSchemaSha256) {
+      throw new Error("Existing staging normalized schema drifted from the sealed application proof");
+    }
+    const forcedRlsCount = Number(sql(
+      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and c.relrowsecurity and c.relforcerowsecurity;",
+      "Count existing staging forced-RLS tables",
+    ));
+    const activationControls = sql(
+      "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
+      "Verify existing closed Meta activation runtime controls",
+    ).split("\n").filter(Boolean);
+    const ghlControls = sql(
+      "select environment || ':' || provisioning_writes_enabled::text || ':' || lead_writes_enabled::text || ':' || lifecycle_webhook_enabled::text from public.ghl_runtime_controls order by environment;",
+      "Verify existing closed GHL runtime controls",
+    ).split("\n").filter(Boolean);
+    if (
+      activationControls.some((row) => !row.endsWith(":false")) ||
+      activationControls.length < 2
+    ) {
+      throw new Error("Meta activation runtime controls are not default closed in existing staging");
+    }
+    if (
+      ghlControls.length !== 3 ||
+      ghlControls.some((row) => !row.endsWith(":false:false:false"))
+    ) {
+      throw new Error("GHL provider runtime controls are not default closed in existing staging");
+    }
+    assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
+    const applied = migrationSources.map(({ file, version, body }) => ({
+      version,
+      file,
+      sha256: sha256(body),
+    }));
+    const result = {
+      schemaVersion: "dealflow.isolated-staging-migration-proof.v1",
+      status: "PASS",
+      ...common,
+      serverVersion: existingServerVersion,
+      migrationHistoryCount: existingState.migrationHistoryCount,
+      publicTableCount: existingState.publicTableCount,
+      forcedRlsCount,
+      activationRuntimeControlsDefaultClosed: true,
+      ghlRuntimeControlsDefaultClosed: true,
+      authUserCountAtVerification: existingState.authUserCount,
+      storageObjectCountAtVerification: existingState.storageObjectCount,
+      normalizedSchemaSha256: existingSchemaSha256,
+      normalizedSchemaBytes: Buffer.byteLength(existingDump),
+      singleOuterTransaction: priorApplication.singleOuterTransaction,
+      migrationHistoryReceiptsInsideOuterTransaction:
+        priorApplication.migrationHistoryReceiptsInsideOuterTransaction,
+      lastAttemptedVersion: requiredFinalMigration.slice(0, 14),
+      lastAppliedVersion: requiredFinalMigration.slice(0, 14),
+      lastCommittedVersion: requiredFinalMigration.slice(0, 14),
+      remoteStateVerification: {
+        status: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+        readOnly: true,
+        exactMigrationHistory: true,
+        exactStructuralCatalog: true,
+        exactNormalizedSchema: true,
+        state: existingState,
+      },
+      applied,
+    };
+    const proofRecord = writeJsonEvidence("staging-migration-proof.json", result);
+    const summaryRecord = writeJsonEvidence("staging-migration-summary.json", {
+      schemaVersion: "dealflow.staging-migration-summary.v1",
+      status: "PASS",
+      failureCode: null,
+      ...common,
+      serverVersion: existingServerVersion,
+      migrationHistoryCount: existingState.migrationHistoryCount,
+      normalizedSchemaSha256: existingSchemaSha256,
+      singleOuterTransaction: priorApplication.singleOuterTransaction,
+      migrationHistoryReceiptsInsideOuterTransaction:
+        priorApplication.migrationHistoryReceiptsInsideOuterTransaction,
+      lastAttemptedVersion: requiredFinalMigration.slice(0, 14),
+      lastAppliedVersion: requiredFinalMigration.slice(0, 14),
+      lastCommittedVersion: requiredFinalMigration.slice(0, 14),
+      remoteStateVerificationStatus: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+    });
+    const manifestRecord = writeJsonEvidence("evidence-manifest.json", {
+      schemaVersion: "dealflow.staging-evidence-manifest.v1",
+      status: "PASS",
+      migrationMode: "VERIFY_EXISTING_EXACT",
+      verificationReadOnly: true,
+      remoteMutationStarted: false,
+      remoteMutationCompleted: false,
+      portfolioApplicationRemoteMutationCompleted: true,
+      broker: brokerEvidenceIdentity,
+      brokerSourceSha256: brokerSourceIdentity.sha256,
+      priorApplication,
+      artifacts: [
+        preflightRecord,
+        preflightSummaryRecord,
+        preflightManifestRecord,
+        readStartedRecord,
+        proofRecord,
+        summaryRecord,
+      ],
+    });
+    process.stdout.write(
+      `Existing isolated staging migration portfolio PASS: ${migrations.length} migrations, PostgreSQL ${existingServerVersion}, schema ${existingSchemaSha256}, read-only verification, manifest ${manifestRecord.sha256}\n`,
+    );
+    process.exit(0);
+  } catch {
+    const failureRecord = writeJsonEvidence("staging-migration-failure.json", {
+      schemaVersion: "dealflow.isolated-staging-migration-failure.v1",
+      status: "FAILED_EXISTING_EXACT_VERIFICATION",
+      failureCode: "existing_exact_portfolio_not_proven",
+      ...common,
+    });
+    const failureSummaryRecord = writeJsonEvidence("staging-migration-summary.json", {
+      schemaVersion: "dealflow.staging-migration-summary.v1",
+      status: "FAILED_EXISTING_EXACT_VERIFICATION",
+      failureCode: "existing_exact_portfolio_not_proven",
+      ...common,
+    });
+    const failureManifestRecord = writeJsonEvidence("evidence-manifest.json", {
+      schemaVersion: "dealflow.staging-evidence-manifest.v1",
+      status: "FAILED_EXISTING_EXACT_VERIFICATION",
+      migrationMode: "VERIFY_EXISTING_EXACT",
+      verificationReadOnly: true,
+      remoteMutationStarted: false,
+      remoteMutationCompleted: false,
+      portfolioApplicationRemoteMutationCompleted: true,
+      broker: brokerEvidenceIdentity,
+      brokerSourceSha256: brokerSourceIdentity.sha256,
+      priorApplication,
+      artifacts: [
+        preflightRecord,
+        preflightSummaryRecord,
+        preflightManifestRecord,
+        readStartedRecord,
+        failureRecord,
+        failureSummaryRecord,
+      ],
+    });
+    throw new Error(
+      `Existing isolated staging migration verification failed without mutation; evidence manifest ${failureManifestRecord.sha256}`,
+    );
+  }
+}
 const preMutationEvidence = {
   schemaVersion: "dealflow.staging-broker-preflight.v1",
   status: "PREPARED",
@@ -1055,30 +1497,7 @@ try {
     throw new Error("GHL provider runtime controls are not default closed in staging");
   }
 
-  const dump = runPostgresCommand(
-    pgDump,
-    [
-      "--schema-only",
-      "--no-owner",
-      "--no-comments",
-      "--no-security-labels",
-      "--no-publications",
-      "--no-subscriptions",
-      "--schema=public",
-      "--schema=private",
-    ],
-    { timeoutMs: 300_000, errorLabel: "Remote schema dump failed" },
-  )
-    .split(/\r?\n/)
-    .filter(
-      (line) =>
-        !line.startsWith("\\restrict ") &&
-        !line.startsWith("\\unrestrict ") &&
-        !line.startsWith("-- Dumped from") &&
-        !line.startsWith("-- Dumped by"),
-    )
-    .join("\n")
-    .trim();
+  const dump = captureNormalizedSchemaDump();
   successfulVerification = {
     postCommitState,
     forcedRlsCount,

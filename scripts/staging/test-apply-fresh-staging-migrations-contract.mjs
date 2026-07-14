@@ -22,6 +22,21 @@ requireMarker(
   "the isolated staging project fingerprint",
 );
 requireMarker(/const expectedProjectSafeSuffix = "qibh"/, "the qibh safe suffix");
+requireMarker(/--verify-existing-exact/, "explicit existing-portfolio verification mode");
+requireMarker(/PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=300000"/, "database-enforced read-only resume mode");
+requireMarker(/function loadAndValidatePriorMigrationProof\(\)/, "prior atomic proof validator");
+requireMarker(/Prior migration proof artifact does not match its sealed digest/, "prior artifact digest verification");
+requireMarker(/Prior migration proof does not match the exact pinned application seal/, "exact prior seal pin");
+requireMarker(/e776f38b5302dda525d51cf03e4668568e272a77/, "prior application commit pin");
+requireMarker(/0fcf11214ed3ae097003f737077cd7c67cdedfb7/, "prior application tree pin");
+requireMarker(/877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4/, "prior manifest digest pin");
+requireMarker(/merge-base", "--is-ancestor"/, "prior application ancestry binding");
+requireMarker(/migrationMode: "VERIFY_EXISTING_EXACT"/, "truthful existing-portfolio mode evidence");
+requireMarker(/portfolioApplicationRemoteMutationCompleted: true/, "separate historical application truth");
+requireMarker(/remoteMutationStarted: false/, "read-only resume mutation-start truth");
+requireMarker(/remoteMutationCompleted: false/, "read-only resume mutation-completion truth");
+requireMarker(/EXACT_EXISTING_COMMITTED_PORTFOLIO/, "exact existing portfolio result");
+requireMarker(/captureNormalizedSchemaDump/, "normalized schema comparison");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
 requireMarker(/requiredFinalMigration[\s\S]+20260713027000_add_ghl_location_display_name_finalization\.sql/, "the final migration pin");
 requireMarker(/Two distinct final-verification summaries are required/, "two distinct verification rounds");
@@ -91,28 +106,37 @@ assert.ok(
 const selfBindingPosition = source.indexOf(
   "const brokerSourceIdentity = captureBrokerSourceIdentity();",
 );
+const freshBlockPosition = source.indexOf("const preMutationEvidence = {");
 const preflightEvidencePosition = source.indexOf(
   '"staging-broker-preflight.json"',
+  freshBlockPosition,
 );
 const preflightSummaryPosition = source.indexOf(
   '"staging-migration-summary.pre-mutation.json"',
+  freshBlockPosition,
 );
 const preflightManifestPosition = source.indexOf(
   '"evidence-manifest.pre-mutation.json"',
+  freshBlockPosition,
 );
 const remoteReadStartedPosition = source.indexOf(
   '"staging-remote-read-started.json"',
+  freshBlockPosition,
 );
 const firstRemoteReadPosition = source.indexOf(
   'serverVersion = sql("show server_version;"',
 );
-const mutationStartedPosition = source.indexOf('"staging-mutation-started.json"');
+const mutationStartedPosition = source.indexOf(
+  '"staging-mutation-started.json"',
+  freshBlockPosition,
+);
 const firstRemoteMutationPosition = source.indexOf(
   "transactionExecution = executeAtomicMigrationTransaction();",
 );
 
 for (const [label, position] of Object.entries({
   selfBindingPosition,
+  freshBlockPosition,
   preflightEvidencePosition,
   preflightSummaryPosition,
   preflightManifestPosition,
@@ -182,6 +206,22 @@ assert.doesNotMatch(source, /PGPASSFILE=<\(/, "Broker must not use libpq-incompa
 assert.doesNotMatch(source, /migrations\.length < 102/, "Broker must not accept a partial migration portfolio");
 assert.doesNotMatch(source, /dealflow-staging-tools-20260713/, "Tracked broker must not depend on the scratch source directory");
 
+const resumeStart = source.indexOf("if (priorMigrationProofDir) {");
+const freshStart = source.indexOf("const preMutationEvidence = {");
+assert.ok(resumeStart >= 0 && freshStart > resumeStart, "Resume verifier must be a discrete pre-fresh branch");
+const resumeBranch = source.slice(resumeStart, freshStart);
+assert.doesNotMatch(
+  resumeBranch,
+  /executeAtomicMigrationTransaction\s*\(/,
+  "Existing-portfolio verification must never invoke the migration transaction",
+);
+assert.doesNotMatch(
+  resumeBranch,
+  /\bsql\s*\(\s*[`"']\s*(?:insert|update|delete|create|alter|drop|truncate|grant|revoke)\b/i,
+  "Existing-portfolio verification must contain no database mutation statement",
+);
+assert.match(resumeBranch, /process\.exit\(0\)/, "Successful resume verification must not fall through into fresh apply");
+
 let forcedFailureProof = "static atomicity contract";
 const nativeConfigNames = [
   "DEALFLOW_NATIVE_PGBIN",
@@ -241,5 +281,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer transaction, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pre-mutation evidence/summary/manifest, pinned project, clean two-round seal, exact 102 migrations, Node 20, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer fresh transaction plus fail-closed read-only exact-existing resume, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 102 migrations, Node 20, PostgreSQL 17.6, and external evidence fencing)`,
 );

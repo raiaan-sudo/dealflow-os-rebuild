@@ -454,9 +454,26 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
     join(directory, "migration-proof", "staging-migration-summary.json"),
     "staging migration summary",
   );
+  const freshAtomicMigrationApplication =
+    migrationSummary.migrationMode == null &&
+    migrationSummary.remoteMutationStarted === true &&
+    migrationSummary.remoteMutationCompleted === true;
+  const verifiedExistingExactMigrationApplication =
+    migrationSummary.migrationMode === "VERIFY_EXISTING_EXACT" &&
+    migrationSummary.verificationReadOnly === true &&
+    migrationSummary.remoteMutationStarted === false &&
+    migrationSummary.remoteMutationCompleted === false &&
+    migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.remoteStateVerificationStatus ===
+      "EXACT_EXISTING_COMMITTED_PORTFOLIO" &&
+    migrationSummary.priorApplication?.remoteMutationCompleted === true &&
+    migrationSummary.priorApplication?.migrationPortfolioSha256 ===
+      migrations.migrationPortfolioSha256 &&
+    migrationSummary.priorApplication?.normalizedSchemaSha256 ===
+      migrationSummary.normalizedSchemaSha256;
   if (
     migrationSummary.status !== "PASS" ||
-    migrationSummary.remoteMutationCompleted !== true ||
+    (!freshAtomicMigrationApplication && !verifiedExistingExactMigrationApplication) ||
     migrationSummary.headCommit !== identity.commit ||
     migrationSummary.headTree !== identity.tree ||
     migrationSummary.migrationCount !== migrations.migrationCount ||
@@ -469,8 +486,20 @@ function validateStaging(directory, identity, migrations, roundOne, roundTwo) {
     join(directory, "migration-proof", "staging-migration-proof.json"),
     "staging migration proof",
   );
+  const detailedMigrationModeMatches = verifiedExistingExactMigrationApplication
+    ? migrationProof.migrationMode === "VERIFY_EXISTING_EXACT" &&
+      migrationProof.verificationReadOnly === true &&
+      migrationProof.remoteMutationStarted === false &&
+      migrationProof.remoteMutationCompleted === false &&
+      migrationProof.portfolioApplicationRemoteMutationCompleted === true &&
+      migrationProof.remoteStateVerification?.status ===
+        "EXACT_EXISTING_COMMITTED_PORTFOLIO" &&
+      migrationProof.priorApplication?.manifestSha256 ===
+        migrationSummary.priorApplication?.manifestSha256
+    : migrationProof.migrationMode == null;
   if (
     migrationProof.status !== "PASS" ||
+    !detailedMigrationModeMatches ||
     migrationProof.headCommit !== identity.commit ||
     migrationProof.headTree !== identity.tree ||
     migrationProof.trackedWorktreeSha256 !== identity.trackedWorktreeSha256 ||

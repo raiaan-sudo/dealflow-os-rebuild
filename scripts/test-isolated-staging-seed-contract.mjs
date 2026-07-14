@@ -16,6 +16,15 @@ const partnerBindingMigration = readFileSync(
   join(root, "supabase", "migrations", "20260713015000_bind_verified_partner_attribution_atomically.sql"),
   "utf8",
 );
+const ghlActivationMigration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql",
+  ),
+  "utf8",
+);
 
 assert.match(source, /FIXTURE_LABEL = "DF-STAGING-20260712"/);
 assert.match(source, /FIXTURE_TIMESTAMP = "2026-07-12T12:00:00\.000Z"/);
@@ -55,8 +64,18 @@ for (const scenario of [
 assert.match(source, /EXPECTED_SYNTHETIC_AUTH_EMAILS/);
 assert.match(source, /ensureSyntheticAuthUser/);
 assert.match(source, /scenario: scenario\.key/);
-assert.match(source, /role: "member"/);
-assert.match(source, /Workspace[\s\S]{0,80}ownership is still bound by organizations\.owner_user_id/);
+assert.match(source, /PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE = "owner"/);
+assert.match(source, /role: PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE/);
+assert.match(source, /paidDirectOrganization\.owner_user_id !== userId/);
+assert.match(source, /paidDirectMembership\.organization_id !== IDS\.organization/);
+assert.match(source, /paidDirectMembership\.user_id !== userId/);
+assert.match(source, /paidDirectMembership\.role !== PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE/);
+assert.match(source, /paid direct staging identity is not the exact workspace owner/i);
+assert.match(source, /verify exact synthetic paid-direct owner membership/);
+assert.match(
+  ghlActivationMigration,
+  /organization_record\.owner_user_id is distinct from p_user_id[\s\S]*role in \('owner', 'admin'\)/,
+);
 assert.match(source, /PARTNER_ATTRIBUTION_SIGNING_SECRET/);
 assert.match(source, /must be a strong staging-only secret/);
 assert.match(source, /platform: "meta_ads"/);
@@ -215,6 +234,7 @@ assert.match(source, /verify exact white-label partner two child workspace attri
 assert.match(source, /SYNTHETIC_RETENTION_AUTHORITY_MARKER/);
 assert.match(source, /account_deletion_retention_authority_pending/);
 assert.match(source, /pendingBeforeApproval: retentionAuthorityPendingBeforeApproval/);
+assert.match(source, /approvedAt: new Date\(retentionAuthorityAfter\.approved_at\)\.toISOString\(\)/);
 assert.match(source, /reusedExistingSyntheticApproval: syntheticRetentionAuthorityReused/);
 assert.match(source, /freshReportingSnapshot/);
 assert.match(source, /staleReportingSnapshot/);

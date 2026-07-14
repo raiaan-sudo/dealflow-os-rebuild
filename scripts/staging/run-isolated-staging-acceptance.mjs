@@ -25,6 +25,12 @@ const EXPECTED_SECOND_PARTNER_BASE_URL = `https://${EXPECTED_SECOND_PARTNER_HOST
 const EXPECTED_SUPABASE_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh";
+const EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT =
+  "e776f38b5302dda525d51cf03e4668568e272a77";
+const EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE =
+  "0fcf11214ed3ae097003f737077cd7c67cdedfb7";
+const EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 =
+  "877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4";
 const EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
 const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
@@ -44,6 +50,9 @@ const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
 ]);
 const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
+const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
+  "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
+const SYNTHETIC_FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
 const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
 const PAID_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000001";
@@ -53,6 +62,12 @@ const DELETION_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000019";
 const DELETION_EMAIL = "dealflow-staging-deletion-20260712@example.com";
 const PUBLIC_FUNNEL_SLUG = "df-staging-20260712-funnel";
 const EXECUTABLE = process.execPath;
+const failureContext = {
+  evidenceDir: null,
+  stage: "startup",
+  identity: null,
+  sealCompleted: false,
+};
 const PROVIDER_SENSITIVE_ENV_NAMES = [
   "META_ACCESS_TOKEN",
   "META_APP_SECRET",
@@ -174,35 +189,57 @@ function usage() {
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
+Safe resume after a previously sealed atomic application:
+  node scripts/staging/run-isolated-staging-acceptance.mjs \\
+    --execute --verify-existing-migrations --deploy \\
+    --prior-migration-proof-dir /absolute/path/prior/migration-proof \\
+    --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<new-seal> \\
+    --round-one /absolute/path/final-verification-round-1.json \\
+    --round-two /absolute/path/final-verification-round-2.json
+
 Required execution environment:
   DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=${EXECUTION_AUTHORIZATION}
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
-Without all three execution flags this script performs no remote operation.`;
+Exactly one migration mode is required. Resume mode is read-only and never
+reapplies or resets the already committed migration portfolio.`;
 }
 
 function parseArguments(argv) {
   const options = {
     execute: false,
     applyMigrations: false,
+    verifyExistingMigrations: false,
     deploy: false,
     evidenceDir: null,
     roundOne: null,
     roundTwo: null,
+    priorMigrationProofDir: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") return { help: true };
     if (arg === "--execute") options.execute = true;
     else if (arg === "--apply-migrations") options.applyMigrations = true;
+    else if (arg === "--verify-existing-migrations") options.verifyExistingMigrations = true;
     else if (arg === "--deploy") options.deploy = true;
-    else if (["--evidence-dir", "--round-one", "--round-two"].includes(arg)) {
+    else if (
+      [
+        "--evidence-dir",
+        "--round-one",
+        "--round-two",
+        "--prior-migration-proof-dir",
+      ].includes(arg)
+    ) {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${arg} requires an absolute path`);
       index += 1;
       if (arg === "--evidence-dir") options.evidenceDir = resolve(value);
       if (arg === "--round-one") options.roundOne = resolve(value);
       if (arg === "--round-two") options.roundTwo = resolve(value);
+      if (arg === "--prior-migration-proof-dir") {
+        options.priorMigrationProofDir = resolve(value);
+      }
     } else {
       throw new Error(`Unknown staging acceptance option: ${arg}`);
     }
@@ -503,6 +540,43 @@ function writeJson(path, value) {
   chmodSync(path, 0o600);
 }
 
+function writeTerminalFailureArtifact(sanitizedMessage) {
+  const evidenceDir = failureContext.evidenceDir;
+  if (
+    !evidenceDir ||
+    !existsSync(evidenceDir) ||
+    !lstatSync(evidenceDir).isDirectory() ||
+    failureContext.sealCompleted ||
+    existsSync(join(evidenceDir, "STAGING_FAILURE.json"))
+  ) {
+    return false;
+  }
+  const identity = failureContext.identity;
+  writeJson(join(evidenceDir, "STAGING_FAILURE.json"), {
+    schemaVersion: "dealflow.isolated-staging-acceptance-failure.v1",
+    status: "FAILED",
+    stage: failureContext.stage || null,
+    errorCode: "STAGING_ACCEPTANCE_FAILED",
+    sanitizedErrorSha256: sha256(sanitizedMessage),
+    candidateIdentity: identity
+      ? { branch: identity.branch, commit: identity.commit, tree: identity.tree }
+      : null,
+    partialSealArtifactsPresent: [
+      "FINAL_SUMMARY.json",
+      "evidence-manifest.json",
+      "SHA256SUMS",
+    ].filter((name) => existsSync(join(evidenceDir, name))),
+    containsSecrets: false,
+    containsRealCustomerData: false,
+    productionMutationPerformed: false,
+    providerMutationPerformed: false,
+    advertisingSpendIncurred: false,
+    realCommunicationSent: false,
+    productionReleaseAuthorized: false,
+  });
+  return true;
+}
+
 function readValidatedRound(path, identity, migrationIdentity, expectedRound, label) {
   if (!path || !existsSync(path) || !lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) {
     throw new Error(`${label} must be an existing regular file`);
@@ -656,6 +730,10 @@ function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.reportingFixtures?.freshConfirmed !== true ||
     parsed.reportingFixtures?.staleConfirmed !== true ||
     parsed.reportingFixtures?.failedRefreshPreservesConfirmed !== true ||
+    parsed.deletionRetentionAuthority?.marker !== SYNTHETIC_RETENTION_AUTHORITY_MARKER ||
+    parsed.deletionRetentionAuthority?.authorityHashFingerprint !==
+      sha256(`sha256:${sha256(SYNTHETIC_RETENTION_AUTHORITY_MARKER)}`) ||
+    parsed.deletionRetentionAuthority?.approvedAt !== SYNTHETIC_FIXTURE_TIMESTAMP ||
     parsed.deletionRetentionAuthority?.approvedAfter !== true ||
     parsed.deletionRetentionAuthority?.productionDefaultChanged !== false ||
     parsed.failureFixtures?.providerMutationPerformed !== false
@@ -663,6 +741,36 @@ function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     throw new Error("The isolated staging seed did not return the exact sanitized fixture attestation");
   }
   return parsed;
+}
+
+function classifyExactSyntheticRetentionAuthorityReplay(first, second) {
+  const hasExactCommonAuthority = (authority) =>
+    authority?.marker === SYNTHETIC_RETENTION_AUTHORITY_MARKER &&
+    authority.authorityHashFingerprint ===
+      sha256(`sha256:${sha256(SYNTHETIC_RETENTION_AUTHORITY_MARKER)}`) &&
+    authority.approvedAt === SYNTHETIC_FIXTURE_TIMESTAMP &&
+    authority.approvedAfter === true &&
+    authority.productionDefaultChanged === false;
+  const isExactReuse = (authority) =>
+    hasExactCommonAuthority(authority) &&
+    authority.pendingBeforeApproval === false &&
+    authority.rejectedWhilePending === false &&
+    authority.reusedExistingSyntheticApproval === true;
+  const freshPendingThenApproved =
+    hasExactCommonAuthority(first.deletionRetentionAuthority) &&
+    first.deletionRetentionAuthority.pendingBeforeApproval === true &&
+    first.deletionRetentionAuthority.rejectedWhilePending === true &&
+    first.deletionRetentionAuthority.reusedExistingSyntheticApproval === false &&
+    isExactReuse(second.deletionRetentionAuthority);
+  const resumedExactSyntheticApproval =
+    isExactReuse(first.deletionRetentionAuthority) &&
+    isExactReuse(second.deletionRetentionAuthority);
+  if (!freshPendingThenApproved && !resumedExactSyntheticApproval) {
+    throw new Error("Staging retention authority replay was not the exact synthetic approval");
+  }
+  return freshPendingThenApproved
+    ? "fresh_pending_then_approved"
+    : "resumed_exact_synthetic_approval";
 }
 
 function assertSeedReplayIsIdempotent(first, second) {
@@ -685,14 +793,12 @@ function assertSeedReplayIsIdempotent(first, second) {
     JSON.stringify(first.partnerTwo) !== JSON.stringify(second.partnerTwo) ||
     JSON.stringify(first.reportingFixtures) !== JSON.stringify(second.reportingFixtures) ||
     JSON.stringify(first.failureFixtures) !== JSON.stringify(second.failureFixtures) ||
-    first.deletionRetentionAuthority?.pendingBeforeApproval !== true ||
-    first.deletionRetentionAuthority?.rejectedWhilePending !== true ||
-    second.deletionRetentionAuthority?.reusedExistingSyntheticApproval !== true ||
     second.activationReplayIdempotent !== true ||
     second.metaActivationReplayIdempotent !== true
   ) {
     throw new Error("Staging fixture replay was not exactly idempotent");
   }
+  return classifyExactSyntheticRetentionAuthorityReplay(first, second);
 }
 
 function runProviderIndependentStagingProof(baseUrl) {
@@ -1514,19 +1620,33 @@ function sealEvidenceBundle(evidenceDir, summary, secrets) {
 }
 
 async function main() {
+  failureContext.stage = "authorization_gate";
   const options = parseArguments(process.argv.slice(2));
   if (options.help) {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  if (!options.execute || !options.applyMigrations || !options.deploy) {
-    throw new Error("No remote work was authorized: --execute, --apply-migrations, and --deploy are all required");
+  const migrationModeCount =
+    Number(options.applyMigrations) + Number(options.verifyExistingMigrations);
+  if (!options.execute || !options.deploy || migrationModeCount !== 1) {
+    throw new Error(
+      "No remote work was authorized: --execute, --deploy, and exactly one of --apply-migrations or --verify-existing-migrations are required",
+    );
   }
   if (!options.evidenceDir || !options.roundOne || !options.roundTwo) {
     throw new Error("Evidence directory and both exact final-verification summaries are required");
   }
+  if (
+    options.verifyExistingMigrations !== Boolean(options.priorMigrationProofDir)
+  ) {
+    throw new Error(
+      "--verify-existing-migrations requires --prior-migration-proof-dir, and fresh apply mode forbids it",
+    );
+  }
 
+  failureContext.stage = "candidate_preflight";
   const identity = captureExactReleaseIdentity();
+  failureContext.identity = identity;
   const migrations = captureMigrationPortfolio();
   const vercelAuthority = captureVercelProjectIdentity();
   const vercelProject = vercelAuthority.evidence;
@@ -1555,6 +1675,8 @@ async function main() {
     throw new Error("Two distinct exact final-verification rounds are required");
   }
   prepareEvidenceDirectory(options.evidenceDir);
+  failureContext.evidenceDir = options.evidenceDir;
+  failureContext.stage = "preflight_evidence";
 
   const preflight = {
     schemaVersion: "dealflow.isolated-staging-acceptance-preflight.v1",
@@ -1574,6 +1696,7 @@ async function main() {
     executionFlags: {
       execute: options.execute,
       applyMigrations: options.applyMigrations,
+      verifyExistingMigrations: options.verifyExistingMigrations,
       deploy: options.deploy,
     },
     safety: {
@@ -1587,6 +1710,7 @@ async function main() {
   };
   writeJson(join(options.evidenceDir, "preflight.json"), preflight);
 
+  failureContext.stage = "hosted_environment_configuration";
   const hostedEnvironmentProof = configureHostedStagingEnvironment(vercel, hostedEnvironment);
   if (hostedEnvironmentProof.providerCredentialNamesPresent) {
     throw new Error("Provider credentials are forbidden from isolated staging acceptance");
@@ -1596,18 +1720,28 @@ async function main() {
     ...hostedEnvironmentProof,
   });
 
+  failureContext.stage = "migration_application_or_verification";
   const migrationEvidenceDir = join(options.evidenceDir, "migration-proof");
+  const migrationBrokerArgs = [
+    join(EXPECTED_REPO, "scripts", "staging", "apply-fresh-staging-migrations.mjs"),
+    EXPECTED_REPO,
+    migrationEvidenceDir,
+    options.roundOne,
+    options.roundTwo,
+  ];
+  if (options.verifyExistingMigrations) {
+    migrationBrokerArgs.push(
+      "--verify-existing-exact",
+      options.priorMigrationProofDir,
+    );
+  }
   run(
     EXECUTABLE,
-    [
-      join(EXPECTED_REPO, "scripts", "staging", "apply-fresh-staging-migrations.mjs"),
-      EXPECTED_REPO,
-      migrationEvidenceDir,
-      options.roundOne,
-      options.roundTwo,
-    ],
+    migrationBrokerArgs,
     {
-      label: "atomic fresh isolated-staging migration broker",
+      label: options.verifyExistingMigrations
+        ? "read-only exact existing isolated-staging migration verifier"
+        : "atomic fresh isolated-staging migration broker",
       env: {
         ...childBaseEnvironment(),
         PATH: process.env.PATH,
@@ -1620,12 +1754,66 @@ async function main() {
   const migrationSummary = JSON.parse(
     readFileSync(join(migrationEvidenceDir, "staging-migration-summary.json"), "utf8"),
   );
+  let priorApplicationRetainedHistory = false;
+  if (options.verifyExistingMigrations) {
+    const priorCommit = migrationSummary.priorApplication?.applicationCommit;
+    const priorTree = migrationSummary.priorApplication?.applicationTree;
+    if (/^[a-f0-9]{40}$/.test(priorCommit ?? "") && /^[a-f0-9]{40}$/.test(priorTree ?? "")) {
+      const retainedTree = git(
+        ["rev-parse", "--verify", `${priorCommit}^{tree}`],
+        "verify retained prior migration application tree",
+      ).trim();
+      if (retainedTree === priorTree) {
+        git(
+          ["merge-base", "--is-ancestor", priorCommit, identity.commit],
+          "verify prior migration application ancestry",
+        );
+        priorApplicationRetainedHistory = true;
+      }
+    }
+  }
+  const freshAtomicApplication =
+    !options.verifyExistingMigrations &&
+    migrationSummary.migrationMode == null &&
+    migrationSummary.remoteMutationStarted === true &&
+    migrationSummary.remoteMutationCompleted === true &&
+    migrationSummary.remoteStateVerificationStatus === "EXACT_COMMITTED_PORTFOLIO";
+  const verifiedExistingExact =
+    options.verifyExistingMigrations &&
+    migrationSummary.migrationMode === "VERIFY_EXISTING_EXACT" &&
+    migrationSummary.verificationReadOnly === true &&
+    migrationSummary.remoteMutationStarted === false &&
+    migrationSummary.remoteMutationCompleted === false &&
+    migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.remoteStateVerificationStatus ===
+      "EXACT_EXISTING_COMMITTED_PORTFOLIO" &&
+    priorApplicationRetainedHistory &&
+    migrationSummary.priorApplication?.remoteMutationCompleted === true &&
+    migrationSummary.priorApplication?.applicationCommit ===
+      EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT &&
+    migrationSummary.priorApplication?.applicationTree ===
+      EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE &&
+    migrationSummary.priorApplication?.manifestSha256 ===
+      EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 &&
+    /^[a-f0-9]{64}$/.test(migrationSummary.priorApplication?.manifestSha256 ?? "") &&
+    /^[a-f0-9]{64}$/.test(migrationSummary.priorApplication?.proofSha256 ?? "") &&
+    /^[a-f0-9]{64}$/.test(migrationSummary.priorApplication?.summarySha256 ?? "") &&
+    /^[a-f0-9]{64}$/.test(
+      migrationSummary.priorApplication?.structuralCatalogSha256 ?? "",
+    ) &&
+    migrationSummary.priorApplication?.migrationPortfolioSha256 ===
+      migrations.migrationPortfolioSha256 &&
+    migrationSummary.priorApplication?.normalizedSchemaSha256 ===
+      migrationSummary.normalizedSchemaSha256;
   if (
     migrationSummary.status !== "PASS" ||
-    migrationSummary.remoteMutationCompleted !== true ||
+    (!freshAtomicApplication && !verifiedExistingExact) ||
     migrationSummary.singleOuterTransaction !== true ||
     migrationSummary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
-    migrationSummary.remoteStateVerificationStatus !== "EXACT_COMMITTED_PORTFOLIO" ||
+    ![
+      "EXACT_COMMITTED_PORTFOLIO",
+      "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+    ].includes(migrationSummary.remoteStateVerificationStatus) ||
     migrationSummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.migrationHistoryCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.lastCommittedVersion !== EXPECTED_FINAL_MIGRATION.slice(0, 14) ||
@@ -1641,6 +1829,7 @@ async function main() {
     );
   }
 
+  failureContext.stage = "staging_deployment";
   const deployment = deployExactCommit(identity, vercel);
   const uniqueReady = await waitForDeployment(deployment.deploymentUrl);
   const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL);
@@ -1658,19 +1847,22 @@ async function main() {
     isolatedStagingProject: true,
   });
 
+  failureContext.stage = "synthetic_staging_seed";
   const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl);
   const seedTwo = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl);
-  assertSeedReplayIsIdempotent(seedOne, seedTwo);
+  const retentionAuthorityReplayMode = assertSeedReplayIsIdempotent(seedOne, seedTwo);
   writeJson(join(options.evidenceDir, "synthetic-seed.json"), {
     status: "PASS",
     first: seedOne,
     replay: seedTwo,
     exactlyIdempotent: true,
+    retentionAuthorityReplayMode,
     containsRealCustomerData: false,
     providerCredentialPresent: false,
     providerMutationPerformed: false,
   });
 
+  failureContext.stage = "provider_independent_acceptance";
   const admin = createStagingAdminClient();
   const rlsSessions = await createSyntheticRlsSessions(admin);
   const rlsCrossTenantProof = runCapturedProofCommand(
@@ -1837,6 +2029,7 @@ async function main() {
     .map(([item, status]) => ({ item, status }));
   const hostedDeferralsClosed =
     rlsDeferralsClosed && operatorDebtProof.status === "PASS";
+  failureContext.stage = "final_evidence_seal";
   writeJson(join(options.evidenceDir, "production-gate-matrix.json"), {
     status: "NO_GO",
     productionGate: "CLOSED",
@@ -1885,6 +2078,7 @@ async function main() {
     process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     process.env.INTERNAL_SYSTEM_JOBS_SECRET,
   ]);
+  failureContext.sealCompleted = true;
   process.stdout.write(`${JSON.stringify({
     status: summary.status,
     verdict: summary.verdict,
@@ -1900,8 +2094,12 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(
-    `${sanitize(error instanceof Error ? error.message : String(error), protectedRuntimeValues())}\n`,
-  );
+  const sanitizedMessage = sanitize(error instanceof Error ? error.message : String(error), protectedRuntimeValues());
+  try {
+    writeTerminalFailureArtifact(sanitizedMessage);
+  } catch {
+    // A failure artifact must never mask or replace the controlling failure.
+  }
+  process.stderr.write(`${sanitizedMessage}\n`);
   process.exitCode = 1;
 });

@@ -94,9 +94,29 @@ assert.match(
   /Number\(body\?\.checkedControlCount\)\)\.toBe\(EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT\)/,
 );
 
-const flagGate = runner.indexOf("!options.execute || !options.applyMigrations || !options.deploy");
+const flagGate = runner.indexOf("const migrationModeCount =");
 const releaseCapture = runner.indexOf("const identity = captureExactReleaseIdentity()");
 assert.ok(flagGate >= 0 && releaseCapture > flagGate, "all execution flags must gate any release or remote work");
+assert.match(runner, /Number\(options\.applyMigrations\) \+ Number\(options\.verifyExistingMigrations\)/);
+assert.match(runner, /migrationModeCount !== 1/);
+assert.match(runner, /--verify-existing-migrations requires --prior-migration-proof-dir/);
+assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--verify-existing-exact"/);
+assert.match(runner, /migrationSummary\.migrationMode === "VERIFY_EXISTING_EXACT"/);
+assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
+assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
+assert.match(
+  runner,
+  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
+  "the common final gate must accept either exact fresh application or exact read-only resume status",
+);
+assert.match(runner, /verify retained prior migration application tree/);
+assert.match(runner, /verify prior migration application ancestry/);
+assert.match(runner, /priorApplicationRetainedHistory/);
+assert.match(runner, /priorApplication\?\.manifestSha256/);
+assert.match(runner, /priorApplication\?\.structuralCatalogSha256/);
+assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
+assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
+assert.match(runner, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);
 assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
 assert.match(runner, /Staging acceptance requires Node 20/);
 assert.match(runner, /requires a completely clean release worktree/);
@@ -173,7 +193,7 @@ assert.match(
 );
 
 const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
-const migrationIndex = runner.indexOf('label: "atomic fresh isolated-staging migration broker"');
+const migrationIndex = runner.indexOf("const migrationBrokerArgs = [");
 const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
 const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl)");
 assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
@@ -214,6 +234,16 @@ assert.equal(
   2,
 );
 assert.match(runner, /assertSeedReplayIsIdempotent\(seedOne, seedTwo\)/);
+assert.match(runner, /function classifyExactSyntheticRetentionAuthorityReplay/);
+assert.match(runner, /fresh_pending_then_approved/);
+assert.match(runner, /resumed_exact_synthetic_approval/);
+assert.match(runner, /approvedAt !== SYNTHETIC_FIXTURE_TIMESTAMP/);
+assert.match(runner, /retentionAuthorityReplayMode/);
+const seedReplayBody = /function assertSeedReplayIsIdempotent\(first, second\) \{([\s\S]*?)\n\}/.exec(runner)?.[1];
+assert.ok(seedReplayBody, "seed replay contract must remain statically inspectable");
+assert.doesNotMatch(seedReplayBody, /pendingBeforeApproval !== true/);
+assert.doesNotMatch(seedReplayBody, /rejectedWhilePending !== true/);
+assert.match(seedReplayBody, /classifyExactSyntheticRetentionAuthorityReplay\(first, second\)/);
 assert.match(seed, /admin\.rpc\("bind_verified_partner_attribution_v1"/);
 assert.doesNotMatch(seed, /upsert\(admin, "workspace_partner_attribution"/);
 assert.match(seedContract, /attributionBoundAtomically: true/);
@@ -321,6 +351,21 @@ assert.match(runner, /productionMutationPerformed: false/);
 assert.match(runner, /providerMutationPerformed: false/);
 assert.match(runner, /chmodSync\(path, 0o600\)/);
 assert.match(runner, /chmodSync\(path, 0o700\)/);
+assert.match(runner, /function writeTerminalFailureArtifact\(sanitizedMessage\)/);
+assert.match(runner, /STAGING_FAILURE\.json/);
+assert.match(runner, /sanitizedErrorSha256: sha256\(sanitizedMessage\)/);
+assert.match(runner, /candidateIdentity: identity/);
+assert.match(runner, /failureContext\.sealCompleted/);
+assert.match(runner, /partialSealArtifactsPresent/);
+assert.match(runner, /failureContext\.sealCompleted = true/);
+assert.doesNotMatch(
+  runner,
+  /\["FINAL_SUMMARY\.json", "evidence-manifest\.json", "SHA256SUMS"\]\.some/,
+  "a partial final-seal failure must still emit durable terminal-failure evidence",
+);
+assert.match(runner, /failureContext\.evidenceDir = options\.evidenceDir/);
+assert.match(runner, /failureContext\.stage = "synthetic_staging_seed"/);
+assert.match(runner, /writeTerminalFailureArtifact\(sanitizedMessage\)/);
 
 assert.equal(
   packageJson.scripts["staging:acceptance"],
@@ -342,7 +387,8 @@ const help = spawnSync(process.execPath, [runnerPath, "--help"], {
   timeout: 10_000,
 });
 assert.equal(help.status, 0, help.stderr);
-assert.match(help.stdout, /Without all three execution flags this script performs no remote operation/);
+assert.match(help.stdout, /Exactly one migration mode is required/);
+assert.match(help.stdout, /--verify-existing-migrations --deploy/);
 
 const refused = spawnSync(process.execPath, [runnerPath], {
   cwd: root,
@@ -354,5 +400,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (triple authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 102-migration atomic broker; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh-or-read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 102-migration atomic broker with sealed exact-existing resume; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

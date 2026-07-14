@@ -11,6 +11,7 @@ const EXPECTED_STAGING_PROJECT_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
 const EXPECTED_STAGING_APP_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
+const PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE = "owner";
 const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const SYNTHETIC_SCENARIOS = Object.freeze({
@@ -440,7 +441,7 @@ async function main() {
     avatar_url: null,
   }, "id");
 
-  await upsert(admin, "organizations", {
+  const paidDirectOrganization = await upsert(admin, "organizations", {
     id: IDS.organization,
     name: `${FIXTURE_LABEL} Realty`,
     slug: "df-staging-20260712-realty",
@@ -448,14 +449,22 @@ async function main() {
     owner_user_id: userId,
   }, "id");
 
-  await upsert(admin, "organization_memberships", {
+  const paidDirectMembership = await upsert(admin, "organization_memberships", {
     id: IDS.membership,
     organization_id: IDS.organization,
     user_id: userId,
-    // The restricted QA-session route must remain non-elevated. Workspace
-    // ownership is still bound by organizations.owner_user_id.
-    role: "member",
+    // Billing-triggered GHL provisioning deliberately requires both the
+    // immutable workspace owner and that owner's explicit owner membership.
+    role: PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE,
   }, "id");
+  if (
+    paidDirectOrganization.owner_user_id !== userId ||
+    paidDirectMembership.organization_id !== IDS.organization ||
+    paidDirectMembership.user_id !== userId ||
+    paidDirectMembership.role !== PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE
+  ) {
+    throw new Error("The paid direct staging identity is not the exact workspace owner");
+  }
 
   const qaClient = createClient(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -1800,6 +1809,15 @@ async function main() {
       `verify exact synthetic ${label} count`,
     );
   }
+  await assertExactCount(
+    admin.from("organization_memberships").select("id", { count: "exact", head: true })
+      .eq("id", IDS.membership)
+      .eq("organization_id", IDS.organization)
+      .eq("user_id", userId)
+      .eq("role", PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE),
+    1,
+    "verify exact synthetic paid-direct owner membership",
+  );
   for (const organization of organizationScenarios) {
     await assertExactCount(
       admin.from("organizations").select("id", { count: "exact", head: true })
@@ -2039,6 +2057,7 @@ async function main() {
       pendingBeforeApproval: retentionAuthorityPendingBeforeApproval,
       rejectedWhilePending: retentionAuthorityPendingBeforeApproval,
       approvedAfter: true,
+      approvedAt: new Date(retentionAuthorityAfter.approved_at).toISOString(),
       reusedExistingSyntheticApproval: syntheticRetentionAuthorityReused,
       productionDefaultChanged: false,
     },
