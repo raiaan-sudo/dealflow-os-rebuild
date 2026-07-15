@@ -169,6 +169,7 @@ export function isAllowedStagingTurnstileRequest(rawUrl, method, enabled) {
       embedded.origin === "https://challenges.cloudflare.com" &&
       embedded.username === "" &&
       embedded.password === "" &&
+      url.href === `blob:${embedded.href}` &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         embedded.pathname.slice(1),
       ) &&

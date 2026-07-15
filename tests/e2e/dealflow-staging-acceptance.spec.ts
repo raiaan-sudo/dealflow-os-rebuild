@@ -728,15 +728,17 @@ async function navigateAndSettleExactApplicationRead(
   const expectedRead = options.expectedReadPathname
     ? waitForExactApplicationRead(page, target.origin, options.expectedReadPathname)
     : null;
-  const response = await page.goto(target.toString(), { waitUntil: "load" });
+  const [response, readResponse] = await Promise.all([
+    page.goto(target.toString(), { waitUntil: "load" }),
+    expectedRead ?? Promise.resolve(null),
+  ]);
   expect(response, `${target.pathname} returned no document response`).not.toBeNull();
   expect(response!.status(), `${target.pathname} returned a server failure`).toBeLessThan(500);
   await page.waitForURL((url) =>
     url.origin === target.origin &&
     url.pathname === options.expectedFinalPathname,
   { waitUntil: "load", timeout: 30_000 });
-  if (expectedRead) {
-    const readResponse = await expectedRead;
+  if (readResponse) {
     expect(await readResponse.finished()).toBeNull();
     expect(
       readResponse.status(),

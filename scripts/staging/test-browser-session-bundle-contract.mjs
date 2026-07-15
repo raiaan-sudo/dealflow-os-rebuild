@@ -164,6 +164,8 @@ for (const [url, method, enabled] of [
   ["https://challenges.cloudflare.com/turnstile/v0/b/3104729c556c/extra/api.js", "GET", true],
   ["blob:https://evil.example/123e4567-e89b-12d3-a456-426614174000", "GET", true],
   ["blob:https://challenges.cloudflare.com/not-a-canonical-uuid", "GET", true],
+  ["blob:https://challenges.cloudflare.com/%2e%2e/123e4567-e89b-12d3-a456-426614174000", "GET", true],
+  ["blob:https://challenges.cloudflare.com/a/../123e4567-e89b-12d3-a456-426614174000", "GET", true],
   ["blob:https://challenges.cloudflare.com/123e4567-e89b-12d3-a456-426614174000", "POST", true],
   ["blob:https://challenges.cloudflare.com/123e4567-e89b-12d3-a456-426614174000", "GET", false],
   ["https://challenges.cloudflare.com/turnstile/v0/api.js", "GET", false],
