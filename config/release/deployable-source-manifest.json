@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 974,
-  "deployableSourceSha256": "3afacb4e59ce002eb098f40ff59e01da60a7064b50cca7d8033a27862d3ba7ab",
+  "entryCount": 975,
+  "deployableSourceSha256": "5483804a442773b23af8e55fbe06742e68df85a757994242b68dbd2eef7601df",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -648,9 +648,9 @@
     },
     {
       "path": "scripts/build-current-release-evidence.mjs",
-      "size": 57600,
+      "size": 58365,
       "mode": 33188,
-      "sha256": "055d972d01892d7cda6c6859ee38a82370d12d783eecc6bbda4adbf203a2b9c0"
+      "sha256": "ef6091efcd214a58254d7d6fa7270d53de2698e3ba6dd44ba549eca79523804e"
     },
     {
       "path": "scripts/build-dealflow-final-audit-bundle.mjs",
@@ -756,15 +756,21 @@
     },
     {
       "path": "scripts/lib/final-verification-command-contract.mjs",
-      "size": 9799,
+      "size": 11459,
       "mode": 33188,
-      "sha256": "897c2a42c8eb43c1ab500437604e1ad38f0a8fdaf6d3a9f49f9f633b5c571683"
+      "sha256": "7056b375d52b2047c6a06ee4ce262aa16180143e13c91d7f3f63c098ce91d101"
     },
     {
       "path": "scripts/lib/final-verification-environment.mjs",
       "size": 1540,
       "mode": 33188,
       "sha256": "b101671567d9194c7da4db5456d08bb7259f409cfeba877086c674fe3b537083"
+    },
+    {
+      "path": "scripts/lib/final-verification-evidence-contract.mjs",
+      "size": 13457,
+      "mode": 33188,
+      "sha256": "745789e767117dfc351580f8b0ae14154db2e193870f3657d27976586e28f68a"
     },
     {
       "path": "scripts/lib/final-verification-lock.mjs",
@@ -816,9 +822,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 22050,
+      "size": 24873,
       "mode": 33188,
-      "sha256": "528ffdec0b5b6172292a9c4e073149abbd7c11f7e1e1566244f6c8fab150a6c6"
+      "sha256": "714b440027c88d09a6a9ff2b17ce66bba80b51aa51d183af89e7970e329f0278"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -888,9 +894,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 116366,
+      "size": 117136,
       "mode": 33188,
-      "sha256": "6dc05e5626fe0d6e056de5afa9520a46fafa8c52c62c0d3bb2062337899e6674"
+      "sha256": "9946f74d4ff0f8d4de94c71ff4fc3270b56c83273462e7779e32de642609c8b4"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -930,9 +936,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 42505,
+      "size": 43263,
       "mode": 33188,
-      "sha256": "598be5ed969e07408ed882e17a8dc199f135d20060d2c1ae1836d551aa1d34cd"
+      "sha256": "f10b0b1a37c53ad86ce5054537dd8894fe4807cbe86f4a2daf845de32184d72e"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -966,9 +972,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 257749,
+      "size": 258513,
       "mode": 33188,
-      "sha256": "042a0ee329fe2dbbae04498521f94d971080a1926125b5cb6e86c8d5a3011e73"
+      "sha256": "79458d760591b447c28c83b51a58a3dd8c793d169b3376e45424cfc80530d3df"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1296,9 +1302,9 @@
     },
     {
       "path": "scripts/test-current-release-evidence-builder-contract.mjs",
-      "size": 31974,
+      "size": 44365,
       "mode": 33188,
-      "sha256": "788c6457799f809c0ba170d4a63c42d69c04013adec68abbf385b3f69b08beec"
+      "sha256": "ee2f958706024c7a1eef2e70b0b03a89ea6f969152dd5a49934b66e5f4b71e6f"
     },
     {
       "path": "scripts/test-custom-lead-question-contract.mjs",
@@ -1338,9 +1344,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 15638,
+      "size": 25147,
       "mode": 33188,
-      "sha256": "518378fa43454caa34469f637b4d26a87310418daef042469b70406bd050576e"
+      "sha256": "2277b0393feceb624500d16faddcbce5b1ed5a8675058b2b88b1cf6b4c4262a7"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",

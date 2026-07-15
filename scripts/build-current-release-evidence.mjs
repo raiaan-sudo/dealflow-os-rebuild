@@ -21,6 +21,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node
 import process from "node:process";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "./lib/final-verification-command-contract.mjs";
+import { assertFinalVerificationEvidenceIsSealable } from "./lib/final-verification-evidence-contract.mjs";
 
 const ALLOWED_STATUSES = new Set([
   "PASS",
@@ -431,6 +432,7 @@ function assertMigrations(expected, actual, label) {
 function validateRound(directory, expectedRound, identity, migrations) {
   const summaryPath = join(directory, "verification-summary.json");
   const summary = json(summaryPath, `verification round ${expectedRound} summary`);
+  const evidence = assertFinalVerificationEvidenceIsSealable(directory);
   assertExactFinalVerificationSummaryPortfolio(
     summary,
     `Verification round ${expectedRound} release-evidence portfolio`,
@@ -453,6 +455,15 @@ function validateRound(directory, expectedRound, identity, migrations) {
     summary.localGateStatus !== "NO_GO_AUTHENTICATED_PROOF_DEFERRED" ||
     !Array.isArray(summary.records) ||
     summary.records.length !== summary.commandCount ||
+    evidence.status !== "PASS" ||
+    evidence.fileCountBeforeSummary !== summary.evidenceTreeFileCountBeforeSummary ||
+    evidence.totalFileCount !== summary.evidenceTreeFileCountBeforeSummary + 1 ||
+    evidence.evidenceTreeSha256BeforeSummary !==
+      summary.evidenceTreeSha256BeforeSummary ||
+    evidence.browser.status !== summary.localBrowserEvidenceStatus ||
+    evidence.browser.screenshotCount !== summary.localBrowserScreenshotCount ||
+    JSON.stringify(evidence.browser.projectScreenshotCounts) !==
+      JSON.stringify(summary.localBrowserProjectScreenshotCounts) ||
     summary.records.some(
       (record) =>
         record.status !== "passed" ||

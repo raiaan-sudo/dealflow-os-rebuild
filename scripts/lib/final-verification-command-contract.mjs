@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
 
+import {
+  FINAL_VERIFICATION_LOCAL_BROWSER_PASSED_PER_PROJECT,
+  FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS,
+  FINAL_VERIFICATION_LOCAL_BROWSER_SCREENSHOT_COUNT,
+  FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+} from "./final-verification-evidence-contract.mjs";
+
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
   "npm ci --ignore-scripts --no-audit --no-fund",
   "npm ls --all",
@@ -185,6 +192,26 @@ export function assertExactFinalVerificationSummaryPortfolio(
     summary.commandCount !== FINAL_VERIFICATION_COMMAND_COUNT ||
     summary.passedCount !== FINAL_VERIFICATION_COMMAND_COUNT ||
     summary.commandPortfolioSha256 !== FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256 ||
+    summary.minimumFreeBytesRequired !== FINAL_VERIFICATION_MINIMUM_FREE_BYTES ||
+    !Number.isSafeInteger(summary.minimumObservedFreeBytes) ||
+    summary.minimumObservedFreeBytes < FINAL_VERIFICATION_MINIMUM_FREE_BYTES ||
+    summary.fatalResourceDiagnosticCount !== 0 ||
+    summary.evidenceTreeStatus !== "PASS" ||
+    !Number.isSafeInteger(summary.evidenceTreeFileCountBeforeSummary) ||
+    summary.evidenceTreeFileCountBeforeSummary <= 0 ||
+    !/^[a-f0-9]{64}$/.test(summary.evidenceTreeSha256BeforeSummary ?? "") ||
+    summary.localBrowserEvidenceStatus !== "EXACT_40_NONEMPTY_SCREENSHOTS" ||
+    summary.localBrowserScreenshotCount !==
+      FINAL_VERIFICATION_LOCAL_BROWSER_SCREENSHOT_COUNT ||
+    JSON.stringify(summary.localBrowserProjectScreenshotCounts) !==
+      JSON.stringify(
+        Object.fromEntries(
+          FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS.map((project) => [
+            project,
+            FINAL_VERIFICATION_LOCAL_BROWSER_PASSED_PER_PROJECT,
+          ]),
+        ),
+      ) ||
     summary.blockedCount !== FINAL_VERIFICATION_HOSTED_DEFERRALS.length ||
     summary.environmentOnlyDeferredCount !== FINAL_VERIFICATION_HOSTED_DEFERRALS.length ||
     !Array.isArray(summary.environmentOnlyDeferrals) ||
@@ -220,6 +247,12 @@ export function assertExactFinalVerificationSummaryPortfolio(
       (record, index) =>
         record?.status !== "passed" ||
         record?.exitCode !== 0 ||
+        record?.fatalResourceDiagnostic !== null ||
+        record?.postCommandDiskHeadroom !== "passed" ||
+        !Number.isSafeInteger(record?.diskFreeBytesBefore) ||
+        record.diskFreeBytesBefore < FINAL_VERIFICATION_MINIMUM_FREE_BYTES ||
+        !Number.isSafeInteger(record?.diskFreeBytesAfter) ||
+        record.diskFreeBytesAfter < FINAL_VERIFICATION_MINIMUM_FREE_BYTES ||
         record?.postCommandRepositoryInvariant !== "passed" ||
         record?.safeEnvironmentProfile !==
           "provider_credentials_and_application_secrets_omitted" ||

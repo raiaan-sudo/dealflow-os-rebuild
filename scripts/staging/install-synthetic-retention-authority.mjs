@@ -19,6 +19,7 @@ import {
   FINAL_VERIFICATION_HOSTED_DEFERRALS,
   assertExactFinalVerificationSummaryPortfolio,
 } from "../lib/final-verification-command-contract.mjs";
+import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
 
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg || process.argv.length !== 6) {
@@ -207,6 +208,7 @@ function assertExternalFile(path, label) {
 function readRound(path, expectedRound, identity, migrations) {
   assertExternalFile(path, `Verification round ${expectedRound}`);
   const value = JSON.parse(readFileSync(path, "utf8"));
+  const evidence = assertFinalVerificationEvidenceIsSealable(dirname(path));
   assertExactFinalVerificationSummaryPortfolio(
     value,
     `Verification round ${expectedRound} portfolio`,
@@ -217,6 +219,15 @@ function readRound(path, expectedRound, identity, migrations) {
     !/^v24\./.test(value.runtime ?? "") ||
     value.localGateStatus !== expectedLocalGate ||
     value.repositoryInvariant !== "passed" ||
+    evidence.status !== "PASS" ||
+    evidence.fileCountBeforeSummary !== value.evidenceTreeFileCountBeforeSummary ||
+    evidence.totalFileCount !== value.evidenceTreeFileCountBeforeSummary + 1 ||
+    evidence.evidenceTreeSha256BeforeSummary !==
+      value.evidenceTreeSha256BeforeSummary ||
+    evidence.browser.status !== value.localBrowserEvidenceStatus ||
+    evidence.browser.screenshotCount !== value.localBrowserScreenshotCount ||
+    JSON.stringify(evidence.browser.projectScreenshotCounts) !==
+      JSON.stringify(value.localBrowserProjectScreenshotCounts) ||
     value.failedCount !== 0 ||
     value.blockedCount !== expectedDeferrals.length ||
     value.passedCount !== value.plannedCommandCount ||

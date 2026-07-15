@@ -11,6 +11,13 @@ import {
   finalVerificationEvidenceQualification,
   formatFinalVerificationCommandTuple,
 } from "./lib/final-verification-command-contract.mjs";
+import {
+  FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  assertFinalVerificationDiskHeadroom,
+  assertFinalVerificationEvidenceIsSealable,
+  detectFinalVerificationFatalResourceDiagnostic,
+  readFinalVerificationFreeBytes,
+} from "./lib/final-verification-evidence-contract.mjs";
 import { requireFinalVerificationNativeEnvironment } from "./lib/final-verification-environment.mjs";
 import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
 
@@ -424,6 +431,8 @@ if (
 ) {
   throw new Error("Verification evidence real path must remain outside the repository.");
 }
+const preflightRepositoryFreeBytes = assertFinalVerificationDiskHeadroom(root);
+const preflightEvidenceFreeBytes = assertFinalVerificationDiskHeadroom(outputDirectory);
 const records = [];
 let failed = false;
 let invariantFailure = null;
@@ -440,6 +449,10 @@ for (let index = 0; index < commands.length; index += 1) {
   }
   const startedAt = new Date();
   const startedMs = Date.now();
+  const diskFreeBytesBefore = Math.min(
+    assertFinalVerificationDiskHeadroom(root),
+    assertFinalVerificationDiskHeadroom(outputDirectory),
+  );
   process.stdout.write(`[verification round ${round}] ${command}\n`);
   const result = spawnSync(executable, args, {
     cwd: root,
@@ -450,6 +463,15 @@ for (let index = 0; index < commands.length; index += 1) {
   });
   const completedAt = new Date();
   const commandExitCode = result.status ?? (result.error ? 1 : 0);
+  const fatalResourceDiagnostic = detectFinalVerificationFatalResourceDiagnostic(
+    `${result.stdout ?? ""}\n${result.stderr ?? ""}\n${result.error?.message ?? ""}`,
+  );
+  const diskFreeBytesAfter = Math.min(
+    readFinalVerificationFreeBytes(root),
+    readFinalVerificationFreeBytes(outputDirectory),
+  );
+  const postCommandDiskHeadroomFailed =
+    diskFreeBytesAfter < FINAL_VERIFICATION_MINIMUM_FREE_BYTES;
   let invariantError = null;
   try {
     requireInvariantRepositoryIdentity(`After command ${index + 1}`);
@@ -457,7 +479,13 @@ for (let index = 0; index < commands.length; index += 1) {
     invariantError = error;
     invariantFailure = error;
   }
-  const exitCode = commandExitCode === 0 && !invariantError ? 0 : 1;
+  const exitCode =
+    commandExitCode === 0 &&
+    !invariantError &&
+    !fatalResourceDiagnostic &&
+    !postCommandDiskHeadroomFailed
+      ? 0
+      : 1;
   const logSlug = [executable, ...args]
     .join("-")
     .toLowerCase()
@@ -482,6 +510,10 @@ for (let index = 0; index < commands.length; index += 1) {
       `duration_ms: ${Date.now() - startedMs}`,
       `command_exit_code: ${commandExitCode}`,
       `record_exit_code: ${exitCode}`,
+      `disk_free_bytes_before: ${diskFreeBytesBefore}`,
+      `disk_free_bytes_after: ${diskFreeBytesAfter}`,
+      `fatal_resource_diagnostic: ${fatalResourceDiagnostic ?? "none"}`,
+      `post_command_disk_headroom: ${postCommandDiskHeadroomFailed ? "failed" : "passed"}`,
       `post_command_repository_invariant: ${invariantError ? "failed" : "passed"}`,
       "",
       result.stdout ?? "",
@@ -508,12 +540,17 @@ for (let index = 0; index < commands.length; index += 1) {
     durationMs: Date.now() - startedMs,
     exitCode,
     status: exitCode === 0 ? "passed" : "failed",
+    diskFreeBytesBefore,
+    diskFreeBytesAfter,
+    fatalResourceDiagnostic,
+    postCommandDiskHeadroom: postCommandDiskHeadroomFailed ? "failed" : "passed",
     evidenceQualification: finalVerificationEvidenceQualification(command),
     postCommandRepositoryInvariant: invariantError ? "failed" : "passed",
     log: logName,
   });
   if (exitCode !== 0) failed = true;
   if (invariantError) break;
+  if (fatalResourceDiagnostic || postCommandDiskHeadroomFailed) break;
 }
 
 if (!invariantFailure) {
@@ -524,6 +561,12 @@ if (!invariantFailure) {
     failed = true;
   }
 }
+
+// Downstream owner-authority and release-evidence brokers seal the entire
+// verification directory, not only the command logs. Refuse a round here if a
+// browser or test runner left behind an empty, symlinked, special, missing, or
+// incomplete cross-browser artifact portfolio.
+const sealableEvidence = assertFinalVerificationEvidenceIsSealable(outputDirectory);
 
 const authenticatedProofBlocked = environmentOnlyDeferrals.length > 0;
 const localGateStatus =
@@ -552,6 +595,26 @@ const summary = {
     : null,
   plannedCommandCount: commands.length,
   commandPortfolioSha256: commandPortfolio.commandPortfolioSha256,
+  minimumFreeBytesRequired: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  minimumObservedFreeBytes: Math.min(
+    preflightRepositoryFreeBytes,
+    preflightEvidenceFreeBytes,
+    ...records.flatMap((record) => [
+      record.diskFreeBytesBefore,
+      record.diskFreeBytesAfter,
+    ]),
+  ),
+  fatalResourceDiagnosticCount: records.filter(
+    (record) => record.fatalResourceDiagnostic !== null,
+  ).length,
+  evidenceTreeStatus: sealableEvidence.status,
+  evidenceTreeFileCountBeforeSummary: sealableEvidence.fileCountBeforeSummary,
+  evidenceTreeSha256BeforeSummary:
+    sealableEvidence.evidenceTreeSha256BeforeSummary,
+  localBrowserEvidenceStatus: sealableEvidence.browser.status,
+  localBrowserScreenshotCount: sealableEvidence.browser.screenshotCount,
+  localBrowserProjectScreenshotCounts:
+    sealableEvidence.browser.projectScreenshotCounts,
   startedAt: records[0]?.startedAt ?? new Date().toISOString(),
   completedAt: records.at(-1)?.completedAt ?? new Date().toISOString(),
   commandCount: records.length,

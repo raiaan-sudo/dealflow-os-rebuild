@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   mkdirSync,
@@ -24,6 +25,14 @@ import {
   finalVerificationEvidenceQualification,
   formatFinalVerificationCommandTuple,
 } from "./lib/final-verification-command-contract.mjs";
+import {
+  FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS,
+  FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  assertFinalVerificationDiskHeadroom,
+  assertFinalVerificationEvidenceIsSealable,
+  detectFinalVerificationFatalResourceDiagnostic,
+  readFinalVerificationFreeBytes,
+} from "./lib/final-verification-evidence-contract.mjs";
 import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
 
 const source = readFileSync("scripts/run-dealflow-final-verification.mjs", "utf8");
@@ -98,6 +107,218 @@ try {
   rmSync(lockRoot, { recursive: true, force: true });
   rmSync(lockRepository, { recursive: true, force: true });
 }
+
+const evidenceFixtureRoot = mkdtempSync(
+  join(tmpdir(), "dealflow-final-evidence-contract-"),
+);
+try {
+  const browserRoot = join(evidenceFixtureRoot, "browser-proof");
+  const artifactRoot = join(browserRoot, "artifacts");
+  const reportRoot = join(browserRoot, "report");
+  mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
+  mkdirSync(reportRoot, { recursive: true, mode: 0o700 });
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const specs = [];
+  const authenticatedResults = [];
+  const screenshotPaths = [];
+  let ordinal = 0;
+  for (const projectName of FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS) {
+    for (let index = 0; index < 14; index += 1) {
+      const skipped = index >= 10;
+      const attachments = [];
+      if (skipped) {
+        authenticatedResults.push({
+          titlePath: ` > ${projectName} > fixture > authenticated isolated-staging product proof > fixture ${index}`,
+          projectName,
+          status: "skipped",
+          retry: 0,
+        });
+      } else {
+        const screenshotDirectory = join(
+          artifactRoot,
+          `fixture-${String(ordinal).padStart(2, "0")}-${projectName}`,
+        );
+        const screenshotPath = join(screenshotDirectory, "test-finished-1.png");
+        mkdirSync(screenshotDirectory, { recursive: true, mode: 0o700 });
+        writeFileSync(screenshotPath, png, { mode: 0o600 });
+        screenshotPaths.push(screenshotPath);
+        attachments.push({
+          name: "screenshot",
+          contentType: "image/png",
+          path: screenshotPath,
+        });
+      }
+      const status = skipped ? "skipped" : "passed";
+      specs.push({
+        title: `fixture ${projectName} ${index}`,
+        ok: true,
+        tests: [
+          {
+            expectedStatus: status,
+            projectId: projectName,
+            projectName,
+            status: skipped ? "skipped" : "expected",
+            results: [
+              {
+                status,
+                retry: 0,
+                errors: [],
+                attachments,
+              },
+            ],
+          },
+        ],
+      });
+      ordinal += 1;
+    }
+  }
+  writeFileSync(
+    join(browserRoot, "playwright-results.json"),
+    `${JSON.stringify({
+      suites: [{ title: "fixture", specs, suites: [] }],
+      errors: [],
+      stats: { expected: 40, skipped: 16, unexpected: 0, flaky: 0 },
+    })}\n`,
+    { mode: 0o600 },
+  );
+  writeFileSync(
+    join(browserRoot, "safe-browser-acceptance-summary.json"),
+    `${JSON.stringify({
+      schemaVersion: "dealflow.safe-browser-acceptance.v1",
+      executionMode: "local_public",
+      playwrightStatus: "passed",
+      authenticatedStatus: "authenticated_deferred",
+      authenticatedResultCount: 16,
+      authenticatedSkippedCount: 16,
+      authenticatedProjectCounts: Object.fromEntries(
+        FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS.map((project) => [project, 4]),
+      ),
+      authenticatedResults,
+    })}\n`,
+    { mode: 0o600 },
+  );
+  writeFileSync(
+    join(browserRoot, "safety-preflight.json"),
+    `${JSON.stringify({
+      schemaVersion: "dealflow.safe-browser-preflight.v1",
+      mode: "local_public",
+      zeroExternalEffects: {
+        ok: true,
+        attestation: "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1",
+        checkedControlCount: 60,
+        failedControls: [],
+      },
+      authenticatedStatus: "authenticated_deferred",
+      publicTestsAuthorized: true,
+      authenticatedTestsAuthorized: false,
+    })}\n`,
+    { mode: 0o600 },
+  );
+  writeFileSync(join(browserRoot, "playwright-results.xml"), "<testsuites/>\n", {
+    mode: 0o600,
+  });
+  writeFileSync(join(reportRoot, "index.html"), "<!doctype html><title>PASS</title>\n", {
+    mode: 0o600,
+  });
+  writeFileSync(
+    join(artifactRoot, ".last-run.json"),
+    `${JSON.stringify({ status: "passed", failedTests: [] })}\n`,
+    { mode: 0o600 },
+  );
+  writeFileSync(join(evidenceFixtureRoot, "01-fixture.log"), "PASS\n", {
+    mode: 0o600,
+  });
+
+  const validEvidence = assertFinalVerificationEvidenceIsSealable(
+    evidenceFixtureRoot,
+  );
+  assert.equal(validEvidence.status, "PASS");
+  assert.equal(validEvidence.browser.screenshotCount, 40);
+
+  const firstScreenshot = screenshotPaths[0];
+  rmSync(firstScreenshot);
+  assert.throws(
+    () => assertFinalVerificationEvidenceIsSealable(evidenceFixtureRoot),
+    /ENOENT|screenshot portfolio|regular file/,
+  );
+  writeFileSync(firstScreenshot, png, { mode: 0o600 });
+
+  writeFileSync(firstScreenshot, Buffer.alloc(0), { mode: 0o600 });
+  assert.throws(
+    () => assertFinalVerificationEvidenceIsSealable(evidenceFixtureRoot),
+    /empty file|nonempty/,
+  );
+  writeFileSync(firstScreenshot, png, { mode: 0o600 });
+
+  const emptyPath = join(evidenceFixtureRoot, "empty.log");
+  writeFileSync(emptyPath, "", { mode: 0o600 });
+  assert.throws(
+    () => assertFinalVerificationEvidenceIsSealable(evidenceFixtureRoot),
+    /empty file/,
+  );
+  rmSync(emptyPath);
+
+  const symlinkPath = join(evidenceFixtureRoot, "unsafe-symlink");
+  symlinkSync(join(evidenceFixtureRoot, "01-fixture.log"), symlinkPath);
+  assert.throws(
+    () => assertFinalVerificationEvidenceIsSealable(evidenceFixtureRoot),
+    /symlink/,
+  );
+  rmSync(symlinkPath);
+
+  const fifoPath = join(evidenceFixtureRoot, "unsupported-fifo");
+  const fifo = spawnSync("/usr/bin/mkfifo", [fifoPath], {
+    env: { PATH: "/usr/bin:/bin" },
+  });
+  assert.equal(fifo.status, 0, "Behavioral fixture requires mkfifo");
+  assert.throws(
+    () => assertFinalVerificationEvidenceIsSealable(evidenceFixtureRoot),
+    /unsupported filesystem entry/,
+  );
+  rmSync(fifoPath);
+} finally {
+  rmSync(evidenceFixtureRoot, { recursive: true, force: true });
+}
+
+assert.equal(
+  detectFinalVerificationFatalResourceDiagnostic(
+    "Error: ENOSPC: no space left on device, write",
+  ),
+  "ENOSPC",
+);
+assert.equal(
+  detectFinalVerificationFatalResourceDiagnostic("Disk quota exceeded"),
+  "EDQUOT",
+);
+assert.equal(
+  detectFinalVerificationFatalResourceDiagnostic("ordinary passing output"),
+  null,
+);
+assert.equal(
+  readFinalVerificationFreeBytes("/fixture", {
+    readStatfs: () => ({ bsize: 1n, bavail: BigInt(FINAL_VERIFICATION_MINIMUM_FREE_BYTES) }),
+  }),
+  FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+);
+assert.equal(
+  assertFinalVerificationDiskHeadroom("/fixture", {
+    readStatfs: () => ({ bsize: 1n, bavail: BigInt(FINAL_VERIFICATION_MINIMUM_FREE_BYTES) }),
+  }),
+  FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+);
+assert.throws(
+  () =>
+    assertFinalVerificationDiskHeadroom("/fixture", {
+      readStatfs: () => ({
+        bsize: 1n,
+        bavail: BigInt(FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1),
+      }),
+    }),
+  /requires at least/,
+);
 
 assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 90);
 assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 90);
@@ -179,6 +400,10 @@ const exactRecords = FINAL_VERIFICATION_COMMAND_PORTFOLIO.map((command, index) =
   evidenceQualification: finalVerificationEvidenceQualification(command),
   status: "passed",
   exitCode: 0,
+  diskFreeBytesBefore: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  diskFreeBytesAfter: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  fatalResourceDiagnostic: null,
+  postCommandDiskHeadroom: "passed",
   postCommandRepositoryInvariant: "passed",
   safeEnvironmentProfile: "provider_credentials_and_application_secrets_omitted",
   workingDirectory: "/private/tmp/dealflow-overnight-release-20260712",
@@ -191,6 +416,17 @@ const exactSummary = {
   commandCount: 90,
   passedCount: 90,
   commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+  minimumFreeBytesRequired: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  minimumObservedFreeBytes: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  fatalResourceDiagnosticCount: 0,
+  evidenceTreeStatus: "PASS",
+  evidenceTreeFileCountBeforeSummary: 50,
+  evidenceTreeSha256BeforeSummary: "f".repeat(64),
+  localBrowserEvidenceStatus: "EXACT_40_NONEMPTY_SCREENSHOTS",
+  localBrowserScreenshotCount: 40,
+  localBrowserProjectScreenshotCounts: Object.fromEntries(
+    FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS.map((project) => [project, 10]),
+  ),
   blockedCount: 3,
   environmentOnlyDeferredCount: 3,
   environmentOnlyDeferrals: FINAL_VERIFICATION_HOSTED_DEFERRALS.map((command) => ({
@@ -269,6 +505,20 @@ expectPortfolioRejection((candidate) => {
   candidate.records[0].status = "failed";
 });
 expectPortfolioRejection((candidate) => {
+  candidate.records[0].diskFreeBytesBefore =
+    FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.records[0].diskFreeBytesAfter =
+    FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.records[0].fatalResourceDiagnostic = "ENOSPC";
+});
+expectPortfolioRejection((candidate) => {
+  candidate.records[0].postCommandDiskHeadroom = "failed";
+});
+expectPortfolioRejection((candidate) => {
   candidate.records[0].postCommandRepositoryInvariant = "failed";
 });
 expectPortfolioRejection((candidate) => {
@@ -294,6 +544,34 @@ expectPortfolioRejection((candidate) => {
 });
 expectPortfolioRejection((candidate) => {
   candidate.commandPortfolioSha256 = "0".repeat(64);
+});
+expectPortfolioRejection((candidate) => {
+  candidate.minimumFreeBytesRequired = 1;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.minimumObservedFreeBytes =
+    FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.fatalResourceDiagnosticCount = 1;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.evidenceTreeStatus = "FAILED";
+});
+expectPortfolioRejection((candidate) => {
+  candidate.evidenceTreeFileCountBeforeSummary = 0;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.evidenceTreeSha256BeforeSummary = "0".repeat(63);
+});
+expectPortfolioRejection((candidate) => {
+  candidate.localBrowserEvidenceStatus = "INCOMPLETE";
+});
+expectPortfolioRejection((candidate) => {
+  candidate.localBrowserScreenshotCount = 39;
+});
+expectPortfolioRejection((candidate) => {
+  candidate.localBrowserProjectScreenshotCounts["desktop-firefox"] = 9;
 });
 expectPortfolioRejection((candidate) => {
   delete candidate.commandPortfolioSha256;
@@ -366,6 +644,11 @@ for (const marker of [
   "formatFinalVerificationCommandTuple",
   "finalVerificationEvidenceQualification(command)",
   "commandPortfolioSha256: commandPortfolio.commandPortfolioSha256",
+  "assertFinalVerificationEvidenceIsSealable(outputDirectory)",
+  "detectFinalVerificationFatalResourceDiagnostic(",
+  "assertFinalVerificationDiskHeadroom(root)",
+  "fatal_resource_diagnostic:",
+  "post_command_disk_headroom:",
 ]) {
   assert.ok(source.includes(marker), `Final verification runner is missing: ${marker}`);
 }

@@ -17,6 +17,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
 
 import {
   classifyExactStagingAuthSurface,
@@ -352,6 +353,7 @@ function readPassingVerificationSummary(path, expectedRound) {
     throw new Error(`Verification round ${expectedRound} summary must be a real file`);
   }
   const summary = JSON.parse(readFileSync(path, "utf8"));
+  const evidence = assertFinalVerificationEvidenceIsSealable(dirname(path));
   assertExactFinalVerificationSummaryPortfolio(
     summary,
     `Verification round ${expectedRound} portfolio`,
@@ -361,6 +363,15 @@ function readPassingVerificationSummary(path, expectedRound) {
     String(summary.round) !== expectedRound ||
     !/^v24\./.test(summary.runtime ?? "") ||
     summary.repositoryInvariant !== "passed" ||
+    evidence.status !== "PASS" ||
+    evidence.fileCountBeforeSummary !== summary.evidenceTreeFileCountBeforeSummary ||
+    evidence.totalFileCount !== summary.evidenceTreeFileCountBeforeSummary + 1 ||
+    evidence.evidenceTreeSha256BeforeSummary !==
+      summary.evidenceTreeSha256BeforeSummary ||
+    evidence.browser.status !== summary.localBrowserEvidenceStatus ||
+    evidence.browser.screenshotCount !== summary.localBrowserScreenshotCount ||
+    JSON.stringify(evidence.browser.projectScreenshotCounts) !==
+      JSON.stringify(summary.localBrowserProjectScreenshotCounts) ||
     summary.localGateStatus !== expectedVerificationLocalGate ||
     summary.failedCount !== 0 ||
     summary.blockedCount !== expectedHostedVerificationDeferrals.length ||

@@ -24,6 +24,11 @@ import {
   FINAL_VERIFICATION_HOSTED_DEFERRALS,
   finalVerificationEvidenceQualification,
 } from "./lib/final-verification-command-contract.mjs";
+import {
+  FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS,
+  FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  assertFinalVerificationEvidenceIsSealable,
+} from "./lib/final-verification-evidence-contract.mjs";
 
 const builder = resolve("scripts/build-current-release-evidence.mjs");
 const root = mkdtempSync(join(tmpdir(), "dealflow-current-evidence-contract-"));
@@ -37,6 +42,146 @@ function sha256(value) {
 function write(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`);
+}
+
+const MINIMAL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+function writeExactLocalBrowserProof(roundDirectory) {
+  const browserRoot = join(roundDirectory, "browser-proof");
+  const artifactRoot = join(browserRoot, "artifacts");
+  const specs = [];
+  const authenticatedResults = [];
+  let ordinal = 0;
+  for (const projectName of FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS) {
+    for (let index = 0; index < 14; index += 1) {
+      const skipped = index >= 10;
+      const status = skipped ? "skipped" : "passed";
+      const attachments = [];
+      if (skipped) {
+        authenticatedResults.push({
+          titlePath: ` > ${projectName} > fixture > authenticated isolated-staging product proof > fixture ${index}`,
+          projectName,
+          status: "skipped",
+          retry: 0,
+        });
+      } else {
+        const screenshotDirectory = join(
+          artifactRoot,
+          `fixture-${String(ordinal).padStart(2, "0")}-${projectName}`,
+        );
+        const screenshotPath = join(screenshotDirectory, "test-finished-1.png");
+        mkdirSync(screenshotDirectory, { recursive: true, mode: 0o700 });
+        writeFileSync(screenshotPath, MINIMAL_PNG, { mode: 0o600 });
+        attachments.push({
+          name: "screenshot",
+          contentType: "image/png",
+          path: screenshotPath,
+        });
+      }
+      specs.push({
+        title: `fixture ${projectName} ${index}`,
+        ok: true,
+        tests: [{
+          expectedStatus: status,
+          projectId: projectName,
+          projectName,
+          status: skipped ? "skipped" : "expected",
+          results: [{ status, retry: 0, errors: [], attachments }],
+        }],
+      });
+      ordinal += 1;
+    }
+  }
+  write(join(browserRoot, "playwright-results.json"), {
+    suites: [{ title: "fixture", specs, suites: [] }],
+    errors: [],
+    stats: { expected: 40, skipped: 16, unexpected: 0, flaky: 0 },
+  });
+  write(join(browserRoot, "safe-browser-acceptance-summary.json"), {
+    schemaVersion: "dealflow.safe-browser-acceptance.v1",
+    executionMode: "local_public",
+    playwrightStatus: "passed",
+    authenticatedStatus: "authenticated_deferred",
+    authenticatedResultCount: 16,
+    authenticatedSkippedCount: 16,
+    authenticatedProjectCounts: Object.fromEntries(
+      FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS.map((project) => [project, 4]),
+    ),
+    authenticatedResults,
+  });
+  write(join(browserRoot, "safety-preflight.json"), {
+    schemaVersion: "dealflow.safe-browser-preflight.v1",
+    mode: "local_public",
+    zeroExternalEffects: {
+      ok: true,
+      attestation: "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1",
+      checkedControlCount: 60,
+      failedControls: [],
+    },
+    authenticatedStatus: "authenticated_deferred",
+    publicTestsAuthorized: true,
+    authenticatedTestsAuthorized: false,
+  });
+  write(join(browserRoot, "playwright-results.xml"), "<testsuites/>\n");
+  write(join(browserRoot, "report", "index.html"), "<!doctype html><title>PASS</title>\n");
+  write(join(artifactRoot, ".last-run.json"), {
+    status: "passed",
+    failedTests: [],
+  });
+}
+
+function rewriteRoundAttachmentPaths(value, roundDirectory) {
+  if (Array.isArray(value)) {
+    for (const item of value) rewriteRoundAttachmentPaths(item, roundDirectory);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  if (typeof value.path === "string" && value.path.includes("/browser-proof/artifacts/")) {
+    const suffix = value.path.split("/browser-proof/artifacts/")[1];
+    value.path = join(roundDirectory, "browser-proof", "artifacts", suffix);
+  }
+  for (const item of Object.values(value)) {
+    rewriteRoundAttachmentPaths(item, roundDirectory);
+  }
+}
+
+function resealRoundFixture(roundDirectory) {
+  const summaryPath = join(roundDirectory, "verification-summary.json");
+  const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+  rmSync(summaryPath);
+  const resultsPath = join(roundDirectory, "browser-proof", "playwright-results.json");
+  const results = JSON.parse(readFileSync(resultsPath, "utf8"));
+  rewriteRoundAttachmentPaths(results, roundDirectory);
+  write(resultsPath, results);
+  const evidence = assertFinalVerificationEvidenceIsSealable(roundDirectory);
+  write(summaryPath, {
+    ...summary,
+    evidenceTreeFileCountBeforeSummary: evidence.fileCountBeforeSummary,
+    evidenceTreeSha256BeforeSummary: evidence.evidenceTreeSha256BeforeSummary,
+    localBrowserEvidenceStatus: evidence.browser.status,
+    localBrowserScreenshotCount: evidence.browser.screenshotCount,
+    localBrowserProjectScreenshotCounts: evidence.browser.projectScreenshotCounts,
+  });
+}
+
+function cloneExactRoundFixture(source, destination) {
+  cpSync(source, destination, { recursive: true });
+  resealRoundFixture(destination);
+}
+
+function playwrightTestRecords(results) {
+  const records = [];
+  const visit = (suite) => {
+    for (const spec of suite?.specs ?? []) {
+      for (const test of spec?.tests ?? []) records.push({ spec, test });
+    }
+    for (const child of suite?.suites ?? []) visit(child);
+  };
+  for (const suite of results?.suites ?? []) visit(suite);
+  return records;
 }
 
 function run(executable, args, options = {}) {
@@ -145,6 +290,19 @@ function sealStaging(directory) {
   write(join(directory, "SHA256SUMS"), `${checksummed.map((record) => `${record.sha256}  ${record.path}`).join("\n")}\n`);
 }
 
+function cloneStagingBoundToRoundOne(source, destination, roundDirectory) {
+  cpSync(source, destination, { recursive: true });
+  rmSync(join(destination, "evidence-manifest.json"));
+  rmSync(join(destination, "SHA256SUMS"));
+  const preflightPath = join(destination, "preflight.json");
+  const preflight = JSON.parse(readFileSync(preflightPath, "utf8"));
+  preflight.roundOne.sha256 = sha256(
+    readFileSync(join(roundDirectory, "verification-summary.json")),
+  );
+  write(preflightPath, preflight);
+  sealStaging(destination);
+}
+
 function assertMode(path, expected) {
   const mode = lstatSync(path).mode & 0o777;
   if (mode !== expected) throw new Error(`${path}: expected ${expected.toString(8)}, got ${mode.toString(8)}`);
@@ -186,6 +344,10 @@ try {
     command,
     status: "passed",
     exitCode: 0,
+    diskFreeBytesBefore: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+    diskFreeBytesAfter: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+    fatalResourceDiagnostic: null,
+    postCommandDiskHeadroom: "passed",
     evidenceQualification: finalVerificationEvidenceQualification(command),
     postCommandRepositoryInvariant: "passed",
     safeEnvironmentProfile: "provider_credentials_and_application_secrets_omitted",
@@ -201,7 +363,16 @@ try {
   }));
   const roundSummarySha256 = {};
   for (const round of ["1", "2"]) {
-    write(join(external, `round-${round}`, "verification-summary.json"), {
+    const roundDirectory = join(external, `round-${round}`);
+    writeExactLocalBrowserProof(roundDirectory);
+    for (const record of records) {
+      write(
+        join(roundDirectory, record.log),
+        `command: ${record.command}\nrecord_exit_code: 0\nfixture_round: ${round}\n`,
+      );
+    }
+    const evidence = assertFinalVerificationEvidenceIsSealable(roundDirectory);
+    write(join(roundDirectory, "verification-summary.json"), {
       schemaVersion: "dealflow.final-verification.v3",
       round,
       runtime: "v24.15.0",
@@ -216,6 +387,15 @@ try {
       commandCount: records.length,
       passedCount: records.length,
       commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+      minimumFreeBytesRequired: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+      minimumObservedFreeBytes: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+      fatalResourceDiagnosticCount: 0,
+      evidenceTreeStatus: evidence.status,
+      evidenceTreeFileCountBeforeSummary: evidence.fileCountBeforeSummary,
+      evidenceTreeSha256BeforeSummary: evidence.evidenceTreeSha256BeforeSummary,
+      localBrowserEvidenceStatus: evidence.browser.status,
+      localBrowserScreenshotCount: evidence.browser.screenshotCount,
+      localBrowserProjectScreenshotCounts: evidence.browser.projectScreenshotCounts,
       failedCount: 0,
       blockedCount: 3,
       environmentOnlyDeferredCount: 3,
@@ -231,8 +411,9 @@ try {
       records,
       uniqueRoundEvidence: round,
     });
-    write(join(external, `round-${round}`, "browser-proof", `round-${round}.png`), Buffer.from([137, 80, 78, 71, Number(round)]));
-    roundSummarySha256[round] = sha256(readFileSync(join(external, `round-${round}`, "verification-summary.json")));
+    roundSummarySha256[round] = sha256(
+      readFileSync(join(roundDirectory, "verification-summary.json")),
+    );
   }
 
   const stagingGates = {
@@ -633,7 +814,7 @@ try {
   });
 
   const tamperedPortfolioRound = join(external, "tampered-portfolio-round");
-  cpSync(join(external, "round-1"), tamperedPortfolioRound, { recursive: true });
+  cloneExactRoundFixture(join(external, "round-1"), tamperedPortfolioRound);
   const tamperedPortfolio = JSON.parse(
     readFileSync(join(tamperedPortfolioRound, "verification-summary.json"), "utf8"),
   );
@@ -651,7 +832,7 @@ try {
   });
 
   const mismatchRound = join(external, "mismatch-round");
-  cpSync(join(external, "round-1"), mismatchRound, { recursive: true });
+  cloneExactRoundFixture(join(external, "round-1"), mismatchRound);
   const mismatch = JSON.parse(readFileSync(join(mismatchRound, "verification-summary.json"), "utf8"));
   mismatch.headTree = "0".repeat(40);
   mismatch.records = mismatch.records.map((record) => ({
@@ -664,6 +845,102 @@ try {
     match: /does not match the exact current source/,
   });
 
+  const missingScreenshotRound = join(external, "missing-screenshot-round");
+  cloneExactRoundFixture(join(external, "round-1"), missingScreenshotRound);
+  const missingScreenshotResults = JSON.parse(
+    readFileSync(
+      join(missingScreenshotRound, "browser-proof", "playwright-results.json"),
+      "utf8",
+    ),
+  );
+  const missingScreenshotPath = playwrightTestRecords(missingScreenshotResults)
+    .find(({ test }) => test.expectedStatus === "passed")
+    .test.results[0].attachments[0].path;
+  rmSync(missingScreenshotPath);
+  run(process.execPath, [builder, "--round-one", missingScreenshotRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-missing-screenshot")], {
+    expectFailure: true,
+    match: /ENOENT|screenshot|evidence/,
+  });
+
+  const emptyScreenshotRound = join(external, "empty-screenshot-round");
+  cloneExactRoundFixture(join(external, "round-1"), emptyScreenshotRound);
+  const emptyScreenshotResults = JSON.parse(
+    readFileSync(
+      join(emptyScreenshotRound, "browser-proof", "playwright-results.json"),
+      "utf8",
+    ),
+  );
+  const emptyScreenshotPath = playwrightTestRecords(emptyScreenshotResults)
+    .find(({ test }) => test.expectedStatus === "passed")
+    .test.results[0].attachments[0].path;
+  writeFileSync(emptyScreenshotPath, "");
+  run(process.execPath, [builder, "--round-one", emptyScreenshotRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-empty-screenshot")], {
+    expectFailure: true,
+    match: /empty file|nonempty/,
+  });
+
+  const duplicateScreenshotRound = join(external, "duplicate-screenshot-round");
+  cloneExactRoundFixture(join(external, "round-1"), duplicateScreenshotRound);
+  const duplicateResultsPath = join(
+    duplicateScreenshotRound,
+    "browser-proof",
+    "playwright-results.json",
+  );
+  const duplicateResults = JSON.parse(readFileSync(duplicateResultsPath, "utf8"));
+  const passingDuplicateRecords = playwrightTestRecords(duplicateResults).filter(
+    ({ test }) => test.expectedStatus === "passed",
+  );
+  passingDuplicateRecords[1].test.results[0].attachments[0].path =
+    passingDuplicateRecords[0].test.results[0].attachments[0].path;
+  write(duplicateResultsPath, duplicateResults);
+  run(process.execPath, [builder, "--round-one", duplicateScreenshotRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-duplicate-screenshot")], {
+    expectFailure: true,
+    match: /unique nonempty PNG|screenshot portfolio/,
+  });
+
+  const wrongProjectRound = join(external, "wrong-project-round");
+  cloneExactRoundFixture(join(external, "round-1"), wrongProjectRound);
+  const wrongProjectResultsPath = join(
+    wrongProjectRound,
+    "browser-proof",
+    "playwright-results.json",
+  );
+  const wrongProjectResults = JSON.parse(readFileSync(wrongProjectResultsPath, "utf8"));
+  playwrightTestRecords(wrongProjectResults)[0].test.projectName = "wrong-project";
+  write(wrongProjectResultsPath, wrongProjectResults);
+  run(process.execPath, [builder, "--round-one", wrongProjectRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-wrong-project")], {
+    expectFailure: true,
+    match: /test result is not exact/,
+  });
+
+  const unreferencedScreenshotRound = join(external, "unreferenced-screenshot-round");
+  cloneExactRoundFixture(join(external, "round-1"), unreferencedScreenshotRound);
+  writeFileSync(
+    join(
+      unreferencedScreenshotRound,
+      "browser-proof",
+      "artifacts",
+      "unreferenced.png",
+    ),
+    MINIMAL_PNG,
+    { mode: 0o600 },
+  );
+  run(process.execPath, [builder, "--round-one", unreferencedScreenshotRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-unreferenced-screenshot")], {
+    expectFailure: true,
+    match: /exact 40-file set/,
+  });
+
+  const postSummaryTamperRound = join(external, "post-summary-tamper-round");
+  cloneExactRoundFixture(join(external, "round-1"), postSummaryTamperRound);
+  writeFileSync(
+    join(postSummaryTamperRound, records[0].log),
+    "tampered after summary\n",
+  );
+  run(process.execPath, [builder, "--round-one", postSummaryTamperRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-post-summary-tamper")], {
+    expectFailure: true,
+    match: /not a complete exact-seal local pass/,
+  });
+
   const unhashedStaging = join(external, "unhashed-staging");
   cpSync(staging, unhashedStaging, { recursive: true });
   write(join(unhashedStaging, "unhashed.json"), { status: "PASS" });
@@ -673,31 +950,53 @@ try {
   });
 
   const secretRound = join(external, "secret-round");
-  cpSync(join(external, "round-1"), secretRound, { recursive: true });
-  write(join(secretRound, "leak.txt"), "Authorization: Bearer synthetic-but-secret-shaped-token-123456\n");
-  run(process.execPath, [builder, "--round-one", secretRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-secret")], {
+  cloneExactRoundFixture(join(external, "round-1"), secretRound);
+  write(
+    join(secretRound, records[0].log),
+    "Authorization: Bearer synthetic-but-secret-shaped-token-123456\n",
+  );
+  resealRoundFixture(secretRound);
+  const secretRoundStaging = join(external, "secret-round-staging");
+  cloneStagingBoundToRoundOne(staging, secretRoundStaging, secretRound);
+  run(process.execPath, [builder, "--round-one", secretRound, "--round-two", join(external, "round-2"), "--staging", secretRoundStaging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-secret")], {
     expectFailure: true,
     match: /Probable secret rejected/,
   });
 
   const customerRound = join(external, "customer-round");
-  cpSync(join(external, "round-1"), customerRound, { recursive: true });
-  write(join(customerRound, "customer.txt"), "customerEmail=real.person@private-domain.com\n");
-  run(process.execPath, [builder, "--round-one", customerRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-customer")], {
+  cloneExactRoundFixture(join(external, "round-1"), customerRound);
+  write(
+    join(customerRound, records[0].log),
+    "customerEmail=real.person@private-domain.com\n",
+  );
+  resealRoundFixture(customerRound);
+  const customerRoundStaging = join(external, "customer-round-staging");
+  cloneStagingBoundToRoundOne(staging, customerRoundStaging, customerRound);
+  run(process.execPath, [builder, "--round-one", customerRound, "--round-two", join(external, "round-2"), "--staging", customerRoundStaging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-customer")], {
     expectFailure: true,
     match: /Probable customer data rejected/,
   });
 
   const protectedRefRound = join(external, "protected-ref-round");
-  cpSync(join(external, "round-1"), protectedRefRound, { recursive: true });
-  write(join(protectedRefRound, "protected.txt"), "projectRef=abcdefghijklmnopqrst\n");
-  run(process.execPath, [builder, "--round-one", protectedRefRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-protected-ref")], {
+  cloneExactRoundFixture(join(external, "round-1"), protectedRefRound);
+  write(
+    join(protectedRefRound, records[0].log),
+    "projectRef=abcdefghijklmnopqrst\n",
+  );
+  resealRoundFixture(protectedRefRound);
+  const protectedRefRoundStaging = join(external, "protected-ref-round-staging");
+  cloneStagingBoundToRoundOne(
+    staging,
+    protectedRefRoundStaging,
+    protectedRefRound,
+  );
+  run(process.execPath, [builder, "--round-one", protectedRefRound, "--round-two", join(external, "round-2"), "--staging", protectedRefRoundStaging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-protected-ref")], {
     expectFailure: true,
     match: /Full protected identifier rejected/,
   });
 
   const emptyRound = join(external, "empty-round");
-  cpSync(join(external, "round-1"), emptyRound, { recursive: true });
+  cloneExactRoundFixture(join(external, "round-1"), emptyRound);
   writeFileSync(join(emptyRound, "empty.txt"), "");
   run(process.execPath, [builder, "--round-one", emptyRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-empty")], {
     expectFailure: true,
@@ -705,7 +1004,7 @@ try {
   });
 
   const symlinkRound = join(external, "symlink-round");
-  cpSync(join(external, "round-1"), symlinkRound, { recursive: true });
+  cloneExactRoundFixture(join(external, "round-1"), symlinkRound);
   symlinkSync("verification-summary.json", join(symlinkRound, "linked-summary.json"));
   run(process.execPath, [builder, "--round-one", symlinkRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-symlink")], {
     expectFailure: true,

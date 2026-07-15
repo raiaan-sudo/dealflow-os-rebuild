@@ -19,6 +19,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
+import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
 import {
   RLS_FIXTURE_DIRECT_MARKERS,
   RLS_FIXTURE_LEGACY_IMMUTABLE_MARKERS,
@@ -1163,12 +1164,22 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
     throw new Error(`${label} must be an existing regular file`);
   }
   const parsed = JSON.parse(readFileSync(path, "utf8"));
+  const evidence = assertFinalVerificationEvidenceIsSealable(dirname(path));
   assertExactFinalVerificationSummaryPortfolio(parsed, `${label} portfolio`);
   if (
     parsed.schemaVersion !== "dealflow.final-verification.v3" ||
     String(parsed.round) !== expectedRound ||
     !/^v24\./.test(parsed.runtime ?? "") ||
     parsed.repositoryInvariant !== "passed" ||
+    evidence.status !== "PASS" ||
+    evidence.fileCountBeforeSummary !== parsed.evidenceTreeFileCountBeforeSummary ||
+    evidence.totalFileCount !== parsed.evidenceTreeFileCountBeforeSummary + 1 ||
+    evidence.evidenceTreeSha256BeforeSummary !==
+      parsed.evidenceTreeSha256BeforeSummary ||
+    evidence.browser.status !== parsed.localBrowserEvidenceStatus ||
+    evidence.browser.screenshotCount !== parsed.localBrowserScreenshotCount ||
+    JSON.stringify(evidence.browser.projectScreenshotCounts) !==
+      JSON.stringify(parsed.localBrowserProjectScreenshotCounts) ||
     parsed.localGateStatus !== EXPECTED_LOCAL_GATE_STATUS ||
     parsed.headCommit !== identity.commit ||
     parsed.headTree !== identity.tree ||
