@@ -1492,6 +1492,16 @@ assert.match(runner, /normalRateLimitImplementationChanged: false/);
 assert.match(runner, /RLS_FIXTURE_DIRECT_MARKERS/);
 assert.match(runner, /RLS_FIXTURE_LEGACY_IMMUTABLE_MARKERS/);
 assert.match(runner, /isRlsFixtureAuthEmail/);
+assert.match(
+  runner,
+  /\.from\(marker\.table\)\s*\.select\(marker\.column, \{ count: "exact", head: true \}\)/,
+  "RLS residue proof must project each marker's known-existing column",
+);
+assert.doesNotMatch(
+  runner,
+  /\.from\(marker\.table\)\.select\("id", \{ count: "exact", head: true \}\)/,
+  "RLS residue proof must not assume every marker table has an id column",
+);
 assert.match(rlsFixtureSmoke, /RLS_FIXTURE_DIRECT_MARKERS/);
 assert.match(rlsFixtureSmoke, /RLS proof failed and fixture cleanup also failed/);
 assert.match(rlsFixtureContract, /leadMessages/);

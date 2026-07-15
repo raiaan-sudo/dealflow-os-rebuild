@@ -4482,7 +4482,9 @@ async function captureRlsFixtureResidue(admin) {
     counts[marker.key] = await count(
       marker.key,
       applyRlsFixtureMarker(
-        admin.from(marker.table).select("id", { count: "exact", head: true }),
+        admin
+          .from(marker.table)
+          .select(marker.column, { count: "exact", head: true }),
         marker,
       ),
     );
