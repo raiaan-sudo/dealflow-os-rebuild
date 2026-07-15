@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -320,7 +320,36 @@ function assertChecksums(output) {
   if (expected.some((path) => !declared.has(path)) || expected.length !== declared.size) throw new Error("unhashed output artifact");
 }
 
+function assertSnapshotFirstSourceBindingContract() {
+  const source = readFileSync(builder, "utf8");
+  const helperStart = source.indexOf("function validateSnapshottedInput(");
+  const helperEnd = source.indexOf("\nfunction copyProof(", helperStart);
+  if (helperStart < 0 || helperEnd < 0) {
+    throw new Error("Release builder lacks the atomic source-binding helper");
+  }
+  const helper = source.slice(helperStart, helperEnd);
+  const snapshotIndex = helper.indexOf("snapshotInput(root)");
+  const validationIndex = helper.indexOf("validate()");
+  const unchangedIndex = helper.indexOf("assertInputUnchanged(root, snapshot, label)");
+  if (
+    snapshotIndex < 0 ||
+    validationIndex <= snapshotIndex ||
+    unchangedIndex <= validationIndex
+  ) {
+    throw new Error("Release builder must snapshot before validation and immediately prove the source unchanged");
+  }
+  const mainStart = source.indexOf("function main()");
+  const main = source.slice(mainStart);
+  if (
+    (main.match(/validateSnapshottedInput\(/g) ?? []).length !== 3 ||
+    /roundOne:\s*snapshotInput\(|roundTwo:\s*snapshotInput\(|staging:\s*snapshotInput\(/.test(main)
+  ) {
+    throw new Error("Every recursive evidence source must use the snapshot-first binding contract");
+  }
+}
+
 try {
+  assertSnapshotFirstSourceBindingContract();
   mkdirSync(repo, { recursive: true });
   mkdirSync(external, { recursive: true });
   write(join(repo, "package-lock.json"), { name: "fixture", lockfileVersion: 3, packages: {} });
@@ -941,6 +970,35 @@ try {
     match: /not a complete exact-seal local pass/,
   });
 
+  const concurrentTamperRound = join(external, "concurrent-tamper-round");
+  cloneExactRoundFixture(join(external, "round-1"), concurrentTamperRound);
+  const concurrentFillerPath = join(concurrentTamperRound, "concurrent-snapshot-filler.txt");
+  writeFileSync(concurrentFillerPath, Buffer.alloc(64 * 1024 * 1024, 120));
+  resealRoundFixture(concurrentTamperRound);
+  const concurrentTamperStaging = join(external, "concurrent-tamper-staging");
+  cloneStagingBoundToRoundOne(staging, concurrentTamperStaging, concurrentTamperRound);
+  const concurrentTarget = join(concurrentTamperRound, records[0].log);
+  const mutator = spawn(
+    process.execPath,
+    [
+      "-e",
+      "const { appendFileSync } = require('node:fs'); setTimeout(() => appendFileSync(process.argv[1], '\\nconcurrent-tamper\\n'), 25);",
+      concurrentTarget,
+    ],
+    { stdio: "ignore" },
+  );
+  try {
+    run(process.execPath, [builder, "--round-one", concurrentTamperRound, "--round-two", join(external, "round-2"), "--staging", concurrentTamperStaging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-concurrent-tamper")], {
+      expectFailure: true,
+      match: /changed while the release bundle was being assembled|not a complete exact-seal local pass|Copied evidence changed/,
+    });
+    if (!readFileSync(concurrentTarget, "utf8").includes("concurrent-tamper")) {
+      throw new Error("Concurrent evidence mutator did not execute during the builder run");
+    }
+  } finally {
+    mutator.kill("SIGTERM");
+  }
+
   const unhashedStaging = join(external, "unhashed-staging");
   cpSync(staging, unhashedStaging, { recursive: true });
   write(join(unhashedStaging, "unhashed.json"), { status: "PASS" });
@@ -1011,7 +1069,7 @@ try {
     match: /symlink/,
   });
 
-  process.stdout.write("current release evidence builder contract: PASS (fail-closed production trust, current runner-shaped gates and blockers, fresh/resumed/forward migration modes, exact identity and schema binding, recursive sanitized proof copy, complete matrices, private modes, manifest/checksums, and adversarial drift/unhashed/secret/customer/protected-ref/empty/symlink tests)\n");
+  process.stdout.write("current release evidence builder contract: PASS (fail-closed production trust, snapshot-first atomic source binding, current runner-shaped gates and blockers, fresh/resumed/forward migration modes, exact identity and schema binding, recursive sanitized proof copy, complete matrices, private modes, manifest/checksums, and adversarial concurrent-tamper/drift/unhashed/secret/customer/protected-ref/empty/symlink tests)\n");
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

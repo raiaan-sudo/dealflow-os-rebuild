@@ -846,6 +846,16 @@ function assertInputUnchanged(root, before, label) {
   }
 }
 
+function validateSnapshottedInput(root, label, validate) {
+  // Bind the exact source bytes before semantic validation. Proving the source
+  // is still identical immediately afterward closes the validate-then-snapshot
+  // race: validation can qualify only the byte portfolio that copyProof seals.
+  const snapshot = snapshotInput(root);
+  const value = validate();
+  assertInputUnchanged(root, snapshot, label);
+  return Object.freeze({ snapshot, value });
+}
+
 function copyProof(sourceRoot, destinationRoot, records) {
   for (const record of records) {
     const destination = join(destinationRoot, record.path);
@@ -1084,17 +1094,32 @@ function main() {
   const productionSnapshot = options.productionAttestation
     ? snapshotFile(options.productionAttestation, "production attestation")
     : null;
-  const roundOne = validateRound(options.roundOne, "1", identity, migrations);
-  const roundTwo = validateRound(options.roundTwo, "2", identity, migrations);
+  const boundRoundOne = validateSnapshottedInput(
+    options.roundOne,
+    "Verification round one evidence",
+    () => validateRound(options.roundOne, "1", identity, migrations),
+  );
+  const roundOne = boundRoundOne.value;
+  const boundRoundTwo = validateSnapshottedInput(
+    options.roundTwo,
+    "Verification round two evidence",
+    () => validateRound(options.roundTwo, "2", identity, migrations),
+  );
+  const roundTwo = boundRoundTwo.value;
   if (roundOne.summarySha256 === roundTwo.summarySha256) fail("Two distinct final-verification summaries are required");
-  const staging = validateStaging(options.staging, identity, migrations, roundOne, roundTwo);
+  const boundStaging = validateSnapshottedInput(
+    options.staging,
+    "Staging evidence",
+    () => validateStaging(options.staging, identity, migrations, roundOne, roundTwo),
+  );
+  const staging = boundStaging.value;
   const checkpoint = validateCheckpoint(checkpointSnapshot, identity);
   const production = validateProduction(productionSnapshot, identity, migrations);
 
   const sourceSnapshots = {
-    roundOne: snapshotInput(options.roundOne),
-    roundTwo: snapshotInput(options.roundTwo),
-    staging: snapshotInput(options.staging),
+    roundOne: boundRoundOne.snapshot,
+    roundTwo: boundRoundTwo.snapshot,
+    staging: boundStaging.snapshot,
   };
   const stagingGates = staging.derivedGates;
   const capabilities = buildCapabilityMatrix(stagingGates, production);

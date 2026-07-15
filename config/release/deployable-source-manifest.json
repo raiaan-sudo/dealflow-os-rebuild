@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 975,
-  "deployableSourceSha256": "5483804a442773b23af8e55fbe06742e68df85a757994242b68dbd2eef7601df",
+  "deployableSourceSha256": "802643960049017817743099e7cafaaa49f80a4bc3dba3f9feb14d526880230a",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -648,9 +648,9 @@
     },
     {
       "path": "scripts/build-current-release-evidence.mjs",
-      "size": 58365,
+      "size": 59223,
       "mode": 33188,
-      "sha256": "ef6091efcd214a58254d7d6fa7270d53de2698e3ba6dd44ba549eca79523804e"
+      "sha256": "5a9d3632f4c127d8bf34f523ae971fc4863e4c9034ec91e6da351876ec21cc85"
     },
     {
       "path": "scripts/build-dealflow-final-audit-bundle.mjs",
@@ -1302,9 +1302,9 @@
     },
     {
       "path": "scripts/test-current-release-evidence-builder-contract.mjs",
-      "size": 44365,
+      "size": 47264,
       "mode": 33188,
-      "sha256": "ee2f958706024c7a1eef2e70b0b03a89ea6f969152dd5a49934b66e5f4b71e6f"
+      "sha256": "91c598cf8d9923706414d91bdae4257818a925d53e6bb2d3daa440954c1da9af"
     },
     {
       "path": "scripts/test-custom-lead-question-contract.mjs",
