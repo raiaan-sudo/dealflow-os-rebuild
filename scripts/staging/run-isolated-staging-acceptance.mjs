@@ -58,6 +58,10 @@ import {
   UNSEALED_PLAYWRIGHT_FAILURE_POLICY,
   deleteRegisteredUnsealedPlaywrightArtifactDirectories,
 } from "./unsealed-playwright-artifact-cleanup.mjs";
+import {
+  buildMinimalPlaywrightFailureDiagnostic,
+  buildPlaywrightFailureDiagnostic,
+} from "./playwright-failure-diagnostic-contract.mjs";
 import { runInterruptibleCommand } from "./interruptible-command.mjs";
 import { assertApprovedStagingEvidenceRootPath } from "./staging-evidence-root-contract.mjs";
 import { parseExactHostedSupabaseProjectUrl } from "./exact-supabase-project-url.mjs";
@@ -249,6 +253,7 @@ const failureContext = {
   transientSecrets: [],
   pendingSyntheticUserGlobalSignOuts: [],
   unsealedPlaywrightArtifactDirectories: [],
+  playwrightFailureDiagnosticFallback: null,
   stagingAliasMutations: [],
   vercelSelection: null,
 };
@@ -4688,28 +4693,10 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
     outputDir,
     configuredOutputDir,
   ]);
-  await runInterruptible(binary, ["test", `--config=${config}`], {
-    label: `${name} zero-skip Playwright suite`,
-    env: { ...childBaseEnvironment(), ...environment },
-    timeoutMs: 30 * 60_000,
-    maxBuffer: 256 * 1024 * 1024,
-    secrets: [
-      process.env.STAGING_QA_PASSWORD,
-      process.env.INTERNAL_SYSTEM_JOBS_SECRET,
-      process.env.STAGING_ACCESS_GATE_SECRET,
-      process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
-      process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-      ...secrets,
-    ],
-  });
-  assertEvidenceSanitized(configuredOutputDir, [
-    process.env.STAGING_QA_PASSWORD,
-    process.env.INTERNAL_SYSTEM_JOBS_SECRET,
-    process.env.STAGING_ACCESS_GATE_SECRET,
-    process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
-    process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+  const protectedSecrets = [
+    ...protectedRuntimeValues(),
     ...secrets,
-  ]);
+  ];
   const jsonPath = join(
     configuredOutputDir,
     config === "playwright.safe.config.ts" ? "playwright-results.json" : "results.json",
@@ -4719,6 +4706,110 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
     config === "playwright.safe.config.ts" ? "playwright-results.xml" : "results.xml",
   );
   const htmlPath = join(configuredOutputDir, "report", "index.html");
+  const safetyPath = config === "playwright.safe.config.ts"
+    ? join(configuredOutputDir, "safe-browser-acceptance-summary.json")
+    : null;
+  const reporterProfile = config === "playwright.safe.config.ts" ? "safe" : "staging";
+  const failureDiagnosticPath = join(
+    evidenceDir,
+    `${name}-failure-diagnostic.json`,
+  );
+  const fallbackFileName = `${name}-failure-diagnostic.json`;
+  if (!/^[a-z][a-z0-9-]{2,80}-failure-diagnostic\.json$/.test(fallbackFileName)) {
+    throw new Error("Playwright failure diagnostic filename is invalid");
+  }
+  failureContext.playwrightFailureDiagnosticFallback = Object.freeze({
+    fileName: fallbackFileName,
+    diagnostic: buildMinimalPlaywrightFailureDiagnostic({
+      suiteName: name,
+      reporterProfile,
+      failureKind: "evidence_reset_fallback",
+      failureDescriptor: "Playwright reporter evidence required a safe evidence-root reset",
+      secrets: protectedSecrets,
+    }),
+  });
+  let execution;
+  try {
+    execution = await runInterruptibleAllowNonzero(
+      binary,
+      ["test", `--config=${config}`],
+      {
+        label: `${name} zero-skip Playwright suite`,
+        env: { ...childBaseEnvironment(), ...environment },
+        timeoutMs: 30 * 60_000,
+        maxBuffer: 256 * 1024 * 1024,
+        secrets: protectedSecrets,
+      },
+    );
+  } catch (commandError) {
+    const minimalDiagnostic = buildMinimalPlaywrightFailureDiagnostic({
+      suiteName: name,
+      reporterProfile,
+      failureKind: "abnormal_command_termination",
+      failureDescriptor: commandError instanceof Error
+        ? commandError.message
+        : String(commandError),
+      secrets: protectedSecrets,
+    });
+    failureContext.playwrightFailureDiagnosticFallback = Object.freeze({
+      fileName: fallbackFileName,
+      diagnostic: minimalDiagnostic,
+    });
+    writeJson(failureDiagnosticPath, minimalDiagnostic, {
+      allowDuringTermination: true,
+    });
+    throw commandError;
+  }
+  if (execution.status !== 0) {
+    failureContext.playwrightFailureDiagnosticFallback = Object.freeze({
+      fileName: fallbackFileName,
+      diagnostic: buildMinimalPlaywrightFailureDiagnostic({
+        suiteName: name,
+        reporterProfile,
+        failureKind: "evidence_reset_fallback",
+        executionStatus: execution.status,
+        failureDescriptor: "Detailed Playwright reporter evidence required a safe evidence-root reset",
+        secrets: protectedSecrets,
+      }),
+    });
+    let failureDiagnostic;
+    try {
+      failureDiagnostic = buildPlaywrightFailureDiagnostic({
+        suiteName: name,
+        reporterProfile,
+        executionStatus: execution.status,
+        reporterRoot: configuredOutputDir,
+        jsonReporterPath: jsonPath,
+        junitReporterPath: junitPath,
+        htmlReporterPath: htmlPath,
+        safetyReporterPath: safetyPath,
+        commandDiagnostics: [execution.stderr, execution.stdout],
+        secrets: protectedSecrets,
+      });
+    } catch (diagnosticError) {
+      failureDiagnostic = buildMinimalPlaywrightFailureDiagnostic({
+        suiteName: name,
+        reporterProfile,
+        failureKind: "diagnostic_construction_failed",
+        executionStatus: execution.status,
+        failureDescriptor: diagnosticError instanceof Error
+          ? diagnosticError.message
+          : String(diagnosticError),
+        secrets: protectedSecrets,
+      });
+      failureContext.playwrightFailureDiagnosticFallback = Object.freeze({
+        fileName: fallbackFileName,
+        diagnostic: failureDiagnostic,
+      });
+    }
+    writeJson(failureDiagnosticPath, failureDiagnostic, {
+      allowDuringTermination: true,
+    });
+    throw new Error(
+      `${name} zero-skip Playwright suite failed with exit ${execution.status}; sanitized reporter diagnostic retained`,
+    );
+  }
+  assertEvidenceSanitized(configuredOutputDir, protectedSecrets);
   for (const artifact of [jsonPath, junitPath, htmlPath]) {
     if (!existsSync(artifact) || !lstatSync(artifact).isFile() || lstatSync(artifact).isSymbolicLink()) {
       throw new Error(`${name} did not produce its complete configured reporter portfolio`);
@@ -4747,7 +4838,6 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
   }
   let safeAcceptance = null;
   if (config === "playwright.safe.config.ts") {
-    const safetyPath = join(configuredOutputDir, "safe-browser-acceptance-summary.json");
     if (!existsSync(safetyPath) || !lstatSync(safetyPath).isFile()) {
       throw new Error(`${name} did not produce its authenticated safety reporter summary`);
     }
@@ -4778,6 +4868,7 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
     safeAuthenticatedResultCount: safeAcceptance?.authenticatedResultCount ?? null,
   };
   writeJson(join(outputDir, "validated-reporter-summary.json"), summary);
+  failureContext.playwrightFailureDiagnosticFallback = null;
   return summary;
 }
 
@@ -6678,6 +6769,20 @@ async function finalizeFailure(error, { terminationKind = "main_rejection" } = {
           unsafePartialReasons.join(" | "),
         );
       }
+      if (
+        evidenceSafety.disposition ===
+          "UNSAFE_PARTIAL_EVIDENCE_DESTROYED_AND_ROOT_RECREATED" &&
+        failureContext.playwrightFailureDiagnosticFallback
+      ) {
+        const { fileName, diagnostic } =
+          failureContext.playwrightFailureDiagnosticFallback;
+        if (!/^[a-z][a-z0-9-]{2,80}-failure-diagnostic\.json$/.test(fileName)) {
+          throw new Error("Playwright reset fallback filename is invalid");
+        }
+        writeJson(join(evidenceDir, fileName), diagnostic, {
+          allowDuringTermination: true,
+        });
+      }
 
       writeJson(
         join(evidenceDir, "STAGING_ALIAS_FAILURE_ROLLBACK.json"),
@@ -6777,6 +6882,7 @@ async function finalizeFailure(error, { terminationKind = "main_rejection" } = {
       );
       failureContext.sealCompleted = true;
       failureContext.unsealedPlaywrightArtifactDirectories = [];
+      failureContext.playwrightFailureDiagnosticFallback = null;
       process.stderr.write(
         `${JSON.stringify({ status: "FAILED", evidenceDirectory: evidenceDir, seal: failureSeal })}\n`,
       );
@@ -6792,6 +6898,7 @@ async function finalizeFailure(error, { terminationKind = "main_rejection" } = {
   }
   failureContext.transientSecrets = [];
   failureContext.pendingSyntheticUserGlobalSignOuts = [];
+  failureContext.playwrightFailureDiagnosticFallback = null;
   try {
     process.stderr.write(`${sanitizedMessage}\n`);
   } catch {

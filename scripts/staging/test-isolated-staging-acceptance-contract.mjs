@@ -159,6 +159,14 @@ const reporterCleanupTest = readFileSync(
   join(root, "scripts", "staging", "test-unsealed-playwright-artifact-cleanup.mjs"),
   "utf8",
 );
+const playwrightFailureDiagnosticContract = readFileSync(
+  join(root, "scripts", "staging", "playwright-failure-diagnostic-contract.mjs"),
+  "utf8",
+);
+const playwrightFailureDiagnosticTest = readFileSync(
+  join(root, "scripts", "staging", "test-playwright-failure-diagnostic-contract.mjs"),
+  "utf8",
+);
 const safeBrowserHostContract = readFileSync(
   join(root, "scripts", "staging", "safe-browser-host-contract.mjs"),
   "utf8",
@@ -438,11 +446,10 @@ assert.doesNotMatch(
   /VERCEL_AUTOMATION_PROTECTION_PORTFOLIO/,
 );
 assert.doesNotMatch(hostedSecretNameSource, /VERCEL_AUTOMATION_BYPASS_SECRET/);
-assert.ok(
-  (runPlaywrightSuiteSource.match(/process\.env\.VERCEL_AUTOMATION_BYPASS_SECRET/g) ?? [])
-    .length >= 2,
-  "the browser command and its artifact sanitizer must both protect the Vercel bypass secret",
-);
+assert.match(runPlaywrightSuiteSource, /\.\.\.protectedRuntimeValues\(\)/);
+assert.match(runPlaywrightSuiteSource, /secrets: protectedSecrets/);
+assert.match(runPlaywrightSuiteSource, /assertEvidenceSanitized\(configuredOutputDir, protectedSecrets\)/);
+assert.match(runPlaywrightSuiteSource, /buildPlaywrightFailureDiagnostic\([\s\S]*secrets: protectedSecrets/);
 assert.match(browserConfig, /VERCEL_AUTOMATION_BYPASS_SECRET/);
 assert.match(safeBrowserConfig, /VERCEL_AUTOMATION_BYPASS_SECRET/);
 assert.doesNotMatch(browserConfig, /extraHTTPHeaders/);
@@ -1824,6 +1831,60 @@ assert.match(reporterCleanupContract, /refused_outside_evidence_path/);
 assert.match(reporterCleanupContract, /remainingDirectoryCount: 0/);
 assert.match(reporterCleanupTest, /valid roots must still be purged after a bad path/);
 assert.match(reporterCleanupTest, /failure\.png/);
+assert.match(runPlaywrightSuiteSource, /runInterruptibleAllowNonzero/);
+assert.match(runPlaywrightSuiteSource, /buildPlaywrightFailureDiagnostic/);
+assert.match(runPlaywrightSuiteSource, /buildMinimalPlaywrightFailureDiagnostic/);
+assert.match(runPlaywrightSuiteSource, /execution\.status !== 0/);
+assert.match(runPlaywrightSuiteSource, /`\$\{name\}-failure-diagnostic\.json`/);
+assert.match(runPlaywrightSuiteSource, /sanitized reporter diagnostic retained/);
+assert.match(runPlaywrightSuiteSource, /failureKind: "abnormal_command_termination"/);
+assert.match(runPlaywrightSuiteSource, /failureKind: "diagnostic_construction_failed"/);
+assert.match(runPlaywrightSuiteSource, /failureKind: "evidence_reset_fallback"/);
+assert.match(runPlaywrightSuiteSource, /\.\.\.protectedRuntimeValues\(\)/);
+assert.match(runPlaywrightSuiteSource, /allowDuringTermination: true/);
+assert.match(runPlaywrightSuiteSource, /reporterRoot: configuredOutputDir/);
+assert.match(
+  runPlaywrightSuiteSource,
+  /registerUnsealedPlaywrightArtifactDirectories\(evidenceDir, \[\s*outputDir,\s*configuredOutputDir,\s*\]\)/,
+);
+assert.match(playwrightFailureDiagnosticContract, /status: "FAILED"/);
+assert.match(playwrightFailureDiagnosticContract, /failureRemainsAuthoritative: true/);
+assert.match(playwrightFailureDiagnosticContract, /stagingAcceptancePassed: false/);
+assert.match(playwrightFailureDiagnosticContract, /MAX_TEST_RECORDS = 256/);
+assert.match(playwrightFailureDiagnosticContract, /MAX_DIAGNOSTIC_RECORDS = 32/);
+assert.match(playwrightFailureDiagnosticContract, /MAX_DIAGNOSTIC_SOURCE_RECORDS = 128/);
+assert.match(playwrightFailureDiagnosticContract, /MAX_DIAGNOSTIC_SOURCE_CHARS = 16_384/);
+assert.match(playwrightFailureDiagnosticContract, /REJECTED_UNSAFE_TYPE/);
+assert.match(playwrightFailureDiagnosticContract, /REJECTED_HARDLINK/);
+assert.match(playwrightFailureDiagnosticContract, /const growthBytes = readSync/);
+assert.doesNotMatch(playwrightFailureDiagnosticContract, /readFileSync\(descriptor\)/);
+assert.match(playwrightFailureDiagnosticContract, /REJECTED_OUTSIDE_ROOT/);
+assert.match(playwrightFailureDiagnosticContract, /REJECTED_OVERSIZE/);
+assert.match(playwrightFailureDiagnosticContract, /FALLBACK_DIGEST_ONLY/);
+assert.match(playwrightFailureDiagnosticContract, /rawReporterPathsRetained: false/);
+assert.match(playwrightFailureDiagnosticContract, /rawHostsRetained: false/);
+assert.match(playwrightFailureDiagnosticTest, /dealflow-sensitive-host/);
+assert.match(playwrightFailureDiagnosticTest, /symlink-results\.json/);
+assert.match(playwrightFailureDiagnosticTest, /oversized-results\.json/);
+assert.match(playwrightFailureDiagnosticTest, /oversized-portfolio\.json/);
+assert.match(playwrightFailureDiagnosticTest, /hardlink-results\.json/);
+assert.match(playwrightFailureDiagnosticTest, /db\.private\.internal/);
+assert.match(playwrightFailureDiagnosticTest, /db_service\.internal/);
+assert.match(playwrightFailureDiagnosticTest, /config\/private\/credential-store/);
+assert.match(playwrightFailureDiagnosticTest, /postgresql:\/\//);
+assert.match(playwrightFailureDiagnosticTest, /invalid-safety\.json/);
+assert.match(playwrightFailureDiagnosticTest, /missing-identity\.json/);
+assert.match(playwrightFailureDiagnosticTest, /retainedDiagnosticPath/);
+assert.match(playwrightFailureDiagnosticTest, /abnormal_command_termination/);
+assert.match(playwrightFailureDiagnosticTest, /diagnostic_construction_failed/);
+assert.match(playwrightFailureDiagnosticTest, /evidence_reset_fallback/);
+assert.match(playwrightFailureDiagnosticTest, /executionStatus: 0/);
+assert.match(playwrightFailureDiagnosticTest, /reporters\.json\.testTitles/);
+assert.match(runner, /failureContext\.playwrightFailureDiagnosticFallback/);
+assert.match(
+  runner,
+  /UNSAFE_PARTIAL_EVIDENCE_DESTROYED_AND_ROOT_RECREATED[\s\S]*playwrightFailureDiagnosticFallback[\s\S]*writeJson\(join\(evidenceDir, fileName\), diagnostic/,
+);
 assert.match(runner, /assertApprovedStagingEvidenceRootPath/);
 assert.match(evidenceRootContract, /parent !== EXACT_TEMP_ROOT/);
 assert.match(evidenceRootContract, /realpathSync\(parent\) !== EXACT_TEMP_ROOT/);
@@ -1963,7 +2024,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-vercel-cli-selection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-vercel-cli-selection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-playwright-failure-diagnostic-contract.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
@@ -1972,6 +2033,7 @@ assert.match(completionSuite, /"staging\/test-browser-context-network-boundary\.
 assert.match(completionSuite, /"staging\/test-staging-evidence-root-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-interruptible-command\.mjs"/);
 assert.match(completionSuite, /"staging\/test-unsealed-playwright-artifact-cleanup\.mjs"/);
+assert.match(completionSuite, /"staging\/test-playwright-failure-diagnostic-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-deployable-source-path-set-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-dry-run-source-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-alias-propagation-contract\.mjs"/);

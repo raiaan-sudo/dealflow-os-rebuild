@@ -96,6 +96,26 @@ Without the required flags, that authorization, every required secure input, an 
 10. Run GET-only hosted load against public routes and the internal zero-effects control. Hosted lead-capture POST load is deliberately forbidden; it remains a local-only proof.
 11. Compare effect-bearing table counts, rescan evidence for protected values and probable credentials, set private permissions, write the machine-readable manifest, and seal every artifact with SHA-256 checksums.
 
+If a configured Playwright process exits nonzero, the runner parses any
+available JSON and JUnit reporters before cleanup and retains one bounded
+`<suite>-failure-diagnostic.json` at the evidence root. That diagnostic remains
+explicitly `FAILED`; it records computed outcome and per-project counts, the
+complete bounded project/test-title portfolio, reporter agreement, and
+truncated sanitized error text. It contains no reporter contents, reporter
+paths, application hosts, credentials, or raw filesystem paths. Missing,
+malformed, oversized, symlinked, or changing reporters are recorded as rejected
+evidence and never converted to a pass. The raw JSON, JUnit, HTML, screenshots,
+and reporter directories remain unsealed and are still deleted by terminal
+failure cleanup. If the command times out, is signaled, or the full diagnostic
+cannot itself be constructed, the runner retains a deterministic digest-only
+`FAILED` fallback instead; it never invents reporter counts or a process exit
+status for an abnormal termination.
+If the outer evidence sanitizer must destroy and recreate an unsafe partial
+bundle, terminal cleanup rewrites that same suite's digest-only `FAILED`
+fallback into the clean root before sealing. The fallback survives without
+preserving raw reporter text, URLs, URI schemes, hostnames, filesystem paths,
+or protected runtime values.
+
 ## Verdict semantics
 
 A successful harness run proves only the safe isolated-staging surfaces it actually exercised. It must return production `NO_GO` while any required worker, lead-delivery, GHL, Meta, Stripe, creative-provider, Twilio, support-delivery, reporting, or recovery journey remains `NOT_PROVEN` or `FAIL`. Seeded end states never count as journey proof, and missing provider credentials never count as a pass.

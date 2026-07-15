@@ -57,6 +57,7 @@ const tests = [
   "staging/test-staging-evidence-root-contract.mjs",
   "staging/test-interruptible-command.mjs",
   "staging/test-unsealed-playwright-artifact-cleanup.mjs",
+  "staging/test-playwright-failure-diagnostic-contract.mjs",
   "staging/test-deployable-source-path-set-contract.mjs",
   "staging/test-vercel-dry-run-source-contract.mjs",
   "staging/test-vercel-alias-propagation-contract.mjs",
