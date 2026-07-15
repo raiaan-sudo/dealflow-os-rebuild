@@ -85,6 +85,16 @@ assert.match(source, /EXPECTED_SYNTHETIC_AUTH_EMAILS/);
 assert.match(source, /ensureSyntheticAuthUser/);
 assert.match(source, /scenario: scenario\.key/);
 assert.match(source, /PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE = "owner"/);
+assert.match(source, /function isExactOrganizationMembership\(actual, expected\)/);
+assert.match(source, /async function ensureExactOrganizationMembership\(admin, expected\)/);
+assert.match(source, /\.select\("id,organization_id,user_id,role"\)/);
+assert.match(source, /if \(isExactOrganizationMembership\(existing, expected\)\) return existing/);
+assert.match(source, /The synthetic organization membership was not persisted exactly/);
+assert.equal(
+  (source.match(/ensureExactOrganizationMembership\(admin, \{/g) ?? []).length,
+  2,
+  "both direct and scenario membership writes must be replay-safe",
+);
 assert.match(source, /role: PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE/);
 assert.match(source, /paidDirectOrganization\.owner_user_id !== userId/);
 assert.match(source, /paidDirectMembership\.organization_id !== IDS\.organization/);

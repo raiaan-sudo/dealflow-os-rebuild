@@ -33,6 +33,7 @@ import {
   stagingAccessCookiesForOrigins,
   STAGING_ACCESS_HEADER,
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
+import { isExpectedNavigationAbort } from "./expected-navigation-abort.mjs";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3410";
 const BASE_URL = process.env.SAFE_E2E_BASE_URL?.trim() || DEFAULT_BASE_URL;
@@ -149,10 +150,6 @@ function pathnameOf(rawUrl: string) {
   } catch {
     return rawUrl;
   }
-}
-
-function isExpectedNavigationAbort(message: string) {
-  return /net::ERR_ABORTED/i.test(message);
 }
 
 function mutationDisposition(method: string, rawUrl: string) {
@@ -303,10 +300,13 @@ async function installSafetyHarness(page: Page) {
   });
 
   context.on("requestfailed", (request) => {
+    const errorText = request.failure()?.errorText ?? "unknown request failure";
     const message = `${request.method()} ${safeHttpEvidenceTarget(request.url())} ${
-      sanitizeBrowserDiagnostic(request.failure()?.errorText ?? "unknown request failure")
+      sanitizeBrowserDiagnostic(errorText)
     }`;
-    if (!isExpectedNavigationAbort(message)) {
+    const expectedNavigationAbort =
+      request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
+    if (!expectedNavigationAbort) {
       diagnostics.requestFailures.push(message);
     }
   });

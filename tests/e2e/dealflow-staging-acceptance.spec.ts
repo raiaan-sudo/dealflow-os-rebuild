@@ -24,6 +24,7 @@ import {
   stagingAccessCookiesForOrigins,
   STAGING_ACCESS_HEADER,
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
+import { isExpectedNavigationAbort } from "./expected-navigation-abort.mjs";
 
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_PARTNER_ONE_HOST =
@@ -142,10 +143,6 @@ function sanitizeBrowserDiagnostic(value: string) {
     .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED_JWT]")
     .replace(/sb-[a-z0-9-]+-auth-token(?:\.\d+)?=[^\s;]+/gi, "sb-[REDACTED]-auth-token=[REDACTED]")
     .slice(0, 2_000);
-}
-
-function isExpectedNavigationAbort(value: string) {
-  return /net::ERR_ABORTED/i.test(value);
 }
 
 function exactOptimizerPathname(rawUrl: string) {
@@ -540,10 +537,13 @@ async function installFailClosedNetworkBoundary(page: Page) {
     }
   });
   context.on("requestfailed", (request) => {
+    const errorText = request.failure()?.errorText ?? "unknown request failure";
     const failure = `${request.method()} ${safeHttpEvidenceTarget(request.url())} ${sanitizeBrowserDiagnostic(
-      request.failure()?.errorText ?? "unknown request failure",
+      errorText,
     )}`;
-    if (!isExpectedNavigationAbort(failure)) diagnostics.requestFailures.push(failure);
+    const expectedNavigationAbort =
+      request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
+    if (!expectedNavigationAbort) diagnostics.requestFailures.push(failure);
   });
   context.on("response", (response) => {
     if (response.status() >= 500) {

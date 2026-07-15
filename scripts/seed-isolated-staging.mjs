@@ -384,6 +384,38 @@ async function upsert(admin, table, row, onConflict) {
   return assertNoError(await query, `upsert ${table}`);
 }
 
+function isExactOrganizationMembership(actual, expected) {
+  return (
+    actual?.id === expected.id &&
+    actual?.organization_id === expected.organization_id &&
+    actual?.user_id === expected.user_id &&
+    actual?.role === expected.role
+  );
+}
+
+async function ensureExactOrganizationMembership(admin, expected) {
+  const existing = await assertNoError(
+    await admin
+      .from("organization_memberships")
+      .select("id,organization_id,user_id,role")
+      .eq("id", expected.id)
+      .maybeSingle(),
+    "read exact synthetic organization membership",
+  );
+  if (isExactOrganizationMembership(existing, expected)) return existing;
+
+  const persisted = await upsert(
+    admin,
+    "organization_memberships",
+    expected,
+    "id",
+  );
+  if (!isExactOrganizationMembership(persisted, expected)) {
+    throw new Error("The synthetic organization membership was not persisted exactly");
+  }
+  return persisted;
+}
+
 async function assertExactCount(query, expected, label) {
   const result = await query;
   if (result.error) throw new Error(`${label}: ${result.error.message}`);
@@ -799,14 +831,14 @@ async function main() {
     owner_user_id: userId,
   }, "id");
 
-  const paidDirectMembership = await upsert(admin, "organization_memberships", {
+  const paidDirectMembership = await ensureExactOrganizationMembership(admin, {
     id: IDS.membership,
     organization_id: IDS.organization,
     user_id: userId,
     // Billing-triggered GHL provisioning deliberately requires both the
     // immutable workspace owner and that owner's explicit owner membership.
     role: PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE,
-  }, "id");
+  });
   if (
     paidDirectOrganization.owner_user_id !== userId ||
     paidDirectMembership.organization_id !== IDS.organization ||
@@ -978,12 +1010,12 @@ async function main() {
     };
     if (organization.partnerId) organizationRow.partner_id = organization.partnerId;
     await upsert(admin, "organizations", organizationRow, "id");
-    await upsert(admin, "organization_memberships", {
+    await ensureExactOrganizationMembership(admin, {
       id: organization.membershipId,
       organization_id: organization.id,
       user_id: organization.userId,
       role: organization.role,
-    }, "id");
+    });
   }
 
   await upsert(admin, "partner_memberships", {

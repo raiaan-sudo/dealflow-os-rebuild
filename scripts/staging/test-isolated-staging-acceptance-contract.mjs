@@ -15,8 +15,31 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
+import { isExpectedNavigationAbort } from "../../tests/e2e/expected-navigation-abort.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+for (const value of [
+  "net::ERR_ABORTED",
+  "NS_BINDING_ABORTED",
+  "cancelled",
+  "Load cancelled",
+  "Request cancelled",
+  "Load request cancelled",
+]) {
+  assert.equal(isExpectedNavigationAbort(value), true, `expected navigation abort: ${value}`);
+}
+for (const value of [
+  "net::ERR_FAILED",
+  "net::ERR_BLOCKED_BY_CLIENT",
+  "NS_ERROR_NET_TIMEOUT",
+  "Request canceled",
+  "TLS handshake cancelled",
+  "Load request cancelled by policy",
+  "unknown request failure",
+]) {
+  assert.equal(isExpectedNavigationAbort(value), false, `unexpected navigation failure: ${value}`);
+}
 const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
 const runner = readFileSync(runnerPath, "utf8");
 const imageBuildInputContract = readFileSync(
@@ -101,6 +124,16 @@ const safeBrowserSpec = readFileSync(
   join(root, "tests", "e2e", "dealflow-safe.spec.ts"),
   "utf8",
 );
+for (const [label, source] of [
+  ["staging browser", browserSpec],
+  ["safe browser", safeBrowserSpec],
+]) {
+  assert.match(
+    source,
+    /request\.isNavigationRequest\(\) && isExpectedNavigationAbort\(errorText\)/,
+    `${label} may suppress an engine abort only for a navigation request`,
+  );
+}
 const globalSafetyPreflight = readFileSync(
   join(root, "tests", "e2e", "global-safety-preflight.ts"),
   "utf8",
