@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ProductLocaleProvider } from "@/components/i18n/product-locale-provider";
 import { parseProductLocalePathname } from "@/lib/i18n/routing";
+import { shouldRenderVercelAnalytics } from "@/lib/telemetry/vercel-analytics-gate";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.agentdealflow.io"),
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
   },
 };
 
-const shouldRenderVercelAnalytics = process.env.VERCEL === "1";
+const renderVercelAnalytics = shouldRenderVercelAnalytics();
 
 export default async function RootLayout({
   children,
@@ -37,7 +38,7 @@ export default async function RootLayout({
             </div>
           </ProductLocaleProvider>
         </ThemeProvider>
-        {shouldRenderVercelAnalytics ? <Analytics /> : null}
+        {renderVercelAnalytics ? <Analytics /> : null}
       </body>
     </html>
   );

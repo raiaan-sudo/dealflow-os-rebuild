@@ -64,8 +64,8 @@ assert.match(
   /Overall verdict: `NO_GO`/,
 );
 assert.match(migrationContract, /Frozen foundation: `80 MIGRATIONS \/ HISTORICAL_PASS`/);
-assert.match(migrationContract, /Integrated candidate: `103 MIGRATIONS \/ PENDING_FINAL_SEAL`/);
-assert.match(migrationContract, /Exact clean-seal 103-chain proof: `NOT_YET_RUN`/);
+assert.match(migrationContract, /Integrated candidate: `104 MIGRATIONS \/ PENDING_FINAL_SEAL`/);
+assert.match(migrationContract, /Exact clean-seal 104-chain proof: `NOT_YET_RUN`/);
 assert.match(
   migrationContract,
   /retained PostgreSQL 17\.6 evidence\s+for 14 foundation\/adoption\/collision\/RLS\/recovery gates/,
@@ -74,18 +74,29 @@ assert.match(
   migrationContract,
   /`HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions/,
 );
-assert.match(migrationContract, /current source tree contains exactly 103 ordered SQL migrations/);
-assert.match(migrationContract, /The twenty-three\s+additive extensions after the frozen foundation/);
+assert.match(migrationContract, /current source tree contains exactly 104 ordered SQL migrations/);
+assert.match(migrationContract, /The\s+twenty-four\s+additive extensions after the frozen foundation/);
 assert.match(
   migrationContract,
   /103\. `20260713028000_harden_account_deletion_retention_authority\.sql`/,
 );
-assert.match(migrationContract, /only database-owner authority may mutate it/);
-assert.match(migrationContract, /service role retains `INSERT`, `UPDATE`, `DELETE`, or\s+`TRUNCATE` privileges/);
 assert.match(
   migrationContract,
-  /Current result for the exact final 103-migration seal: `NOT_YET_RUN`/,
+  /104\. `20260715010000_move_legacy_org_member_policies_private\.sql`/,
 );
+assert.match(migrationContract, /only database-owner authority may mutate it/);
+assert.match(migrationContract, /service role retains `INSERT`, `UPDATE`, `DELETE`, or\s+`TRUNCATE` privileges/);
+assert.match(migrationContract, /authenticated reporting failure discovered on isolated\s+staging/);
+assert.match(migrationContract, /18 retained organization-member policies still\s+called that public helper/);
+assert.match(migrationContract, /SQLSTATE `42501`/);
+assert.match(migrationContract, /does not re-grant the public helper/);
+assert.match(
+  migrationContract,
+  /Current result for the exact final 104-migration seal: `NOT_YET_RUN`/,
+);
+assert.match(migrationContract, /retained read-only proof of the exact prior-103\s+migration history/);
+assert.match(migrationContract, /commit only migration 104 and its history receipt in one outer\s+transaction/);
+assert.match(migrationContract, /implemented 103-to-104 transition is `NOT_YET_RUN`/);
 assert.match(
   migrationContract,
   /Mandatory old-worker and provider-protocol drain/,
@@ -99,5 +110,5 @@ assert.match(
 assert.match(migrationContract, /Forward recovery, not destructive rollback/);
 
 console.log(
-  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation remains historical-only, and the current 103-chain remains NO_GO pending exact seal and drain proof.",
+  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103 staging proof remain predecessor-only, and the current 104-chain remains NO_GO pending exact seal, atomic staging transition, and drain proof.",
 );

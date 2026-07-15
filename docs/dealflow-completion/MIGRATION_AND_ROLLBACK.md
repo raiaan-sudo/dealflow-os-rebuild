@@ -2,8 +2,8 @@
 
 Overall verdict: `NO_GO`
 Frozen foundation: `80 MIGRATIONS / HISTORICAL_PASS`
-Integrated candidate: `103 MIGRATIONS / PENDING_FINAL_SEAL`
-Exact clean-seal 103-chain proof: `NOT_YET_RUN`
+Integrated candidate: `104 MIGRATIONS / PENDING_FINAL_SEAL`
+Exact clean-seal 104-chain proof: `NOT_YET_RUN`
 Isolated hosted staging application: `NOT_YET_RUN`
 Production migration: `NOT_YET_RUN`
 
@@ -20,8 +20,8 @@ produced a frozen 80-migration foundation and retained PostgreSQL 17.6 evidence
 for 14 foundation/adoption/collision/RLS/recovery gates. That evidence is a
 `HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions.
 
-The current source tree contains exactly 103 ordered SQL migrations. The twenty-three
-additive extensions after the frozen foundation are:
+The current source tree contains exactly 104 ordered SQL migrations. The
+twenty-four additive extensions after the frozen foundation are:
 
 81. `20260712213000_create_ghl_sandbox_provider_path.sql`
 82. `20260712214000_create_continuous_reporting_and_safe_optimizer.sql`
@@ -46,8 +46,9 @@ additive extensions after the frozen foundation are:
 101. `20260713026000_add_account_deletion_and_provider_offboarding.sql`
 102. `20260713027000_add_ghl_location_display_name_finalization.sql`
 103. `20260713028000_harden_account_deletion_retention_authority.sql`
+104. `20260715010000_move_legacy_org_member_policies_private.sql`
 
-Migrations 90-103 are not cosmetic. They prevent location-global GHL personalization
+Migrations 90-104 are not cosmetic. They prevent location-global GHL personalization
 from allowing one website campaign to overwrite another. Readiness becomes an
 exact organization + campaign + environment + manifest-slot + source-plan
 fingerprint fact. Legacy root-only personalization can serve one campaign only;
@@ -88,16 +89,28 @@ only database-owner authority may mutate it; explicit postconditions fail the
 migration if the service role retains `INSERT`, `UPDATE`, `DELETE`, or
 `TRUNCATE` privileges at table level, or any column-level `INSERT`, `UPDATE`,
 or `REFERENCES` grant survives.
+Migration 104 closes the authenticated reporting failure discovered on isolated
+staging. The hardened foundation intentionally revoked API-role execution of
+`public.is_org_member(uuid)`, but 18 retained organization-member policies still
+called that public helper. Authorized dashboard reads could therefore fail with
+SQLSTATE `42501`, which surfaced as an HTTP `500` instead of reporting data.
+Migration 104 changes all 18 policies to the already hardened
+`private.is_current_user_org_member(uuid)` helper, restricts the policies to the
+`authenticated` role, and fails before or after mutation if the exact portfolio
+shape is incomplete. It does not re-grant the public helper. Targeted disposable
+PostgreSQL 17.6 proof reproduces the failure, proves 18/18 policies repaired,
+replays safely, restores the authorized member read, denies cross-tenant and
+anonymous reads, and proves that the public RPC remains unavailable.
 
 The final manifest must derive count, order, per-file digest, and aggregate
 digest from the exact clean commit. Those values are `PENDING_FINAL_SEAL` and
 must not be copied from a working tree.
 
-## Required local 103-chain proof
+## Required local 104-chain proof
 
 Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prove:
 
-1. all 103 migrations apply in order to a fresh disposable database;
+1. all 104 migrations apply in order to a fresh disposable database;
 2. frozen foundation followed by extensions converges to the same semantic
    public/private schema as the direct fresh chain;
 3. exact migration history replay performs zero structural mutation;
@@ -106,31 +119,44 @@ Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prov
 5. RLS, force-RLS, grants/revocations, default ACLs, relation/routine/sequence
    ownership, function search paths, and direct-DML denials match the oracle;
 6. old-worker/new-schema and new-worker/old-schema boundaries fail safely;
-7. injected transactional failure leaves no migration-history or schema
+7. migration 104 reproduces the retained public-helper `42501`, repairs exactly
+   18 policies, restores authorized member access, preserves cross-tenant and
+   anonymous denial, keeps the public helper revoked, and replays safely;
+8. injected transactional failure leaves no migration-history or schema
    partials and succeeds through reviewed forward completion;
-8. tenant/campaign/provider receipts, activation, billing, lead, support, GHL,
+9. tenant/campaign/provider receipts, activation, billing, lead, support, GHL,
    Meta, and optimizer invariants survive idempotent replay;
-9. two independent final databases produce the same normalized digest; and
-10. all disposable roles/databases/processes are removed after proof.
+10. two independent final databases produce the same normalized digest; and
+11. all disposable roles/databases/processes are removed after proof.
 
-Current result for the exact final 103-migration seal: `NOT_YET_RUN`.
+Current result for the exact final 104-migration seal: `NOT_YET_RUN`.
 
 ## Isolated staging application contract
 
 The staging broker may run only after two passing final summaries bind the same
 clean seal. It must independently verify:
 
-- exact 103-file inventory and final filename;
+- exact 104-file inventory and final filename;
 - exact repository commit/tree/content/lock/migration digests;
 - exact isolated Supabase fingerprint and safe suffix;
 - exact staging Vercel project and host with no production alias;
 - owner-only database authority and either an empty supported platform baseline
-  or the pinned exact prior-102 qibh proof;
+  or the pinned exact prior-103 qibh proof;
 - PostgreSQL runtime compatibility;
-- one outer transaction for the selected portfolio (fresh 103 or forward-only
-  migration 103) and every matching history receipt;
+- one outer transaction for the selected portfolio (fresh 104 or forward-only
+  migration 104) and every matching history receipt;
 - post-application schema/ACL/RLS digest and idempotent replay; and
 - sanitized external evidence with no credential or customer payload.
+
+The isolated project has retained read-only proof of the exact prior-103
+migration history, schema and structural catalog, bound to the predecessor
+candidate. The forward-only broker is pinned to that proof and rejects any
+different first-103 filename, SQL digest, commit/tree or remote state before it
+can mutate. If authorized after the new clean candidate and two exact-seal
+rounds, it may commit only migration 104 and its history receipt in one outer
+transaction, then repeat the history, catalog, schema, ACL and closed-provider
+checks. This implemented 103-to-104 transition is `NOT_YET_RUN`; the retained
+prior-103 proof is not current-104 acceptance.
 
 The database password may be borrowed only through the approved ephemeral
 secret path. It must not enter arguments, environment dumps, logs, evidence,
@@ -182,5 +208,5 @@ deletion, consent, GHL, Meta, and provider record. Never:
 - deploy an older checkout merely because it predates the failure.
 
 The retained 80-migration foundation includes a historical local
-forward-recovery drill. A final-seal 103-chain local drill, hosted staging drill,
+forward-recovery drill. A final-seal 104-chain local drill, hosted staging drill,
 and production-bound recovery exercise are all `NOT_YET_RUN`.

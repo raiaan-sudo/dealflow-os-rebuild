@@ -676,6 +676,7 @@ async function credentialSignIn(
   await expect(page.getByRole("textbox", { name: "Email" })).toBeVisible();
   await page.getByRole("textbox", { name: "Email" }).fill(email);
   await page.getByLabel("Password").fill(password);
+  const authForm = page.locator("form");
   const challenge = page.getByText(/verification challenge|verify you are human/i);
   expect(
     await challenge.count(),
@@ -683,7 +684,7 @@ async function credentialSignIn(
   ).toBe(0);
   await Promise.all([
     page.waitForURL((url) => url.pathname !== "/login", { timeout: 30_000 }),
-    page.getByRole("button", { name: /sign in/i }).click(),
+    authForm.getByRole("button", { name: "Sign in", exact: true }).click(),
   ]);
 }
 
@@ -895,7 +896,11 @@ test("EN FR ES public product routes preserve language accessibility keyboard re
   for (const [locale, copy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
     await page.goto(`/${locale}/login`, { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveAttribute("lang", locale);
-    await expect(page.getByRole("button", { name: copy.signIn, exact: true })).toBeVisible();
+    const authSubmit = page.locator("form").getByRole("button", {
+      name: copy.signIn,
+      exact: true,
+    });
+    await expect(authSubmit).toBeVisible();
     expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
 
     await page.keyboard.press("Tab");
@@ -919,7 +924,7 @@ test("EN FR ES public product routes preserve language accessibility keyboard re
     await page.evaluate(() => {
       document.documentElement.style.zoom = "2";
     });
-    await expect(page.getByRole("button", { name: copy.signIn, exact: true })).toBeVisible();
+    await expect(authSubmit).toBeVisible();
     await assertNoSeriousAccessibilityViolations(page);
     await page.evaluate(() => {
       document.documentElement.style.zoom = "";

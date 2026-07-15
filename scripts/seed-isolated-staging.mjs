@@ -1037,7 +1037,8 @@ async function main() {
     },
     copy_json: {
       fixture: FIXTURE_LABEL,
-      appName: `${FIXTURE_LABEL} Partner Realty OS`,
+      brandName: `${FIXTURE_LABEL} Partner Realty OS`,
+      productName: `${FIXTURE_LABEL} Partner Realty OS`,
       loginEyebrow: "Synthetic white-label staging proof",
       loginHeadline: "Launch real estate campaigns with your partner workspace",
       loginSubheadline: "A synthetic isolated-staging branding fixture.",
@@ -1100,7 +1101,8 @@ async function main() {
     },
     copy_json: {
       fixture: FIXTURE_LABEL,
-      appName: `${FIXTURE_LABEL} Partner Two Realty OS`,
+      brandName: `${FIXTURE_LABEL} Partner Two Realty OS`,
+      productName: `${FIXTURE_LABEL} Partner Two Realty OS`,
       loginEyebrow: "Synthetic second white-label staging proof",
       loginHeadline: "Launch real estate campaigns in partner two",
       loginSubheadline: "A separate synthetic isolated-staging branding fixture.",
@@ -1644,6 +1646,29 @@ async function main() {
     lead_loop_verified: true,
     public_slug: publicSlug,
   };
+  const publishedCampaignSnapshot = {
+    name: campaignPlan.name,
+    plan: campaignPlan,
+    strategy: {
+      location: "Toronto, Ontario",
+      audience: "Toronto home buyers",
+      offer: "Synthetic staging market guide",
+      market_type: "buyer",
+      funnel_goal: "lead_form",
+    },
+    staticAds: campaignPlan.creatives.staticAds,
+    funnel: {
+      funnel_type: "landing_page_form",
+      headline: "Find your next Toronto home",
+      subheadline: "Explore a synthetic staging-only Toronto home search campaign.",
+      cta: "Learn More",
+      sections: [],
+      form_fields: ["name", "email", "phone"],
+      follow_up_action: "Route the synthetic staging lead without provider delivery.",
+      optimization_notes: ["Synthetic isolated-staging acceptance fixture."],
+      customLeadFormQuestions: [],
+    },
+  };
   await assertNoError(
     await admin.rpc("create_campaign_plan_with_entitlement_v1", {
       p_campaign_id: IDS.campaign,
@@ -1669,12 +1694,9 @@ async function main() {
     publish_state: "published",
     launch_status: "ready",
     lead_loop_verified: true,
-    published_snapshot: {
-      fixture: FIXTURE_LABEL,
-      name: `${FIXTURE_LABEL} Toronto Buyer Campaign`,
-      headline: "Find your next Toronto home",
-      offer: "Synthetic staging market guide",
-    },
+    staged_snapshot: publishedCampaignSnapshot,
+    published_snapshot: publishedCampaignSnapshot,
+    staged_at: FIXTURE_TIMESTAMP,
     published_at: FIXTURE_TIMESTAMP,
   }).eq("id", IDS.campaign).select("id").single(), "complete staging campaign fixture");
 
@@ -2026,6 +2048,28 @@ async function main() {
     canonicalStaticAds[0]?.id !== META_FIXTURE.selectedAdId
   ) {
     throw new Error("The synthetic staging campaign does not preserve one canonical launch contract");
+  }
+  const publishedFunnelTruth = await assertNoError(
+    await admin
+      .from("campaign_plans")
+      .select("public_slug,publish_state,staged_snapshot,published_snapshot,staged_at,published_at")
+      .eq("id", IDS.campaign)
+      .eq("organization_id", IDS.organization)
+      .eq("user_id", userId)
+      .single(),
+    "read back synthetic published funnel fixture",
+  );
+  if (
+    publishedFunnelTruth.public_slug !== publicSlug ||
+    publishedFunnelTruth.publish_state !== "published" ||
+    !sameInstant(publishedFunnelTruth.staged_at, FIXTURE_TIMESTAMP) ||
+    !sameInstant(publishedFunnelTruth.published_at, FIXTURE_TIMESTAMP) ||
+    publishedFunnelTruth.staged_snapshot?.funnel?.cta !== "Learn More" ||
+    publishedFunnelTruth.published_snapshot?.funnel?.cta !== "Learn More" ||
+    publishedFunnelTruth.published_snapshot?.plan?.public_slug !== publicSlug ||
+    publishedFunnelTruth.published_snapshot?.staticAds?.[0]?.id !== META_FIXTURE.selectedAdId
+  ) {
+    throw new Error("The synthetic staging published funnel snapshot is incomplete or drifted");
   }
   const canonicalCreativeTruth = await assertNoError(
     await admin
@@ -2457,6 +2501,26 @@ async function main() {
     1,
     "verify exact white-label partner two child workspace attribution",
   );
+  for (const [brandingId, partnerId, productName, label] of [
+    [IDS.partnerBranding, IDS.partner, `${FIXTURE_LABEL} Partner Realty OS`, "partner one"],
+    [IDS.partnerTwoBranding, IDS.partnerTwo, `${FIXTURE_LABEL} Partner Two Realty OS`, "partner two"],
+  ]) {
+    const brandingTruth = await assertNoError(
+      await admin
+        .from("partner_branding")
+        .select("id,partner_id,copy_json")
+        .eq("id", brandingId)
+        .eq("partner_id", partnerId)
+        .single(),
+      `read back exact synthetic ${label} branding`,
+    );
+    if (
+      brandingTruth.copy_json?.brandName !== productName ||
+      brandingTruth.copy_json?.productName !== productName
+    ) {
+      throw new Error(`The synthetic staging ${label} branding schema is incomplete or drifted`);
+    }
+  }
   for (const [campaignId, organizationId, userIdValue, label] of [
     [IDS.staleReportingCampaign, IDS.organization, userId, "stale reporting campaign"],
     [IDS.failedReportingCampaign, IDS.organization, userId, "failed reporting campaign"],

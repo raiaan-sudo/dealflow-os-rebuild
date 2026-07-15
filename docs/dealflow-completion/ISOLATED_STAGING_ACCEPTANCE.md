@@ -23,7 +23,28 @@ Run both exact final-verification rounds first. Each summary must be schema v3, 
 - `npm run rls:fixture-smoke`
 - `npm run operator:debt`
 
-The execution shell must contain the exact isolated staging Supabase authority, the existing staging Vercel authority, one strong Vercel automation-bypass secret for that isolated project, and freshly supplied staging-only QA password, partner-attribution signing secret, and internal-system secret. Secrets are accepted from process memory and sent to Vercel through stdin; they are never placed in arguments, hosted application environment variables, or evidence. The automation-bypass secret is sent only to an exact allowlisted staging alias with redirect following disabled. Browser proofs exchange it for one host-only `_vercel_jwt` cookie per exact staging origin, require Vercel's exact same-origin `307` cookie response, and never install the secret as a browser-wide header. Database-owner transfer uses the pinned Keychain entry, PostgreSQL 17.6, TLS `verify-full`, and the commit-bound `config/security/supabase-prod-ca-2021.crt` trust bundle (SHA-256 `700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7`). The public CA is the `Supabase Root 2021 CA` downloaded from Supabase's official certificate endpoint; its certificate fingerprint is `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA` and it expires April 26, 2031.
+The execution shell must contain the exact isolated staging Supabase authority, the existing staging Vercel authority, one strong Vercel automation-bypass secret for that isolated project, and freshly supplied staging-only QA password, partner-attribution signing secret, and internal-system secret. Secrets are accepted from process memory and sent to Vercel through stdin. The allowlisted application secrets are stored only as sensitive environment values in the isolated staging project; no secret value is placed in command arguments, process-environment dumps, logs, or evidence. The automation-bypass secret is not installed as an application environment value: it is sent only to an exact allowlisted staging alias with redirect following disabled. Browser proofs exchange it for one host-only `_vercel_jwt` cookie per exact staging origin, require Vercel's exact same-origin `307` cookie response, and never install the secret as a browser-wide header. Database-owner transfer uses the pinned Keychain entry, PostgreSQL 17.6, TLS `verify-full`, and the commit-bound `config/security/supabase-prod-ca-2021.crt` trust bundle (SHA-256 `700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7`). The public CA is the `Supabase Root 2021 CA` downloaded from Supabase's official certificate endpoint; its certificate fingerprint is `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA` and it expires April 26, 2031.
+
+The controlling broker must independently pin the Vercel CLI before starting
+the runner. All three values are mandatory:
+
+```text
+VERCEL_CLI_JS=/absolute/canonical/path/to/node_modules/vercel/dist/index.js
+VERCEL_CLI_SHA256=<lowercase SHA-256 of the exact entry file>
+VERCEL_CLI_INSTALLATION_SHA256=<lowercase deterministic SHA-256 of the complete npx installation closure>
+```
+
+The installation digest covers the installation package and lock files, the
+complete Vercel package, imported chunks, resolved dependencies, internal
+symlinks, normalized non-writable modes, and every relative path. The broker
+must obtain both digests independently; the runner never computes a current
+digest and promotes it to authority. It verifies the source, copies the full
+closure into a fresh private content-addressed snapshot, removes every write
+bit, and validates that full closure before and after every Vercel command.
+Missing, malformed, changed, writable, externally linked, added, or removed
+installation content fails before the command executes. These digests are not
+secrets, but the absolute source path remains local operator evidence and is
+not written to the sanitized release bundle.
 
 Every zero-external-effects flag must have the exact value enforced by `src/lib/safety/zero-external-effects.ts`. In particular, `STRIPE_FORCE_TEST_MODE`, both lead-load bypass flags, and all provider-write flags remain `false`.
 
@@ -34,9 +55,9 @@ Every zero-external-effects flag must have the exact value enforced by `src/lib/
 ```bash
 npm run staging:acceptance -- \
   --execute \
-  --verify-existing-migrations \
+  --apply-forward-migration \
   --deploy \
-  --prior-migration-proof-dir /absolute/path/to/latest-sealed-103-run/migration-proof \
+  --prior-migration-proof-dir /absolute/path/to/pinned-read-only-103-run/migration-proof \
   --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<seal> \
   --round-one /absolute/path/to/round-1/verification-summary.json \
   --round-two /absolute/path/to/round-2/verification-summary.json
@@ -51,10 +72,13 @@ DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_
 For a genuinely empty isolated project, `--apply-migrations` is the fresh atomic
 mode and forbids a prior proof. `--verify-existing-migrations` is the exact
 read-only schema mode. Exactly one mode is accepted. The pinned qibh project has
-already completed its 102-to-103 forward transition, so subsequent acceptance
-runs must use `--verify-existing-migrations` with the latest passing sealed
-103-migration proof. `--apply-forward-migration` is retained only for the
-completed one-time transition and must not be used for the current qibh state.
+retained read-only proof of its exact 103-migration state. The current candidate
+therefore uses `--apply-forward-migration`, which accepts only that pinned
+pre-state and may commit only migration 104 plus its history receipt in one
+outer transaction. This 103-to-104 transition has not run. After a successful
+sealed transition, later acceptance runs must use
+`--verify-existing-migrations` with the latest passing exact 104-migration
+proof; the one-time forward mode must not be reused.
 
 Without the required flags, that authorization, every required secure input, an exact clean branch/commit/tree, and both accepted round summaries, the runner performs no remote mutation.
 
@@ -62,7 +86,7 @@ Without the required flags, that authorization, every required secure input, an 
 
 1. Verify local repo, Node, branch, commit, tree, tracked-file digest, migration portfolio, Supabase fingerprint, Vercel fingerprints, all safety flags, secure inputs, and both local verification rounds.
 2. Provision the exact allowlisted isolated-staging Vercel environment through stdin and reject any unexpected existing variable name.
-3. For the current qibh state, verify the exact committed 103-migration history, schema, catalog, ACLs, closed runtime controls, storage surface, and bounded synthetic auth surface without database mutation. Fresh apply is allowed only for a genuinely empty isolated project; the historical 102-to-103 forward mode remains a separate one-time path and never falls back to fresh apply on nonempty state.
+3. For the current qibh state, verify the pinned exact committed 103-migration history, schema, catalog, ACLs, closed runtime controls, storage surface, and bounded synthetic auth surface before mutation. Commit only migration 104 and its history receipt in one outer transaction, then prove the exact 104 history and stable post-state. Fresh apply is allowed only for a genuinely empty isolated project; forward mode never falls back to fresh apply on nonempty state. After the exact 104 transition passes, future runs use read-only exact-104 verification.
 4. Through a separate database-owner broker, install, tightly recover, or exactly reuse the qibh-only synthetic retention policy. Prove service-role SELECT-only access, zero table- or column-level writes, zero anon/authenticated/PUBLIC grants, exact policy values, and the actual relation owner.
 5. Deploy the exact commit to the isolated Vercel staging project and verify deployment metadata. Assign each allowlisted app alias one at a time and prove the exact control-plane mapping. The monotonic, 180-second edge-propagation gate may retry only Vercel's exact `404 DEPLOYMENT_NOT_FOUND` surface. An alias that is not additionally protected must reach DealFlow's exact closed 404 gate. An alias protected by Vercel Authentication must first return the exact public `302 https://vercel.com/sso-api` shape, then reach DealFlow's exact closed 404 only when the automation-bypass header is sent to that same alias without the DealFlow gate secret. Raw redirect queries, nonces, bypass values, and cookies are never persisted. Recheck the candidate mapping before loading the DealFlow staging secret, then prove the unauthenticated, header, and cookie surfaces sequentially before assigning the next alias. Prove the real Next chunk remains gated; the release-bound private source, exact public direct-asset portfolio, Open Graph image, signed provider-media source, and retired source satisfy their complete matrices; both provider-owned optimizer paths return only the pinned normalized Vercel edge rejection; and the custom optimizer path returns only DealFlow's exact closure. Unexpected redirects, URL changes, public 200s, optimizer image responses, broad status acceptance, generic or altered Vercel errors, mixed provider-path dispositions, mapping drift, and deadline exhaustion fail closed and trigger rollback.
 6. Seed the deployment-bound white-label hosts and ten synthetic roles twice, proving idempotency and atomic partner attribution.

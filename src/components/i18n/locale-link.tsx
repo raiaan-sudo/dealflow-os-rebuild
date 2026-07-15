@@ -13,6 +13,7 @@ type LocaleLinkProps = LinkProps &
 
 export function LocaleLink({
   href,
+  prefetch = false,
   preserveLocale = true,
   ...props
 }: LocaleLinkProps) {
@@ -22,5 +23,8 @@ export function LocaleLink({
       ? localizeProductHref(href, locale)
       : href;
 
-  return <Link href={localizedHref} {...props} />;
+  // Authenticated routes read current tenant and provider state. Speculative
+  // App Router prefetches add stale work and can be cancelled as the document
+  // settles, so localized product navigation is demand-driven by default.
+  return <Link href={localizedHref} prefetch={prefetch} {...props} />;
 }

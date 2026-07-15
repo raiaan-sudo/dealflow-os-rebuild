@@ -56,13 +56,19 @@ provider acceptance, production migration, deployment or release.
 ## Data and proof contract
 
 - The frozen 80-migration recovered foundation remains immutable authority.
-- Twenty-three additive product migrations extend the candidate to exactly 103
+- Twenty-four additive product migrations extend the candidate to exactly 104
   migrations, ending at
-  `20260713028000_harden_account_deletion_retention_authority.sql`. Migration
+  `20260715010000_move_legacy_org_member_policies_private.sql`. Migration
   100 adds canonical generated-video storage, migration 101 adds durable
   account deletion and provider offboarding, migration 102 adds the fenced GHL
   location display-name finalization operation, and migration 103 removes
   service-role mutation authority from the owner/legal retention configuration.
+  Migration 104 permanently repairs the hosted reporting `42501` by moving all
+  18 retained organization-member RLS policies from the intentionally revoked
+  `public.is_org_member(uuid)` helper to the hardened
+  `private.is_current_user_org_member(uuid)` helper. It keeps the public helper
+  revoked, restores authorized member reads, and keeps cross-tenant and
+  anonymous reads denied.
 - PostgreSQL 17.6 proof must show fresh application, history replay, and frozen
   foundation followed by all extensions converge to the same public/private
   schema and the same ACL, default-ACL, policy, and function oracle.
@@ -81,10 +87,13 @@ provider acceptance, production migration, deployment or release.
   exact-once $10 ledger receipt, idempotent replay, `meta_ads` account identity,
   deterministic timestamps/counts, exact attested auth identities, and
   synthetic-only records.
-- The fresh-staging migration broker may run only after two complete passing
+- The staging migration broker may run only after two complete passing
   final-verification rounds bind the same clean seal. It pins the isolated
-  project by fingerprint and suffix, checks the empty hosted platform baseline,
-  and applies each migration plus its history receipt in one transaction.
+  project by fingerprint and suffix. A genuinely empty hosted platform receives
+  the exact 104-file portfolio and its history receipts in one transaction. The
+  current qibh state must instead match the pinned read-only-proven prior-103
+  state before the broker can commit only migration 104 and its receipt in one
+  transaction.
 
 ## Release gates
 
@@ -111,21 +120,24 @@ staging migration broker accepts their summary files explicitly:
 ```bash
 node scripts/staging/apply-fresh-staging-migrations.mjs \
   /private/tmp/dealflow-overnight-release-20260712 \
-  <new-empty-external-staging-evidence-directory> \
+  <new-external-staging-evidence-directory> \
   <round-1-directory>/verification-summary.json \
-  <round-2-directory>/verification-summary.json
+  <round-2-directory>/verification-summary.json \
+  --apply-forward-exact <pinned-read-only-103-run>/migration-proof
 ```
 
 The broker refuses a dirty or different repository, different round seals,
-an unpinned project identity, a nonempty hosted database, an unpinned local
-PostgreSQL runtime, non-owner-only project authority, or a migration portfolio
-other than the exact 103 reviewed files. It obtains the database password from
-Keychain into process memory and supplies it only to the interactive password
-prompt; the password is not placed in arguments, process environment, evidence,
-or repository files.
+an unpinned project identity, any nonempty hosted database that is not the exact
+pinned prior-103 state selected by forward mode, an unpinned local PostgreSQL
+runtime, non-owner-only project authority, or a migration portfolio other than
+the exact 104 reviewed files. Fresh mode still requires a genuinely empty
+hosted database and never falls back from forward mode. It obtains the database
+password from Keychain into process memory and supplies it only to the
+interactive password prompt; the password is not placed in arguments, process
+environment, evidence, or repository files.
 
 The runner includes lint, typecheck, production build, product/security
-contracts, the completion suite, all database suites, the 103-migration
+contracts, the completion suite, all database suites, the 104-migration
 integrated proof, GHL destination fencing, Meta budget safety, Meta activation,
 the customer-authorized optimizer executor, and staging-fixture contracts.
 
@@ -134,6 +146,13 @@ zero-external-effects proof, fail if any authenticated Playwright test is
 skipped, cover direct/partner/admin/attacker and EN/FR/ES journeys across the
 configured browser/device matrix, run bounded synthetic no-write lead load, and
 retain a sanitized manifest/checksum portfolio.
+
+The isolated project has a retained read-only proof for the exact predecessor
+103-migration state. The forward broker now accepts only that pinned pre-state
+and can commit only migration 104 plus its history receipt in one outer
+transaction. That 103-to-104 hosted transition is implemented but remains
+`NOT_YET_RUN`; it requires the new clean candidate and two passing exact-seal
+rounds first.
 
 ## Current operating documents
 

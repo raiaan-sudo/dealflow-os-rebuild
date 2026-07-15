@@ -34,7 +34,7 @@ const APP_CONTRACT = {
   name: "create_execution_and_creative_app_contracts",
 };
 const FROZEN_FOUNDATION_MIGRATION_COUNT = 80;
-const EXACT_INTEGRATED_MIGRATION_COUNT = 103;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 104;
 const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260712213000_create_ghl_sandbox_provider_path.sql",
   "20260712214000_create_continuous_reporting_and_safe_optimizer.sql",
@@ -59,6 +59,7 @@ const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260713026000_add_account_deletion_and_provider_offboarding.sql",
   "20260713027000_add_ghl_location_display_name_finalization.sql",
   "20260713028000_harden_account_deletion_retention_authority.sql",
+  "20260715010000_move_legacy_org_member_policies_private.sql",
 ];
 const PARTNER_FOUNDATION_VERSION = "20260531160000";
 const FOUNDATION_TABLES = new Set([

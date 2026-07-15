@@ -1,6 +1,6 @@
 # DealFlow GoHighLevel architecture
 
-Status: `INTEGRATED 103-MIGRATION CANDIDATE / FINAL-SEAL PROOF NOT_YET_RUN / LIVE PROVIDER ACCEPTANCE BLOCKED`
+Status: `INTEGRATED 104-MIGRATION CANDIDATE / FINAL-SEAL PROOF NOT_YET_RUN / LIVE PROVIDER ACCEPTANCE BLOCKED`
 Overall release verdict: `NO_GO`
 
 ## Baseline versus candidate
@@ -29,7 +29,7 @@ lead-effect delivery path. The isolated candidate now contains:
 
 Provider paths are present in the integrated candidate but default disabled.
 The current exact candidate ends at migration
-`20260713028000_harden_account_deletion_retention_authority.sql`; final clean-seal
+`20260715010000_move_legacy_org_member_policies_private.sql`; final clean-seal
 PostgreSQL proof is `NOT_YET_RUN`. No live acceptance has
 occurred, so production execution remains blocked. Direct snapshot, funnel,
 page, or form publication is not claimed because no documented writable API was

@@ -2,8 +2,8 @@
 
 Current verdict: `NO_GO`
 Final implementation commit/tree: `PENDING_FINAL_SEAL / PENDING_FINAL_SEAL`
-Migration inventory: `103`, ending at
-`20260713028000_harden_account_deletion_retention_authority.sql`
+Migration inventory: `104`, ending at
+`20260715010000_move_legacy_org_member_policies_private.sql`
 Migration digest: `PENDING_FINAL_SEAL`
 Staging deployment: `NOT_YET_RUN`
 Production deployment: `NOT_YET_RUN`
@@ -31,9 +31,9 @@ worktree is clean. Any later tracked change invalidates the identity and both
 verification rounds.
 
 The 80-migration foundation and earlier candidate counts, including the
-99/102-migration checkpoints, are historical evidence. The current candidate
-inventory is 103, but its exact final digest and
-integrated proof are still pending.
+99/102-migration checkpoints and the retained exact prior-103 staging pre-state,
+are historical or predecessor evidence. The current candidate inventory is 104,
+but its exact final digest and integrated proof are still pending.
 
 ## Release trust
 
@@ -51,7 +51,9 @@ six current manifests are `NOT_YET_RUN`.
 ## Mandatory `NO_GO` conditions currently present
 
 - final clean seal and two exact-seal verification rounds are absent;
-- exact 103-chain hosted staging migration and deployment are absent;
+- exact 104-chain hosted staging migration and deployment are absent; the
+  forward-only 103-to-104 transition is implemented and pinned to the retained
+  exact prior-103 proof, but has not executed;
 - zero-skip authenticated multi-role/white-label/EN-FR-ES acceptance is absent;
 - provider sandbox/test acceptance is absent;
 - production schema, backup/PITR and restore authority are absent;

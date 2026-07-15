@@ -31,7 +31,7 @@ import {
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg, ...modeArgs] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg) {
   throw new Error(
-    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir> | --apply-forward-exact <prior-102-migration-proof-dir>]",
+    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir> | --apply-forward-exact <prior-103-migration-proof-dir>]",
   );
 }
 let priorMigrationProofDir = null;
@@ -70,24 +70,24 @@ const keychainAccount = "dealflow-staging-20260712";
 const expectedProjectFingerprint =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const expectedProjectSafeSuffix = "qibh";
-const expectedPriorApplicationCommit = "e776f38b5302dda525d51cf03e4668568e272a77";
-const expectedPriorApplicationTree = "0fcf11214ed3ae097003f737077cd7c67cdedfb7";
+const expectedPriorApplicationCommit = "5978cfc9a80f511cfed02d1d1f810a4720db7cc1";
+const expectedPriorApplicationTree = "7ea61c55363d40d1e23fb35e45029e653e6682a7";
 const expectedPriorManifestSha256 =
-  "877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4";
+  "f4a7209d74fdc1dad3f82290c837d2a8c289546eca7f8b7373efe9e0e6aa3f63";
 const expectedPriorProofSha256 =
-  "49670dbf4d4be8ab59d7a3778cbbe5e751c486bd2d59faed02f4ae0d44b23590";
+  "828a5caf76abc36326ecfbedcea7074533de9e587c375812223d90033c7451ed";
 const expectedPriorSummarySha256 =
-  "d7e8bc08ef1d0cd12a03ec97b99eb979a9c9a738b709c35c59a215c7255b85c9";
+  "49e58de331c8e699b2ba5ce1bbae2235bd45b79de343c519585e0cc5a64422d3";
 const expectedPriorMigrationPortfolioSha256 =
-  "30f6d3f03198dc2742179cbf7546400ade2f6a660dc52b96b27aeaec46f46ab3";
-const expectedPriorMigrationCount = 102;
+  "066dacae58f0987a281bff1f8b21cfaaa2a1cebe49e797a0f764f88d21be74ca";
+const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
-  "20260713027000_add_ghl_location_display_name_finalization.sql";
-const exactMigrationCount = 103;
+  "20260713028000_harden_account_deletion_retention_authority.sql";
+const exactMigrationCount = 104;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260713028000_harden_account_deletion_retention_authority.sql";
+  "20260715010000_move_legacy_org_member_policies_private.sql";
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -533,7 +533,7 @@ if (
   forwardMigrationSources.length !== 1 ||
   forwardMigrationSources[0]?.file !== requiredFinalMigration
 ) {
-  throw new Error("The exact forward-only migration tranche must contain only migration 103");
+  throw new Error("The exact forward-only migration tranche must contain only migration 104");
 }
 const forwardAtomicMigrationTransaction = buildAtomicMigrationTransaction(
   forwardMigrationSources,
@@ -1156,7 +1156,7 @@ function captureAndAssertRetentionAuthorityAcl(label) {
   });
 }
 
-function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
+function loadAndValidatePriorMigrationProof({ requirePinnedPrior103 }) {
   if (!priorMigrationProofDir) return null;
   const directoryStat = lstatSync(priorMigrationProofDir);
   if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
@@ -1245,14 +1245,14 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
   const mutationStatus = mutationStatusArtifact?.parsed ?? null;
   const failure = failureArtifact?.parsed ?? null;
   const summary = summaryArtifact.parsed;
-  if (requirePinnedPrior102 && (
+  if (requirePinnedPrior103 && (
     sha256(manifestArtifact.contents) !== expectedPriorManifestSha256 ||
     sha256(proofArtifact?.contents ?? Buffer.alloc(0)) !== expectedPriorProofSha256 ||
     sha256(summaryArtifact.contents) !== expectedPriorSummarySha256
   )) {
-    throw new Error("Prior migration proof does not match the exact pinned application seal");
+    throw new Error("Prior migration proof does not match the exact pinned prior-state seal");
   }
-  const expectedRecords = requirePinnedPrior102
+  const expectedRecords = requirePinnedPrior103
     ? migrationIdentity.records.slice(0, expectedPriorMigrationCount)
     : migrationIdentity.records;
   const expectedApplied = expectedRecords.map((record) => ({
@@ -1261,10 +1261,10 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
     sha256: record.sha256,
   }));
   const expectedCount = expectedRecords.length;
-  const expectedPortfolioSha256 = requirePinnedPrior102
+  const expectedPortfolioSha256 = requirePinnedPrior103
     ? expectedPriorMigrationPortfolioSha256
     : migrationIdentity.migrationPortfolioSha256;
-  const expectedFinalVersion = (requirePinnedPrior102
+  const expectedFinalVersion = (requirePinnedPrior103
     ? expectedPriorFinalMigration
     : requiredFinalMigration).slice(0, 14);
   const evidenceTruth = classifyPriorMigrationEvidence({
@@ -1276,7 +1276,7 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
     mutationStatus,
     expectedMigrationCount: expectedCount,
     expectedFinalVersion,
-    requireApplicationEvidence: requirePinnedPrior102,
+    requireApplicationEvidence: false,
   });
   if (evidenceTruth.evidenceKind === "committed_forward_recovery") {
     const manifestSha256 = sha256(manifestArtifact.contents);
@@ -1407,8 +1407,8 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
     summary.lastCommittedVersion !== expectedFinalVersion ||
     proof.headCommit !== summary.headCommit ||
     proof.headTree !== summary.headTree ||
-    (requirePinnedPrior102 && proof.headCommit !== expectedPriorApplicationCommit) ||
-    (requirePinnedPrior102 && proof.headTree !== expectedPriorApplicationTree) ||
+    (requirePinnedPrior103 && proof.headCommit !== expectedPriorApplicationCommit) ||
+    (requirePinnedPrior103 && proof.headTree !== expectedPriorApplicationTree) ||
     proof.normalizedSchemaSha256 !== summary.normalizedSchemaSha256 ||
     !/^[a-f0-9]{40}$/.test(proof.headCommit ?? "") ||
     !/^[a-f0-9]{40}$/.test(proof.headTree ?? "") ||
@@ -1419,8 +1419,8 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior102 }) {
     JSON.stringify(proof.applied) !== JSON.stringify(expectedApplied)
   ) {
     throw new Error(
-      requirePinnedPrior102
-        ? "Prior migration proof is not bound to the exact successful 102-migration application"
+      requirePinnedPrior103
+        ? "Prior migration proof is not bound to the exact read-only-proven 103-migration state"
         : "Prior migration proof is not bound to the exact successful current portfolio application",
     );
   }
@@ -1487,7 +1487,7 @@ const brokerEvidenceIdentity = {
 
 if (migrationMode === "VERIFY_EXISTING_EXACT") {
   const priorApplication = loadAndValidatePriorMigrationProof({
-    requirePinnedPrior102: false,
+    requirePinnedPrior103: false,
   });
   const common = {
     migrationMode: "VERIFY_EXISTING_EXACT",
@@ -1769,7 +1769,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
 
 if (migrationMode === "APPLY_FORWARD_EXACT") {
   const priorApplication = loadAndValidatePriorMigrationProof({
-    requirePinnedPrior102: true,
+    requirePinnedPrior103: true,
   });
   if (
     priorApplication.migrationCount !== expectedPriorMigrationCount ||
@@ -1783,7 +1783,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       })),
     )
   ) {
-    throw new Error("The first 102 migration filenames and SQL hashes are not the pinned prior portfolio");
+    throw new Error("The first 103 migration filenames and SQL hashes are not the pinned prior portfolio");
   }
   const common = {
     migrationMode: "APPLY_FORWARD_EXACT",
@@ -1816,7 +1816,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   };
   const preflightRecord = writeJsonEvidence("staging-broker-preflight.json", {
     schemaVersion: "dealflow.staging-broker-preflight.v1",
-    status: "PREPARED_EXACT_FORWARD_103",
+    status: "PREPARED_EXACT_FORWARD_104",
     remoteReadStarted: false,
     remoteMutationStarted: false,
     remoteMutationCompleted: false,
@@ -1826,7 +1826,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     "staging-migration-summary.pre-mutation.json",
     {
       schemaVersion: "dealflow.staging-migration-summary.v1",
-      status: "PREPARED_EXACT_FORWARD_103",
+      status: "PREPARED_EXACT_FORWARD_104",
       remoteReadStarted: false,
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
@@ -1837,7 +1837,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     "evidence-manifest.pre-mutation.json",
     {
       schemaVersion: "dealflow.staging-evidence-manifest.v1",
-      status: "PREPARED_EXACT_FORWARD_103",
+      status: "PREPARED_EXACT_FORWARD_104",
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
       broker: brokerEvidenceIdentity,
@@ -1848,7 +1848,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
   const readStartedRecord = writeJsonEvidence("staging-remote-read-started.json", {
     schemaVersion: "dealflow.staging-remote-read-status.v1",
-    status: "REMOTE_READ_STARTED_EXACT_FORWARD_103",
+    status: "REMOTE_READ_STARTED_EXACT_FORWARD_104",
     remoteReadStarted: true,
     remoteMutationStarted: false,
     remoteMutationCompleted: false,
@@ -1877,7 +1877,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   let remoteMutationStarted = false;
   let remoteMutationCompleted = false;
   let terminalStatus = "FAILED_PRE_MUTATION_READ";
-  let failureCode = "prior_102_remote_state_not_proven";
+  let failureCode = "prior_103_remote_state_not_proven";
   let terminalError = null;
   let postForwardState = null;
   let postForwardSchemaSha256 = null;
@@ -1892,7 +1892,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       failureCode = "forward_postgres_version_mismatch";
       throw new Error("The forward staging PostgreSQL version does not match exact 17.6");
     }
-    preForwardState = captureRemoteStructuralState("Forward staging prior-102 verification");
+    preForwardState = captureRemoteStructuralState("Forward staging prior-103 verification");
     const expectedPriorVersions = priorApplication.migrationFiles.map((item) => item.version);
     if (
       preForwardState.historyTableExists !== true ||
@@ -1900,18 +1900,18 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       JSON.stringify(preForwardState.migrationHistoryVersions) !==
         JSON.stringify(expectedPriorVersions)
     ) {
-      failureCode = "prior_102_history_not_proven";
-      throw new Error("Remote staging history is not the exact pinned 102-migration state");
+      failureCode = "prior_103_history_not_proven";
+      throw new Error("Remote staging history is not the exact pinned 103-migration state");
     }
     if (preForwardState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256) {
-      failureCode = "prior_102_catalog_not_proven";
-      throw new Error("Remote staging catalog drifted from the pinned 102-migration proof");
+      failureCode = "prior_103_catalog_not_proven";
+      throw new Error("Remote staging catalog drifted from the pinned 103-migration proof");
     }
     const preForwardDump = captureNormalizedSchemaDump();
     preForwardSchemaSha256 = sha256(preForwardDump);
     if (preForwardSchemaSha256 !== priorApplication.normalizedSchemaSha256) {
-      failureCode = "prior_102_schema_not_proven";
-      throw new Error("Remote staging schema drifted from the pinned 102-migration proof");
+      failureCode = "prior_103_schema_not_proven";
+      throw new Error("Remote staging schema drifted from the pinned 103-migration proof");
     }
     const activationControls = sql(
       "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
@@ -1927,14 +1927,14 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       ghlControls.length !== 3 ||
       ghlControls.some((row) => !row.endsWith(":false:false:false"))
     ) {
-      failureCode = "provider_controls_not_closed_before_forward_103";
-      throw new Error("Provider runtime controls are not fail-closed before migration 103");
+      failureCode = "provider_controls_not_closed_before_forward_104";
+      throw new Error("Provider runtime controls are not fail-closed before migration 104");
     }
 
     assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
     mutationStartedRecord = writeJsonEvidence("staging-mutation-started.json", {
       schemaVersion: "dealflow.staging-mutation-status.v1",
-      status: "FORWARD_103_MUTATION_STARTED",
+      status: "FORWARD_104_MUTATION_STARTED",
       remoteMutationStarted: true,
       remoteMutationCompleted: false,
       singleOuterTransaction: true,
@@ -1946,7 +1946,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     });
     remoteMutationStarted = true;
     // This marker is the final operation before the only remote write. The SQL
-    // body of migration 103 and its history receipt share one outer transaction.
+    // body of migration 104 and its history receipt share one outer transaction.
     transactionExecution = executeForwardMigrationTransaction();
     if (
       !transactionExecution.succeeded ||
@@ -1956,22 +1956,22 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       JSON.stringify(transactionExecution.appliedInTransaction) !==
         JSON.stringify([requiredFinalMigration.slice(0, 14)])
     ) {
-      failureCode = "forward_103_atomic_transaction_failed";
-      throw new Error("The exact migration 103 transaction did not commit completely");
+      failureCode = "forward_104_atomic_transaction_failed";
+      throw new Error("The exact migration 104 transaction did not commit completely");
     }
     remoteMutationCompleted = true;
 
-    postForwardState = captureRemoteStructuralState("Forward staging post-103 verification");
+    postForwardState = captureRemoteStructuralState("Forward staging post-104 verification");
     if (!hasExactMigrationHistory(postForwardState)) {
-      failureCode = "forward_103_history_mismatch";
-      throw new Error("Remote staging does not contain the exact 103-migration history");
+      failureCode = "forward_104_history_mismatch";
+      throw new Error("Remote staging does not contain the exact 104-migration history");
     }
     const postForwardCatalogRepeat = captureRemoteCatalogIdentity(
-      "Forward staging repeated post-103 catalog identity",
+      "Forward staging repeated post-104 catalog identity",
     );
     postForwardCatalogRepeatSha256 = postForwardCatalogRepeat.structuralCatalogSha256;
     if (postForwardCatalogRepeatSha256 !== postForwardState.structuralCatalogSha256) {
-      failureCode = "forward_103_catalog_nondeterministic";
+      failureCode = "forward_104_catalog_nondeterministic";
       throw new Error("Post-migration structural catalog was not stable across repeated capture");
     }
     const postForwardDump = captureNormalizedSchemaDump();
@@ -1979,7 +1979,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     postForwardSchemaSha256 = sha256(postForwardDump);
     postForwardSchemaBytes = Buffer.byteLength(postForwardDump);
     if (postForwardSchemaSha256 !== sha256(postForwardDumpRepeat)) {
-      failureCode = "forward_103_schema_nondeterministic";
+      failureCode = "forward_104_schema_nondeterministic";
       throw new Error("Post-migration normalized schema was not stable across repeated capture");
     }
     failureCode = "retention_table_or_column_acl_not_hardened";
@@ -2000,8 +2000,8 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       postGhlControls.length !== 3 ||
       postGhlControls.some((row) => !row.endsWith(":false:false:false"))
     ) {
-      failureCode = "provider_controls_not_closed_after_forward_103";
-      throw new Error("Provider runtime controls are not fail-closed after migration 103");
+      failureCode = "provider_controls_not_closed_after_forward_104";
+      throw new Error("Provider runtime controls are not fail-closed after migration 104");
     }
     forcedRlsCount = Number(sql(
       "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and c.relrowsecurity and c.relforcerowsecurity;",
@@ -2027,12 +2027,12 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
           observedDumpSha256 === priorApplication.normalizedSchemaSha256;
         if (exactPriorState) {
           remoteMutationCompleted = false;
-          terminalStatus = "ROLLED_BACK_EXACT_PRIOR_102";
+          terminalStatus = "ROLLED_BACK_EXACT_PRIOR_103";
         } else if (hasExactMigrationHistory(observedState) && remoteMutationCompleted) {
-          terminalStatus = "FAILED_AFTER_FORWARD_103_COMMIT";
+          terminalStatus = "FAILED_AFTER_FORWARD_104_COMMIT";
         } else if (hasExactMigrationHistory(observedState)) {
           remoteMutationCompleted = null;
-          terminalStatus = "FAILED_FORWARD_103_STATE_DETECTED_WITHOUT_COMMIT_PROOF";
+          terminalStatus = "FAILED_FORWARD_104_STATE_DETECTED_WITHOUT_COMMIT_PROOF";
         } else {
           remoteMutationCompleted = null;
           terminalStatus = "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN";
@@ -2047,7 +2047,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   if (!mutationStartedRecord) {
     mutationStartedRecord = writeJsonEvidence("staging-mutation-started.json", {
       schemaVersion: "dealflow.staging-mutation-status.v1",
-      status: "FORWARD_103_MUTATION_NOT_STARTED",
+      status: "FORWARD_104_MUTATION_NOT_STARTED",
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
       ...common,
@@ -2133,7 +2133,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       ],
     });
     throw new Error(
-      `Exact forward migration 103 ${terminalStatus}; evidence manifest ${failureManifestRecord.sha256}`,
+      `Exact forward migration 104 ${terminalStatus}; evidence manifest ${failureManifestRecord.sha256}`,
     );
   }
 
@@ -2166,7 +2166,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     remoteStateVerification: {
       status: "EXACT_FORWARD_COMMITTED_PORTFOLIO",
       readOnly: true,
-      exactPrior102StateBeforeMutation: true,
+      exactPrior103StateBeforeMutation: true,
       exactCommittedPortfolioState: true,
       repeatedCatalogAndSchemaStable: true,
       state: postForwardState,
@@ -2215,7 +2215,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     ],
   });
   process.stdout.write(
-    `Exact forward migration 103 PASS: prior 102 proven, one migration committed, PostgreSQL ${serverVersion}, schema ${postForwardSchemaSha256}, manifest ${manifestRecord.sha256}\n`,
+    `Exact forward migration 104 PASS: prior 103 proven, one migration committed, PostgreSQL ${serverVersion}, schema ${postForwardSchemaSha256}, manifest ${manifestRecord.sha256}\n`,
   );
   process.exit(0);
 }

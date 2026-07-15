@@ -16,8 +16,8 @@ identity and `NOT_YET_RUN` for execution proof.
 - Clean worktree result: `NOT_YET_RUN`
 - Tracked-file count/digest: `PENDING_FINAL_SEAL`
 - Lockfile digest: `PENDING_FINAL_SEAL`
-- Migration count/final file/digest: `103` /
-  `20260713028000_harden_account_deletion_retention_authority.sql` /
+- Migration count/final file/digest: `104` /
+  `20260715010000_move_legacy_org_member_policies_private.sql` /
   `PENDING_FINAL_SEAL`
 - Node/PostgreSQL exact runtimes: `NOT_YET_RUN`
 
@@ -28,7 +28,10 @@ identity and `NOT_YET_RUN` for execution proof.
 - Same-seal comparison: `NOT_YET_RUN`
 - Install/audit/secret-scan/lint/typecheck/build: `NOT_YET_RUN`
 - Complete contract/database/browser/load counts and failures: `NOT_YET_RUN`
-- 103-chain schema/ACL/RLS/determinism/forward-recovery result: `NOT_YET_RUN`
+- 104-chain schema/ACL/RLS/determinism/forward-recovery result: `NOT_YET_RUN`
+- Migration 104 legacy-policy repair (18/18 private-helper policies, public RPC
+  still revoked, member access restored, cross-tenant/anonymous denial):
+  `TARGETED_WORKING_TREE_PASS / FINAL_SEAL_NOT_YET_RUN`
 - Unresolved P0/P1/warnings/skips: `NOT_YET_RUN`
 
 ## 3. Isolated staging
@@ -36,7 +39,8 @@ identity and `NOT_YET_RUN` for execution proof.
 - Supabase fingerprint/safe suffix and schema identity: `NOT_YET_RUN`
 - Vercel project/host/deployment/commit/tree: `NOT_YET_RUN`
 - Zero-external-effects attestation: `NOT_YET_RUN`
-- 103-migration apply/history/idempotency/digest: `NOT_YET_RUN`
+- Exact prior-103 read-only pre-state proof: `RETAINED_PREDECESSOR_PASS`
+- Atomic 103-to-104 forward apply/history/idempotency/digest: `NOT_YET_RUN`
 - Synthetic fixture identities/counts/cleanup: `NOT_YET_RUN`
 - Authenticated zero-skip browser matrix: `NOT_YET_RUN`
 - Direct/partner/admin/attacker, suspended/deletion, and EN/FR/ES journeys: `NOT_YET_RUN`

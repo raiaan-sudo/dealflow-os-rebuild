@@ -60,10 +60,11 @@ export function TopBar({ userName, userEmail, organizationName, productName = "D
           </div>
 
           <Link
+            aria-label={t("nav.settings")}
             href="/settings"
             className="flex size-10 items-center justify-center rounded-[16px] border border-white/8 bg-white/[0.04] text-muted-foreground transition hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground"
           >
-            <Settings className="size-4" />
+            <Settings aria-hidden="true" className="size-4" />
           </Link>
           <SignOutButton />
         </div>

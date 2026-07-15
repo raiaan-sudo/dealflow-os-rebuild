@@ -86,6 +86,10 @@ if (!productMessages.includes('"auth.signIn": "Sign in"')) {
   throw new Error("English message catalog must preserve the canonical Sign in label.");
 }
 
+if (!/<p[^>]*>[\s\S]*\{branding\.appName\}[\s\S]*<\/p>/.test(loginForm)) {
+  throw new Error("Verified partner login branding must render the product name as visible text.");
+}
+
 if (loginForm.includes("Launch My Campaign")) {
   throw new Error("Login form must not label sign-in as a campaign launch action.");
 }

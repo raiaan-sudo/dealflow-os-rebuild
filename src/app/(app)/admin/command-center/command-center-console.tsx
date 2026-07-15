@@ -289,6 +289,7 @@ export function CommandCenterConsole({
               <Link
                 className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white/82 transition hover:bg-white/[0.09]"
                 href="/admin/issues"
+                prefetch={false}
               >
                 <Bug className="size-4" />
                 Error logs
@@ -377,6 +378,7 @@ export function CommandCenterConsole({
               <Link
                 className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-xs font-semibold text-cyan-50"
                 href="/admin/issues"
+                prefetch={false}
               >
                 Open all
               </Link>

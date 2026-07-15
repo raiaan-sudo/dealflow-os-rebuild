@@ -60,6 +60,7 @@ const tests = [
   "staging/test-deployable-source-path-set-contract.mjs",
   "staging/test-vercel-dry-run-source-contract.mjs",
   "staging/test-vercel-alias-propagation-contract.mjs",
+  "staging/test-vercel-cli-selection-contract.mjs",
   "staging/test-exact-supabase-project-url.mjs",
   "staging/test-next-static-chunk-path.mjs",
   "staging/test-vercel-deployed-image-config-contract.mjs",

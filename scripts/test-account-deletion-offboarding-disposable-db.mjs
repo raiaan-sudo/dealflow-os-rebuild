@@ -12,7 +12,9 @@ const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
 const proposalPath = process.env.ACCOUNT_DELETION_MIGRATION_PROPOSAL
   ?? path.join(migrationsDir, "20260713026000_add_account_deletion_and_provider_offboarding.sql");
-const requiredFinalMigration = "20260713028000_harden_account_deletion_retention_authority.sql";
+const requiredFinalMigration = "20260715010000_move_legacy_org_member_policies_private.sql";
+const retentionAuthorityMigration =
+  "20260713028000_harden_account_deletion_retention_authority.sql";
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = fs.readdirSync(migrationsDir)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))
@@ -88,7 +90,7 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 103, "test expects the exact 103-migration candidate");
+  assert.equal(migrations.length, 104, "test expects the exact 104-migration candidate");
   assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
@@ -153,7 +155,7 @@ try {
         'UPDATE'
       );
     `, { label: "Prove the injected column-level grant is effective" })), "t");
-    session.psql(`begin; set role postgres; ${migrationSource(requiredFinalMigration)} reset role; commit;`, {
+    session.psql(`begin; set role postgres; ${migrationSource(retentionAuthorityMigration)} reset role; commit;`, {
       label: "Replay retention-authority hardening over a stale column grant",
       timeoutMs: 180_000,
     });
@@ -634,7 +636,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 103 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 104 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }

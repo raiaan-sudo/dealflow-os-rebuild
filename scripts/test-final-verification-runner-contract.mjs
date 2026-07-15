@@ -392,7 +392,7 @@ const exactSummaryIdentity = Object.freeze({
   trackedWorktreeSha256: "c".repeat(64),
   trackedFileCount: 900,
   dependencyLockSha256: "d".repeat(64),
-  migrationCount: 103,
+  migrationCount: 104,
   migrationPortfolioSha256: "e".repeat(64),
 });
 const exactRecords = FINAL_VERIFICATION_COMMAND_PORTFOLIO.map((command, index) => ({
@@ -597,8 +597,8 @@ assert.throws(
 );
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 103",
-  "20260713028000_harden_account_deletion_retention_authority.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 104",
+  "20260715010000_move_legacy_org_member_policies_private.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["git", ["diff", "--check"]]',
@@ -687,5 +687,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (exclusive worktree lock, migration 103, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 104, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

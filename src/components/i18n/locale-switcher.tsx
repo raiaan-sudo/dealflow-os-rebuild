@@ -28,6 +28,7 @@ export function LocaleSwitcher({ compact = false }: { compact?: boolean }) {
           href={`${replaceProductLocaleInPathname(pathname, item)}${suffix}`}
           hrefLang={item}
           lang={item}
+          prefetch={false}
           className={cn(
             "rounded-xl px-2 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition",
             item === locale

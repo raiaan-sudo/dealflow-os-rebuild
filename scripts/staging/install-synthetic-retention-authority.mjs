@@ -46,9 +46,9 @@ const keychainAccount = "dealflow-staging-20260712";
 const expectedProjectFingerprint =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const expectedProjectSafeSuffix = "qibh";
-const expectedMigrationCount = 103;
+const expectedMigrationCount = 104;
 const expectedFinalMigration =
-  "20260713028000_harden_account_deletion_retention_authority.sql";
+  "20260715010000_move_legacy_org_member_policies_private.sql";
 const expectedLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedDeferrals = FINAL_VERIFICATION_HOSTED_DEFERRALS;
 const authorityMarker =
@@ -173,7 +173,7 @@ function captureMigrationIdentity() {
     files.at(-1) !== expectedFinalMigration ||
     new Set(files.map((name) => name.slice(0, 14))).size !== files.length
   ) {
-    throw new Error("The exact 103-migration authority-hardened portfolio is required");
+    throw new Error("The exact 104-migration authority-hardened portfolio is required");
   }
   const digest = createHash("sha256");
   const records = files.map((name) => {

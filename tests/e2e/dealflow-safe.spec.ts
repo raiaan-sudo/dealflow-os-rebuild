@@ -828,7 +828,9 @@ test.describe("public and unauthenticated route truth", () => {
 
   test("login controls are keyboard reachable, named, and do not submit during proof", async ({ page }) => {
     await gotoAndSettle(page, "/login");
-    await expect(page.getByRole("button", { name: "Sign in", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByRole("button", { name: "Show sign-in form", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("textbox", { name: "Email" })).toBeVisible();
     await expect(page.getByLabel("Password")).toBeVisible();
     await assertKeyboardFocus(page);

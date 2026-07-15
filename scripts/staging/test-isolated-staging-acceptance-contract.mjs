@@ -175,6 +175,14 @@ const interruptibleCommandTest = readFileSync(
   join(root, "scripts", "staging", "test-interruptible-command.mjs"),
   "utf8",
 );
+const vercelCliSelectionContract = readFileSync(
+  join(root, "scripts", "staging", "vercel-cli-selection-contract.mjs"),
+  "utf8",
+);
+const vercelCliSelectionContractTest = readFileSync(
+  join(root, "scripts", "staging", "test-vercel-cli-selection-contract.mjs"),
+  "utf8",
+);
 const evidenceRootContract = readFileSync(
   join(root, "scripts", "staging", "staging-evidence-root-contract.mjs"),
   "utf8",
@@ -501,8 +509,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 103/);
-assert.match(runner, /20260713028000_harden_account_deletion_retention_authority\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 104/);
+assert.match(runner, /20260715010000_move_legacy_org_member_policies_private\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 
 const authoritativeFalseControls = extractStringArray(zeroEffectsSource, "MUST_BE_FALSE");
@@ -599,7 +607,7 @@ assert.match(currentResumeGate, /exactCurrentResumePriorIdentity/);
 assert.doesNotMatch(
   currentResumeGate,
   /EXPECTED_PRIOR_MIGRATION_(?:APPLICATION|MANIFEST|PORTFOLIO)/,
-  "current-103 resume must not require the pinned migration-102 identity",
+  "current-104 resume must not require the pinned migration-103 identity",
 );
 const pinnedForwardGate = runner.slice(
   runner.indexOf("const exactForwardApplication ="),
@@ -1059,7 +1067,7 @@ assert.match(runner, /function configureAndProveAppAlias/);
 assert.match(runner, /function proveAuthoritativePreDeployAliasOwnership/);
 assert.match(runner, /failureContext\.stagingAliasMutations\.push\(rollbackRecord\)/);
 assert.match(runner, /async function rollbackCreatedStagingAliasesAfterFailure/);
-assert.match(runner, /rollback\.error \|\| rollback\.signal \|\| rollback\.status !== 0/);
+assert.match(runner, /const rollback = await runPinnedVercel\(/);
 assert.match(runner, /authoritativePriorMappingRestored/);
 assert.match(
   runner,
@@ -1076,10 +1084,11 @@ assert.ok(
   "rollback intent must be registered before the alias mutation command",
 );
 const aliasRollbackSource = runner.slice(
-  runner.indexOf("function readExactAliasMappingDuringRollback("),
+  runner.indexOf("async function readExactAliasMappingDuringRollback("),
   runner.indexOf("let terminalFailurePromise = null"),
 );
-assert.match(aliasRollbackSource, /spawnSync\(/);
+assert.match(aliasRollbackSource, /runPinnedVercel\(/);
+assert.doesNotMatch(aliasRollbackSource, /spawnSync\(/);
 assert.match(aliasRollbackSource, /record\.deployment\?\.id !== deploymentId/);
 assert.match(aliasRollbackSource, /`\/v13\/deployments\/\$\{deploymentId\}`/);
 assert.doesNotMatch(aliasRollbackSource, /configureHostedStagingProtection|--method|PATCH/);
@@ -1088,8 +1097,8 @@ assert.match(
   /timeoutMs = EXACT_ALIAS_PROPAGATION_TIMEOUT_MS/,
   "rollback authority reads must inherit the bounded edge-containment deadline",
 );
-assert.match(aliasRollbackSource, /timeout: timeoutMs/);
-assert.match(aliasRollbackSource, /timeout: remainingMs/);
+assert.match(aliasRollbackSource, /timeoutMs,/);
+assert.match(aliasRollbackSource, /timeoutMs: remainingMs/);
 assert.match(aliasRollbackSource, /waitForExactAliasRollbackContainment\(\{/);
 assert.match(aliasRollbackSource, /priorMappingPresent: mutation\.priorMapping !== null/);
 assert.match(aliasRollbackSource, /allowDuringTermination: true/);
@@ -1617,6 +1626,10 @@ assert.deepEqual(
   "every non-password synthetic role must be exercised by the browser suite",
 );
 assert.match(browserSpec, /credentialSignIn\(page, ROLE_EMAILS\.newDirect/);
+assert.match(browserSpec, /const authForm = page\.locator\("form"\)/);
+assert.match(browserSpec, /authForm\.getByRole\("button", \{ name: "Sign in", exact: true \}\)\.click\(\)/);
+assert.match(browserSpec, /const authSubmit = page\.locator\("form"\)\.getByRole\("button", \{/);
+assert.doesNotMatch(browserSpec, /page\.getByRole\("button", \{ name: \/sign in\/i \}\)\.click\(\)/);
 assert.match(browserSpec, /browserCookiesForOrigin\(session/);
 assert.doesNotMatch(browserSpec, /localStorage\.setItem\([^\n]*auth-token/);
 assert.match(browserSessionContract, /3_180/);
@@ -1880,6 +1893,69 @@ assert.match(interruptibleCommandTest, /nonzero-parent-orphan-sentinel/);
 assert.match(interruptibleCommandTest, /output-limit force kill was not bounded/);
 assert.match(interruptibleCommandTest, /timed out after 100ms/);
 assert.match(runner, /process\.exitCode = request\.exitCode/);
+assert.match(runner, /const vercel = resolvePinnedVercelCli\(\)/);
+assert.match(runner, /async function runPinnedVercel\(/);
+assert.match(
+  runner,
+  /const pinned = assertPinnedVercelCliUnchanged\(vercel\)[\s\S]+finally \{\s*assertPinnedVercelCliUnchanged\(vercel\)/,
+  "every Vercel command must receive pre/post complete-closure validation",
+);
+assert.ok(
+  (runner.match(/runPinnedVercel\(/g) ?? []).length >= 12,
+  "all normal and rollback Vercel invocations must use the pinned boundary",
+);
+const pinnedVercelBoundaryStart = runner.indexOf("async function runPinnedVercel(");
+const pinnedVercelBoundaryEnd = runner.indexOf("function git(", pinnedVercelBoundaryStart);
+assert.ok(pinnedVercelBoundaryStart >= 0 && pinnedVercelBoundaryEnd > pinnedVercelBoundaryStart);
+const runnerOutsidePinnedVercelBoundary =
+  runner.slice(0, pinnedVercelBoundaryStart) + runner.slice(pinnedVercelBoundaryEnd);
+assert.doesNotMatch(
+  runnerOutsidePinnedVercelBoundary,
+  /(?:\bvercel|\bpinned|vercelSelection)\.path\b/,
+  "the selected executable path may be consumed only inside runPinnedVercel",
+);
+assert.doesNotMatch(runner, /\bvercel\.path\b/);
+assert.doesNotMatch(runner, /failureContext\.vercelPath/);
+assert.doesNotMatch(
+  runner,
+  /runInterruptible(?:AllowNonzero)?\([\s\S]{0,160}(?:vercel\.path|failureContext\.vercel)/,
+  "no Vercel invocation may bypass runPinnedVercel",
+);
+assert.doesNotMatch(
+  runner,
+  /spawnSync\([\s\S]{0,180}(?:vercel\.path|failureContext\.vercel)/,
+  "rollback Vercel commands must not bypass the pinned asynchronous boundary",
+);
+assert.match(runner, /disposePinnedVercelCli\(failureContext\.vercelSelection\)/);
+assert.match(runner, /vercelCliSourcePathPersisted: false/);
+assert.match(runner, /vercelCliSnapshotPathPersisted: false/);
+assert.match(runner, /cliSourcePathPersisted: false/);
+assert.match(runner, /cliSnapshotPathPersisted: false/);
+assert.match(runner, /failureContext\.vercelSelection\?\.sourcePath/);
+assert.match(runner, /failureContext\.vercelSelection\?\.installationRoot/);
+assert.match(runner, /failureContext\.vercelSelection\?\.snapshotTrustRoot/);
+assert.doesNotMatch(runner, /\.npm["'], ["']_npx/);
+assert.match(vercelCliSelectionContract, /INSTALLATION_DIGEST_SCHEMA/);
+assert.match(vercelCliSelectionContract, /SNAPSHOT_PREFIX/);
+assert.match(vercelCliSelectionContract, /mtimeNs/);
+assert.match(vercelCliSelectionContract, /ctimeNs/);
+assert.match(vercelCliSelectionContract, /must use a relative internal symlink target/);
+assert.match(vercelCliSelectionContract, /must be non-writable inside the pinned snapshot/);
+assert.match(vercelCliSelectionContract, /VERCEL_CLI_INSTALLATION_SHA256/);
+for (const mutationMarker of [
+  "mutated-chunk",
+  "mutated-dependency",
+  "mutated-package",
+  "added-file",
+  "removed-file",
+  "mutated-symlink",
+  "mutated-mode",
+  "escaping-symlink",
+  "writable-package",
+  "writable-directory",
+]) {
+  assert.match(vercelCliSelectionContractTest, new RegExp(mutationMarker));
+}
 
 assert.equal(
   packageJson.scripts["staging:acceptance"],
@@ -1887,7 +1963,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-vercel-cli-selection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
@@ -1899,6 +1975,7 @@ assert.match(completionSuite, /"staging\/test-unsealed-playwright-artifact-clean
 assert.match(completionSuite, /"staging\/test-deployable-source-path-set-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-dry-run-source-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-alias-propagation-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-vercel-cli-selection-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-exact-supabase-project-url\.mjs"/);
 assert.match(completionSuite, /"staging\/test-next-static-chunk-path\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-deployed-image-config-contract\.mjs"/);
@@ -1924,7 +2001,7 @@ assert.match(help.stdout, /--verify-existing-migrations --deploy/);
 assert.match(help.stdout, /--apply-forward-migration --deploy/);
 assert.match(
   help.stdout,
-  /Exact forward-only migration 103[^\n]*:\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir/s,
+  /Exact forward-only migration 104[^\n]*:\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir/s,
   "forward-mode help must preserve executable multiline shell continuations",
 );
 
@@ -1938,5 +2015,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, read-only-resume, or exact-forward authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 103-migration atomic broker with pinned 102-to-103 forward mode and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, read-only-resume, or exact-forward authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 104-migration atomic broker with pinned read-only-proven 103-to-104 forward mode and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

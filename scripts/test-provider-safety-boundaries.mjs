@@ -29,6 +29,58 @@ function loadTypeScriptModule(file, dependencies = new Map()) {
 }
 
 const deployment = loadTypeScriptModule("src/lib/deployment-target.ts");
+const analyticsGate = loadTypeScriptModule(
+  "src/lib/telemetry/vercel-analytics-gate.ts",
+  new Map([["@/lib/deployment-target", deployment]]),
+);
+const exactStagingAnalyticsGate = loadTypeScriptModule(
+  "src/lib/telemetry/vercel-analytics-gate.ts",
+  new Map([
+    [
+      "@/lib/deployment-target",
+      { isExplicitNonProductionDeployment: () => true },
+    ],
+  ]),
+);
+assert.equal(
+  exactStagingAnalyticsGate.shouldRenderVercelAnalytics({
+    VERCEL: "1",
+    VERCEL_ENV: "production",
+    DEALFLOW_DEPLOYMENT_TARGET: "staging",
+  }),
+  false,
+  "an externally verified staging production slot must not load production analytics telemetry",
+);
+assert.equal(
+  analyticsGate.shouldRenderVercelAnalytics({
+    VERCEL: "1",
+    VERCEL_ENV: "preview",
+    DEALFLOW_DEPLOYMENT_TARGET: "staging",
+  }),
+  false,
+  "isolated staging must not load production analytics telemetry",
+);
+assert.equal(
+  analyticsGate.shouldRenderVercelAnalytics({
+    VERCEL: "1",
+    VERCEL_ENV: "preview",
+  }),
+  false,
+  "hosted previews must not load production analytics telemetry",
+);
+assert.equal(
+  analyticsGate.shouldRenderVercelAnalytics({
+    VERCEL: "1",
+    VERCEL_ENV: "production",
+  }),
+  true,
+  "unknown hosted production behavior must remain unchanged pending protected classification",
+);
+assert.equal(
+  analyticsGate.shouldRenderVercelAnalytics({ NODE_ENV: "production" }),
+  false,
+  "a production build alone must not enable hosted telemetry",
+);
 assert.equal(deployment.getDeploymentTarget({ NODE_ENV: "production" }), "unknown");
 assert.equal(
   deployment.getDeploymentTarget({

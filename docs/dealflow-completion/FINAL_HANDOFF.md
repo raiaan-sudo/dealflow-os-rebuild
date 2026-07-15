@@ -2,7 +2,7 @@
 
 Current verdict: `NO_GO`
 Final candidate commit/tree: `PENDING_FINAL_SEAL`
-Integrated migration inventory: `103`
+Integrated migration inventory: `104`
 Two exact-seal rounds: `NOT_YET_RUN`
 Isolated staging: `NOT_YET_RUN`
 Production deployment/mutation: `NOT_YET_RUN / NONE CLAIMED`
@@ -23,14 +23,17 @@ The integrated candidate preserves the realtor-focused UI and adds or hardens:
 - single-primary creative, provider-usage/content/storage integrity;
 - atomic support tickets, zero-communication staging delivery, Twilio and
   external-provider boundaries;
-- centralized zero-external-effects browser/load safety; and
+- centralized zero-external-effects browser/load safety;
 - recoverable exactly-once paid creative projection, atomic lead/outbox capture,
   exact Meta reporting/attribution windows, GHL ambiguous-dispatch terminality,
-  stage-isolated job orchestration and fair reporting claims; and
+  stage-isolated job orchestration and fair reporting claims;
 - canonical DealFlow-owned generated-video storage and a durable, always-fenced
-  account-deletion/provider-offboarding lifecycle; and
-- an exact 103-migration inventory ending at
-  `20260713028000_harden_account_deletion_retention_authority.sql`.
+  account-deletion/provider-offboarding lifecycle;
+- a fail-closed repair for the hosted reporting `42501`: all 18 retained
+  organization-member policies now use the hardened private membership helper,
+  while the revoked public helper remains unavailable to API roles; and
+- an exact 104-migration inventory ending at
+  `20260715010000_move_legacy_org_member_policies_private.sql`.
 
 This is source-contract truth only. The final clean seal and its complete proof
 are pending.
@@ -38,15 +41,15 @@ are pending.
 ## Historical evidence boundary
 
 The recovered 80-migration PostgreSQL 17.6 foundation remains a retained
-`HISTORICAL_PASS`. Earlier 82/87/89 counts, tranche commits, and the
-99/102-migration checkpoints are intermediate historical evidence. They are not
-the current candidate seal and do not prove extensions 81-103, hosted staging, a
-provider, or production.
+`HISTORICAL_PASS`. Earlier 82/87/89 counts, tranche commits, the
+99/102-migration checkpoints, and the exact prior-103 staging pre-state are
+historical or predecessor evidence. They are not the current candidate seal and
+do not prove migration 104, hosted 104 acceptance, a provider, or production.
 
 ## Remaining release gates
 
 1. Create the final clean commit/tree and complete two identical exact-seal
-   local rounds, including the exact 103-chain, security, dependency, secret,
+   local rounds, including the exact 104-chain, security, dependency, secret,
    browser and load portfolios.
 2. Apply/deploy that exact seal only to isolated staging and complete zero-skip
    authenticated multi-role, white-label, EN/FR/ES, golden-journey,

@@ -18,6 +18,9 @@ const paths = {
   onboarding: "src/app/(app)/onboarding/page.tsx",
   results: "src/app/results/page.tsx",
   commandCenter: "src/app/(app)/admin/command-center/command-center-console.tsx",
+  topBar: "src/components/layout/top-bar.tsx",
+  localeLink: "src/components/i18n/locale-link.tsx",
+  localeSwitcher: "src/components/i18n/locale-switcher.tsx",
   productMessages: "src/lib/i18n/messages.ts",
   globalStyles: "src/app/globals.css",
 };
@@ -175,6 +178,21 @@ assertIncludes("feedbackWidget", 'aria-modal="true"', "feedback dialog modal sem
 
 assertIncludes("loginForm", 'role="alert"', "login error live announcement");
 assertIncludes("loginForm", 'role="status"', "login status live announcement");
+assertIncludes(
+  "loginForm",
+  'aria-label={t("auth.switchToSignIn")}',
+  "sign-in mode control has a distinct accessible name",
+);
+assertIncludes(
+  "loginForm",
+  'aria-label={t("auth.switchToSignUp")}',
+  "sign-up mode control has a distinct accessible name",
+);
+assert.match(
+  sources.loginForm,
+  /<p[^>]*>[\s\S]*\{branding\.appName\}[\s\S]*<\/p>/,
+  "verified partner product name must remain visible independently of its logo alt text",
+);
 assertIncludes("leadForm", 'id="lead-capture-status"', "lead form status association");
 assertIncludes("leadForm", 'role={status === "error" ? "alert" : "status"}', "lead form adaptive live role");
 assertIncludes("feedbackWidget", 'role="status"', "feedback success live announcement");
@@ -201,5 +219,23 @@ assertIncludes("onboarding", "aria-invalid={Boolean(errors.market)}", "onboardin
 assertIncludes("onboarding", 'aria-describedby={errors.market ? "onboarding-market-error" : undefined}', "onboarding field-to-error association");
 assertIncludes("onboarding", 'id="onboarding-market-error"', "onboarding error description target");
 assertIncludes("commandCenter", "aria-pressed={active}", "command-center agent selection state");
+assertIncludes("topBar", 'aria-label={t("nav.settings")}', "settings link accessible name");
+assertIncludes("topBar", '<Settings aria-hidden="true"', "decorative settings icon semantics");
+assertIncludes("localeLink", "prefetch = false", "tenant navigation demand-driven prefetch default");
+assertIncludes(
+  "localeLink",
+  "<Link href={localizedHref} prefetch={prefetch}",
+  "locale link must forward its explicit prefetch policy",
+);
+assertIncludes(
+  "localeSwitcher",
+  "prefetch={false}",
+  "locale switcher must not prefetch hidden alternate-language dashboards",
+);
+assert.equal(
+  (sources.commandCenter.match(/prefetch=\{false\}/g) ?? []).length,
+  2,
+  "command-center issue links must not trigger speculative authenticated reads",
+);
 
 console.log(`accessibility and truth contract passed (${redirectCases.length} redirect cases)`);

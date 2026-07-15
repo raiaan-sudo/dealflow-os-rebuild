@@ -501,17 +501,22 @@ export function LoginForm({
   return (
     <div className="surface-guided w-full min-w-0 max-w-[calc(100vw-40px)] rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:max-w-none sm:p-8">
       <div className="mb-6">
-        {branding?.logoUrl && !logoFailed ? (
-          <div className="mb-5 flex items-center">
-            <div className="flex max-h-14 max-w-[220px] items-center justify-start rounded-2xl border border-white/10 bg-black/25 p-3 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)]">
-              {/* eslint-disable-next-line @next/next/no-img-element -- Partner logos are runtime-configured URLs and need client-side fallback. */}
-              <img
-                src={branding.logoUrl}
-                alt={`${branding.appName ?? "Partner"} logo`}
-                className="max-h-9 max-w-[180px] object-contain"
-                onError={() => setLogoFailed(true)}
-              />
-            </div>
+        {branding?.appName ? (
+          <div className="mb-5 flex min-w-0 items-center gap-3">
+            {branding.logoUrl && !logoFailed ? (
+              <div className="flex max-h-14 max-w-[220px] shrink-0 items-center justify-start rounded-2xl border border-white/10 bg-black/25 p-3 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)]">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Partner logos are runtime-configured URLs and need client-side fallback. */}
+                <img
+                  src={branding.logoUrl}
+                  alt={`${branding.appName} logo`}
+                  className="max-h-9 max-w-[180px] object-contain"
+                  onError={() => setLogoFailed(true)}
+                />
+              </div>
+            ) : null}
+            <p className="min-w-0 text-sm font-semibold leading-5 text-white [overflow-wrap:anywhere]">
+              {branding.appName}
+            </p>
           </div>
         ) : null}
         <p className="df-eyebrow">
@@ -532,6 +537,7 @@ export function LoginForm({
 
       <div className="flex rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-inner shadow-black/30">
         <button
+          aria-label={t("auth.switchToSignIn")}
           aria-pressed={mode === "sign-in"}
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-in"
@@ -544,6 +550,7 @@ export function LoginForm({
           {t("auth.signIn")}
         </button>
         <button
+          aria-label={t("auth.switchToSignUp")}
           aria-pressed={mode === "sign-up"}
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-up"

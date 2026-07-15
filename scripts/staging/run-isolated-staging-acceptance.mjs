@@ -84,6 +84,11 @@ import {
   assertExactCandidateDeployedImagePortfolioConfiguration,
   summarizeDeployedImageConfiguration,
 } from "./vercel-deployed-image-config-contract.mjs";
+import {
+  assertPinnedVercelCliUnchanged,
+  disposePinnedVercelCli,
+  resolvePinnedVercelCli,
+} from "./vercel-cli-selection-contract.mjs";
 
 const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
@@ -104,13 +109,13 @@ const EXPECTED_SUPABASE_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh";
 const EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT =
-  "e776f38b5302dda525d51cf03e4668568e272a77";
+  "5978cfc9a80f511cfed02d1d1f810a4720db7cc1";
 const EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE =
-  "0fcf11214ed3ae097003f737077cd7c67cdedfb7";
+  "7ea61c55363d40d1e23fb35e45029e653e6682a7";
 const EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 =
-  "877652c58c862dc9252c201e306890253f7189757c0d3cc3dbbd57d8afc26df4";
+  "f4a7209d74fdc1dad3f82290c837d2a8c289546eca7f8b7373efe9e0e6aa3f63";
 const EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256 =
-  "30f6d3f03198dc2742179cbf7546400ade2f6a660dc52b96b27aeaec46f46ab3";
+  "066dacae58f0987a281bff1f8b21cfaaa2a1cebe49e797a0f764f88d21be74ca";
 const EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
 const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
@@ -118,9 +123,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 103;
+const EXPECTED_MIGRATION_COUNT = 104;
 const EXPECTED_FINAL_MIGRATION =
-  "20260713028000_harden_account_deletion_retention_authority.sql";
+  "20260715010000_move_legacy_org_member_policies_private.sql";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -245,7 +250,7 @@ const failureContext = {
   pendingSyntheticUserGlobalSignOuts: [],
   unsealedPlaywrightArtifactDirectories: [],
   stagingAliasMutations: [],
-  vercelPath: null,
+  vercelSelection: null,
 };
 const executionAbortController = new AbortController();
 const activeInterruptibleCommands = new Set();
@@ -468,20 +473,23 @@ Safe resume after a previously sealed atomic application:
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
-Exact forward-only migration 103 on the pinned 102-migration staging seal:
+Exact forward-only migration 104 on the pinned read-only-proven 103-migration staging seal:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-forward-migration --deploy \\
-    --prior-migration-proof-dir /absolute/path/pinned-102/migration-proof \\
+    --prior-migration-proof-dir /absolute/path/pinned-103/migration-proof \\
     --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<new-seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
 Required execution environment:
   DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=${EXECUTION_AUTHORIZATION}
+  VERCEL_CLI_JS=/absolute/canonical/path/to/node_modules/vercel/dist/index.js
+  VERCEL_CLI_SHA256=<independently pinned lowercase entry-file SHA-256>
+  VERCEL_CLI_INSTALLATION_SHA256=<independently pinned lowercase full-installation SHA-256>
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
 Exactly one migration mode is required. Resume mode is read-only. Forward mode
-proves the pinned 102 state and applies only migration 103 plus its receipt.`;
+proves the pinned 103 state and applies only migration 104 plus its receipt.`;
 }
 
 function parseArguments(argv) {
@@ -666,6 +674,75 @@ async function runInterruptibleAllowNonzero(command, args, options = {}) {
     stderr: result.stderr ?? "",
     status: result.status,
   };
+}
+
+async function runPinnedVercel(
+  vercel,
+  args,
+  options = {},
+  { allowNonzero = false, allowDuringTermination = false } = {},
+) {
+  if (
+    !Array.isArray(args) ||
+    args.length === 0 ||
+    args.some((arg) => typeof arg !== "string") ||
+    args.includes(vercel?.path)
+  ) {
+    throw new Error("Pinned Vercel invocation arguments are invalid");
+  }
+  const pinned = assertPinnedVercelCliUnchanged(vercel);
+  let result;
+  try {
+    if (!allowDuringTermination) {
+      result = await (allowNonzero
+        ? runInterruptibleAllowNonzero
+        : runInterruptible)(EXECUTABLE, [pinned.path, ...args], options);
+    } else {
+      const execution = runInterruptibleCommand({
+        command: EXECUTABLE,
+        args: [pinned.path, ...args],
+        cwd: options.cwd ?? EXPECTED_REPO,
+        env: options.env ?? process.env,
+        input: options.input,
+        timeoutMs: options.timeoutMs ?? 15 * 60_000,
+        maxBuffer: options.maxBuffer ?? 128 * 1024 * 1024,
+      });
+      activeInterruptibleCommands.add(execution);
+      try {
+        result = await execution;
+      } finally {
+        activeInterruptibleCommands.delete(execution);
+      }
+      if (
+        result.aborted ||
+        result.error ||
+        result.timedOut ||
+        result.signal ||
+        (!allowNonzero && result.status !== 0)
+      ) {
+        const diagnostic = sanitize(
+          `${result.error?.message ?? ""}\nexit=${String(result.status)} signal=${String(result.signal)}\n${result.stderr ?? ""}\n${result.stdout ?? ""}`,
+          options.secrets,
+        );
+        throw new Error(
+          `${options.label ?? "pinned Vercel cleanup command"} failed: ${diagnostic}`,
+        );
+      }
+      result = {
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+        status: result.status,
+      };
+    }
+    if (!Number.isInteger(result?.status)) {
+      throw new Error(
+        `${options.label ?? "pinned Vercel command"} returned no exact exit status`,
+      );
+    }
+    return result;
+  } finally {
+    assertPinnedVercelCliUnchanged(vercel);
+  }
 }
 
 function git(args, label) {
@@ -898,6 +975,12 @@ function extractProjectRef(rawUrl) {
 
 function protectedRuntimeValues() {
   const values = [
+    process.env.VERCEL_CLI_JS,
+    failureContext.vercelSelection?.sourcePath,
+    failureContext.vercelSelection?.path,
+    failureContext.vercelSelection?.sourceInstallationRoot,
+    failureContext.vercelSelection?.installationRoot,
+    failureContext.vercelSelection?.snapshotTrustRoot,
     process.env.VERCEL_TOKEN,
     process.env.VERCEL_ORG_ID,
     process.env.VERCEL_PROJECT_ID,
@@ -1538,42 +1621,10 @@ async function runProviderIndependentStagingProof(
   return parsed;
 }
 
-function locateInstalledVercelCli() {
-  const explicit = process.env.VERCEL_CLI_JS?.trim();
-  const candidates = [];
-  if (explicit) candidates.push(resolve(explicit));
-  const npxRoot = join(process.env.HOME ?? "", ".npm", "_npx");
-  if (existsSync(npxRoot)) {
-    for (const entry of readdirSync(npxRoot)) {
-      candidates.push(join(npxRoot, entry, "node_modules", "vercel", "dist", "index.js"));
-    }
-  }
-  const installed = candidates
-    .filter((path) => existsSync(path) && lstatSync(path).isFile() && !lstatSync(path).isSymbolicLink())
-    .map((path) => {
-      const packagePath = join(dirname(dirname(path)), "package.json");
-      try {
-        return { path, version: JSON.parse(readFileSync(packagePath, "utf8")).version };
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((left, right) =>
-      left.version.localeCompare(right.version, undefined, { numeric: true }),
-    );
-  const selected = installed.at(-1);
-  if (!selected || Number.parseInt(selected.version.split(".")[0], 10) < 50) {
-    throw new Error("A preinstalled Vercel CLI version 50 or newer is required; downloads are forbidden");
-  }
-  return Object.freeze({ ...selected, sha256: sha256(readFileSync(selected.path)) });
-}
-
 async function proveExactVercelDryRunSourcePortfolio(vercel) {
-  const result = await runInterruptible(
-    EXECUTABLE,
+  const result = await runPinnedVercel(
+    vercel,
     [
-      vercel.path,
       "deploy",
       "--dry",
       "--format=json",
@@ -1608,6 +1659,13 @@ async function proveExactVercelDryRunSourcePortfolio(vercel) {
     ...proof,
     vercelCliVersion: vercel.version,
     vercelCliSha256: vercel.sha256,
+    vercelCliInstallationSha256: vercel.installationSha256,
+    vercelCliInstallationFileCount: vercel.installationFileCount,
+    vercelCliInstallationDirectoryCount: vercel.installationDirectoryCount,
+    vercelCliInstallationSymlinkCount: vercel.installationSymlinkCount,
+    vercelCliInstallationByteCount: vercel.installationByteCount,
+    vercelCliSourcePathPersisted: false,
+    vercelCliSnapshotPathPersisted: false,
     deploymentCreated: false,
     uploadPerformed: false,
     pathNamesPersisted: false,
@@ -1635,9 +1693,9 @@ function vercelEnvironment() {
 }
 
 async function listHostedEnvironmentNames(vercel) {
-  const listed = await runInterruptible(
-    EXECUTABLE,
-    [vercel.path, "env", "list", "production", "--format=json", "--no-color"],
+  const listed = await runPinnedVercel(
+    vercel,
+    ["env", "list", "production", "--format=json", "--no-color"],
     {
       label: "list isolated Vercel staging environment names",
       env: vercelEnvironment(),
@@ -1662,13 +1720,13 @@ async function configureHostedStagingProtection(vercel, projectId) {
     expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
     expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
     async request({ method, path, body }) {
-      const args = [vercel.path, "api", path, "--raw", "--no-color"];
+      const args = ["api", path, "--raw", "--no-color"];
       let input;
       if (method === "PATCH") {
         args.push("--method", "PATCH", "--input", "-");
         input = `${JSON.stringify(body)}\n`;
       }
-      const response = await runInterruptible(EXECUTABLE, args, {
+      const response = await runPinnedVercel(vercel, args, {
         label: `${method.toLowerCase()} isolated staging Vercel protection`,
         env: vercelEnvironment(),
         input,
@@ -1693,9 +1751,9 @@ async function verifyHostedStagingProtection(vercel, projectId) {
       if (method !== "GET") {
         throw new Error("Post-deployment Vercel protection verification must be read-only");
       }
-      const response = await runInterruptible(
-        EXECUTABLE,
-        [vercel.path, "api", path, "--raw", "--no-color"],
+      const response = await runPinnedVercel(
+        vercel,
+        ["api", path, "--raw", "--no-color"],
         {
           label: "read-only post-deployment isolated staging Vercel protection",
           env: vercelEnvironment(),
@@ -1738,7 +1796,6 @@ async function configureHostedStagingEnvironment(vercel, environment) {
       throw new Error(`Hosted staging environment input ${name} is missing`);
     }
     const args = [
-      vercel.path,
       "env",
       "add",
       name,
@@ -1748,7 +1805,7 @@ async function configureHostedStagingEnvironment(vercel, environment) {
       "--no-color",
     ];
     if (HOSTED_SECRET_ENV_NAMES.has(name)) args.push("--sensitive");
-    await runInterruptible(EXECUTABLE, args, {
+    await runPinnedVercel(vercel, args, {
       label: `configure isolated staging environment ${name}`,
       env: vercelEnvironment(),
       input: `${value}\n`,
@@ -1782,10 +1839,9 @@ async function fetchAuthoritativeVercelDeployment(
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3 * 60_000) {
     throw new Error(`${label} Vercel deployment read timeout is outside the bounded contract`);
   }
-  const response = await runInterruptible(
-    EXECUTABLE,
+  const response = await runPinnedVercel(
+    vercel,
     [
-      vercel.path,
       "api",
       `/v13/deployments/${deploymentId}`,
       "--raw",
@@ -1836,15 +1892,16 @@ async function fetchExactAliasMapping(
     throw new Error(`${label} Vercel alias read timeout is outside the bounded contract`);
   }
   const startedAt = performance.now();
-  const result = await runInterruptibleAllowNonzero(
-    EXECUTABLE,
-    [vercel.path, "api", exactAliasRecordPath(alias.host), "--raw", "--no-color"],
+  const result = await runPinnedVercel(
+    vercel,
+    ["api", exactAliasRecordPath(alias.host), "--raw", "--no-color"],
     {
       label: `${label} authoritative Vercel alias record read`,
       env: vercelEnvironment(),
       timeoutMs,
       secrets: protectedRuntimeValues(),
     },
+    { allowNonzero: true },
   );
   if (result.status !== 0) {
     const diagnostic = sanitize(
@@ -1942,7 +1999,6 @@ async function proveAuthoritativePreDeployAliasOwnership(vercel) {
 
 async function deployExactCommit(identity, vercel) {
   const args = [
-    vercel.path,
     "deploy",
     "--prod",
     "--skip-domain",
@@ -1952,7 +2008,7 @@ async function deployExactCommit(identity, vercel) {
     "--meta", `dealflowTree=${identity.tree}`,
     "--meta", "dealflowEnvironment=isolated-staging-qibh",
   ];
-  const deployment = await runInterruptible(EXECUTABLE, args, {
+  const deployment = await runPinnedVercel(vercel, args, {
     label: "deploy exact candidate to isolated Vercel staging project",
     env: vercelEnvironment(),
     timeoutMs: 20 * 60_000,
@@ -1969,9 +2025,9 @@ async function deployExactCommit(identity, vercel) {
   if (!uniqueDeploymentUrl || PRODUCTION_OR_SHARED_HOSTS.has(uniqueDeploymentUrl.hostname)) {
     throw new Error("Vercel did not return a distinct isolated staging deployment URL");
   }
-  const inspect = await runInterruptible(
-    EXECUTABLE,
-    [vercel.path, "inspect", uniqueDeploymentUrl.origin, "--format=json", "--no-color"],
+  const inspect = await runPinnedVercel(
+    vercel,
+    ["inspect", uniqueDeploymentUrl.origin, "--format=json", "--no-color"],
     {
       label: "inspect isolated Vercel staging deployment",
       env: vercelEnvironment(),
@@ -2055,6 +2111,13 @@ async function deployExactCommit(identity, vercel) {
     projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
     cliVersion: vercel.version,
     cliSha256: vercel.sha256,
+    cliInstallationSha256: vercel.installationSha256,
+    cliInstallationFileCount: vercel.installationFileCount,
+    cliInstallationDirectoryCount: vercel.installationDirectoryCount,
+    cliInstallationSymlinkCount: vercel.installationSymlinkCount,
+    cliInstallationByteCount: vercel.installationByteCount,
+    cliSourcePathPersisted: false,
+    cliSnapshotPathPersisted: false,
     hostedExactCandidateEnumeratedImagePortfolioProof,
   };
 }
@@ -2093,10 +2156,9 @@ async function configureAndProveAppAlias(
     mutationCommandCompleted: false,
   };
   failureContext.stagingAliasMutations.push(rollbackRecord);
-  await runInterruptible(
-    EXECUTABLE,
+  await runPinnedVercel(
+    vercel,
     [
-      vercel.path,
       "alias",
       "set",
       deployment.deploymentHost,
@@ -5089,8 +5151,8 @@ async function main() {
   const vercelAuthority = captureVercelProjectIdentity();
   const vercelProject = vercelAuthority.evidence;
   const execution = assertFailClosedExecutionEnvironment();
-  const vercel = locateInstalledVercelCli();
-  failureContext.vercelPath = vercel.path;
+  const vercel = resolvePinnedVercelCli();
+  failureContext.vercelSelection = vercel;
   failureContext.stage = "vercel_dry_run_source_portfolio";
   const vercelDryRunSourceProof =
     await proveExactVercelDryRunSourcePortfolio(vercel);
@@ -5280,7 +5342,7 @@ async function main() {
     options.applyForwardMigration &&
     migrationSummary.migrationMode === "APPLY_FORWARD_EXACT" &&
     migrationSummary.forwardOnly === true &&
-    migrationSummary.priorMigrationCount === 102 &&
+    migrationSummary.priorMigrationCount === 103 &&
     migrationSummary.forwardMigrationCount === 1 &&
     migrationSummary.forwardMigration?.file === EXPECTED_FINAL_MIGRATION &&
     migrationSummary.forwardMigration?.version === EXPECTED_FINAL_MIGRATION.slice(0, 14) &&
@@ -5299,12 +5361,12 @@ async function main() {
       EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE &&
     migrationSummary.priorApplication?.manifestSha256 ===
       EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 &&
-    migrationSummary.priorApplication?.migrationCount === 102 &&
-    migrationSummary.priorApplication?.lastCommittedVersion === "20260713027000" &&
+    migrationSummary.priorApplication?.migrationCount === 103 &&
+    migrationSummary.priorApplication?.lastCommittedVersion === "20260713028000" &&
     migrationSummary.priorApplication?.migrationPortfolioSha256 ===
       EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256 &&
     Array.isArray(migrationSummary.priorApplication?.migrationFiles) &&
-    migrationSummary.priorApplication.migrationFiles.length === 102;
+    migrationSummary.priorApplication.migrationFiles.length === 103;
   if (
     migrationSummary.status !== "PASS" ||
     (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication) ||
@@ -6091,6 +6153,7 @@ async function main() {
   const hostedDeferralsClosed =
     rlsDeferralsClosed && operatorDebtProof.status === "PASS";
   failureContext.stage = "final_evidence_seal";
+  assertPinnedVercelCliUnchanged(vercel);
   writeJson(join(options.evidenceDir, "production-gate-matrix.json"), {
     status: "NO_GO",
     productionGate: "CLOSED",
@@ -6157,7 +6220,7 @@ async function main() {
   })}\n`);
 }
 
-function readExactAliasMappingDuringRollback(
+async function readExactAliasMappingDuringRollback(
   alias,
   label,
   { timeoutMs = EXACT_ALIAS_PROPAGATION_TIMEOUT_MS } = {},
@@ -6170,30 +6233,27 @@ function readExactAliasMappingDuringRollback(
     throw new Error(`${label} authoritative rollback timeout is outside the bounded contract`);
   }
   const startedAt = performance.now();
-  const result = spawnSync(
-    EXECUTABLE,
+  const result = await runPinnedVercel(
+    failureContext.vercelSelection,
     [
-      failureContext.vercelPath,
       "api",
       exactAliasRecordPath(alias.host),
       "--raw",
       "--no-color",
     ],
     {
-      cwd: EXPECTED_REPO,
       env: vercelEnvironment(),
-      encoding: "utf8",
-      timeout: timeoutMs,
+      timeoutMs,
       maxBuffer: 4 * 1024 * 1024,
+      label: `${label} authoritative rollback read`,
+      secrets: protectedRuntimeValues(),
     },
+    { allowNonzero: true, allowDuringTermination: true },
   );
   const diagnostic = sanitize(
-    `${result.error?.message ?? ""}\n${result.stderr ?? ""}\n${result.stdout ?? ""}`,
+    `${result.stderr ?? ""}\n${result.stdout ?? ""}`,
     protectedRuntimeValues(),
   );
-  if (result.error || result.signal || result.status == null) {
-    throw new Error(`${label} authoritative rollback read failed: ${diagnostic}`);
-  }
   if (result.status !== 0) {
     if (!/(?:Response Error[^\n]*\b404\b|\b404\b[^\n]*(?:not found|NOT_FOUND))/i.test(diagnostic)) {
       throw new Error(`${label} authoritative rollback read failed: ${diagnostic}`);
@@ -6223,34 +6283,23 @@ function readExactAliasMappingDuringRollback(
   if (remainingMs < 1) {
     throw new Error(`${label} authoritative rollback read exhausted its bounded timeout`);
   }
-  const deploymentResult = spawnSync(
-    EXECUTABLE,
+  const deploymentResult = await runPinnedVercel(
+    failureContext.vercelSelection,
     [
-      failureContext.vercelPath,
       "api",
       `/v13/deployments/${deploymentId}`,
       "--raw",
       "--no-color",
     ],
     {
-      cwd: EXPECTED_REPO,
       env: vercelEnvironment(),
-      encoding: "utf8",
-      timeout: remainingMs,
+      timeoutMs: remainingMs,
       maxBuffer: 4 * 1024 * 1024,
+      label: `${label} mapped deployment rollback read`,
+      secrets: protectedRuntimeValues(),
     },
+    { allowDuringTermination: true },
   );
-  if (
-    deploymentResult.error ||
-    deploymentResult.signal ||
-    deploymentResult.status !== 0
-  ) {
-    const deploymentDiagnostic = sanitize(
-      `${deploymentResult.error?.message ?? ""}\n${deploymentResult.stderr ?? ""}\n${deploymentResult.stdout ?? ""}`,
-      protectedRuntimeValues(),
-    );
-    throw new Error(`${label} mapped deployment rollback read failed: ${deploymentDiagnostic}`);
-  }
   const authoritative = parseSingleJsonOutput(
     deploymentResult.stdout,
     `${label} mapped deployment rollback record`,
@@ -6289,7 +6338,7 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
   if (mutations.length === 0) {
     return Object.freeze({ status: "NOT_REQUIRED", aliasCount: 0, aliases: [] });
   }
-  if (!failureContext.vercelPath) {
+  if (!failureContext.vercelSelection) {
     throw new Error("Staging alias rollback authority was not retained");
   }
   const aliases = [];
@@ -6359,7 +6408,7 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
       ) {
         throw new Error("Staging alias rollback rejected an unsafe intended mapping");
       }
-      const mappingBeforeRollback = readExactAliasMappingDuringRollback(
+      const mappingBeforeRollback = await readExactAliasMappingDuringRollback(
         alias,
         `${mutation.aliasLabel} pre-rollback`,
       );
@@ -6375,7 +6424,6 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
       } else {
         const args = mutation.priorMapping
           ? [
-              failureContext.vercelPath,
               "alias",
               "set",
               mutation.priorMapping.deploymentHost,
@@ -6383,7 +6431,6 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
               "--no-color",
             ]
           : [
-              failureContext.vercelPath,
               "alias",
               "rm",
               mutation.aliasHost,
@@ -6393,24 +6440,22 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
         result.rollbackCommand = mutation.priorMapping
           ? "restore_prior_mapping"
           : "remove_new_mapping";
-        const rollback = spawnSync(EXECUTABLE, args, {
-          cwd: EXPECTED_REPO,
-          env: vercelEnvironment(),
-          encoding: "utf8",
-          timeout: EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
-          maxBuffer: 4 * 1024 * 1024,
-        });
+        const rollback = await runPinnedVercel(
+          failureContext.vercelSelection,
+          args,
+          {
+            env: vercelEnvironment(),
+            timeoutMs: EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
+            maxBuffer: 4 * 1024 * 1024,
+            label: `${mutation.aliasLabel} alias rollback command`,
+            secrets: protectedRuntimeValues(),
+          },
+          { allowDuringTermination: true },
+        );
         result.rollbackExitStatus = rollback.status;
-        if (rollback.error || rollback.signal || rollback.status !== 0) {
-          const diagnostic = sanitize(
-            `${rollback.error?.message ?? ""}\n${rollback.stderr ?? ""}\n${rollback.stdout ?? ""}`,
-            protectedRuntimeValues(),
-          );
-          throw new Error(`${mutation.aliasLabel} alias rollback command failed: ${diagnostic}`);
-        }
       }
 
-      const mappingAfterRollback = readExactAliasMappingDuringRollback(
+      const mappingAfterRollback = await readExactAliasMappingDuringRollback(
         alias,
         `${mutation.aliasLabel} post-rollback`,
       );
@@ -6428,8 +6473,8 @@ async function rollbackCreatedStagingAliasesAfterFailure() {
           timeoutMs,
           allowDuringTermination: true,
         }),
-        verifyMapping: ({ timeoutMs }) => {
-          const mapping = readExactAliasMappingDuringRollback(
+        verifyMapping: async ({ timeoutMs }) => {
+          const mapping = await readExactAliasMappingDuringRollback(
             alias,
             `${mutation.aliasLabel} post-containment rollback`,
             { timeoutMs },
@@ -6787,36 +6832,43 @@ process.once("unhandledRejection", (reason) => {
 });
 
 async function controlMainExecution() {
-  const mainOutcomePromise = main().then(
-    () => ({ type: "success" }),
-    (error) => ({ type: "failure", error }),
-  );
-  const firstOutcome = await Promise.race([
-    mainOutcomePromise,
-    terminationRequestPromise.then((request) => ({ type: "termination", request })),
-  ]);
-  if (firstOutcome.type === "success" && !terminationRequest) return;
-  if (firstOutcome.type === "failure") {
-    requestExecutionTermination(firstOutcome.error, {
-      terminationKind: "main_rejection",
-      exitCode: 1,
-    });
-  }
+  try {
+    const mainOutcomePromise = main().then(
+      () => ({ type: "success" }),
+      (error) => ({ type: "failure", error }),
+    );
+    const firstOutcome = await Promise.race([
+      mainOutcomePromise,
+      terminationRequestPromise.then((request) => ({ type: "termination", request })),
+    ]);
+    if (firstOutcome.type === "success" && !terminationRequest) return;
+    if (firstOutcome.type === "failure") {
+      requestExecutionTermination(firstOutcome.error, {
+        terminationKind: "main_rejection",
+        exitCode: 1,
+      });
+    }
 
-  await drainInterruptibleCommands();
-  const finalMainOutcome = firstOutcome.type === "termination"
-    ? await mainOutcomePromise
-    : firstOutcome;
-  await drainInterruptibleCommands();
-  const request = terminationRequest ?? requestExecutionTermination(
-    finalMainOutcome.error ?? new Error("Staging acceptance terminated"),
-    { terminationKind: "main_rejection", exitCode: 1 },
-  );
-  const failure = request.error ?? finalMainOutcome.error;
-  await finalizeFailureOnce(failure, {
-    terminationKind: request.terminationKind,
-  });
-  process.exitCode = request.exitCode;
+    await drainInterruptibleCommands();
+    const finalMainOutcome = firstOutcome.type === "termination"
+      ? await mainOutcomePromise
+      : firstOutcome;
+    await drainInterruptibleCommands();
+    const request = terminationRequest ?? requestExecutionTermination(
+      finalMainOutcome.error ?? new Error("Staging acceptance terminated"),
+      { terminationKind: "main_rejection", exitCode: 1 },
+    );
+    const failure = request.error ?? finalMainOutcome.error;
+    await finalizeFailureOnce(failure, {
+      terminationKind: request.terminationKind,
+    });
+    process.exitCode = request.exitCode;
+  } finally {
+    if (failureContext.vercelSelection) {
+      disposePinnedVercelCli(failureContext.vercelSelection);
+      failureContext.vercelSelection = null;
+    }
+  }
 }
 
 void controlMainExecution().catch((error) => {
