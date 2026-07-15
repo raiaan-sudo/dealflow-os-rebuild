@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 972,
-  "deployableSourceSha256": "ea0ed7af82c35b0f6fe8f1e757625968336aada427cf396acc46a5b54e769bba",
+  "entryCount": 974,
+  "deployableSourceSha256": "3afacb4e59ce002eb098f40ff59e01da60a7064b50cca7d8033a27862d3ba7ab",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -564,9 +564,9 @@
     },
     {
       "path": "package.json",
-      "size": 12203,
+      "size": 12287,
       "mode": 33188,
-      "sha256": "4e887ce47872de2d353b3ddeb9b9586462378b8192f7ff3cd46b35f011033bd0"
+      "sha256": "1fe01f83803be7c0579ca3a008ef339acde2a70b1c6156e12e8ac6eea8a04a70"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -893,6 +893,12 @@
       "sha256": "6dc05e5626fe0d6e056de5afa9520a46fafa8c52c62c0d3bb2062337899e6674"
     },
     {
+      "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
+      "size": 16095,
+      "mode": 33188,
+      "sha256": "bd7268f43e85cd7347f5c8051fb3df73d9913c16ab5d3375f390290ef905b850"
+    },
+    {
       "path": "scripts/staging/browser-context-network-boundary.mjs",
       "size": 13848,
       "mode": 33188,
@@ -960,9 +966,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 252388,
+      "size": 257749,
       "mode": 33188,
-      "sha256": "fedf0704dba117c90712a8d619951b201e3d64a82375cf4e62a5b921d2134fcb"
+      "sha256": "042a0ee329fe2dbbae04498521f94d971080a1926125b5cb6e86c8d5a3011e73"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1013,6 +1019,12 @@
       "sha256": "f846f15bdd1239b6344cbe1e7c28666efc37dcd924ad90d872c7594cf9a7c86f"
     },
     {
+      "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
+      "size": 10681,
+      "mode": 33188,
+      "sha256": "a1a7339cf83089fa165eb451560a2ebfd8ee54a043adcf972a606105558ba28d"
+    },
+    {
       "path": "scripts/staging/test-browser-context-network-boundary.mjs",
       "size": 23967,
       "mode": 33188,
@@ -1056,9 +1068,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 96763,
+      "size": 99579,
       "mode": 33188,
-      "sha256": "74aeb0f3e005594ebd348cb9b8694ebc4ab5e94e6ee47be01178210f413070da"
+      "sha256": "13754bceed9577cd9f92a3fe6d07713c866c551fe4b08b2434ff3c524838ebc1"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1302,9 +1314,9 @@
     },
     {
       "path": "scripts/test-dealflow-completion.mjs",
-      "size": 4130,
+      "size": 4201,
       "mode": 33188,
-      "sha256": "4196a0a6de5c51501986dfef0d1672a1eb65d698d20bf8d5bc7c070bffb6b37b"
+      "sha256": "46302f111f130f8ce26f6163de18f93fbe53eabc3235fa071b8d654b989cb479"
     },
     {
       "path": "scripts/test-deployment-target-authority.mjs",

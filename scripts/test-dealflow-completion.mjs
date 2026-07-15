@@ -63,6 +63,7 @@ const tests = [
   "staging/test-exact-supabase-project-url.mjs",
   "staging/test-next-static-chunk-path.mjs",
   "staging/test-vercel-deployed-image-config-contract.mjs",
+  "staging/test-approved-direct-public-image-checkpoint-contract.mjs",
   "staging/test-staging-image-optimizer-response-contract.mjs",
   "staging/test-isolated-staging-access-gate.mjs",
   "staging/test-hosted-build-identity-generator.mjs",

@@ -35,6 +35,14 @@ const imageOptimizerResponseContractTest = readFileSync(
   join(root, "scripts", "staging", "test-staging-image-optimizer-response-contract.mjs"),
   "utf8",
 );
+const approvedDirectImageCheckpointContract = readFileSync(
+  join(root, "scripts", "staging", "approved-direct-public-image-checkpoint-contract.mjs"),
+  "utf8",
+);
+const approvedDirectImageCheckpointContractTest = readFileSync(
+  join(root, "scripts", "staging", "test-approved-direct-public-image-checkpoint-contract.mjs"),
+  "utf8",
+);
 const deployedImageConfigContract = readFileSync(
   join(root, "scripts", "staging", "vercel-deployed-image-config-contract.mjs"),
   "utf8",
@@ -1235,6 +1243,52 @@ assert.match(runner, /vercelNativeOptimizerApplicationProxyClaimed: false/);
 assert.match(runner, /EXACT_VERCEL_EDGE_IMAGE_OPTIMIZER_REJECTION/);
 assert.doesNotMatch(runner, /EXACT_LOCAL_NEXT_IMAGE_OPTIMIZER_REJECTION/);
 assert.match(runner, /proveApprovedDirectPublicImageMatrix/);
+assert.match(runner, /EXACT_HOSTED_DIRECT_PUBLIC_IMAGE_CONTENT_TYPE_BY_IDENTITY/);
+assert.match(runner, /"image\/vnd\.microsoft\.icon"/);
+assert.match(runner, /sourceInventoryContentType: asset\.contentType/);
+assert.match(runner, /hostedContentType: hostedExpectation\.contentType/);
+assert.match(runner, /evaluateApprovedDirectPublicImageSixModeMatrix/);
+assert.match(runner, /buildApprovedDirectPublicImageMatrixCheckpoint/);
+assert.match(runner, /writeAtomicApprovedDirectPublicImageMatrixCheckpoint/);
+assert.match(runner, /checkpointEvaluation\.matrixStatus !== "PASS"/);
+assert.match(runner, /checkpointAtomicallyPersistedBeforeEachMatrixAssertion: true/);
+assert.match(runner, /localSourceInventoryAndHostedMimeContractsDistinguished: true/);
+assert.match(
+  approvedDirectImageCheckpointContract,
+  /renameSync\(temporaryPath, path\)[\s\S]{0,240}fsyncSync\(parentDescriptor\)/,
+);
+assert.match(approvedDirectImageCheckpointContract, /observedBodySha256Persisted: false/);
+assert.doesNotMatch(
+  approvedDirectImageCheckpointContract,
+  /response:\s*Object\.freeze\([\s\S]{0,220}bodySha256:/,
+);
+assert.match(
+  approvedDirectImageCheckpointContractTest,
+  /EXPECTED_MODE_PREDICATE_NEGATIVE_COUNT = 42/,
+);
+assert.match(approvedDirectImageCheckpointContractTest, /OBSERVED_MUTATION_HASH/);
+assert.match(approvedDirectImageCheckpointContractTest, /firstFailure/);
+assert.match(approvedDirectImageCheckpointContractTest, /secondDigest, firstDigest/);
+assert.match(runner, /sanitizedFailureDescriptorSha256: sha256\(sanitizedMessage\)/);
+assert.match(runner, /approvedDirectPublicImageMatrixCheckpointFiles/);
+assert.match(runner, /assertExactApprovedDirectPublicImageMatrixCheckpoint\(checkpoint\)/);
+assert.match(runner, /failedApprovedDirectPublicImageMatrixCheckpointCount/);
+assert.match(
+  runner,
+  /approvedDirectPublicImageFailureMetadataRetainedByFailedCheckpoint:/,
+);
+assert.doesNotMatch(
+  runner,
+  /approvedDirectPublicImageFailureMetadataRetainedByCheckpoint:/,
+);
+assert.match(
+  runner,
+  /assetOrdinal=\$\{exactFailure\.assetOrdinal\} mode=\$\{exactFailure\.mode\} failedPredicates=\$\{exactFailure\.failedPredicates\.join\(","\)\}/,
+);
+assert.doesNotMatch(
+  runner,
+  /throw new Error\(`\$\{alias\.label\} approved direct public image gate matrix failed`\);/,
+);
 assert.match(runner, /proveDynamicImageSourceMatrix/);
 assert.match(runner, /privateImageForbiddenQueryRejected: true/);
 assert.match(runner, /forbiddenQueryWithValidHeader/);
@@ -1790,7 +1844,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
@@ -1805,6 +1859,7 @@ assert.match(completionSuite, /"staging\/test-vercel-alias-propagation-contract\
 assert.match(completionSuite, /"staging\/test-exact-supabase-project-url\.mjs"/);
 assert.match(completionSuite, /"staging\/test-next-static-chunk-path\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-deployed-image-config-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-approved-direct-public-image-checkpoint-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-staging-image-optimizer-response-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-isolated-staging-access-gate\.mjs"/);
 assert.match(completionSuite, /"staging\/test-hosted-build-identity-generator\.mjs"/);

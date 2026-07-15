@@ -69,6 +69,13 @@ import {
   assertExactStagingImageBuildInputInventory,
 } from "./staging-image-build-input-contract.mjs";
 import {
+  assertExactApprovedDirectPublicImageMatrixCheckpoint,
+  buildApprovedDirectPublicImageMatrixCheckpoint,
+  evaluateApprovedDirectPublicImageSixModeMatrix,
+  sanitizeApprovedDirectPublicImageEdgeCache,
+  writeAtomicApprovedDirectPublicImageMatrixCheckpoint,
+} from "./approved-direct-public-image-checkpoint-contract.mjs";
+import {
   assertExactNextImageOptimizerSixModeMatrix,
   classifyExactNextImageOptimizerRejection,
 } from "./staging-image-optimizer-response-contract.mjs";
@@ -143,6 +150,30 @@ const STAGING_PRIVATE_IMAGE_SOURCE_BODY_SHA256 =
 const DEALFLOW_NOT_FOUND_BODY_BYTES = 22;
 const DEALFLOW_NOT_FOUND_BODY_SHA256 =
   "58e46b31fc6d69e3ecdb843eeff8bac8d49c9a70cdac583c73986a8a4fb5d1b0";
+const APPROVED_DIRECT_PUBLIC_IMAGE_GATE_CHECKPOINT_CONTRACT = Object.freeze({
+  status: 404,
+  contentType: "application/json",
+  bodyBytes: DEALFLOW_NOT_FOUND_BODY_BYTES,
+  bodySha256: DEALFLOW_NOT_FOUND_BODY_SHA256,
+});
+const EXACT_HOSTED_DIRECT_PUBLIC_IMAGE_CONTENT_TYPE_BY_IDENTITY = Object.freeze({
+  "86ec6b7627602d55faf7bf792d30d07479814ec6debb4879816f9520d89263bf":
+    "image/vnd.microsoft.icon",
+  "2b67812c325c199a02536cdbeea0c593a72f707d323b72ee3e08dbab06753bd4":
+    "image/svg+xml",
+  "b614b9bf183925957661ac851498fe1d8029fd43a62fbfed86f9e2624a57e7cf":
+    "image/svg+xml",
+  "ba4f77e1153124a9163a1a47a4a239b2acfc7e0e3b7585db16747a03a135c0ad":
+    "image/svg+xml",
+  "3a3a19379014f26a3e6734c27b371b9e508b2e4fb41294321b8474a4a4ebf62f":
+    "image/svg+xml",
+  "55995dfad6ecb4945a1e856ddca03c5e16aa5bf13fd21b4df6a74ae79357bcfc":
+    "image/svg+xml",
+  "f081337b2fee635b455b63275406a3e7f39d6a014e25ad90dab5a67e62a12ac4":
+    "image/svg+xml",
+  "644768c4aaeb4767bce293344eeb0c125fb804a94d801440424072202d85e3a1":
+    "image/svg+xml",
+});
 const PRIVATE_IMAGE_ROUTE_NOT_FOUND_BODY_BYTES = 10;
 const PRIVATE_IMAGE_ROUTE_NOT_FOUND_BODY_SHA256 =
   "0802559db1375af3ff5caabba71acea1d6299f1a7fc64b6a5024f19cbd33b72f";
@@ -1078,12 +1109,34 @@ function writeTerminalFailureArtifact(
     return false;
   }
   const identity = failureContext.identity;
+  const approvedDirectPublicImageMatrixCheckpointFiles = readdirSync(evidenceDir)
+    .filter((name) =>
+      /^approved-direct-public-image-matrix-checkpoint-\d{2}\.json$/.test(name),
+    )
+    .sort();
+  const approvedDirectPublicImageMatrixCheckpoints =
+    approvedDirectPublicImageMatrixCheckpointFiles.map((file) => {
+      const checkpoint = JSON.parse(readFileSync(join(evidenceDir, file), "utf8"));
+      assertExactApprovedDirectPublicImageMatrixCheckpoint(checkpoint);
+      return Object.freeze({ file, status: checkpoint.status });
+    });
+  const failedApprovedDirectPublicImageMatrixCheckpointCount =
+    approvedDirectPublicImageMatrixCheckpoints.filter(
+      ({ status }) => status === "FAILED",
+    ).length;
   writeJson(join(evidenceDir, "STAGING_FAILURE.json"), {
     schemaVersion: "dealflow.isolated-staging-acceptance-failure.v1",
     status: "FAILED",
     stage: failureContext.stage || null,
     errorCode: "STAGING_ACCEPTANCE_FAILED",
     sanitizedErrorSha256: sha256(sanitizedMessage),
+    sanitizedFailureDescriptorSha256: sha256(sanitizedMessage),
+    approvedDirectPublicImageMatrixCheckpoints,
+    approvedDirectPublicImageCheckpointEvidenceRetained:
+      approvedDirectPublicImageMatrixCheckpoints.length > 0,
+    failedApprovedDirectPublicImageMatrixCheckpointCount,
+    approvedDirectPublicImageFailureMetadataRetainedByFailedCheckpoint:
+      failedApprovedDirectPublicImageMatrixCheckpointCount > 0,
     candidateIdentity: identity
       ? { branch: identity.branch, commit: identity.commit, tree: identity.tree }
       : null,
@@ -2590,6 +2643,30 @@ async function requestExactPrivateImageSource(
   });
 }
 
+function exactHostedDirectPublicImageExpectation(asset) {
+  const approved = APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.find(
+    (candidate) => candidate.bodySha256 === asset?.bodySha256,
+  );
+  const contentType =
+    EXACT_HOSTED_DIRECT_PUBLIC_IMAGE_CONTENT_TYPE_BY_IDENTITY[
+      asset?.bodySha256
+    ];
+  if (
+    !approved ||
+    JSON.stringify(approved) !== JSON.stringify(asset) ||
+    typeof contentType !== "string" ||
+    Object.keys(EXACT_HOSTED_DIRECT_PUBLIC_IMAGE_CONTENT_TYPE_BY_IDENTITY)
+      .length !== APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.length
+  ) {
+    throw new Error("Hosted direct public image expectation was not exact");
+  }
+  return Object.freeze({
+    bodyBytes: asset.bodyBytes,
+    bodySha256: asset.bodySha256,
+    contentType,
+  });
+}
+
 async function requestExactDirectPublicImage(alias, asset, headers = {}) {
   const approved = APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.find(
     (candidate) => candidate.resourcePath === asset?.resourcePath,
@@ -2597,6 +2674,7 @@ async function requestExactDirectPublicImage(alias, asset, headers = {}) {
   if (!approved || JSON.stringify(approved) !== JSON.stringify(asset)) {
     throw new Error("Direct public image proof received an unapproved asset identity");
   }
+  const hostedExpectation = exactHostedDirectPublicImageExpectation(asset);
   const endpoint = new URL(asset.resourcePath, alias.url);
   if (
     endpoint.origin !== alias.url ||
@@ -2610,7 +2688,7 @@ async function requestExactDirectPublicImage(alias, asset, headers = {}) {
   }
   const response = await executionFetch(endpoint, {
     headers: {
-      Accept: asset.contentType,
+      Accept: hostedExpectation.contentType,
       "User-Agent": "DealFlow-Staging-Direct-Public-Image-Proof/1.0",
       ...withVercelAutomationBypass(
         headers,
@@ -2627,6 +2705,10 @@ async function requestExactDirectPublicImage(alias, asset, headers = {}) {
   ) {
     throw new Error(`${alias.label} direct public image request changed URL`);
   }
+  const edgeCache = sanitizeApprovedDirectPublicImageEdgeCache({
+    xVercelCache: response.headers.get("x-vercel-cache"),
+    age: response.headers.get("age"),
+  });
   return Object.freeze({
     status: response.status,
     contentType: (response.headers.get("content-type") ?? "").split(";")[0],
@@ -2639,6 +2721,7 @@ async function requestExactDirectPublicImage(alias, asset, headers = {}) {
     responseUrlExact: true,
     vercelAutomationBypassRequired:
       alias.vercelAutomationBypassRequired,
+    ...edgeCache,
   });
 }
 
@@ -2918,23 +3001,61 @@ async function proveExactProviderOptimizerMatrices({
   });
 }
 
-async function proveApprovedDirectPublicImageMatrix(alias, secret) {
+async function proveApprovedDirectPublicImageMatrix(alias, aliasOrdinal, secret) {
   const assets = [];
-  for (const asset of APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS) {
+  const checkpointEvaluations = [];
+  const checkpointPath = join(
+    failureContext.evidenceDir,
+    `approved-direct-public-image-matrix-checkpoint-${String(aliasOrdinal).padStart(2, "0")}.json`,
+  );
+  for (const [assetIndex, asset] of APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.entries()) {
+    const hostedExpectation = exactHostedDirectPublicImageExpectation(asset);
     const optimizerPaths = buildExactImageOptimizerPaths(asset.resourcePath);
     const direct = await collectExactSixModeGateMatrix(
       (headers) => requestExactDirectPublicImage(alias, asset, headers),
       secret,
     );
+    const checkpointEvaluation =
+      evaluateApprovedDirectPublicImageSixModeMatrix({
+        assetOrdinal: assetIndex + 1,
+        asset: hostedExpectation,
+        matrix: direct,
+        gateContract: APPROVED_DIRECT_PUBLIC_IMAGE_GATE_CHECKPOINT_CONTRACT,
+      });
+    checkpointEvaluations.push(checkpointEvaluation);
+    const checkpoint = buildApprovedDirectPublicImageMatrixCheckpoint({
+      aliasOrdinal,
+      aliasLabel: alias.label,
+      totalAssetCount: APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS.length,
+      evaluations: checkpointEvaluations,
+    });
+    writeAtomicApprovedDirectPublicImageMatrixCheckpoint(
+      checkpointPath,
+      checkpoint,
+    );
     if (
       !isExactDealFlowApplicationGateResponse(direct.noGateBeforeWarm) ||
-      !isExactApprovedDirectPublicImageResponse(direct.headerGate, asset) ||
-      !isExactApprovedDirectPublicImageResponse(direct.cookieGate, asset) ||
+      !isExactApprovedDirectPublicImageResponse(
+        direct.headerGate,
+        hostedExpectation,
+      ) ||
+      !isExactApprovedDirectPublicImageResponse(
+        direct.cookieGate,
+        hostedExpectation,
+      ) ||
       !isExactDealFlowApplicationGateResponse(direct.noGateAfterWarm) ||
       !isExactDealFlowApplicationGateResponse(direct.invalidHeaderAfterWarm) ||
-      !isExactDealFlowApplicationGateResponse(direct.invalidCookieAfterWarm)
+      !isExactDealFlowApplicationGateResponse(direct.invalidCookieAfterWarm) ||
+      checkpointEvaluation.matrixStatus !== "PASS"
     ) {
-      throw new Error(`${alias.label} approved direct public image gate matrix failed`);
+      const exactFailure = checkpointEvaluation.failures[0] ?? {
+        assetOrdinal: assetIndex + 1,
+        mode: "matrixContractDivergence",
+        failedPredicates: ["strictContractDivergence"],
+      };
+      throw new Error(
+        `${alias.label} approved direct public image gate matrix failed assetOrdinal=${exactFailure.assetOrdinal} mode=${exactFailure.mode} failedPredicates=${exactFailure.failedPredicates.join(",")}`,
+      );
     }
 
     const providerOptimizers = await proveExactProviderOptimizerMatrices({
@@ -2962,7 +3083,8 @@ async function proveApprovedDirectPublicImageMatrix(alias, secret) {
 
     assets.push(Object.freeze({
       assetIdentity: asset.bodySha256,
-      contentType: asset.contentType,
+      sourceInventoryContentType: asset.contentType,
+      hostedContentType: hostedExpectation.contentType,
       bodyBytes: asset.bodyBytes,
       direct,
       defaultOptimizer: providerOptimizers.nextOptimizer,
@@ -2983,6 +3105,10 @@ async function proveApprovedDirectPublicImageMatrix(alias, secret) {
   return Object.freeze({
     status: "PASS",
     approvedAssetCount: assets.length,
+    checkpointFile: basename(checkpointPath),
+    checkpointStatus: "PASS",
+    checkpointAtomicallyPersistedBeforeEachMatrixAssertion: true,
+    localSourceInventoryAndHostedMimeContractsDistinguished: true,
     fullSixModeMatrixPerAsset: true,
     noAndInvalidGateRecheckedAfterWarm: true,
     exactSourceBytesVerifiedForHeaderAndCookie: true,
@@ -3184,7 +3310,7 @@ async function provePostDeployStaticAssetGate(
     throw new Error("Could not discover a real gated Next.js chunk from the exact deployment");
   }
   const aliases = [];
-  for (const alias of aliasAccessRequirements) {
+  for (const [aliasIndex, alias] of aliasAccessRequirements.entries()) {
     const retiredPublicImageSource = await collectExactSixModeGateMatrix(
       (headers) => requestExactRetiredImageSource(alias, headers),
       secret,
@@ -3393,7 +3519,7 @@ async function provePostDeployStaticAssetGate(
       ),
     );
     const approvedDirectPublicImages =
-      await proveApprovedDirectPublicImageMatrix(alias, secret);
+      await proveApprovedDirectPublicImageMatrix(alias, aliasIndex + 1, secret);
     const dynamicImageSources =
       await proveDynamicImageSourceMatrix(alias, secret);
 
