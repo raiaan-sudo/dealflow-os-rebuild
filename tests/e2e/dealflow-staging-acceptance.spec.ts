@@ -896,7 +896,7 @@ test("paid direct realtor sees exact Pro activation and seeded campaign truth", 
   await openAuthenticatedSession(
     page,
     "paidDirect",
-    "/dashboard",
+    `/dashboard?campaignId=${PAID_CAMPAIGN_ID}`,
     requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
     `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
   );
@@ -947,7 +947,7 @@ test("hosted reporting renders fresh stale and failed-refresh truth without fals
   await openAuthenticatedSession(
     page,
     "paidDirect",
-    "/dashboard",
+    `/dashboard?campaignId=${PAID_CAMPAIGN_ID}`,
     requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
     `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
   );
@@ -1043,7 +1043,7 @@ test("paid realtor can use authenticated EN FR ES dashboards without mixed-langu
   await openAuthenticatedSession(
     page,
     "paidDirect",
-    "/dashboard",
+    `/dashboard?campaignId=${PAID_CAMPAIGN_ID}`,
     requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
     `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
   );
@@ -1051,7 +1051,7 @@ test("paid realtor can use authenticated EN FR ES dashboards without mixed-langu
   for (const [locale, copy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
     const response = await navigateAndSettleExactApplicationRead(
       page,
-      `/${locale}/dashboard`,
+      `/${locale}/dashboard?campaignId=${PAID_CAMPAIGN_ID}`,
       {
         expectedFinalPathname: `/${locale}/dashboard`,
         expectedReadPathname: `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
@@ -1102,9 +1102,9 @@ test("white-label child receives attributed branding across core product routes"
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
   await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
   for (const route of [
-    { path: "/builder", finalPathname: "/onboarding", readPathname: "/api/billing/status" },
+    { path: "/builder", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
     { path: "/launch", finalPathname: "/launch" },
-    { path: "/results", finalPathname: "/dashboard", readPathname: policyPath },
+    { path: "/results", finalPathname: "/en/dashboard", readPathname: policyPath },
     { path: "/support", finalPathname: "/support" },
   ]) {
     await navigateAndSettleExactApplicationRead(
@@ -1145,9 +1145,9 @@ test("second white-label child receives only partner-two branding and tenant dat
   await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   for (const route of [
-    { path: "/builder", finalPathname: "/onboarding", readPathname: "/api/billing/status" },
+    { path: "/builder", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
     { path: "/launch", finalPathname: "/launch" },
-    { path: "/results", finalPathname: "/dashboard", readPathname: policyPath },
+    { path: "/results", finalPathname: "/en/dashboard", readPathname: policyPath },
     { path: "/support", finalPathname: "/support" },
   ]) {
     await navigateAndSettleExactApplicationRead(

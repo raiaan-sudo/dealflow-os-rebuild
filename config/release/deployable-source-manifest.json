@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 983,
-  "deployableSourceSha256": "27b98f2eb9ffc639cb3a6d92526928c039382c637d6d8dee2ef770430c401fac",
+  "deployableSourceSha256": "ebf5dbec683b358bef514519c4b2ac8c788ca6b5ec2ef4d9b8b70a4cf57a35dd",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -5772,9 +5772,9 @@
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
-      "size": 51010,
+      "size": 51146,
       "mode": 33188,
-      "sha256": "9e37158d0ebfb9462b141a25e46a5b6d0ef99c82e86ef478b4448fc511d13616"
+      "sha256": "162233cee643397af5ace300a5490ba28ce78c8bcbd6117bd6013c11818b197a"
     },
     {
       "path": "tests/e2e/expected-navigation-abort.mjs",
