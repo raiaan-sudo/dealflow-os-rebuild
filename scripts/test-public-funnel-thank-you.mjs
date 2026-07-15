@@ -82,6 +82,13 @@ assert.match(
   /disabled=\{status === "submitting" \|\| Boolean\(TURNSTILE_SITE_KEY && !turnstileToken\)\}/,
   "lead form button must disable during submission and until configured human verification succeeds",
 );
+assert.equal(
+  (formSource.match(/prefetch=\{false\}/g) ?? []).length,
+  2,
+  "public funnel legal links must not create speculative reads during Turnstile proof",
+);
+assert.match(formSource, /href="\/privacy" prefetch=\{false\}/);
+assert.match(formSource, /href="\/terms" prefetch=\{false\}/);
 assert.match(formSource, /data\?\.success !== true \|\| data\?\.ok !== true/, "lead form must redirect only on confirmed success");
 assert.match(formSource, /window\.location\.assign\(thankYouUrl\.toString\(\)\)/, "lead form must redirect to thank-you after confirmed success");
 assert.match(formSource, /getCurrentPageAttribution/, "lead form must explicitly capture current page attribution");

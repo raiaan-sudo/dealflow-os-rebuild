@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 983,
-  "deployableSourceSha256": "3242a346a183842d1aded502dc344bc6e4db1292c8241c44404949ccb9cef2e0",
+  "deployableSourceSha256": "f0ca742ead65f9788d1198b026b5c41fd52a60b366a4ce1114291a3aaa9d069f",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -120,9 +120,9 @@
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 16913,
+      "size": 17952,
       "mode": 33188,
-      "sha256": "89d52c7f22df8ba9d8e56d920224e23ec190c3cff9a9313b50dee3190917312d"
+      "sha256": "d7ccb1ac3cfda87f75e7e23df2a2d784c5e9d7ab7f1e80db7fc8ed6c0bb1eac6"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -912,9 +912,9 @@
     },
     {
       "path": "scripts/staging/browser-session-bundle-contract.mjs",
-      "size": 6060,
+      "size": 6835,
       "mode": 33188,
-      "sha256": "fb178ed2c171cd822bfff13cce3d5a22105d8646c87e7f02decd5b73595d3874"
+      "sha256": "94f28d93579080f79aed34a1159ffb606e940f4e04aeb41a4d8517c55d464c4c"
     },
     {
       "path": "scripts/staging/deployable-source-path-set-contract.mjs",
@@ -954,9 +954,9 @@
     },
     {
       "path": "scripts/staging/playwright-failure-diagnostic-contract.mjs",
-      "size": 30510,
+      "size": 30688,
       "mode": 33188,
-      "sha256": "eb06bb3b89ebb8955ab7c0cd31684e47dc23f6b5f04318e68403a8df26e4a9f9"
+      "sha256": "56093071a85c7c2dffbf970cd26d6eb7c7bf55e8d882f639973d83cab0725958"
     },
     {
       "path": "scripts/staging/prior-migration-proof-contract.mjs",
@@ -1044,9 +1044,9 @@
     },
     {
       "path": "scripts/staging/test-browser-session-bundle-contract.mjs",
-      "size": 4703,
+      "size": 5860,
       "mode": 33188,
-      "sha256": "e37a1be7e88d665854fb534537ad0ae5d3b51055547dd2beaf12011608f74e21"
+      "sha256": "d1858db424c50a88a6ac60acc613e8f0a66db083b82011a0cbf8dcbe7fe0b162"
     },
     {
       "path": "scripts/staging/test-deployable-source-path-set-contract.mjs",
@@ -1080,9 +1080,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 109301,
+      "size": 109598,
       "mode": 33188,
-      "sha256": "12d9f0dbf108139cee6f361775bd43f6788254242f3ed76830df4b5cba322019"
+      "sha256": "11967b039f2ade1b88cd547f73934746c1561e64a78aa9e685a677a0db036e3e"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/test-playwright-failure-diagnostic-contract.mjs",
-      "size": 19911,
+      "size": 21084,
       "mode": 33188,
-      "sha256": "3daf66b2f8cc899bd122c13a295e4452572bbb27777932ff5fe188c35dc77180"
+      "sha256": "ef365782159b896195b7d068eee38639a3f3d185f08ca8479e10a1f6367db6b0"
     },
     {
       "path": "scripts/staging/test-provider-session-bundle-contract.mjs",
@@ -1740,9 +1740,9 @@
     },
     {
       "path": "scripts/test-public-funnel-thank-you.mjs",
-      "size": 11521,
+      "size": 11817,
       "mode": 33188,
-      "sha256": "8825cfb6c3c5614e07031121b151ce32bf7dc56e1f1b4db413fe659f1fbf2ba0"
+      "sha256": "8c180dd94aa530635b585ef6ee4a3dd318be4d80e0fea0d6969d24cf5ae79040"
     },
     {
       "path": "scripts/test-release-guard.mjs",
@@ -2628,9 +2628,9 @@
     },
     {
       "path": "src/app/f/[slug]/lead-capture-form.tsx",
-      "size": 20946,
+      "size": 20980,
       "mode": 33188,
-      "sha256": "1b955ef77f652a67113ffcc9a11ceb680ecbfe2e40b4d3677a9a69d0bcdd34e6"
+      "sha256": "69086db59dc2ff6304326965f56f55efa3864ae071f329ec8480aebc5121f275"
     },
     {
       "path": "src/app/f/[slug]/page.tsx",
@@ -5772,9 +5772,9 @@
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
-      "size": 46184,
+      "size": 50972,
       "mode": 33188,
-      "sha256": "490c26c46671a72a6b45fef57162120d7e1ba0a9736b5f92f6ac1ac4e59d9fbc"
+      "sha256": "7e02a12533546c41bad2d77cc0e3d85fa7f99fb7f18e90f5be0c7a4e8123fea5"
     },
     {
       "path": "tests/e2e/expected-navigation-abort.mjs",

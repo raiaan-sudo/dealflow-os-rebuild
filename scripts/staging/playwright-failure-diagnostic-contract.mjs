@@ -546,10 +546,12 @@ function parseJunitReporter(reporter, secrets) {
   }
   const counts = countTestPortfolio(records);
   const declaredCountsAgree =
+    Object.values(declaredCounts).every(Number.isSafeInteger) &&
     declaredCounts.tests === counts.tests &&
-    declaredCounts.failed === counts.failed &&
+    declaredCounts.failed + declaredCounts.errors === counts.failed &&
     declaredCounts.skipped === counts.skipped &&
-    declaredCounts.errors === 0;
+    declaredCounts.tests ===
+      counts.passed + counts.failed + counts.skipped + counts.interrupted + counts.timedOut;
   if (records.length === 0) {
     return Object.freeze({
       summary: {

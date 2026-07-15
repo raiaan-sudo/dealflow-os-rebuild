@@ -155,8 +155,37 @@ export function isAllowedStagingTurnstileRequest(rawUrl, method, enabled) {
     return false;
   }
   const normalizedMethod = String(method).toUpperCase();
+  if (url.protocol === "blob:") {
+    let embedded;
+    try {
+      embedded = new URL(url.pathname);
+    } catch {
+      return false;
+    }
+    return (
+      normalizedMethod === "GET" &&
+      url.search === "" &&
+      url.hash === "" &&
+      embedded.origin === "https://challenges.cloudflare.com" &&
+      embedded.username === "" &&
+      embedded.password === "" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        embedded.pathname.slice(1),
+      ) &&
+      embedded.search === "" &&
+      embedded.hash === ""
+    );
+  }
   if (
     url.pathname === "/turnstile/v0/api.js" &&
+    ["GET", "HEAD"].includes(normalizedMethod)
+  ) {
+    return true;
+  }
+  if (
+    /^\/turnstile\/v0\/b\/[a-f0-9]{12,64}\/api\.js$/.test(url.pathname) &&
+    url.search === "" &&
+    url.hash === "" &&
     ["GET", "HEAD"].includes(normalizedMethod)
   ) {
     return true;

@@ -523,11 +523,11 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
       </button>
       <p className="text-xs leading-relaxed text-[#74685b]">
         {copy.disclaimerPrefix}{" "}
-        <Link className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/privacy">
+        <Link className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/privacy" prefetch={false}>
           {copy.privacy}
         </Link>{" "}
         {copy.and}{" "}
-        <Link className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/terms">
+        <Link className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/terms" prefetch={false}>
           {copy.terms}
         </Link>
         .

@@ -80,14 +80,14 @@ try {
     }],
   }));
   writeFileSync(junitPath, `
-<testsuites tests="4" failures="2" skipped="0" errors="0">
+<testsuites tests="4" failures="1" skipped="0" errors="1">
   <testsuite hostname="desktop-chromium" tests="2" failures="1" skipped="0" errors="0">
     <testcase name="lead workflow › captures the lead exactly once"></testcase>
     <testcase name="lead workflow › shows live reporting"><failure>${failureMessage}</failure></testcase>
   </testsuite>
-  <testsuite hostname="mobile-chromium" tests="2" failures="1" skipped="0" errors="0">
+  <testsuite hostname="mobile-chromium" tests="2" failures="0" skipped="0" errors="1">
     <testcase name="lead workflow › captures the lead exactly once"></testcase>
-    <testcase name="lead workflow › shows live reporting"><failure>${failureMessage}</failure></testcase>
+    <testcase name="lead workflow › shows live reporting"><error>${failureMessage}</error></testcase>
   </testsuite>
 </testsuites>`);
   writeFileSync(htmlPath, `<html><body>${secret} ${rawHost} ${rawPath}</body></html>`);
@@ -187,6 +187,31 @@ try {
   assert.doesNotMatch(serialized, /\/private\/tmp/);
   assert.doesNotMatch(serialized, /failure\.spec\.ts/);
   assert.ok(serialized.length < 256 * 1024);
+
+  const incompleteCountsJunitPath = join(reporters, "incomplete-counts.xml");
+  writeFileSync(incompleteCountsJunitPath, `
+<testsuites tests="4" skipped="0" errors="0">
+  <testsuite hostname="desktop-chromium">
+    <testcase name="lead workflow › captures the lead exactly once"></testcase>
+    <testcase name="lead workflow › shows live reporting"><failure>${failureMessage}</failure></testcase>
+  </testsuite>
+  <testsuite hostname="mobile-chromium">
+    <testcase name="lead workflow › captures the lead exactly once"></testcase>
+    <testcase name="lead workflow › shows live reporting"><error>${failureMessage}</error></testcase>
+  </testsuite>
+</testsuites>`);
+  const incompleteCountsDiagnostic = buildPlaywrightFailureDiagnostic({
+    suiteName: "multi-role-browser",
+    reporterProfile: "staging",
+    executionStatus: 1,
+    reporterRoot: reporters,
+    jsonReporterPath: jsonPath,
+    junitReporterPath: incompleteCountsJunitPath,
+    htmlReporterPath: htmlPath,
+    secrets: [secret],
+  });
+  assert.equal(incompleteCountsDiagnostic.reporters.junit.status, "PARSED");
+  assert.equal(incompleteCountsDiagnostic.reporters.junit.declaredCountsAgree, false);
 
   const adversarialDiagnostic = buildPlaywrightFailureDiagnostic({
     suiteName: "multi-role-browser",

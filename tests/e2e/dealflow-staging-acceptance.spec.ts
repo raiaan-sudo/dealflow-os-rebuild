@@ -543,7 +543,15 @@ async function installFailClosedNetworkBoundary(page: Page) {
     )}`;
     const expectedNavigationAbort =
       request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
-    if (!expectedNavigationAbort) diagnostics.requestFailures.push(failure);
+    const expectedInterceptedWebKitTurnstileBlobFailure =
+      process.env.STAGING_ACCEPTANCE_EXECUTION === "true" &&
+      process.env.STAGING_TURNSTILE_TEST_SITE_KEY === "1x00000000000000000000AA" &&
+      request.resourceType() === "xhr" &&
+      isAllowedStagingTurnstileRequest(request.url(), request.method(), true) &&
+      errorText === "The operation couldn’t be completed. (WebKitBlobResource error 1.)";
+    if (!expectedNavigationAbort && !expectedInterceptedWebKitTurnstileBlobFailure) {
+      diagnostics.requestFailures.push(failure);
+    }
   });
   context.on("response", (response) => {
     if (response.status() >= 500) {
@@ -688,11 +696,71 @@ async function credentialSignIn(
   ]);
 }
 
+function waitForExactApplicationRead(
+  page: Page,
+  origin: string,
+  pathname: string,
+) {
+  return page.waitForResponse((response) => {
+    const request = response.request();
+    const url = new URL(response.url());
+    return (
+      request.method() === "GET" &&
+      url.origin === origin &&
+      url.username === "" &&
+      url.password === "" &&
+      url.pathname === pathname &&
+      url.search === "" &&
+      url.hash === ""
+    );
+  }, { timeout: 30_000 });
+}
+
+async function navigateAndSettleExactApplicationRead(
+  page: Page,
+  rawTarget: string,
+  options: {
+    expectedFinalPathname: string;
+    expectedReadPathname?: string;
+  },
+) {
+  const target = new URL(rawTarget, requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"));
+  const expectedRead = options.expectedReadPathname
+    ? waitForExactApplicationRead(page, target.origin, options.expectedReadPathname)
+    : null;
+  const response = await page.goto(target.toString(), { waitUntil: "load" });
+  expect(response, `${target.pathname} returned no document response`).not.toBeNull();
+  expect(response!.status(), `${target.pathname} returned a server failure`).toBeLessThan(500);
+  await page.waitForURL((url) =>
+    url.origin === target.origin &&
+    url.pathname === options.expectedFinalPathname,
+  { waitUntil: "load", timeout: 30_000 });
+  if (expectedRead) {
+    const readResponse = await expectedRead;
+    expect(await readResponse.finished()).toBeNull();
+    expect(
+      readResponse.status(),
+      `${options.expectedReadPathname} did not return the exact seeded read contract`,
+    ).toBe(200);
+  }
+  return response;
+}
+
+async function assertOptimizationPolicySettled(page: Page) {
+  await expect(page.getByText("Checking", { exact: true })).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect(
+    page.getByText("Optimization status is unavailable.", { exact: true }),
+  ).toHaveCount(0);
+}
+
 async function openAuthenticatedSession(
   page: Page,
   role: SyntheticRole,
   redirectedFrom: string,
   origin = requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
+  expectedReadPathname: string | null = null,
 ) {
   const projectRef = requiredEnvironment("QA_ISOLATED_SUPABASE_PROJECT_REF");
   const session = browserSessionBundle().roles[role];
@@ -705,9 +773,13 @@ async function openAuthenticatedSession(
   await page.context().addCookies(
     browserCookiesForOrigin(session, new URL(origin).origin, projectRef),
   );
-  const response = await page.goto(new URL(redirectedFrom, origin).toString(), {
-    waitUntil: "domcontentloaded",
-  });
+  const destination = new URL(redirectedFrom, origin);
+  const response = expectedReadPathname
+    ? await navigateAndSettleExactApplicationRead(page, destination.toString(), {
+        expectedFinalPathname: destination.pathname,
+        expectedReadPathname,
+      })
+    : await page.goto(destination.toString(), { waitUntil: "load" });
   expect(response, `Authenticated ${role} navigation returned no response`).not.toBeNull();
   expect(response!.status(), `Authenticated ${role} navigation failed`).toBeLessThan(500);
   expect(new URL(page.url()).pathname, `${role} remained unauthenticated`).not.toBe("/login");
@@ -819,7 +891,14 @@ test("new direct realtor is authenticated but remains unpaid and launch-blocked"
 });
 
 test("paid direct realtor sees exact Pro activation and seeded campaign truth", async ({ page }) => {
-  await openAuthenticatedSession(page, "paidDirect", "/dashboard");
+  await openAuthenticatedSession(
+    page,
+    "paidDirect",
+    "/dashboard",
+    requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
+    `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
+  );
+  await assertOptimizationPolicySettled(page);
   await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
   if ((page.viewportSize()?.width ?? 0) >= 1024) {
     await assertDirectImageLoaded(
@@ -863,16 +942,29 @@ test("paid direct realtor sees exact Pro activation and seeded campaign truth", 
 });
 
 test("hosted reporting renders fresh stale and failed-refresh truth without false zeros", async ({ page }) => {
-  await openAuthenticatedSession(page, "paidDirect", "/dashboard");
+  await openAuthenticatedSession(
+    page,
+    "paidDirect",
+    "/dashboard",
+    requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
+    `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
+  );
+  await assertOptimizationPolicySettled(page);
   for (const [campaignId, expectedLabel] of [
     [PAID_CAMPAIGN_ID, "Confirmed in Meta"],
     [STALE_REPORTING_CAMPAIGN_ID, "Confirmed state is stale"],
     [FAILED_REPORTING_CAMPAIGN_ID, "Showing last confirmed Meta data"],
   ] as const) {
-    const response = await page.goto(`/dashboard?campaignId=${campaignId}`, {
-      waitUntil: "domcontentloaded",
-    });
+    const response = await navigateAndSettleExactApplicationRead(
+      page,
+      `/dashboard?campaignId=${campaignId}`,
+      {
+        expectedFinalPathname: "/dashboard",
+        expectedReadPathname: `/api/campaigns/${campaignId}/optimization-policy`,
+      },
+    );
     expect(response?.status()).toBeLessThan(500);
+    await assertOptimizationPolicySettled(page);
     await expect(page.getByText(expectedLabel, { exact: true })).toBeVisible();
   }
   const failedDashboard = await page.request.get(
@@ -946,10 +1038,25 @@ test("public funnel renders the official staging Turnstile test widget without s
 });
 
 test("paid realtor can use authenticated EN FR ES dashboards without mixed-language headings", async ({ page }) => {
-  await openAuthenticatedSession(page, "paidDirect", "/dashboard");
+  await openAuthenticatedSession(
+    page,
+    "paidDirect",
+    "/dashboard",
+    requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"),
+    `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
+  );
+  await assertOptimizationPolicySettled(page);
   for (const [locale, copy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
-    const response = await page.goto(`/${locale}/dashboard`, { waitUntil: "domcontentloaded" });
+    const response = await navigateAndSettleExactApplicationRead(
+      page,
+      `/${locale}/dashboard`,
+      {
+        expectedFinalPathname: `/${locale}/dashboard`,
+        expectedReadPathname: `/api/campaigns/${PAID_CAMPAIGN_ID}/optimization-policy`,
+      },
+    );
     expect(response?.status()).toBeLessThan(500);
+    await assertOptimizationPolicySettled(page);
     await expect(page.locator("html")).toHaveAttribute("lang", locale);
     await expect(page.getByRole("heading", { level: 1, name: copy.dashboard, exact: true })).toBeVisible();
     for (const [otherLocale, otherCopy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
@@ -987,13 +1094,26 @@ test("white-label child receives attributed branding across core product routes"
     page.locator(`img[alt="${PARTNER_BRAND_NAME} logo"]`),
     "/logo.svg",
   );
-  await openAuthenticatedSession(page, "partnerChild", "/dashboard", partnerOrigin);
-  for (const path of ["/dashboard", "/builder", "/launch", "/results", "/support"]) {
-    const response = await page.goto(new URL(path, partnerOrigin).toString(), {
-      waitUntil: "domcontentloaded",
-    });
-    expect(response, `${path} returned no document response`).not.toBeNull();
-    expect(response!.status(), `${path} returned a server failure`).toBeLessThan(500);
+  const policyPath = `/api/campaigns/${PARTNER_ONE_CAMPAIGN_ID}/optimization-policy`;
+  await openAuthenticatedSession(page, "partnerChild", "/dashboard", partnerOrigin, policyPath);
+  await assertOptimizationPolicySettled(page);
+  await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
+  for (const route of [
+    { path: "/builder", finalPathname: "/onboarding", readPathname: "/api/billing/status" },
+    { path: "/launch", finalPathname: "/launch" },
+    { path: "/results", finalPathname: "/dashboard", readPathname: policyPath },
+    { path: "/support", finalPathname: "/support" },
+  ]) {
+    await navigateAndSettleExactApplicationRead(
+      page,
+      new URL(route.path, partnerOrigin).toString(),
+      {
+        expectedFinalPathname: route.finalPathname,
+        expectedReadPathname: route.readPathname,
+      },
+    );
+    if (route.readPathname === policyPath) await assertOptimizationPolicySettled(page);
     await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
     await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
   }
@@ -1017,13 +1137,26 @@ test("second white-label child receives only partner-two branding and tenant dat
     page.locator(`img[alt="${PARTNER_TWO_BRAND_NAME} logo"]`),
     "/logo.svg",
   );
-  await openAuthenticatedSession(page, "partnerChildTwo", "/dashboard", partnerOrigin);
-  for (const path of ["/dashboard", "/builder", "/launch", "/results", "/support"]) {
-    const response = await page.goto(new URL(path, partnerOrigin).toString(), {
-      waitUntil: "domcontentloaded",
-    });
-    expect(response, `${path} returned no document response`).not.toBeNull();
-    expect(response!.status(), `${path} returned a server failure`).toBeLessThan(500);
+  const policyPath = `/api/campaigns/${PARTNER_TWO_CAMPAIGN_ID}/optimization-policy`;
+  await openAuthenticatedSession(page, "partnerChildTwo", "/dashboard", partnerOrigin, policyPath);
+  await assertOptimizationPolicySettled(page);
+  await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
+  for (const route of [
+    { path: "/builder", finalPathname: "/onboarding", readPathname: "/api/billing/status" },
+    { path: "/launch", finalPathname: "/launch" },
+    { path: "/results", finalPathname: "/dashboard", readPathname: policyPath },
+    { path: "/support", finalPathname: "/support" },
+  ]) {
+    await navigateAndSettleExactApplicationRead(
+      page,
+      new URL(route.path, partnerOrigin).toString(),
+      {
+        expectedFinalPathname: route.finalPathname,
+        expectedReadPathname: route.readPathname,
+      },
+    );
+    if (route.readPathname === policyPath) await assertOptimizationPolicySettled(page);
     await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
     await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   }

@@ -96,6 +96,22 @@ Without the required flags, that authorization, every required secure input, an 
 10. Run GET-only hosted load against public routes and the internal zero-effects control. Hosted lead-capture POST load is deliberately forbidden; it remains a local-only proof.
 11. Compare effect-bearing table counts, rescan evidence for protected values and probable credentials, set private permissions, write the machine-readable manifest, and seal every artifact with SHA-256 checksums.
 
+Browser navigation is settled by exact application reads, never by sleeps or a
+broad `networkidle` waiver. Before a document replacement, the suite binds the
+expected same-origin GET pathname, requires its body to finish with exact HTTP
+200, and waits for the canonical post-redirect pathname. Dashboard journeys
+drain the campaign optimization-policy read; the legacy builder redirect drains
+the onboarding billing read; and the results redirect drains the resulting
+dashboard policy read. Non-navigation request failures remain authoritative.
+
+The public funnel allows only Cloudflare's official Turnstile test traffic on
+the exact challenge origin: the fixed loader, one bounded versioned loader,
+challenge-platform requests, and the canonical test-widget blob shape. The
+WebKit-only intercepted blob error is ignored only for that exact GET/XHR/error
+tuple after the widget is proven enabled. Public privacy and terms links disable
+Next.js prefetch so speculative legal-route reads cannot be cancelled during
+the Turnstile assertion.
+
 If a configured Playwright process exits nonzero, the runner parses any
 available JSON and JUnit reporters before cleanup and retains one bounded
 `<suite>-failure-diagnostic.json` at the evidence root. That diagnostic remains

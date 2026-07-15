@@ -134,6 +134,22 @@ assert.equal(
   ),
   true,
 );
+assert.equal(
+  isAllowedStagingTurnstileRequest(
+    "https://challenges.cloudflare.com/turnstile/v0/b/3104729c556c/api.js",
+    "GET",
+    true,
+  ),
+  true,
+);
+assert.equal(
+  isAllowedStagingTurnstileRequest(
+    "blob:https://challenges.cloudflare.com/123e4567-e89b-12d3-a456-426614174000",
+    "GET",
+    true,
+  ),
+  true,
+);
 for (const [url, method, enabled] of [
   ["http://challenges.cloudflare.com/turnstile/v0/api.js", "GET", true],
   ["https://challenges.cloudflare.com:444/turnstile/v0/api.js", "GET", true],
@@ -141,6 +157,15 @@ for (const [url, method, enabled] of [
   ["https://challenges.cloudflare.com/turnstile/v0/siteverify", "POST", true],
   ["https://evil.challenges.cloudflare.com/turnstile/v0/api.js", "GET", true],
   ["https://challenges.cloudflare.com/turnstile/v0/api.js", "POST", true],
+  ["https://challenges.cloudflare.com/turnstile/v0/b/3104729c556/api.js", "GET", true],
+  ["https://challenges.cloudflare.com/turnstile/v0/b/3104729C556C/api.js", "GET", true],
+  ["https://challenges.cloudflare.com/turnstile/v0/b/3104729c556c/api.js?render=explicit", "GET", true],
+  ["https://challenges.cloudflare.com/turnstile/v0/b/3104729c556c/api.js", "POST", true],
+  ["https://challenges.cloudflare.com/turnstile/v0/b/3104729c556c/extra/api.js", "GET", true],
+  ["blob:https://evil.example/123e4567-e89b-12d3-a456-426614174000", "GET", true],
+  ["blob:https://challenges.cloudflare.com/not-a-canonical-uuid", "GET", true],
+  ["blob:https://challenges.cloudflare.com/123e4567-e89b-12d3-a456-426614174000", "POST", true],
+  ["blob:https://challenges.cloudflare.com/123e4567-e89b-12d3-a456-426614174000", "GET", false],
   ["https://challenges.cloudflare.com/turnstile/v0/api.js", "GET", false],
 ]) {
   assert.equal(isAllowedStagingTurnstileRequest(url, method, enabled), false);
