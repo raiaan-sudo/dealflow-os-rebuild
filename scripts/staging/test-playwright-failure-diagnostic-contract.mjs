@@ -112,6 +112,7 @@ try {
     safetyReporterPath: safetyPath,
     commandDiagnostics: [
       `command stderr ${secret} ${rawHost} ${rawPath}`,
+      "Browser timeout while waiting for heading\nCall log:\n  - locator remained hidden",
       "x".repeat(2_000),
     ],
     secrets: [secret],
@@ -175,6 +176,10 @@ try {
   assert.equal(diagnostic.reporters.jsonJunitExactPortfolioAgreement, true);
   assert.equal(diagnostic.diagnostics.diagnosticsTruncated, true);
   assert.ok(diagnostic.diagnostics.retainedDiagnosticCount > 0);
+  assert.ok(
+    diagnostic.diagnostics.diagnostics.some((value) =>
+      value.includes("Browser timeout while waiting for heading\nCall log:")),
+  );
   const serialized = JSON.stringify(diagnostic);
   assert.doesNotMatch(serialized, new RegExp(secret));
   assert.doesNotMatch(serialized, /dealflow-sensitive-host/);

@@ -110,6 +110,9 @@ failure cleanup. If the command times out, is signaled, or the full diagnostic
 cannot itself be constructed, the runner retains a deterministic digest-only
 `FAILED` fallback instead; it never invents reporter counts or a process exit
 status for an abnormal termination.
+The final forbidden-material assertion scans actual diagnostic keys and string
+values rather than JSON-encoded bytes, so ordinary multiline Playwright output
+cannot be misclassified as a Windows path through JSON's `\\n` escaping.
 If the outer evidence sanitizer must destroy and recreate an unsafe partial
 bundle, terminal cleanup rewrites that same suite's digest-only `FAILED`
 fallback into the clean root before sealing. The fallback survives without

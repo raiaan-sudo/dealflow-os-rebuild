@@ -688,16 +688,43 @@ function diagnosticPortfolio(diagnosticGroups, secrets) {
   });
 }
 
+function diagnosticStringMaterial(record) {
+  const strings = [];
+  const seen = new WeakSet();
+  const visit = (value) => {
+    if (typeof value === "string") {
+      strings.push(value);
+      return;
+    }
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    for (const [key, nested] of Object.entries(value)) {
+      strings.push(key);
+      visit(nested);
+    }
+  };
+  visit(record);
+  return strings;
+}
+
 function assertNoForbiddenMaterial(record, secrets) {
-  const serialized = JSON.stringify(record);
+  // Scan actual string material rather than JSON.stringify(record). JSON
+  // escaping turns ordinary multiline text into `word\\nNext`, which can be
+  // misclassified as a relative Windows path even though no backslash exists
+  // in the retained diagnostic.
+  const stringMaterial = diagnosticStringMaterial(record);
   for (const secret of secrets.filter(
     (value) => typeof value === "string" && value.length > 0,
   )) {
-    if (serialized.includes(secret)) {
+    if (stringMaterial.some((value) => value.includes(secret))) {
       throw new Error("Sanitized Playwright diagnostic retained an exact protected value");
     }
   }
-  const forbiddenClass = [
+  const forbiddenPatterns = [
     ["uri", /\b[a-z][a-z0-9+.-]{0,31}:\/\//i],
     ["posix_path", /(^|[^A-Za-z0-9])\/(?:[^\s"'()<>]|\((?![^)]*\)))+/i],
     [
@@ -718,7 +745,9 @@ function assertNoForbiddenMaterial(record, secrets) {
       /\b(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.)+[a-z_](?:[a-z_-]{0,61}[a-z_])?(?::\d{1,5})?\b(?![A-Za-z0-9_.-])/i,
     ],
     ["host_port", /\b(?:localhost|[a-z_][a-z0-9_-]{1,62}):\d{2,5}\b/i],
-  ].find(([, pattern]) => pattern.test(serialized))?.[0];
+  ];
+  const forbiddenClass = forbiddenPatterns.find(([, pattern]) =>
+    stringMaterial.some((value) => pattern.test(value)))?.[0];
   if (forbiddenClass) {
     throw new Error(
       `Sanitized Playwright diagnostic retained forbidden ${forbiddenClass} material`,

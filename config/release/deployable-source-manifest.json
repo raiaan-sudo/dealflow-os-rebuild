@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 983,
-  "deployableSourceSha256": "6b2529e74073d10cc1f40f1e91e368c0670997950c0acca5bf5c64501fca0ba9",
+  "deployableSourceSha256": "3242a346a183842d1aded502dc344bc6e4db1292c8241c44404949ccb9cef2e0",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -120,9 +120,9 @@
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 16682,
+      "size": 16913,
       "mode": 33188,
-      "sha256": "e725d030776de53e3bc4ecc865261dfa230c6cd67042981318a26f54950b0aa2"
+      "sha256": "89d52c7f22df8ba9d8e56d920224e23ec190c3cff9a9313b50dee3190917312d"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -954,9 +954,9 @@
     },
     {
       "path": "scripts/staging/playwright-failure-diagnostic-contract.mjs",
-      "size": 29578,
+      "size": 30510,
       "mode": 33188,
-      "sha256": "2f1fd0e1ef27ccfca6bcb323556092fb0731b514db5d4a6ce2772965ae7f3595"
+      "sha256": "eb06bb3b89ebb8955ab7c0cd31684e47dc23f6b5f04318e68403a8df26e4a9f9"
     },
     {
       "path": "scripts/staging/prior-migration-proof-contract.mjs",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/test-playwright-failure-diagnostic-contract.mjs",
-      "size": 19668,
+      "size": 19911,
       "mode": 33188,
-      "sha256": "92b7929bfdab1de536a67d53b1d794115fde3b8e930572bb75fb1682f964306e"
+      "sha256": "3daf66b2f8cc899bd122c13a295e4452572bbb27777932ff5fe188c35dc77180"
     },
     {
       "path": "scripts/staging/test-provider-session-bundle-contract.mjs",
