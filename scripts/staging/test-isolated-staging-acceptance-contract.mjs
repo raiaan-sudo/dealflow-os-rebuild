@@ -225,7 +225,16 @@ function extractStringObject(source, name) {
   );
 }
 
-assert.match(runner, /EXPECTED_REPO = "\/private\/tmp\/dealflow-overnight-release-20260712"/);
+assert.match(
+  runner,
+  /EXPECTED_REPO = realpathSync\([\s\S]*fileURLToPath\(import\.meta\.url\)[\s\S]*"\.\.\/\.\."/,
+  "The staging runner must derive its exact repository from its tracked source",
+);
+assert.doesNotMatch(
+  runner,
+  /EXPECTED_REPO = "\/private\/tmp\//,
+  "The staging runner must not bind execution to a disposable repository path",
+);
 assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-overnight-release-20260712"/);
 assert.match(runner, /EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean\.vercel\.app"/);
 assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
@@ -649,6 +658,27 @@ assert.match(runner, /record\.status !== "passed"/);
 assert.match(runner, /record\.exitCode !== 0/);
 assert.match(runner, /record\.postCommandRepositoryInvariant !== "passed"/);
 assert.match(runner, /record\.workingDirectory !== EXPECTED_REPO/);
+assert.match(runner, /captureExactStagingProjectRecord\(/);
+assert.match(runner, /DEALFLOW_STAGING_PROJECT_RECORD/);
+assert.match(runner, /DEALFLOW_STAGING_PROJECT_RECORD: stagingProjectRecord\.path/g);
+assert.match(runner, /stagingProjectRecord: stagingProjectRecord\.evidence/);
+assert.match(runner, /DEALFLOW_STAGING_EVIDENCE_PARENT/);
+assert.match(runner, /captureApprovedStagingEvidenceParent\(options\.evidenceDir\)/);
+assert.match(runner, /durable non-temporary parent/);
+assert.match(runner, /evidence parent must remain outside the release repository/);
+assert.match(
+  runner,
+  /assertApprovedStagingEvidenceRootPath\(path, \{\s*approvedParent: approvedStagingEvidenceParent/,
+);
+assert.match(
+  runner,
+  /assertApprovedStagingEvidenceRootPath\(failureContext\.evidenceDir, \{\s*approvedParent: approvedStagingEvidenceParent,\s*mustExist: true/,
+);
+assert.match(
+  runner,
+  /roundOne\.resolvedCommandPortfolioSha256 !==\s*roundTwo\.resolvedCommandPortfolioSha256/,
+  "Both local rounds must use the same resolved native runtime command portfolio",
+);
 
 for (const control of [
   "ALLOW_BILLING_ADMIN_OVERRIDE",
@@ -1891,11 +1921,12 @@ assert.match(
   /UNSAFE_PARTIAL_EVIDENCE_DESTROYED_AND_ROOT_RECREATED[\s\S]*playwrightFailureDiagnosticFallback[\s\S]*writeJson\(join\(evidenceDir, fileName\), diagnostic/,
 );
 assert.match(runner, /assertApprovedStagingEvidenceRootPath/);
-assert.match(evidenceRootContract, /parent !== EXACT_TEMP_ROOT/);
-assert.match(evidenceRootContract, /realpathSync\(parent\) !== EXACT_TEMP_ROOT/);
-assert.match(evidenceRootContract, /real non-symlink directory/);
+assert.match(evidenceRootContract, /approvedParent/);
+assert.match(evidenceRootContract, /stat\.uid !== process\.getuid\(\)/);
+assert.match(evidenceRootContract, /stat\.mode & 0o077/);
+assert.match(evidenceRootContract, /real owner-only non-symlink directory/);
 assert.match(evidenceRootTest, /symlinkParent/);
-assert.match(evidenceRootTest, /direct child of the real private temp root/);
+assert.match(evidenceRootTest, /direct prefixed child of the approved evidence parent/);
 assert.match(runner, /evidence-manifest\.json/);
 assert.match(runner, /SHA256SUMS/);
 assert.match(runner, /containsSecrets: false/);

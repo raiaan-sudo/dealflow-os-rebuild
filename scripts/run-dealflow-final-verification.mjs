@@ -176,6 +176,7 @@ const commands = [
 const commandPortfolio = assertExactFinalVerificationCommandPortfolio(
   commands.map(formatFinalVerificationCommandTuple),
   "Tracked final-verification runner portfolio",
+  nativeEnvironment,
 );
 
 const environmentOnlyDeferrals = Object.freeze([
@@ -595,6 +596,8 @@ const summary = {
     : null,
   plannedCommandCount: commands.length,
   commandPortfolioSha256: commandPortfolio.commandPortfolioSha256,
+  resolvedCommandPortfolioSha256:
+    commandPortfolio.resolvedCommandPortfolioSha256,
   minimumFreeBytesRequired: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
   minimumObservedFreeBytes: Math.min(
     preflightRepositoryFreeBytes,

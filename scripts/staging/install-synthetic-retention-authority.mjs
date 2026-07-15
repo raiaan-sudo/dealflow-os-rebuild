@@ -12,12 +12,13 @@ import {
   realpathSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   FINAL_VERIFICATION_HOSTED_DEFERRALS,
   assertExactFinalVerificationSummaryPortfolio,
+  extractFinalVerificationNativePostgresRuntime,
 } from "../lib/final-verification-command-contract.mjs";
 import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
 
@@ -31,16 +32,23 @@ if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg || process.argv.len
 const repo = resolve(repoArg);
 const evidenceDir = resolve(evidenceArg);
 const roundPaths = [resolve(roundOneArg), resolve(roundTwoArg)];
-const expectedRepo = "/private/tmp/dealflow-overnight-release-20260712";
+const expectedRepo = realpathSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+);
 const expectedBranch = "codex/dealflow-overnight-release-20260712";
-const expectedPostgresBin =
-  "/private/tmp/dealflow-pg17.6-20260712-overnight/mnt/Postgres.app/Contents/Versions/17/bin";
 const expectedTrustBundleRelativePath =
   "config/security/supabase-prod-ca-2021.crt";
 const expectedTrustBundlePath = resolve(repo, expectedTrustBundleRelativePath);
 const expectedTrustBundleSha256 =
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7";
-const projectRecordPath = "/private/tmp/dealflow-new-staging-project.json";
+const projectRecordInput =
+  process.env.DEALFLOW_STAGING_PROJECT_RECORD?.trim() ?? "";
+if (!projectRecordInput || !isAbsolute(projectRecordInput)) {
+  throw new Error(
+    "DEALFLOW_STAGING_PROJECT_RECORD must name the absolute external qibh project record",
+  );
+}
+const projectRecordPath = resolve(projectRecordInput);
 const keychainService = "io.supabase.dealflow-staging.db";
 const keychainAccount = "dealflow-staging-20260712";
 const expectedProjectFingerprint =
@@ -355,7 +363,17 @@ function prepareEvidenceDirectory() {
 
 function readProjectAuthority() {
   const stat = lstatSync(projectRecordPath);
-  if (stat.isSymbolicLink() || !stat.isFile() || (stat.mode & 0o077) !== 0) {
+  const relationToRepo = relative(expectedRepo, projectRecordPath);
+  if (
+    stat.isSymbolicLink() ||
+    !stat.isFile() ||
+    stat.nlink !== 1 ||
+    stat.uid !== process.getuid() ||
+    (stat.mode & 0o077) !== 0 ||
+    realpathSync(projectRecordPath) !== projectRecordPath ||
+    relationToRepo === "" ||
+    (!relationToRepo.startsWith(`..${sep}`) && relationToRepo !== "..")
+  ) {
     throw new Error("The staging project attestation must be an owner-only regular file");
   }
   const record = JSON.parse(readFileSync(projectRecordPath, "utf8"));
@@ -423,7 +441,7 @@ function runOwnerTransaction(psql, projectRef, input) {
           PGDATABASE: "postgres",
           PGSSLMODE: "verify-full",
           PGSSLROOTCERT: expectedTrustBundlePath,
-          PGPASSFILE: "/private/tmp/dealflow-staging-intentionally-absent-pgpass",
+          PGPASSFILE: intentionallyAbsentPgpassPath,
         },
       },
     );
@@ -453,16 +471,40 @@ const migrations = captureMigrationIdentity();
 const rounds = roundPaths.map((path, index) =>
   readRound(path, String(index + 1), identity, migrations),
 );
+const verificationNativePostgresRuntimes = rounds.map((round, index) =>
+  extractFinalVerificationNativePostgresRuntime(
+    round.records.map((record) => record.command),
+    `Verification round ${index + 1} native PostgreSQL runtime`,
+  ),
+);
 if (
   rounds[0].headCommit !== rounds[1].headCommit ||
+  rounds[0].resolvedCommandPortfolioSha256 !==
+    rounds[1].resolvedCommandPortfolioSha256 ||
   sha256(readFileSync(roundPaths[0])) === sha256(readFileSync(roundPaths[1]))
 ) {
   throw new Error("Two distinct exact verification rounds are required");
 }
+if (
+  JSON.stringify(verificationNativePostgresRuntimes[0]) !==
+  JSON.stringify(verificationNativePostgresRuntimes[1])
+) {
+  throw new Error(
+    "The two exact verification rounds do not bind the same native PostgreSQL runtime",
+  );
+}
+const expectedPostgresBin = verificationNativePostgresRuntimes[0].pgbin;
 const roundEvidence = roundPaths.map((path, index) =>
   captureRoundEvidenceIdentity(path, rounds[index]),
 );
 prepareEvidenceDirectory();
+const intentionallyAbsentPgpassPath = join(
+  evidenceDir,
+  ".intentionally-absent-pgpass",
+);
+if (existsSync(intentionallyAbsentPgpassPath)) {
+  throw new Error("The intentionally absent staging pgpass path already exists");
+}
 const projectRef = readProjectAuthority();
 const postgresBin = process.env.DEALFLOW_NATIVE_PGBIN;
 if (

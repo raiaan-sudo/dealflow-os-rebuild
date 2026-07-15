@@ -1107,6 +1107,12 @@ function main() {
   );
   const roundTwo = boundRoundTwo.value;
   if (roundOne.summarySha256 === roundTwo.summarySha256) fail("Two distinct final-verification summaries are required");
+  if (
+    roundOne.summary.resolvedCommandPortfolioSha256 !==
+    roundTwo.summary.resolvedCommandPortfolioSha256
+  ) {
+    fail("Final-verification rounds used different resolved command portfolios");
+  }
   const boundStaging = validateSnapshottedInput(
     options.staging,
     "Staging evidence",

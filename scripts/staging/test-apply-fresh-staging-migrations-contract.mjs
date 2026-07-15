@@ -163,6 +163,10 @@ requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-cou
 requireMarker(/expectedPriorFinalMigration[\s\S]+20260713028000_harden_account_deletion_retention_authority\.sql/, "the prior final migration pin");
 requireMarker(/requiredFinalMigration[\s\S]+20260715010000_move_legacy_org_member_policies_private\.sql/, "the final migration 104 pin");
 requireMarker(/Two distinct final-verification summaries are required/, "two distinct verification rounds");
+requireMarker(
+  /verificationRounds\[0\]\.resolvedCommandPortfolioSha256 !==\s*verificationRounds\[1\]\.resolvedCommandPortfolioSha256/,
+  "identical resolved native runtime command portfolios",
+);
 requireMarker(/summary\.schemaVersion !== "dealflow\.final-verification\.v3"/, "verification summary schema binding");
 requireMarker(/final-verification-command-contract\.mjs/, "shared exact command-portfolio contract");
 requireMarker(
@@ -175,6 +179,24 @@ requireMarker(/summary\.blockedCount !== expectedHostedVerificationDeferrals\.le
 requireMarker(/item\.status !== "authenticated_deferred"/, "authenticated deferral status binding");
 requireMarker(/record\.exitCode !== 0/, "zero command-exit receipt binding");
 requireMarker(/record\.workingDirectory !== expectedRepo/, "exact release working-directory binding");
+requireMarker(
+  /expectedRepo = realpathSync\([\s\S]*fileURLToPath\(import\.meta\.url\)[\s\S]*"\.\.\/\.\."/,
+  "source-derived durable release repository binding",
+);
+requireMarker(/DEALFLOW_STAGING_PROJECT_RECORD/, "external qibh project-record path input");
+requireMarker(
+  /extractFinalVerificationNativePostgresRuntime/,
+  "verification-round-bound native PostgreSQL runtime",
+);
+requireMarker(
+  /expectedPostgresBin = verificationNativePostgresRuntimes\[0\]\.pgbin/,
+  "native PostgreSQL binary derived from exact verification evidence",
+);
+assert.doesNotMatch(
+  source,
+  /\/private\/tmp\/dealflow-(?:overnight-release|pg17\.6|new-staging-project)/,
+  "The migration broker must not depend on disposable identity paths",
+);
 for (const deferredCommand of [
   "npm run rls:cross-tenant",
   "npm run rls:fixture-smoke",

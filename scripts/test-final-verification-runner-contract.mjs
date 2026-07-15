@@ -22,6 +22,8 @@ import {
   assertExactFinalVerificationCommandPortfolio,
   assertExactFinalVerificationRecordPortfolio,
   assertExactFinalVerificationSummaryPortfolio,
+  createFinalVerificationCommandPortfolio,
+  extractFinalVerificationNativePostgresRuntime,
   finalVerificationEvidenceQualification,
   formatFinalVerificationCommandTuple,
 } from "./lib/final-verification-command-contract.mjs";
@@ -331,11 +333,74 @@ assert.equal(
 );
 assert.equal(
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
-  "b91e86deb84a5db3d502af3fb712412474e9d3640d5179dca6dc1b55b4c5d972",
+  "2fb17463fa839abac369c1dddd4614cae7c2e1b3520a67e06addacd8a7637a5d",
+);
+const exactNativePostgresRuntime = Object.freeze({
+  pgbin: "/fixture/postgresql/17.6/bin",
+  host: "/fixture/postgresql/socket",
+  port: "55432",
+  user: "supabase_admin",
+});
+const exactCommandPortfolio = createFinalVerificationCommandPortfolio(
+  exactNativePostgresRuntime,
+);
+assert.deepEqual(
+  extractFinalVerificationNativePostgresRuntime(exactCommandPortfolio),
+  exactNativePostgresRuntime,
 );
 assert.doesNotThrow(() =>
-  assertExactFinalVerificationCommandPortfolio(FINAL_VERIFICATION_COMMAND_PORTFOLIO),
+  assertExactFinalVerificationCommandPortfolio(exactCommandPortfolio),
 );
+assert.doesNotThrow(() =>
+  assertExactFinalVerificationCommandPortfolio(
+    exactCommandPortfolio,
+    "Expected native runtime binding",
+    exactNativePostgresRuntime,
+  ),
+);
+assert.throws(
+  () => assertExactFinalVerificationCommandPortfolio(FINAL_VERIFICATION_COMMAND_PORTFOLIO),
+  /does not match the exact final-verification command contract/,
+  "The unresolved canonical template must never qualify as executed evidence",
+);
+assert.doesNotThrow(() =>
+  assertExactFinalVerificationCommandPortfolio(
+    createFinalVerificationCommandPortfolio({
+      pgbin: "/durable/runtime/postgresql/17.6/bin",
+      host: "/durable/runtime/postgresql/socket",
+      port: "64321",
+      user: "dealflow_verifier",
+    }),
+  ),
+  "The exact contract must be portable across strictly validated native runtimes",
+);
+assert.throws(
+  () =>
+    assertExactFinalVerificationCommandPortfolio(
+      createFinalVerificationCommandPortfolio({
+        ...exactNativePostgresRuntime,
+        port: "55433",
+      }),
+      "Expected native runtime binding",
+      exactNativePostgresRuntime,
+    ),
+  /does not match the exact final-verification command contract/,
+  "Runner preflight must reject a valid-but-different runtime tuple",
+);
+for (const invalidRuntime of [
+  { ...exactNativePostgresRuntime, pgbin: "relative/bin" },
+  { ...exactNativePostgresRuntime, pgbin: "/fixture/postgresql 17/bin" },
+  { ...exactNativePostgresRuntime, pgbin: "/fixture/postgresql\u00a017/bin" },
+  { ...exactNativePostgresRuntime, host: "/fixture/postgresql\nsocket" },
+  { ...exactNativePostgresRuntime, port: "055432" },
+  { ...exactNativePostgresRuntime, port: "65536" },
+  { ...exactNativePostgresRuntime, user: "Invalid-User" },
+]) {
+  assert.throws(
+    () => createFinalVerificationCommandPortfolio(invalidRuntime),
+    /does not match the exact final-verification command contract/,
+  );
+}
 assert.equal(formatFinalVerificationCommandTuple(["npm", ["run", "lint"]]), "npm run lint");
 for (const invalidTuple of [
   null,
@@ -352,7 +417,7 @@ for (const invalidTuple of [
 }
 
 function expectCommandPortfolioRejection(mutate) {
-  const commands = [...FINAL_VERIFICATION_COMMAND_PORTFOLIO];
+  const commands = [...exactCommandPortfolio];
   mutate(commands);
   assert.throws(
     () => assertExactFinalVerificationCommandPortfolio(commands),
@@ -380,7 +445,23 @@ expectCommandPortfolioRejection((commands) => {
   commands[8] = "npm run Lint";
 });
 expectCommandPortfolioRejection((commands) => {
-  commands[45] = commands[45].replace("--port 55432", "--port 55433");
+  commands[45] = commands[45].replace("--pgbin /fixture", "--pgbin fixture");
+});
+expectCommandPortfolioRejection((commands) => {
+  commands[45] = commands[45].replace("--host /fixture", "--socket /fixture");
+});
+expectCommandPortfolioRejection((commands) => {
+  commands[45] = commands[45].replace("--port 55432", "--port 1023");
+});
+expectCommandPortfolioRejection((commands) => {
+  commands[45] = commands[45].replace("--user supabase_admin", "--user Invalid-User");
+});
+expectCommandPortfolioRejection((commands) => {
+  commands[45] += " --extra forbidden";
+});
+expectCommandPortfolioRejection((commands) => {
+  commands[45] = commands[45]
+    .replace("--pgbin /fixture/postgresql/17.6/bin --host /fixture/postgresql/socket", "--host /fixture/postgresql/socket --pgbin /fixture/postgresql/17.6/bin");
 });
 expectCommandPortfolioRejection((commands) => {
   commands[0] = 7;
@@ -395,7 +476,7 @@ const exactSummaryIdentity = Object.freeze({
   migrationCount: 104,
   migrationPortfolioSha256: "e".repeat(64),
 });
-const exactRecords = FINAL_VERIFICATION_COMMAND_PORTFOLIO.map((command, index) => ({
+const exactRecords = exactCommandPortfolio.map((command, index) => ({
   command,
   evidenceQualification: finalVerificationEvidenceQualification(command),
   status: "passed",
@@ -416,6 +497,9 @@ const exactSummary = {
   commandCount: 90,
   passedCount: 90,
   commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+  resolvedCommandPortfolioSha256: createHash("sha256")
+    .update(JSON.stringify(exactCommandPortfolio))
+    .digest("hex"),
   minimumFreeBytesRequired: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
   minimumObservedFreeBytes: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
   fatalResourceDiagnosticCount: 0,
@@ -442,7 +526,7 @@ const exactSummary = {
 };
 const exactSummarySnapshot = JSON.stringify(exactSummary);
 const commandProof = assertExactFinalVerificationCommandPortfolio(
-  FINAL_VERIFICATION_COMMAND_PORTFOLIO,
+  exactCommandPortfolio,
 );
 const recordProof = assertExactFinalVerificationRecordPortfolio(exactRecords);
 const summaryProof = assertExactFinalVerificationSummaryPortfolio(exactSummary);
@@ -450,6 +534,8 @@ for (const proof of [commandProof, recordProof, summaryProof]) {
   assert.deepEqual(proof, {
     commandCount: 90,
     commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+    resolvedCommandPortfolioSha256:
+      exactSummary.resolvedCommandPortfolioSha256,
   });
   assert.equal(Object.isFrozen(proof), true);
 }
@@ -546,6 +632,9 @@ expectPortfolioRejection((candidate) => {
   candidate.commandPortfolioSha256 = "0".repeat(64);
 });
 expectPortfolioRejection((candidate) => {
+  candidate.resolvedCommandPortfolioSha256 = "0".repeat(64);
+});
+expectPortfolioRejection((candidate) => {
   candidate.minimumFreeBytesRequired = 1;
 });
 expectPortfolioRejection((candidate) => {
@@ -575,6 +664,9 @@ expectPortfolioRejection((candidate) => {
 });
 expectPortfolioRejection((candidate) => {
   delete candidate.commandPortfolioSha256;
+});
+expectPortfolioRejection((candidate) => {
+  delete candidate.resolvedCommandPortfolioSha256;
 });
 expectPortfolioRejection((candidate) => {
   candidate.environmentOnlyDeferrals.reverse();
@@ -644,6 +736,7 @@ for (const marker of [
   "formatFinalVerificationCommandTuple",
   "finalVerificationEvidenceQualification(command)",
   "commandPortfolioSha256: commandPortfolio.commandPortfolioSha256",
+  "resolvedCommandPortfolioSha256:",
   "assertFinalVerificationEvidenceIsSealable(outputDirectory)",
   "detectFinalVerificationFatalResourceDiagnostic(",
   "assertFinalVerificationDiskHeadroom(root)",
@@ -673,6 +766,11 @@ const executionLoop = source.indexOf("for (let index = 0; index < commands.lengt
 assert.ok(
   exactPortfolioGate >= 0 && exactPortfolioGate < executionLoop,
   "The exact ordered command contract must fail closed before any verification command executes",
+);
+assert.match(
+  source.slice(exactPortfolioGate, executionLoop),
+  /"Tracked final-verification runner portfolio",\s*nativeEnvironment,\s*\)/,
+  "Runner preflight must bind the exact command tuple to the validated native runtime",
 );
 assert.doesNotMatch(
   source,

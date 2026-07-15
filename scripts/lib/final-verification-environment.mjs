@@ -29,6 +29,11 @@ export function requireFinalVerificationNativeEnvironment(environment) {
     if (!path.isAbsolute(values[name])) {
       throw new Error(`Final verification requires absolute ${name}.`);
     }
+    if (/[\s\u0000-\u001f\u007f]/u.test(values[name])) {
+      throw new Error(
+        `Final verification requires ${name} without whitespace or control characters.`,
+      );
+    }
   }
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(values.DEALFLOW_NATIVE_PGUSER)) {
     throw new Error("Final verification requires a safe DEALFLOW_NATIVE_PGUSER identifier.");

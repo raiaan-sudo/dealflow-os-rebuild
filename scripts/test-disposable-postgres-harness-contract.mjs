@@ -62,6 +62,20 @@ assert.throws(
   () => requireFinalVerificationNativeEnvironment({ ...validFinalEnvironment, DEALFLOW_NATIVE_PGHOST: "relative/socket" }),
   /absolute DEALFLOW_NATIVE_PGHOST/,
 );
+for (const [name, value] of [
+  ["DEALFLOW_NATIVE_PGBIN", "/private/tmp/postgres 17/bin"],
+  ["DEALFLOW_NATIVE_PGBIN", "/private/tmp/postgres\u00a017/bin"],
+  ["DEALFLOW_NATIVE_PGHOST", "/private/tmp/postgres\nsocket"],
+]) {
+  assert.throws(
+    () =>
+      requireFinalVerificationNativeEnvironment({
+        ...validFinalEnvironment,
+        [name]: value,
+      }),
+    /without whitespace or control characters/,
+  );
+}
 
 assert.equal(
   assertDisposablePostgresCleanupResult({ error: undefined, status: 0, stderr: "", stdout: "removed\n" }).status,

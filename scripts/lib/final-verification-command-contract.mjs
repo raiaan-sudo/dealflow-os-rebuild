@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isAbsolute } from "node:path";
 
 import {
   FINAL_VERIFICATION_LOCAL_BROWSER_PASSED_PER_PROJECT,
@@ -6,6 +7,16 @@ import {
   FINAL_VERIFICATION_LOCAL_BROWSER_SCREENSHOT_COUNT,
   FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
 } from "./final-verification-evidence-contract.mjs";
+
+const NATIVE_POSTGRES_COMMAND_INDEX = 45;
+const NATIVE_POSTGRES_COMMAND_PREFIX =
+  "node scripts/test-native-postgres-test-adapter.mjs";
+const NATIVE_POSTGRES_COMMAND_TEMPLATE =
+  `${NATIVE_POSTGRES_COMMAND_PREFIX} ` +
+  "--pgbin <DEALFLOW_NATIVE_PGBIN> " +
+  "--host <DEALFLOW_NATIVE_PGHOST> " +
+  "--port <DEALFLOW_NATIVE_PGPORT> " +
+  "--user <DEALFLOW_NATIVE_PGUSER>";
 
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
   "npm ci --ignore-scripts --no-audit --no-fund",
@@ -53,7 +64,7 @@ export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
   "npm run test:release-guard",
   "npm run test:stripe-runtime-mode",
   "npm run test:disposable-postgres-harness",
-  "node scripts/test-native-postgres-test-adapter.mjs --pgbin /private/tmp/dealflow-pg17.6-20260712-overnight/mnt/Postgres.app/Contents/Versions/17/bin --host /private/tmp/dealflow-pg17.6-20260712-overnight/socket --port 55432 --user supabase_admin",
+  NATIVE_POSTGRES_COMMAND_TEMPLATE,
   "node scripts/test-campaign-execution-tenant-contract.mjs",
   "node scripts/test-ghl-booking-handoff-contract.mjs",
   "npm run test:ghl-sandbox",
@@ -102,7 +113,7 @@ export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
 
 export const FINAL_VERIFICATION_COMMAND_COUNT = 90;
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256 =
-  "b91e86deb84a5db3d502af3fb712412474e9d3640d5179dca6dc1b55b4c5d972";
+  "2fb17463fa839abac369c1dddd4614cae7c2e1b3520a67e06addacd8a7637a5d";
 export const FINAL_VERIFICATION_HOSTED_DEFERRALS = Object.freeze([
   "npm run rls:cross-tenant",
   "npm run rls:fixture-smoke",
@@ -120,6 +131,77 @@ function sha256(value) {
 
 function fail(label) {
   throw new Error(`${label} does not match the exact final-verification command contract`);
+}
+
+function normalizeNativePostgresRuntime(runtime, label) {
+  const pgbin = runtime?.pgbin;
+  const host = runtime?.host;
+  const rawPort = runtime?.port;
+  const user = runtime?.user;
+  const port = Number(rawPort);
+  if (
+    typeof pgbin !== "string" ||
+    !isAbsolute(pgbin) ||
+    /[\s\u0000-\u001f\u007f]/u.test(pgbin) ||
+    typeof host !== "string" ||
+    !isAbsolute(host) ||
+    /[\s\u0000-\u001f\u007f]/u.test(host) ||
+    typeof rawPort !== "string" ||
+    !Number.isInteger(port) ||
+    port < 1_024 ||
+    port > 65_535 ||
+    String(port) !== String(rawPort) ||
+    typeof user !== "string" ||
+    !/^[a-z_][a-z0-9_]{0,62}$/.test(user)
+  ) {
+    fail(label);
+  }
+  return Object.freeze({ pgbin, host, port: String(port), user });
+}
+
+function renderNativePostgresCommand(runtime) {
+  return (
+    `${NATIVE_POSTGRES_COMMAND_PREFIX} ` +
+    `--pgbin ${runtime.pgbin} ` +
+    `--host ${runtime.host} ` +
+    `--port ${runtime.port} ` +
+    `--user ${runtime.user}`
+  );
+}
+
+export function extractFinalVerificationNativePostgresRuntime(
+  commands,
+  label = "Final-verification native PostgreSQL runtime",
+) {
+  if (
+    !Array.isArray(commands) ||
+    commands.length !== FINAL_VERIFICATION_COMMAND_COUNT
+  ) {
+    fail(label);
+  }
+  const command = commands[NATIVE_POSTGRES_COMMAND_INDEX];
+  if (typeof command !== "string") fail(label);
+  const match = new RegExp(
+    `^${NATIVE_POSTGRES_COMMAND_PREFIX.replaceAll(".", "\\.")} ` +
+      "--pgbin ([^\\s]+) --host ([^\\s]+) --port ([^\\s]+) --user ([^\\s]+)$",
+  ).exec(command);
+  if (!match) fail(label);
+  const runtime = normalizeNativePostgresRuntime(
+    { pgbin: match[1], host: match[2], port: match[3], user: match[4] },
+    label,
+  );
+  if (renderNativePostgresCommand(runtime) !== command) fail(label);
+  return runtime;
+}
+
+export function createFinalVerificationCommandPortfolio(nativePostgresRuntime) {
+  const runtime = normalizeNativePostgresRuntime(
+    nativePostgresRuntime,
+    "Final-verification native PostgreSQL runtime",
+  );
+  const commands = [...FINAL_VERIFICATION_COMMAND_PORTFOLIO];
+  commands[NATIVE_POSTGRES_COMMAND_INDEX] = renderNativePostgresCommand(runtime);
+  return Object.freeze(commands);
 }
 
 export function formatFinalVerificationCommandTuple(tuple) {
@@ -142,19 +224,38 @@ export function finalVerificationEvidenceQualification(command) {
 export function assertExactFinalVerificationCommandPortfolio(
   commands,
   label = "Final-verification command portfolio",
+  expectedNativePostgresRuntime,
 ) {
+  const canonicalCommands = Array.isArray(commands) ? [...commands] : null;
+  if (canonicalCommands?.length === FINAL_VERIFICATION_COMMAND_COUNT) {
+    extractFinalVerificationNativePostgresRuntime(canonicalCommands, label);
+    canonicalCommands[NATIVE_POSTGRES_COMMAND_INDEX] =
+      NATIVE_POSTGRES_COMMAND_TEMPLATE;
+  }
   if (
     !Array.isArray(commands) ||
     commands.length !== FINAL_VERIFICATION_COMMAND_COUNT ||
     commands.some((command) => typeof command !== "string") ||
-    JSON.stringify(commands) !== JSON.stringify(FINAL_VERIFICATION_COMMAND_PORTFOLIO) ||
-    sha256(JSON.stringify(commands)) !== FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256
+    JSON.stringify(canonicalCommands) !==
+      JSON.stringify(FINAL_VERIFICATION_COMMAND_PORTFOLIO) ||
+    sha256(JSON.stringify(canonicalCommands)) !==
+      FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256
+  ) {
+    fail(label);
+  }
+  if (
+    expectedNativePostgresRuntime !== undefined &&
+    JSON.stringify(commands) !==
+      JSON.stringify(
+        createFinalVerificationCommandPortfolio(expectedNativePostgresRuntime),
+      )
   ) {
     fail(label);
   }
   return Object.freeze({
     commandCount: FINAL_VERIFICATION_COMMAND_COUNT,
     commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+    resolvedCommandPortfolioSha256: sha256(JSON.stringify(commands)),
   });
 }
 
@@ -163,7 +264,7 @@ export function assertExactFinalVerificationRecordPortfolio(
   label = "Final-verification record portfolio",
 ) {
   if (!Array.isArray(records)) fail(label);
-  assertExactFinalVerificationCommandPortfolio(
+  const portfolio = assertExactFinalVerificationCommandPortfolio(
     records.map((record) => record?.command),
     label,
   );
@@ -176,10 +277,7 @@ export function assertExactFinalVerificationRecordPortfolio(
   ) {
     fail(label);
   }
-  return Object.freeze({
-    commandCount: FINAL_VERIFICATION_COMMAND_COUNT,
-    commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
-  });
+  return portfolio;
 }
 
 export function assertExactFinalVerificationSummaryPortfolio(
@@ -234,6 +332,12 @@ export function assertExactFinalVerificationSummaryPortfolio(
     fail(label);
   }
   const portfolio = assertExactFinalVerificationRecordPortfolio(summary.records, label);
+  if (
+    summary.resolvedCommandPortfolioSha256 !==
+    portfolio.resolvedCommandPortfolioSha256
+  ) {
+    fail(label);
+  }
   const workingDirectories = new Set(
     summary.records.map((record) => record?.workingDirectory),
   );

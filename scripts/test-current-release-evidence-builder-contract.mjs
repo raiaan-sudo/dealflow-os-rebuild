@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -19,9 +20,9 @@ import process from "node:process";
 import { tmpdir } from "node:os";
 
 import {
-  FINAL_VERIFICATION_COMMAND_PORTFOLIO,
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
   FINAL_VERIFICATION_HOSTED_DEFERRALS,
+  createFinalVerificationCommandPortfolio,
   finalVerificationEvidenceQualification,
 } from "./lib/final-verification-command-contract.mjs";
 import {
@@ -34,6 +35,13 @@ const builder = resolve("scripts/build-current-release-evidence.mjs");
 const root = mkdtempSync(join(tmpdir(), "dealflow-current-evidence-contract-"));
 const repo = join(root, "repo");
 const external = join(root, "external");
+const resolvedFinalVerificationCommandPortfolio =
+  createFinalVerificationCommandPortfolio({
+    pgbin: "/fixture/postgresql/17.6/bin",
+    host: "/fixture/postgresql/socket",
+    port: "55432",
+    user: "supabase_admin",
+  });
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -369,7 +377,7 @@ try {
     dependencyLockSha256: sha256(readFileSync(join(repo, "package-lock.json"))),
   };
   const migrations = migrationIdentity();
-  const records = FINAL_VERIFICATION_COMMAND_PORTFOLIO.map((command, index) => ({
+  const records = resolvedFinalVerificationCommandPortfolio.map((command, index) => ({
     command,
     status: "passed",
     exitCode: 0,
@@ -416,6 +424,9 @@ try {
       commandCount: records.length,
       passedCount: records.length,
       commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
+      resolvedCommandPortfolioSha256: sha256(
+        JSON.stringify(resolvedFinalVerificationCommandPortfolio),
+      ),
       minimumFreeBytesRequired: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
       minimumObservedFreeBytes: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
       fatalResourceDiagnosticCount: 0,
@@ -858,6 +869,52 @@ try {
   run(process.execPath, [builder, "--round-one", tamperedPortfolioRound, "--round-two", join(external, "round-2"), "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-command-portfolio")], {
     expectFailure: true,
     match: /does not match the exact final-verification command contract/,
+  });
+
+  const differentRuntimeRound = join(external, "different-runtime-round");
+  cloneExactRoundFixture(join(external, "round-2"), differentRuntimeRound);
+  const differentRuntimeSummaryPath = join(
+    differentRuntimeRound,
+    "verification-summary.json",
+  );
+  const differentRuntimeSummary = JSON.parse(
+    readFileSync(differentRuntimeSummaryPath, "utf8"),
+  );
+  const differentRuntimeRecord = differentRuntimeSummary.records[45];
+  const originalRuntimeCommand = differentRuntimeRecord.command;
+  differentRuntimeRecord.command = originalRuntimeCommand.replace(
+    "--port 55432",
+    "--port 55433",
+  );
+  assert.notEqual(differentRuntimeRecord.command, originalRuntimeCommand);
+  const differentRuntimeLogPath = join(
+    differentRuntimeRound,
+    differentRuntimeRecord.log,
+  );
+  writeFileSync(
+    differentRuntimeLogPath,
+    readFileSync(differentRuntimeLogPath, "utf8").replace(
+      originalRuntimeCommand,
+      differentRuntimeRecord.command,
+    ),
+  );
+  differentRuntimeSummary.resolvedCommandPortfolioSha256 = sha256(
+    JSON.stringify(
+      differentRuntimeSummary.records.map((record) => record.command),
+    ),
+  );
+  rmSync(differentRuntimeSummaryPath);
+  const differentRuntimeEvidence =
+    assertFinalVerificationEvidenceIsSealable(differentRuntimeRound);
+  differentRuntimeSummary.evidenceTreeStatus = differentRuntimeEvidence.status;
+  differentRuntimeSummary.evidenceTreeFileCountBeforeSummary =
+    differentRuntimeEvidence.fileCountBeforeSummary;
+  differentRuntimeSummary.evidenceTreeSha256BeforeSummary =
+    differentRuntimeEvidence.evidenceTreeSha256BeforeSummary;
+  write(differentRuntimeSummaryPath, differentRuntimeSummary);
+  run(process.execPath, [builder, "--round-one", join(external, "round-1"), "--round-two", differentRuntimeRound, "--staging", staging, "--checkpoint-record", checkpointPath, "--output", join(external, "must-not-exist-different-runtime")], {
+    expectFailure: true,
+    match: /different resolved command portfolios/,
   });
 
   const mismatchRound = join(external, "mismatch-round");

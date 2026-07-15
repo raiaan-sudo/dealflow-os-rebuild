@@ -32,6 +32,20 @@ assert.equal(
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
 );
 assert.match(source, /expectedBranch = "codex\/dealflow-overnight-release-20260712"/);
+assert.match(
+  source,
+  /expectedRepo = realpathSync\([\s\S]*fileURLToPath\(import\.meta\.url\)[\s\S]*"\.\.\/\.\."/,
+);
+assert.match(source, /DEALFLOW_STAGING_PROJECT_RECORD/);
+assert.match(source, /extractFinalVerificationNativePostgresRuntime/);
+assert.match(
+  source,
+  /expectedPostgresBin = verificationNativePostgresRuntimes\[0\]\.pgbin/,
+);
+assert.doesNotMatch(
+  source,
+  /\/private\/tmp\/dealflow-(?:overnight-release|pg17\.6|new-staging-project)/,
+);
 assert.match(source, /requires a clean release worktree/);
 assert.match(source, /dealflow\.final-verification\.v3/);
 assert.match(source, /final-verification-command-contract\.mjs/);
@@ -123,6 +137,11 @@ assert.match(
   roundReaderSource,
   /assertExactFinalVerificationSummaryPortfolio\([\s\S]+value,[\s\S]+`Verification round \$\{expectedRound\} portfolio`/,
   "the executed retention round reader must enforce the shared exact portfolio",
+);
+assert.match(
+  source,
+  /rounds\[0\]\.resolvedCommandPortfolioSha256 !==\s*rounds\[1\]\.resolvedCommandPortfolioSha256/,
+  "both verification rounds must bind the same resolved native runtime command portfolio",
 );
 assert.ok(
   roundValidationIndex >= 0 &&

@@ -15,8 +15,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
 import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
@@ -94,7 +95,9 @@ import {
   resolvePinnedVercelCli,
 } from "./vercel-cli-selection-contract.mjs";
 
-const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
+const EXPECTED_REPO = realpathSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+);
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_STAGING_BASE_URL = `https://${EXPECTED_STAGING_HOST}`;
@@ -261,6 +264,7 @@ const executionAbortController = new AbortController();
 const activeInterruptibleCommands = new Set();
 let terminationRequested = false;
 let terminationRequest = null;
+let approvedStagingEvidenceParent = null;
 let resolveTerminationRequest;
 const terminationRequestPromise = new Promise((resolvePromise) => {
   resolveTerminationRequest = resolvePromise;
@@ -466,7 +470,7 @@ function usage() {
   return `Usage:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-migrations --deploy \\
-    --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<seal> \\
+    --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
@@ -474,7 +478,7 @@ Safe resume after a previously sealed atomic application:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --verify-existing-migrations --deploy \\
     --prior-migration-proof-dir /absolute/path/prior/migration-proof \\
-    --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<new-seal> \\
+    --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
@@ -482,7 +486,7 @@ Exact forward-only migration 104 on the pinned read-only-proven 103-migration st
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-forward-migration --deploy \\
     --prior-migration-proof-dir /absolute/path/pinned-103/migration-proof \\
-    --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<new-seal> \\
+    --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
@@ -491,6 +495,8 @@ Required execution environment:
   VERCEL_CLI_JS=/absolute/canonical/path/to/node_modules/vercel/dist/index.js
   VERCEL_CLI_SHA256=<independently pinned lowercase entry-file SHA-256>
   VERCEL_CLI_INSTALLATION_SHA256=<independently pinned lowercase full-installation SHA-256>
+  DEALFLOW_STAGING_EVIDENCE_PARENT=/absolute/durable/owner-only/evidence-parent
+  DEALFLOW_STAGING_PROJECT_RECORD=/absolute/external/owner-only-qibh-project-record.json
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
 Exactly one migration mode is required. Resume mode is read-only. Forward mode
@@ -551,6 +557,91 @@ function requiredEnvironment(name, minimumLength = 1) {
     throw new Error(`${name} is required and must contain at least ${minimumLength} characters`);
   }
   return value;
+}
+
+function captureExactStagingProjectRecord(expectedProjectRef) {
+  const suppliedPath = requiredEnvironment("DEALFLOW_STAGING_PROJECT_RECORD");
+  if (!isAbsolute(suppliedPath)) {
+    throw new Error("DEALFLOW_STAGING_PROJECT_RECORD must be an absolute path");
+  }
+  const path = resolve(suppliedPath);
+  if (!existsSync(path)) {
+    throw new Error("The isolated staging project record is unavailable");
+  }
+  const stat = lstatSync(path);
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    stat.nlink !== 1 ||
+    (stat.mode & 0o077) !== 0 ||
+    stat.uid !== process.getuid() ||
+    stat.size <= 0 ||
+    stat.size > 64 * 1024 ||
+    realpathSync(path) !== path
+  ) {
+    throw new Error(
+      "The isolated staging project record must be an owner-only real file",
+    );
+  }
+  const relation = relative(EXPECTED_REPO, path);
+  if (
+    relation === "" ||
+    (!relation.startsWith(`..${sep}`) && relation !== "..")
+  ) {
+    throw new Error("The isolated staging project record must remain outside the release repository");
+  }
+  const record = JSON.parse(readFileSync(path, "utf8"));
+  const projectRef = String(record.ref ?? "").trim().toLowerCase();
+  if (
+    projectRef !== expectedProjectRef ||
+    record.name !== "dealflow-staging-20260712" ||
+    (record.status !== "ACTIVE_HEALTHY" && record.status !== "ACTIVE") ||
+    projectRef.slice(-4) !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
+    sha256(projectRef) !== EXPECTED_SUPABASE_FINGERPRINT
+  ) {
+    throw new Error("The exact isolated staging project record is invalid");
+  }
+  return Object.freeze({
+    path,
+    evidence: Object.freeze({
+      status: "PASS",
+      projectFingerprint: EXPECTED_SUPABASE_FINGERPRINT,
+      safeSuffix: EXPECTED_SUPABASE_SAFE_SUFFIX,
+      ownerOnly: true,
+      outsideReleaseRepository: true,
+      pathPersisted: false,
+    }),
+  });
+}
+
+function captureApprovedStagingEvidenceParent(evidenceDir) {
+  const suppliedParent = requiredEnvironment(
+    "DEALFLOW_STAGING_EVIDENCE_PARENT",
+  );
+  const exactEvidencePath = assertApprovedStagingEvidenceRootPath(evidenceDir, {
+    approvedParent: suppliedParent,
+  });
+  const parent = dirname(exactEvidencePath);
+  const ephemeralRoots = ["/tmp", "/private/tmp", "/var/tmp"]
+    .filter((path) => existsSync(path))
+    .map((path) => realpathSync(path));
+  if (
+    ephemeralRoots.some(
+      (root) => parent === root || parent.startsWith(`${root}${sep}`),
+    )
+  ) {
+    throw new Error("Isolated staging evidence requires a durable non-temporary parent");
+  }
+  const relation = relative(EXPECTED_REPO, parent);
+  if (
+    relation === "" ||
+    (!relation.startsWith(`..${sep}`) && relation !== "..")
+  ) {
+    throw new Error(
+      "Isolated staging evidence parent must remain outside the release repository",
+    );
+  }
+  return parent;
 }
 
 function requiredStrongStagingSecret(name, minimumLength) {
@@ -1150,7 +1241,9 @@ function hostedStagingEnvironment(
 }
 
 function prepareEvidenceDirectory(path) {
-  const exactPath = assertApprovedStagingEvidenceRootPath(path);
+  const exactPath = assertApprovedStagingEvidenceRootPath(path, {
+    approvedParent: approvedStagingEvidenceParent,
+  });
   if (existsSync(exactPath)) throw new Error("Evidence directory must not already exist");
   mkdirSync(exactPath, { recursive: false, mode: 0o700 });
   chmodSync(exactPath, 0o700);
@@ -1158,6 +1251,7 @@ function prepareEvidenceDirectory(path) {
 
 function resetEvidenceDirectoryForSafeFailureBundle(reason) {
   const path = assertApprovedStagingEvidenceRootPath(failureContext.evidenceDir, {
+    approvedParent: approvedStagingEvidenceParent,
     mustExist: true,
   });
   rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
@@ -1310,6 +1404,8 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
     commandCount: parsed.commandCount,
     failedCount: parsed.failedCount,
     blockedCount: parsed.blockedCount,
+    resolvedCommandPortfolioSha256:
+      parsed.resolvedCommandPortfolioSha256,
     commit: parsed.headCommit,
     tree: parsed.headTree,
     migrationCount: parsed.migrationCount,
@@ -5234,6 +5330,8 @@ async function main() {
       "Read-only resume and exact forward mode require --prior-migration-proof-dir; fresh apply forbids it",
     );
   }
+  approvedStagingEvidenceParent =
+    captureApprovedStagingEvidenceParent(options.evidenceDir);
 
   failureContext.stage = "candidate_preflight";
   const identity = captureExactReleaseIdentity();
@@ -5242,6 +5340,9 @@ async function main() {
   const vercelAuthority = captureVercelProjectIdentity();
   const vercelProject = vercelAuthority.evidence;
   const execution = assertFailClosedExecutionEnvironment();
+  const stagingProjectRecord = captureExactStagingProjectRecord(
+    execution.projectRef,
+  );
   const vercel = resolvePinnedVercelCli();
   failureContext.vercelSelection = vercel;
   failureContext.stage = "vercel_dry_run_source_portfolio";
@@ -5275,6 +5376,14 @@ async function main() {
   if (roundOne.pathFingerprint === roundTwo.pathFingerprint || roundOne.sha256 === roundTwo.sha256) {
     throw new Error("Two distinct exact final-verification rounds are required");
   }
+  if (
+    roundOne.resolvedCommandPortfolioSha256 !==
+    roundTwo.resolvedCommandPortfolioSha256
+  ) {
+    throw new Error(
+      "The two exact final-verification rounds used different resolved command portfolios",
+    );
+  }
   prepareEvidenceDirectory(options.evidenceDir);
   failureContext.evidenceDir = options.evidenceDir;
   failureContext.stage = "preflight_evidence";
@@ -5287,6 +5396,7 @@ async function main() {
     vercelProject,
     supabaseProjectFingerprint: sha256(execution.projectRef),
     supabaseSafeSuffix: execution.projectRef.slice(-4),
+    stagingProjectRecord: stagingProjectRecord.evidence,
     stableStagingHost: EXPECTED_STAGING_HOST,
     partnerOneStagingHost: EXPECTED_PARTNER_ONE_HOST,
     partnerTwoStagingHost: EXPECTED_SECOND_PARTNER_HOST,
@@ -5373,6 +5483,7 @@ async function main() {
         ...childBaseEnvironment(),
         PATH: process.env.PATH,
         DEALFLOW_NATIVE_PGBIN: process.env.DEALFLOW_NATIVE_PGBIN,
+        DEALFLOW_STAGING_PROJECT_RECORD: stagingProjectRecord.path,
       },
       timeoutMs: 30 * 60_000,
       secrets: protectedRuntimeValues(),
@@ -5531,6 +5642,7 @@ async function main() {
         ...childBaseEnvironment(),
         PATH: process.env.PATH,
         DEALFLOW_NATIVE_PGBIN: process.env.DEALFLOW_NATIVE_PGBIN,
+        DEALFLOW_STAGING_PROJECT_RECORD: stagingProjectRecord.path,
       },
       timeoutMs: 10 * 60_000,
       secrets: protectedRuntimeValues(),
