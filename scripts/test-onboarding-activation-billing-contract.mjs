@@ -6,6 +6,7 @@ import ts from "typescript";
 
 const root = process.cwd();
 const requireFromRepo = createRequire(import.meta.url);
+const NativeFunction = Function;
 const checks = [];
 
 function loadTypeScriptModule(relativePath, mockedImports = {}) {
@@ -19,7 +20,7 @@ function loadTypeScriptModule(relativePath, mockedImports = {}) {
     fileName: relativePath,
   });
   const loadedModule = { exports: {} };
-  const evaluate = new Function("require", "module", "exports", compiled.outputText);
+  const evaluate = new NativeFunction("require", "module", "exports", compiled.outputText);
   evaluate(
     (specifier) => mockedImports[specifier] ?? requireFromRepo(specifier),
     loadedModule,
@@ -33,7 +34,25 @@ function check(name, operation) {
   checks.push(name);
 }
 
-const onboarding = loadTypeScriptModule("src/lib/onboarding-contract.ts");
+let onboarding;
+check("client onboarding schemas remain functional without dynamic Function evaluation", () => {
+  const zod = requireFromRepo("zod");
+  zod.z.config({ jitless: false });
+  const originalFunction = globalThis.Function;
+  let dynamicFunctionCalls = 0;
+  globalThis.Function = function blockedDynamicFunction() {
+    dynamicFunctionCalls += 1;
+    throw new Error("dynamic Function evaluation is blocked by the production CSP");
+  };
+  try {
+    onboarding = loadTypeScriptModule("src/lib/onboarding-contract.ts");
+    assert.equal(onboarding.campaignModeSchema.parse("buyer"), "buyer");
+  } finally {
+    globalThis.Function = originalFunction;
+  }
+  assert.equal(dynamicFunctionCalls, 0);
+  assert.equal(zod.z.config().jitless, true);
+});
 const metaQualification = loadTypeScriptModule(
   "src/lib/meta-instant-form-qualification.ts",
 );

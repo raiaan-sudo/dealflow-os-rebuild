@@ -24,6 +24,7 @@ import { resolveCampaignDeliveryMetricTruth } from "@/lib/dashboard/campaign-del
 import {
   resolveSelectedMetaAccountCurrency,
 } from "@/lib/dashboard/meta-account-currency";
+import { formatStableDashboardUtcTimestamp } from "@/lib/dashboard/stable-utc-date-format";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
 import type { ProductMessageKey } from "@/lib/i18n/messages";
@@ -83,16 +84,18 @@ type Props = {
 };
 
 function formatDateTime(value: string, locale: ProductLocale) {
-  return new Date(value).toLocaleString(getProductIntlLocale(locale), {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
+  return formatStableDashboardUtcTimestamp({
+    value,
+    locale,
+    includeTime: true,
   });
 }
 
 function formatDate(value: string, locale: ProductLocale) {
-  return new Date(value).toLocaleDateString(getProductIntlLocale(locale), {
-    timeZone: "UTC",
+  return formatStableDashboardUtcTimestamp({
+    value,
+    locale,
+    includeTime: false,
   });
 }
 

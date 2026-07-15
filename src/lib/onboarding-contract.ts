@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+// These schemas are loaded by the client onboarding route. Zod's default JIT
+// capability probe uses Function(), which a strict production CSP must block.
+// Construct every schema in CSP-safe interpreter mode instead.
+z.config({ jitless: true });
+
 export const ONBOARDING_CONTRACT_VERSION = 1 as const;
 export const ONBOARDING_DRAFT_EXPIRY_MS = 24 * 60 * 60 * 1000;
 

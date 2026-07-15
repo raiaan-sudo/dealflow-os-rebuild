@@ -1,3 +1,5 @@
+import { isAllowedStagingTurnstileRequest } from "./browser-session-bundle-contract.mjs";
+
 const WEBSOCKET_CLOSE_CODE = 1008;
 const WEBSOCKET_CLOSE_REASON = "DealFlow acceptance blocks WebSockets";
 export const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
@@ -7,6 +9,13 @@ export const VERCEL_SET_BYPASS_COOKIE_HEADER = "x-vercel-set-bypass-cookie";
 export const VERCEL_AUTOMATION_BYPASS_COOKIE = "_vercel_jwt";
 
 const STRONG_VERCEL_AUTOMATION_BYPASS_SECRET = /^[\x21-\x7e]{32,}$/;
+const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
+const TURNSTILE_TEST_TITLE =
+  "public funnel renders the official staging Turnstile test widget without submitting a lead";
+const WEBKIT_TURNSTILE_BLOB_CONSOLE_ERROR =
+  "Failed to load resource: The operation couldn’t be completed. (WebKitBlobResource error 1.)";
+const CANONICAL_TURNSTILE_BLOB_URL =
+  /^blob:https:\/\/challenges\.cloudflare\.com\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EXACT_VERCEL_PROTECTION_ENTRY_KEYS = Object.freeze([
   "origin",
   "vercelAutomationBypassRequired",
@@ -45,6 +54,36 @@ function isStrongVercelAutomationBypassSecret(secret) {
     typeof secret === "string" &&
     secret.trim() === secret &&
     STRONG_VERCEL_AUTOMATION_BYPASS_SECRET.test(secret)
+  );
+}
+
+/**
+ * Match the one non-actionable console artifact emitted by WebKit after the
+ * official Cloudflare Turnstile staging widget has already produced a token.
+ * Every field is exact and near-misses remain fatal acceptance diagnostics.
+ */
+export function isExpectedWebKitTurnstileTestWidgetConsoleError({
+  browserName,
+  testTitle,
+  messageType,
+  messageText,
+  location,
+  stagingAcceptanceExecution,
+  siteKey,
+}) {
+  const url = location?.url;
+  return (
+    browserName === "webkit" &&
+    testTitle === TURNSTILE_TEST_TITLE &&
+    messageType === "error" &&
+    messageText === WEBKIT_TURNSTILE_BLOB_CONSOLE_ERROR &&
+    location?.lineNumber === 0 &&
+    location?.columnNumber === 0 &&
+    stagingAcceptanceExecution === true &&
+    siteKey === TURNSTILE_TEST_SITE_KEY &&
+    typeof url === "string" &&
+    CANONICAL_TURNSTILE_BLOB_URL.test(url) &&
+    isAllowedStagingTurnstileRequest(url, "GET", true)
   );
 }
 

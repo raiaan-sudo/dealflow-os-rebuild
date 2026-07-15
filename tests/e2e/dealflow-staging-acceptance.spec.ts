@@ -17,6 +17,7 @@ import {
 import {
   exactVercelAutomationProtectionPortfolio,
   installBrowserContextNetworkBoundary,
+  isExpectedWebKitTurnstileTestWidgetConsoleError,
   primeVercelAutomationBypassCookies,
   safeHttpEvidenceTarget,
   safeWebSocketEvidenceTarget,
@@ -50,6 +51,8 @@ const PARTNER_ONE_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000004";
 const PARTNER_TWO_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000005";
 const PARTNER_BRAND_NAME = "DF-STAGING-20260712 Partner Realty OS";
 const PARTNER_TWO_BRAND_NAME = "DF-STAGING-20260712 Partner Two Realty OS";
+const TURNSTILE_TEST_TITLE =
+  "public funnel renders the official staging Turnstile test widget without submitting a lead";
 const LOCALIZED_PRODUCT_COPY = Object.freeze({
   en: Object.freeze({ signIn: "Sign in", dashboard: "Dashboard" }),
   fr: Object.freeze({ signIn: "Se connecter", dashboard: "Tableau de bord" }),
@@ -364,7 +367,11 @@ function assertGlobalPreconditions() {
   }
 }
 
-async function installFailClosedNetworkBoundary(page: Page) {
+async function installFailClosedNetworkBoundary(
+  page: Page,
+  browserName: string,
+  testTitle: string,
+) {
   const diagnostics: Diagnostics = {
     blockedMutations: [],
     forbiddenHosts: [],
@@ -491,7 +498,22 @@ async function installFailClosedNetworkBoundary(page: Page) {
   });
 
   context.on("console", (message) => {
-    if (message.type() === "error" && !/ERR_BLOCKED_BY_CLIENT/i.test(message.text())) {
+    const expectedWebKitTurnstileTestWidgetArtifact =
+      isExpectedWebKitTurnstileTestWidgetConsoleError({
+        browserName,
+        testTitle,
+        messageType: message.type(),
+        messageText: message.text(),
+        location: message.location(),
+        stagingAcceptanceExecution:
+          process.env.STAGING_ACCEPTANCE_EXECUTION === "true",
+        siteKey: process.env.STAGING_TURNSTILE_TEST_SITE_KEY,
+      });
+    if (
+      message.type() === "error" &&
+      !/ERR_BLOCKED_BY_CLIENT/i.test(message.text()) &&
+      !expectedWebKitTurnstileTestWidgetArtifact
+    ) {
       diagnostics.consoleErrors.push(sanitizeBrowserDiagnostic(message.text()));
     }
   });
@@ -544,9 +566,13 @@ async function installFailClosedNetworkBoundary(page: Page) {
     const expectedNavigationAbort =
       request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
     const expectedInterceptedWebKitTurnstileBlobFailure =
+      browserName === "webkit" &&
+      testTitle === TURNSTILE_TEST_TITLE &&
       process.env.STAGING_ACCEPTANCE_EXECUTION === "true" &&
       process.env.STAGING_TURNSTILE_TEST_SITE_KEY === "1x00000000000000000000AA" &&
       request.resourceType() === "xhr" &&
+      request.method() === "GET" &&
+      new URL(request.url()).protocol === "blob:" &&
       isAllowedStagingTurnstileRequest(request.url(), request.method(), true) &&
       errorText === "The operation couldn’t be completed. (WebKitBlobResource error 1.)";
     if (!expectedNavigationAbort && !expectedInterceptedWebKitTurnstileBlobFailure) {
@@ -798,8 +824,8 @@ async function assertNoSeriousAccessibilityViolations(page: Page) {
 }
 
 test.beforeAll(assertGlobalPreconditions);
-test.beforeEach(async ({ page }) => {
-  await installFailClosedNetworkBoundary(page);
+test.beforeEach(async ({ page, browserName }, testInfo) => {
+  await installFailClosedNetworkBoundary(page, browserName, testInfo.title);
   await assertHostedZeroEffects(page);
 });
 test.afterEach(async ({ page }, testInfo) => {
@@ -1091,7 +1117,9 @@ test("grandfathered legacy realtor retains reconciled active entitlement", async
 test("white-label child receives attributed branding across core product routes", async ({ page }) => {
   const partnerOrigin = requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL");
   await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(
+    page.getByText(PARTNER_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+  ).toBeVisible();
   await assertDirectImageLoaded(
     page.locator(`img[alt="${PARTNER_BRAND_NAME} logo"]`),
     "/logo.svg",
@@ -1099,7 +1127,9 @@ test("white-label child receives attributed branding across core product routes"
   const policyPath = `/api/campaigns/${PARTNER_ONE_CAMPAIGN_ID}/optimization-policy`;
   await openAuthenticatedSession(page, "partnerChild", "/dashboard", partnerOrigin, policyPath);
   await assertOptimizationPolicySettled(page);
-  await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(
+    page.getByText(PARTNER_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+  ).toBeVisible();
   await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
   for (const route of [
     { path: "/builder", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
@@ -1116,7 +1146,9 @@ test("white-label child receives attributed branding across core product routes"
       },
     );
     if (route.readPathname === policyPath) await assertOptimizationPolicySettled(page);
-    await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
+    await expect(
+      page.getByText(PARTNER_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+    ).toBeVisible();
     await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
   }
   const partnerCampaignsUrl = new URL("/api/campaigns", partnerOrigin).toString();
@@ -1133,7 +1165,9 @@ test("white-label child receives attributed branding across core product routes"
 test("second white-label child receives only partner-two branding and tenant data", async ({ page }) => {
   const partnerOrigin = requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL");
   await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(
+    page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+  ).toBeVisible();
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   await assertDirectImageLoaded(
     page.locator(`img[alt="${PARTNER_TWO_BRAND_NAME} logo"]`),
@@ -1142,7 +1176,9 @@ test("second white-label child receives only partner-two branding and tenant dat
   const policyPath = `/api/campaigns/${PARTNER_TWO_CAMPAIGN_ID}/optimization-policy`;
   await openAuthenticatedSession(page, "partnerChildTwo", "/dashboard", partnerOrigin, policyPath);
   await assertOptimizationPolicySettled(page);
-  await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(
+    page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+  ).toBeVisible();
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   for (const route of [
     { path: "/builder", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
@@ -1159,7 +1195,9 @@ test("second white-label child receives only partner-two branding and tenant dat
       },
     );
     if (route.readPathname === policyPath) await assertOptimizationPolicySettled(page);
-    await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
+    await expect(
+      page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+    ).toBeVisible();
     await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   }
   const partnerCampaignsUrl = new URL("/api/campaigns", partnerOrigin).toString();

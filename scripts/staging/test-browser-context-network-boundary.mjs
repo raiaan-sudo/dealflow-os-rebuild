@@ -12,6 +12,7 @@ import {
   exactVercelAutomationProtectionPortfolio,
   installBrowserContextNetworkBoundary,
   isExactLocalNextDevelopmentWebSocket,
+  isExpectedWebKitTurnstileTestWidgetConsoleError,
   primeVercelAutomationBypassCookies,
   scopedStagingAccessHeaders,
   safeHttpEvidenceTarget,
@@ -23,6 +24,64 @@ import {
   VERCEL_SET_BYPASS_COOKIE_HEADER,
   vercelAutomationBypassHeadersForExactOrigin,
 } from "./browser-context-network-boundary.mjs";
+
+const exactWebKitTurnstileConsoleArtifact = {
+  browserName: "webkit",
+  testTitle:
+    "public funnel renders the official staging Turnstile test widget without submitting a lead",
+  messageType: "error",
+  messageText:
+    "Failed to load resource: The operation couldn’t be completed. (WebKitBlobResource error 1.)",
+  location: {
+    url: "blob:https://challenges.cloudflare.com/123e4567-e89b-12d3-a456-426614174000",
+    lineNumber: 0,
+    columnNumber: 0,
+  },
+  stagingAcceptanceExecution: true,
+  siteKey: "1x00000000000000000000AA",
+};
+assert.equal(
+  isExpectedWebKitTurnstileTestWidgetConsoleError(
+    exactWebKitTurnstileConsoleArtifact,
+  ),
+  true,
+);
+for (const nearMiss of [
+  { browserName: "chromium" },
+  { testTitle: "another staging journey" },
+  { messageType: "warning" },
+  { messageText: `${exactWebKitTurnstileConsoleArtifact.messageText} extra` },
+  { location: { ...exactWebKitTurnstileConsoleArtifact.location, lineNumber: 1 } },
+  { location: { ...exactWebKitTurnstileConsoleArtifact.location, columnNumber: 1 } },
+  {
+    location: {
+      ...exactWebKitTurnstileConsoleArtifact.location,
+      url: "blob:https://challenges.cloudflare.com/123E4567-E89B-12D3-A456-426614174000",
+    },
+  },
+  {
+    location: {
+      ...exactWebKitTurnstileConsoleArtifact.location,
+      url: "blob:https://evil.example/123e4567-e89b-12d3-a456-426614174000",
+    },
+  },
+  {
+    location: {
+      ...exactWebKitTurnstileConsoleArtifact.location,
+      url: "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/test",
+    },
+  },
+  { stagingAcceptanceExecution: false },
+  { siteKey: "1x00000000000000000000BB" },
+]) {
+  assert.equal(
+    isExpectedWebKitTurnstileTestWidgetConsoleError({
+      ...exactWebKitTurnstileConsoleArtifact,
+      ...nearMiss,
+    }),
+    false,
+  );
+}
 
 let httpPattern = null;
 let httpHandler = null;
