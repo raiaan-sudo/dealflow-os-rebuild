@@ -36,18 +36,15 @@ export function resolveIsolatedStagingImageConfig(environment = process.env) {
     // Vercel's default image optimizer is edge-owned and does not traverse the
     // application proxy. Exact isolated staging therefore emits only direct
     // images, forbids static-image module imports, and rejects every declared
-    // local/remote optimizer source. The dedicated custom path remains an
-    // application-owned closed surface. Production receives no override.
+    // local/remote optimizer source. An explicit empty localPatterns array is
+    // the deny-all form; undefined would allow local sources. The dedicated
+    // custom path remains application-owned and closed. Production receives
+    // no override.
     unoptimized: true,
     disableStaticImages: true,
     path: DISABLED_STAGING_IMAGE_OPTIMIZER_PATH,
     remotePatterns: [],
-    localPatterns: [
-      {
-        pathname: "/__dealflow-disabled-image-optimizer__/**",
-        search: "",
-      },
-    ],
+    localPatterns: [],
   };
 }
 

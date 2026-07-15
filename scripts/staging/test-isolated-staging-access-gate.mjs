@@ -92,8 +92,9 @@ assert.match(nextConfigSource, /disableStaticImages: true/);
 assert.match(nextConfigSource, /ISOLATED_STAGING_PROJECT_ID_SHA256/);
 assert.match(nextConfigSource, /createHash\("sha256"\)\.update\(vercelProjectId\)/);
 assert.match(nextConfigSource, /_dealflow-staging-image-optimizer-disabled/);
-assert.match(nextConfigSource, /__dealflow-disabled-image-optimizer__/);
-assert.match(nextConfigSource, /production receives no override/i);
+assert.match(nextConfigSource, /localPatterns: \[\]/);
+assert.match(nextConfigSource, /undefined would allow local sources/);
+assert.match(nextConfigSource, /production receives[\s/]*no override/i);
 
 const { resolveIsolatedStagingImageConfig } = await import(
   `${new URL("../../next.config.mjs", import.meta.url).href}?staging-image-config-contract`
@@ -111,12 +112,7 @@ assert.deepEqual(exactStagingImageConfig, {
   disableStaticImages: true,
   path: "/_dealflow-staging-image-optimizer-disabled",
   remotePatterns: [],
-  localPatterns: [
-    {
-      pathname: "/__dealflow-disabled-image-optimizer__/**",
-      search: "",
-    },
-  ],
+  localPatterns: [],
 });
 assert.equal(
   resolveIsolatedStagingImageConfig({ DEALFLOW_DEPLOYMENT_TARGET: "production" }),
@@ -162,6 +158,9 @@ const imageBuildInputProof = assertExactStagingImageBuildInputInventory({
   deployablePaths: deployableManifest.entries.map(({ path }) => path),
 });
 assert.equal(imageBuildInputProof.optimizerEligibleStaticMediaAssetCount, 0);
+assert.equal(imageBuildInputProof.sourceNextConfigLocalPatternsDenyAll, true);
+assert.equal(imageBuildInputProof.sourceNextConfigRemotePatternsDenyAll, true);
+assert.equal(imageBuildInputProof.vercelNativeOptimizerConstructionReferenceCount, 0);
 assert.equal(imageBuildInputProof.nextImageModuleReferenceCount, 4);
 assert.equal(imageBuildInputProof.nextImageJsxCount, 6);
 assert.equal(
@@ -194,6 +193,14 @@ for (const source of [
   `const endpoint = "/_next/static/media/hero.123.png";`,
   `const endpoint = "/_next/image?url=%2Flogo.svg&w=32&q=75";`,
   `const endpoint = \`/_next/image?url=\${source}&w=32&q=75\`;`,
+  `const endpoint = "/_vercel/image?url=%2Flogo.svg&w=32&q=75";`,
+  `const endpoint = \`/_vercel/image?url=\${source}&w=32&q=75\`;`,
+  `const endpoint = "/_vercel/" + "image?url=%2Flogo.svg&w=32&q=75";`,
+  `const responsive = "/_vercel/image?url=%2Flogo.svg&w=32&q=75 1x, /logo.svg 2x";`,
+  `export default () => <img srcSet="/_vercel/image?url=%2Flogo.svg&w=32&q=75 1x" alt="x" />;`,
+  `export default () => <picture><source srcSet="/_vercel/image?url=%2Flogo.svg&w=32&q=75 1x" /><img src="/logo.svg" alt="x" /></picture>;`,
+  `export default () => <link rel="preload" as="image" imageSrcSet="/_vercel/image?url=%2Flogo.svg&w=32&q=75 1x" />;`,
+  `const background = "url('/_vercel/image?url=%2Flogo.svg&w=32&q=75')";`,
   `const background = "url('./hero.png')";`,
   `export default () => <img src="./hero.png" alt="x" />;`,
   `import Image from "next/image"; const Wrapped = Image; export default () => <Image unoptimized src="/logo.svg" alt="x" />;`,
@@ -353,5 +360,5 @@ for (const scenario of [
 }
 
 console.log(
-  "isolated staging access gate: PASS (private app, exact direct-image inventory, staging static imports disabled, edge optimizer pinned to disallowed input, custom optimizer closed, and lead-capture surface; fail-closed secret; no secret forwarding; production unaffected; exact native-signed provider callbacks remain reachable)",
+  "isolated staging access gate: PASS (private app, exact direct-image inventory, deny-all staging image inputs, strict provider-edge rejection contract, custom optimizer closed, and lead-capture surface; fail-closed secret; no secret forwarding; production unaffected; exact native-signed provider callbacks remain reachable)",
 );

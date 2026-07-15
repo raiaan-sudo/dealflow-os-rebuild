@@ -23,6 +23,26 @@ const imageBuildInputContract = readFileSync(
   join(root, "scripts", "staging", "staging-image-build-input-contract.mjs"),
   "utf8",
 );
+const stagingAccessGateContractTest = readFileSync(
+  join(root, "scripts", "staging", "test-isolated-staging-access-gate.mjs"),
+  "utf8",
+);
+const imageOptimizerResponseContract = readFileSync(
+  join(root, "scripts", "staging", "staging-image-optimizer-response-contract.mjs"),
+  "utf8",
+);
+const imageOptimizerResponseContractTest = readFileSync(
+  join(root, "scripts", "staging", "test-staging-image-optimizer-response-contract.mjs"),
+  "utf8",
+);
+const deployedImageConfigContract = readFileSync(
+  join(root, "scripts", "staging", "vercel-deployed-image-config-contract.mjs"),
+  "utf8",
+);
+const deployedImageConfigContractTest = readFileSync(
+  join(root, "scripts", "staging", "test-vercel-deployed-image-config-contract.mjs"),
+  "utf8",
+);
 const trustBundle = readFileSync(
   join(root, "config", "security", "supabase-prod-ca-2021.crt"),
 );
@@ -1075,32 +1095,177 @@ assert.match(runner, /`\$\{STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX\}\$\{identit
 assert.match(runner, /function buildVersionedPrivateImagePaths/);
 assert.match(runner, /optimizer\.searchParams\.set\("url", sourceResourcePath\)/);
 assert.match(runner, /DISABLED_STAGING_IMAGE_OPTIMIZER_PATH/);
+assert.match(runner, /VERCEL_NATIVE_IMAGE_OPTIMIZER_PATH = "\/_vercel\/image"/);
 assert.match(runner, /function isExactDealFlowApplicationGateResponse/);
-assert.match(runner, /function isExactNextImageDisallowedInputResponse/);
-assert.match(runner, /NEXT_IMAGE_DISALLOWED_BODY_BYTES = 30/);
-assert.match(runner, /3a1ccc2882f115bd4e3e3fa69bdf2614c34865765b5b0db3f78716dfe922de5f/);
-assert.match(runner, /NEXT_IMAGE_DISALLOWED_CACHE_CONTROL/);
-assert.match(runner, /vercelErrorPresent === false/);
+assert.match(runner, /classifyExactNextImageOptimizerRejection/);
+assert.match(runner, /assertExactNextImageOptimizerSixModeMatrix/);
+assert.match(runner, /function proveExactProviderOptimizerMatrices/);
+assert.match(runner, /bothProviderPathsClassifiedIdentically: true/);
+assert.match(
+  runner,
+  /enumeratedDealFlowOptimizerSourcePortfolioClosedForManifestBoundCandidate: true/,
+);
+assert.match(runner, /hostedOutputInventoryExhaustivenessClaimed: false/);
+assert.match(runner, /assertExactCandidateDeployedImagePortfolioConfiguration/);
+assert.match(runner, /authoritative\.images/);
+assert.match(runner, /hostedExactCandidateEnumeratedImagePortfolioProof/);
+assert.match(runner, /hosted-exact-candidate-image-portfolio\.json/);
+assert.match(runner, /hosted-exact-candidate-image-portfolio-failure\.json/);
+assert.match(runner, /summarizeDeployedImageConfiguration/);
+assert.match(runner, /rawDeploymentMetadataPersisted !== false/);
+assert.match(runner, /deploymentIdPersistedInThisProof !== false/);
+assert.match(runner, /projectIdPersistedInThisProof !== false/);
+assert.ok(
+  deployedImageConfigContract.includes(
+    '"^(?:\\\\/_next\\\\/static\\\\/media',
+  ),
+  "deployed image config must pin the exact compiled static-media regex",
+);
+assert.match(deployedImageConfigContract, /remotePatterns\.length !== 0/);
+assert.match(deployedImageConfigContract, /domains\.length !== 0/);
+assert.match(deployedImageConfigContract, /optimizerEligibleStaticMediaAssetCount !== 0/);
+assert.match(deployedImageConfigContract, /JSON\.stringify\(qualities\).*\[75\]/s);
+assert.match(deployedImageConfigContract, /EXACT_IMAGE_SIZES/);
+assert.match(deployedImageConfigContract, /images\.minimumCacheTTL !== 14_400/);
+assert.match(deployedImageConfigContract, /\["image\/webp"\]/);
+assert.match(deployedImageConfigContract, /script-src 'none'; frame-src 'none'; sandbox;/);
+assert.match(deployedImageConfigContract, /images\.contentDispositionType !== "attachment"/);
+assert.match(deployedImageConfigContract, /rawValuesPersisted: false/);
+assert.match(deployedImageConfigContract, /unrecognizedKeys\.length !== 0/);
+assert.match(
+  deployedImageConfigContract,
+  /authoritativeHostedOutputInventoryProven: false/,
+);
+assert.match(
+  deployedImageConfigContract,
+  /compiledConfigurationCompatibleWithEnumeratedPortfolioClosure: true/,
+);
+for (const deployedConfigNegative of [
+  "absent config",
+  "remote pattern",
+  "legacy domain",
+  "missing compiled local pattern",
+  "broad local pattern",
+  "extra local pattern",
+  "eligible static media",
+  "wrong quality",
+  "missing probe width",
+  "duplicate width",
+  "SVG enabled",
+  "wrong cache TTL",
+  "wrong format",
+  "wrong CSP",
+  "inline disposition",
+  "unexpected path",
+  "unexpected loader",
+  "unrecognized authority key",
+]) {
+  assert.ok(
+    deployedImageConfigContractTest.includes(`["${deployedConfigNegative}"`),
+    `missing deployed image configuration negative case: ${deployedConfigNegative}`,
+  );
+}
+assert.match(
+  deployedImageConfigContractTest,
+  /sourceNextConfigLocalPatternsDenyAll: false/,
+);
+assert.match(
+  deployedImageConfigContractTest,
+  /sourceNextConfigRemotePatternsDenyAll: false/,
+);
+assert.match(
+  imageOptimizerResponseContract,
+  /VERCEL_IMAGE_OPTIMIZER_ERROR_CODE =\s*"INVALID_IMAGE_OPTIMIZE_REQUEST"/,
+);
+assert.match(
+  imageOptimizerResponseContract,
+  /181453757443407acf6ee0919e1a19c891d852a9d505bd40c95c3b9029eee2cf/,
+);
+assert.match(
+  imageOptimizerResponseContract,
+  /77766dbf7dfbed83e26d498b516cde4d31dffb22a1374568bbbb2d9eeb094202/,
+);
+assert.match(imageOptimizerResponseContract, /bodyBuffer\.length === 84/);
+assert.match(imageOptimizerResponseContract, /\^\(\[a-z\]\{3\}\\d\)::\(\[A-Za-z0-9_-\]\{32\}\)\$/);
+assert.match(imageOptimizerResponseContract, /rawBodyPersisted: false/);
+assert.match(imageOptimizerResponseContract, /rawBodySha256Persisted: false/);
+assert.match(
+  imageOptimizerResponseContract,
+  /result\.rawBodySha256Persisted !== false/,
+);
+assert.match(imageOptimizerResponseContract, /rawRequestIdPersisted: false/);
+assert.match(imageOptimizerResponseContract, /rawVercelErrorPersisted: false/);
+assert.match(
+  imageOptimizerResponseContract,
+  /dispositions\[0\] !== "EXACT_VERCEL_EDGE_IMAGE_OPTIMIZER_REJECTION"/,
+);
+assert.match(
+  imageOptimizerResponseContractTest,
+  /rawBodySha256Persisted: true/,
+);
+for (const negativeLabel of [
+  "status",
+  "content type",
+  "cache",
+  "redirect",
+  "URL",
+  "location",
+  "error header",
+  "missing error header",
+  "generic 400",
+  "wrong body template",
+  "wrong body code",
+  "wrong region case",
+  "wrong region length",
+  "short opaque ID",
+  "long opaque ID",
+  "unsafe opaque alphabet",
+  "extra trailing byte",
+  "non-UTF8 body",
+]) {
+  assert.ok(
+    imageOptimizerResponseContractTest.includes(`["${negativeLabel}"`),
+    `missing strict optimizer negative case: ${negativeLabel}`,
+  );
+}
 assert.match(runner, /defaultOptimizerOwnedByVercelEdge: true/);
 assert.match(runner, /defaultOptimizerApplicationProxyClaimed: false/);
-assert.match(runner, /EXACT_NEXT_IMAGE_DISALLOWED_INPUT/);
+assert.match(runner, /vercelNativeOptimizerOwnedByVercelEdge: true/);
+assert.match(runner, /vercelNativeOptimizerApplicationProxyClaimed: false/);
+assert.match(runner, /EXACT_VERCEL_EDGE_IMAGE_OPTIMIZER_REJECTION/);
+assert.doesNotMatch(runner, /EXACT_LOCAL_NEXT_IMAGE_OPTIMIZER_REJECTION/);
 assert.match(runner, /proveApprovedDirectPublicImageMatrix/);
 assert.match(runner, /proveDynamicImageSourceMatrix/);
 assert.match(runner, /privateImageForbiddenQueryRejected: true/);
 assert.match(runner, /forbiddenQueryWithValidHeader/);
 assert.match(runner, /assertExactStagingImageBuildInputInventory/);
 assert.match(imageBuildInputContract, /optimizerEligibleStaticMediaAssetCount: 0/);
+assert.match(imageBuildInputContract, /"\/_vercel\/image"/);
+assert.match(imageBuildInputContract, /staticallyConcatenatedText/);
+assert.match(imageBuildInputContract, /containsForbiddenOptimizerResourcePath/);
 assert.match(imageBuildInputContract, /next\/legacy\/image/);
 assert.match(imageBuildInputContract, /next\/future\/image/);
 assert.match(imageBuildInputContract, /aliases or calls its Next Image binding/);
 assert.match(imageBuildInputContract, /Dynamic image-producing route inventory is not exact/);
 assert.match(imageBuildInputContract, /Deployable image assets are not the exact approved public direct-asset portfolio/);
-assert.match(runner, /function classifyExactLegacyOptimizerResponse/);
-assert.match(runner, /LEGACY_BENIGN_OPTIMIZER_BODY_SHA256/);
+for (const forbiddenVercelConstruction of [
+  '"/_vercel/image?url=%2Flogo.svg&w=32&q=75"',
+  "const endpoint = \\`/_vercel/image?url=",
+  '"/_vercel/" + "image?url=%2Flogo.svg&w=32&q=75"',
+  'srcSet="/_vercel/image?url=%2Flogo.svg&w=32&q=75 1x"',
+  'imageSrcSet="/_vercel/image?url=%2Flogo.svg&w=32&q=75 1x"',
+  "url('/_vercel/image?url=%2Flogo.svg&w=32&q=75')",
+]) {
+  assert.ok(
+    stagingAccessGateContractTest.includes(forbiddenVercelConstruction),
+    `missing forbidden Vercel optimizer construction fixture: ${forbiddenVercelConstruction}`,
+  );
+}
 assert.match(runner, /cachedPriorProofPathUsed: false/);
 assert.match(runner, /privateImageProofVersion: 2/);
 assert.match(runner, /currentVersionedProofIntentionalPublicResourceCountPerAlias: 0/);
-assert.match(runner, /legacyOptimizerCacheResidueClassifiedOnlyByExactBodyIdentity: true/);
+assert.match(runner, /historicalLegacyOptimizerArtifactAcceptedAsCurrentProof: false/);
+assert.match(runner, /retiredSourceOptimizerFullSixModeMatrix: true/);
 assert.match(runner, /retiredPublicSourceStatusAllCredentialModes: 404/);
 assert.match(runner, /postWarmUnauthorizedSourceAndChunkRecheck: true/);
 assert.match(runner, /invalidHeaderAfterWarm/);
@@ -1109,11 +1274,39 @@ assert.match(browserSpec, /imageFailures/);
 assert.match(browserSpec, /response\.request\(\)\.resourceType\(\) === "image"/);
 assert.match(browserSpec, /naturalWidth/);
 assert.match(browserSpec, /assertDirectImageLoaded/);
+assert.match(browserSpec, /optimizerNetworkRequests/);
+assert.match(browserSpec, /optimizerDomSources/);
+assert.match(browserSpec, /optimizerPerformanceEntries/);
+assert.match(browserSpec, /performance\s*\.getEntriesByType\("resource"\)/);
+assert.match(browserSpec, /scanOptimizerBrowserSurfaces/);
+assert.match(browserSpec, /root\.querySelectorAll\("img, source, link"\)/);
+assert.match(browserSpec, /element\.currentSrc/);
+assert.match(browserSpec, /element\.getAttribute\("src"\)/);
+assert.match(browserSpec, /element\.srcset/);
+assert.match(browserSpec, /element\.getAttribute\("srcset"\)/);
+assert.match(browserSpec, /element instanceof HTMLSourceElement/);
+assert.match(browserSpec, /element instanceof HTMLLinkElement/);
+assert.match(browserSpec, /element\.relList\.contains\("preload"\)/);
+assert.match(browserSpec, /element\.getAttribute\("href"\)/);
+assert.match(browserSpec, /element\.imageSrcset/);
+assert.match(browserSpec, /element\.getAttribute\("imagesrcset"\)/);
+assert.match(browserSpec, /decodeURIComponent/);
+assert.match(browserSpec, /rawUrlsOrQueriesPersisted: false/);
+assert.match(
+  browserSpec,
+  /optimizer DOM scanner detects every dormant responsive and preload surface without network use/,
+);
+assert.match(browserSpec, /detachedFixtureMarkup/);
+assert.match(browserSpec, /detachedCurrentSrcOverrides/);
+assert.match(browserSpec, /fixtureNetworkRequestCount/);
+assert.match(browserSpec, /forbiddenRawEvidence/);
+assert.match(browserSpec, /"\/_next\/image"/);
+assert.match(browserSpec, /"\/_vercel\/image"/);
 assert.match(browserSpec, /_dealflow-staging-image-optimizer-disabled/);
 assert.match(runner, /postdeploy-static-asset-gate\.json/);
 assert.match(
   runner,
-  /provePostDeployStaticAssetGate\(\s*aliasAccessRequirements,\s*identity,\s*\)/,
+  /provePostDeployStaticAssetGate\(\s*aliasAccessRequirements,\s*identity,\s*deployment\.hostedExactCandidateEnumeratedImagePortfolioProof,\s*\)/,
 );
 assert.match(
   runner,
@@ -1287,7 +1480,11 @@ for (const project of ["desktop-chromium", "mobile-chromium", "desktop-firefox",
   assert.match(browserConfig, new RegExp(`name: "${project}"`));
 }
 assert.doesNotMatch(browserSpec, /test\.(?:skip|fixme)\s*\(/);
-assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 14);
+assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 15);
+assert.match(
+  runner,
+  /const expectedProjectTestCount = config === "playwright\.staging\.config\.ts"\s*\? 15\s*:\s*14/,
+);
 for (const role of [
   "newDirect",
   "paidDirect",
@@ -1593,7 +1790,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
@@ -1607,6 +1804,8 @@ assert.match(completionSuite, /"staging\/test-vercel-dry-run-source-contract\.mj
 assert.match(completionSuite, /"staging\/test-vercel-alias-propagation-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-exact-supabase-project-url\.mjs"/);
 assert.match(completionSuite, /"staging\/test-next-static-chunk-path\.mjs"/);
+assert.match(completionSuite, /"staging\/test-vercel-deployed-image-config-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-staging-image-optimizer-response-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-isolated-staging-access-gate\.mjs"/);
 assert.match(completionSuite, /"staging\/test-hosted-build-identity-generator\.mjs"/);
 assert.match(completionSuite, /"staging\/test-release-identity-route-contract\.mjs"/);

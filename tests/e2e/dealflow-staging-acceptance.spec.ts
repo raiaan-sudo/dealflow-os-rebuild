@@ -36,6 +36,12 @@ const EXPECTED_SUPABASE_FINGERPRINT =
 const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
 const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
+const IMAGE_OPTIMIZER_PATHS = Object.freeze([
+  "/_next/image",
+  "/_vercel/image",
+  "/_dealflow-staging-image-optimizer-disabled",
+]);
+const IMAGE_OPTIMIZER_PATH_SET = new Set(IMAGE_OPTIMIZER_PATHS);
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
 const STALE_REPORTING_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000002";
 const FAILED_REPORTING_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000003";
@@ -71,6 +77,9 @@ type Diagnostics = {
   requestFailures: string[];
   serverErrors: string[];
   imageFailures: string[];
+  optimizerNetworkRequests: string[];
+  optimizerDomSources: string[];
+  optimizerPerformanceEntries: string[];
 };
 
 const diagnosticsByPage = new WeakMap<Page, Diagnostics>();
@@ -137,6 +146,160 @@ function sanitizeBrowserDiagnostic(value: string) {
 
 function isExpectedNavigationAbort(value: string) {
   return /net::ERR_ABORTED/i.test(value);
+}
+
+function exactOptimizerPathname(rawUrl: string) {
+  const parsed = new URL(rawUrl);
+  let pathname = parsed.pathname;
+  for (let pass = 0; pass < 3; pass += 1) {
+    if (IMAGE_OPTIMIZER_PATH_SET.has(pathname)) return pathname;
+    try {
+      const decoded = decodeURIComponent(pathname);
+      if (decoded === pathname) break;
+      pathname = decoded;
+    } catch {
+      break;
+    }
+  }
+  return IMAGE_OPTIMIZER_PATH_SET.has(pathname) ? pathname : null;
+}
+
+type OptimizerBrowserSurfaceScanInput = {
+  exactPaths: string[];
+  detachedFixtureMarkup?: string;
+  detachedCurrentSrcOverrides?: Array<[elementId: string, rawUrl: string]>;
+};
+
+function scanOptimizerBrowserSurfaces({
+  exactPaths,
+  detachedFixtureMarkup,
+  detachedCurrentSrcOverrides = [],
+}: OptimizerBrowserSurfaceScanInput) {
+  const paths = new Set(exactPaths);
+  const detachedFixture = typeof detachedFixtureMarkup === "string";
+  let root: ParentNode = document;
+  if (detachedFixture) {
+    const template = document.createElement("template");
+    template.innerHTML = detachedFixtureMarkup;
+    root = template.content;
+    for (const [elementId, rawUrl] of detachedCurrentSrcOverrides) {
+      const image = [...root.querySelectorAll("img")].find(
+        (element) => element.id === elementId,
+      );
+      if (!(image instanceof HTMLImageElement)) {
+        throw new Error("Detached currentSrc fixture did not target an image");
+      }
+      Object.defineProperty(image, "currentSrc", {
+        configurable: true,
+        value: rawUrl,
+      });
+    }
+  } else if (detachedCurrentSrcOverrides.length !== 0) {
+    throw new Error("currentSrc overrides are restricted to detached fixtures");
+  }
+  const decodedVariants = (rawValue: string) => {
+    const variants = new Set([
+      rawValue.trim(),
+      rawValue.trim().replaceAll("&amp;", "&"),
+    ]);
+    for (let pass = 0; pass < 3; pass += 1) {
+      for (const value of [...variants]) {
+        try {
+          variants.add(decodeURIComponent(value));
+        } catch {
+          // A malformed encoded candidate remains covered by its raw form.
+        }
+      }
+    }
+    return [...variants].filter(Boolean);
+  };
+  const matchingPathnames = (rawUrl: string) => {
+    const matches = new Set<string>();
+    for (const variant of decodedVariants(rawUrl)) {
+      for (const path of paths) {
+        let offset = variant.indexOf(path);
+        while (offset !== -1) {
+          const suffix = variant[offset + path.length] ?? "";
+          if (suffix === "" || /^[?&#,\s"']$/u.test(suffix)) {
+            matches.add(path);
+          }
+          offset = variant.indexOf(path, offset + path.length);
+        }
+      }
+      try {
+        let pathname = new URL(variant, document.baseURI).pathname;
+        for (let pass = 0; pass < 3; pass += 1) {
+          if (paths.has(pathname)) matches.add(pathname);
+          const decoded = decodeURIComponent(pathname);
+          if (decoded === pathname) break;
+          pathname = decoded;
+        }
+        if (paths.has(pathname)) matches.add(pathname);
+      } catch {
+        // Invalid URL candidates remain covered by the raw embedded scan.
+      }
+    }
+    return [...matches];
+  };
+  const srcsetCandidates = (rawValue: string) => [
+    rawValue,
+    ...rawValue
+      .split(",")
+      .map((candidate) => candidate.trim().split(/\s+/u)[0] ?? "")
+      .filter(Boolean),
+  ];
+  const domSources = new Set<string>();
+  const record = (
+    surface: string,
+    rawValue: string | null | undefined,
+    responsive = false,
+  ) => {
+    if (!rawValue) return;
+    const candidates = responsive ? srcsetCandidates(rawValue) : [rawValue];
+    for (const candidate of candidates) {
+      for (const pathname of matchingPathnames(candidate)) {
+        domSources.add(`${surface}:${pathname}`);
+      }
+    }
+  };
+  for (const element of root.querySelectorAll("img, source, link")) {
+    if (element instanceof HTMLImageElement) {
+      record("img.src.property", element.src);
+      record("img.currentSrc.property", element.currentSrc);
+      record("img.src.attribute", element.getAttribute("src"));
+      record("img.srcset.property", element.srcset, true);
+      record("img.srcset.attribute", element.getAttribute("srcset"), true);
+    } else if (element instanceof HTMLSourceElement) {
+      record("source.src.property", element.src);
+      record("source.src.attribute", element.getAttribute("src"));
+      record("source.srcset.property", element.srcset, true);
+      record("source.srcset.attribute", element.getAttribute("srcset"), true);
+    } else if (
+      element instanceof HTMLLinkElement &&
+      element.relList.contains("preload") &&
+      element.as.toLowerCase() === "image"
+    ) {
+      record("link-preload.href.property", element.href);
+      record("link-preload.href.attribute", element.getAttribute("href"));
+      record("link-preload.imagesrcset.property", element.imageSrcset, true);
+      record(
+        "link-preload.imagesrcset.attribute",
+        element.getAttribute("imagesrcset"),
+        true,
+      );
+    }
+  }
+  const performanceEntries = detachedFixture
+    ? []
+    : performance
+        .getEntriesByType("resource")
+        .flatMap((entry) => matchingPathnames(entry.name));
+  return {
+    domSources: [...domSources].sort(),
+    performanceEntries: [...new Set(performanceEntries)].sort(),
+    detachedFixture,
+    rawUrlsOrQueriesPersisted: false,
+  };
 }
 
 function browserSessionBundle(minimumRemainingLifetimeSeconds = 15 * 60) {
@@ -214,6 +377,9 @@ async function installFailClosedNetworkBoundary(page: Page) {
     requestFailures: [],
     serverErrors: [],
     imageFailures: [],
+    optimizerNetworkRequests: [],
+    optimizerDomSources: [],
+    optimizerPerformanceEntries: [],
   };
   const context = page.context();
   diagnosticsByPage.set(page, diagnostics);
@@ -337,6 +503,13 @@ async function installFailClosedNetworkBoundary(page: Page) {
   context.on("request", (request) => {
     const url = new URL(request.url());
     const method = request.method().toUpperCase();
+    const optimizerPathname = exactOptimizerPathname(request.url());
+    if (
+      optimizerPathname &&
+      !diagnostics.optimizerNetworkRequests.includes(optimizerPathname)
+    ) {
+      diagnostics.optimizerNetworkRequests.push(optimizerPathname);
+    }
     const exactProjectRef = requiredEnvironment("QA_ISOLATED_SUPABASE_PROJECT_REF");
     const exactSupabaseAuth =
       url.origin === `https://${exactProjectRef}.supabase.co` &&
@@ -389,9 +562,19 @@ async function installFailClosedNetworkBoundary(page: Page) {
   });
 }
 
-function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
+async function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
   const diagnostics = diagnosticsByPage.get(page);
   expect(diagnostics, "staging diagnostics were not installed").toBeTruthy();
+  const optimizerPathnames = await page.evaluate(
+    scanOptimizerBrowserSurfaces,
+    { exactPaths: [...IMAGE_OPTIMIZER_PATHS] },
+  );
+  expect(optimizerPathnames.rawUrlsOrQueriesPersisted).toBe(false);
+  expect(optimizerPathnames.detachedFixture).toBe(false);
+  diagnostics!.optimizerDomSources.push(...optimizerPathnames.domSources);
+  diagnostics!.optimizerPerformanceEntries.push(
+    ...optimizerPathnames.performanceEntries,
+  );
   expect(
     diagnostics,
     `${testInfo.title}: fail-closed browser diagnostics were not clean`,
@@ -404,6 +587,9 @@ function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
     requestFailures: [],
     serverErrors: [],
     imageFailures: [],
+    optimizerNetworkRequests: [],
+    optimizerDomSources: [],
+    optimizerPerformanceEntries: [],
   });
 }
 
@@ -445,6 +631,7 @@ async function assertDirectImageLoaded(
   expect(state.naturalHeight).toBeGreaterThan(0);
   expect(state.sourceOrigin).toBe(state.documentOrigin);
   expect(state.pathname).not.toBe("/_next/image");
+  expect(state.pathname).not.toBe("/_vercel/image");
   expect(state.pathname).not.toBe("/_dealflow-staging-image-optimizer-disabled");
 }
 
@@ -540,7 +727,81 @@ test.beforeEach(async ({ page }) => {
   await installFailClosedNetworkBoundary(page);
   await assertHostedZeroEffects(page);
 });
-test.afterEach(async ({ page }, testInfo) => assertDiagnosticsClean(page, testInfo));
+test.afterEach(async ({ page }, testInfo) => {
+  await assertDiagnosticsClean(page, testInfo);
+});
+
+test("optimizer DOM scanner detects every dormant responsive and preload surface without network use", async ({ page }) => {
+  const diagnostics = diagnosticsByPage.get(page);
+  expect(diagnostics, "staging diagnostics were not installed").toBeTruthy();
+  let fixtureNetworkRequestCount = 0;
+  const countFixtureNetworkRequest = () => {
+    fixtureNetworkRequestCount += 1;
+  };
+  page.on("request", countFixtureNetworkRequest);
+  let scan;
+  try {
+    scan = await page.evaluate(scanOptimizerBrowserSurfaces, {
+      exactPaths: [...IMAGE_OPTIMIZER_PATHS],
+      detachedFixtureMarkup: `
+        <img id="current-next" src="/_next/image?url=%2Flogo.svg&amp;w=32&amp;q=75">
+        <img id="current-vercel" src="%2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D32%26q%3D75">
+        <img id="current-disabled" src="https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg">
+        <img srcset="/_next/image?url=%2Flogo.svg&amp;w=32&amp;q=75 1x, %2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D64%26q%3D75 2x, https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg 3x">
+        <source src="/_next/image?url=%2Flogo.svg&amp;w=32&amp;q=75">
+        <source src="%2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D32%26q%3D75">
+        <source src="https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg">
+        <source srcset="/_next/image?url=%2Flogo.svg&amp;amp;w=32&amp;amp;q=75 1x, %2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D64%26q%3D75 2x, https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg 3x">
+        <link rel="preload" as="image" href="/_next/image?url=%2Flogo.svg&amp;w=32&amp;q=75">
+        <link rel="preload" as="image" href="%2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D32%26q%3D75">
+        <link rel="preload" as="image" href="https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg">
+        <link rel="preload" as="image" imagesrcset="/_next/image?url=%2Flogo.svg&amp;w=32&amp;q=75 1x, %2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D64%26q%3D75 2x, https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg 3x">
+      `,
+      detachedCurrentSrcOverrides: [
+        ["current-next", "%252F_next%252Fimage%253Furl%253D%25252Flogo.svg%2526w%253D32%2526q%253D75"],
+        ["current-vercel", "%2F_vercel%2Fimage%3Furl%3D%252Flogo.svg%26w%3D32%26q%3D75"],
+        ["current-disabled", "https://fixture.invalid/_dealflow-staging-image-optimizer-disabled?url=%2Flogo.svg"],
+      ] as Array<[string, string]>,
+    });
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+  } finally {
+    page.off("request", countFixtureNetworkRequest);
+  }
+  const expectedSurfaces = [
+    "img.src.property",
+    "img.currentSrc.property",
+    "img.src.attribute",
+    "img.srcset.property",
+    "img.srcset.attribute",
+    "source.src.property",
+    "source.src.attribute",
+    "source.srcset.property",
+    "source.srcset.attribute",
+    "link-preload.href.property",
+    "link-preload.href.attribute",
+    "link-preload.imagesrcset.property",
+    "link-preload.imagesrcset.attribute",
+  ];
+  expect(scan).toEqual({
+    domSources: expectedSurfaces
+      .flatMap((surface) =>
+        IMAGE_OPTIMIZER_PATHS.map((pathname) => `${surface}:${pathname}`),
+      )
+      .sort(),
+    performanceEntries: [],
+    detachedFixture: true,
+    rawUrlsOrQueriesPersisted: false,
+  });
+  const serializedScan = JSON.stringify(scan);
+  for (const forbiddenRawEvidence of ["https://", "?", "&", "="]) {
+    expect(serializedScan).not.toContain(forbiddenRawEvidence);
+  }
+  expect(fixtureNetworkRequestCount).toBe(0);
+  expect(diagnostics!.optimizerNetworkRequests).toEqual([]);
+  expect(diagnostics!.requestFailures).toEqual([]);
+});
 
 test("new direct realtor is authenticated but remains unpaid and launch-blocked", async ({ page }) => {
   await credentialSignIn(page, ROLE_EMAILS.newDirect, "/paywall");

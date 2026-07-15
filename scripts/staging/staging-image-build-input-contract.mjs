@@ -7,6 +7,11 @@ import ts from "typescript";
 const IMAGE_EXTENSION = /\.(?:apng|avif|bmp|gif|heic|ico|icns|jpe?g|jp2|jxl|png|svg|tiff?|webp)(?:[?#].*)?$/i;
 const APPLICATION_SOURCE = /^(?:src\/.*\.(?:[cm]?js|jsx|tsx?|css|less|pcss|sass|scss|styl)|(?:app|components|pages|styles)\/.*\.(?:[cm]?js|jsx|tsx?|css|less|pcss|sass|scss|styl)|next\.config\.[cm]?js)$/;
 const STYLE_SOURCE = /\.(?:css|less|pcss|sass|scss|styl)$/i;
+const FORBIDDEN_OPTIMIZER_RESOURCE_PATHS = Object.freeze([
+  "/_next/image",
+  "/_vercel/image",
+  "/_next/static/media",
+]);
 const NEXT_IMAGE_MODULES = new Set([
   "next/image",
   "next/legacy/image",
@@ -153,6 +158,27 @@ function literalText(node) {
   return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
     ? node.text
     : null;
+}
+
+function staticallyConcatenatedText(node) {
+  const literal = literalText(node);
+  if (literal !== null) return literal;
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = staticallyConcatenatedText(node.left);
+    const right = staticallyConcatenatedText(node.right);
+    return left === null || right === null ? null : `${left}${right}`;
+  }
+  return null;
+}
+
+function containsForbiddenOptimizerResourcePath(value) {
+  return (
+    typeof value === "string" &&
+    FORBIDDEN_OPTIMIZER_RESOURCE_PATHS.some((path) => value.includes(path))
+  );
 }
 
 function isImageLiteral(value) {
@@ -345,11 +371,8 @@ export function assertStaticImageBuildSourceSafety({ path, source }) {
     }
     if (ts.isTemplateExpression(node)) {
       const templateSource = node.getText(sourceFile);
-      if (
-        templateSource.includes("/_next/image") ||
-        templateSource.includes("/_next/static/media")
-      ) {
-        throw new Error(`${path} constructs a Next optimizer or static-media path`);
+      if (containsForbiddenOptimizerResourcePath(templateSource)) {
+        throw new Error(`${path} constructs a provider optimizer or static-media path`);
       }
       if (
         /\.(?:apng|avif|bmp|gif|heic|ico|icns|jpe?g|jp2|jxl|png|svg|tiff?|webp)(?:[?#][^`]*)?`$/i.test(
@@ -358,6 +381,14 @@ export function assertStaticImageBuildSourceSafety({ path, source }) {
         (isRequireOrDynamicImportArgument(node) || isNewUrlAssetArgument(node))
       ) {
         throw new Error(`${path} constructs a static image module or new URL asset`);
+      }
+    }
+    if (ts.isBinaryExpression(node)) {
+      const concatenated = staticallyConcatenatedText(node);
+      if (containsForbiddenOptimizerResourcePath(concatenated)) {
+        throw new Error(
+          `${path} concatenates a provider optimizer or static-media path`,
+        );
       }
     }
     const value = literalText(node);
@@ -386,14 +417,14 @@ export function assertStaticImageBuildSourceSafety({ path, source }) {
         nextImageImports.push(node.parent);
       }
       if (
-        value === "/_next/image" ||
-        value.startsWith("/_next/image?")
+        value.includes("/_next/image") ||
+        value.includes("/_vercel/image")
       ) {
         if (isExactVendoredOptimizerDefaultDefinition(path, node, value)) {
           vendoredOptimizerDefinitionReferenceCount += 1;
         } else {
           optimizerControlReferenceCount += 1;
-          throw new Error(`${path} constructs or aliases the default Next image optimizer`);
+          throw new Error(`${path} constructs or aliases a provider image optimizer`);
         }
       }
       if (value.includes("/_next/static/media")) {
@@ -443,8 +474,7 @@ function assertStyleSourceSafety(path, source) {
     const value = match[2];
     if (
       isImageLiteral(value) ||
-      value.includes("/_next/image") ||
-      value.includes("/_next/static/media")
+      containsForbiddenOptimizerResourcePath(value)
     ) {
       throw new Error(`${path} contains an optimizer-eligible CSS url() image reference`);
     }
@@ -519,6 +549,18 @@ export function assertExactStagingImageBuildInputInventory({
       const { absolute } = safeAbsolute(rootReal, path);
       return { path, source: readFileSync(absolute, "utf8") };
     });
+  const nextConfigSource = sourcePortfolio.find(
+    ({ path }) => path === "next.config.mjs",
+  )?.source;
+  if (
+    typeof nextConfigSource !== "string" ||
+    (nextConfigSource.match(/localPatterns:\s*\[\s*\]/g) ?? []).length !== 1 ||
+    (nextConfigSource.match(/remotePatterns:\s*\[\s*\]/g) ?? []).length !== 1
+  ) {
+    throw new Error(
+      "Exact staging source config does not declare deny-all local and remote image patterns",
+    );
+  }
   let nextImageModuleReferenceCount = 0;
   let nextImageJsxCount = 0;
   let optimizerControlReferenceCount = 0;
@@ -593,6 +635,9 @@ export function assertExactStagingImageBuildInputInventory({
     approvedDirectPublicAssetPortfolioSha256: assetDigest.digest("hex"),
     deployableImageAssetCount: discoveredImageAssetPaths.length,
     optimizerEligibleStaticMediaAssetCount: 0,
+    sourceNextConfigLocalPatternsDenyAll: true,
+    sourceNextConfigRemotePatternsDenyAll: true,
+    vercelNativeOptimizerConstructionReferenceCount: 0,
     staticImageImportRequireReexportNewUrlCount: 0,
     cssImageUrlReferenceCount: 0,
     alternateNextImageModuleReferenceCount: 0,
