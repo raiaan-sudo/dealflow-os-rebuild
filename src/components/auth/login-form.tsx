@@ -111,12 +111,17 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [logoFailed, setLogoFailed] = useState(false);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
   const requiresTurnstile = turnstileEnabled && mode !== "update-password";
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   function getEmailConfirmationRedirectUrl(value?: string) {
     const nextPath = getSafeRedirectPath(
@@ -200,6 +205,11 @@ export function LoginForm({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!isHydrated) {
+      return;
+    }
+
     setError(null);
     setMessage(null);
 
@@ -545,6 +555,7 @@ export function LoginForm({
               : "text-muted-foreground hover:text-white"
           }`}
           onClick={() => setMode("sign-in")}
+          disabled={!isHydrated || isPending}
           type="button"
         >
           {t("auth.signIn")}
@@ -558,6 +569,7 @@ export function LoginForm({
               : "text-muted-foreground hover:text-white"
           }`}
           onClick={() => setMode("sign-up")}
+          disabled={!isHydrated || isPending}
           type="button"
         >
           {t("auth.signUp")}
@@ -573,6 +585,7 @@ export function LoginForm({
                 id="full-name"
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
+                disabled={!isHydrated || isPending}
                 placeholder="Alex Morgan"
                 className={inputClassName}
               />
@@ -584,6 +597,7 @@ export function LoginForm({
                 autoComplete="off"
                 value={accessKey}
                 onChange={(event) => setAccessKey(event.target.value)}
+                disabled={!isHydrated || isPending}
                 placeholder="df_live_..."
                 className={inputClassName}
               />
@@ -600,6 +614,7 @@ export function LoginForm({
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              disabled={!isHydrated || isPending}
               placeholder="you@company.com"
               className={inputClassName}
             />
@@ -617,6 +632,7 @@ export function LoginForm({
               autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              disabled={!isHydrated || isPending}
               placeholder="••••••••"
               className={inputClassName}
             />
@@ -682,7 +698,7 @@ export function LoginForm({
 
         <button
           className="h-12 w-full rounded-df-control bg-df-primary px-4 text-base font-semibold text-slate-950 shadow-df-button transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_70px_-32px_rgba(103,232,249,0.95)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-          disabled={!isConfigured || isPending}
+          disabled={!isHydrated || !isConfigured || isPending}
           type="submit"
         >
           {actionLabel}
@@ -696,6 +712,7 @@ export function LoginForm({
               setMessage(null);
               setMode("reset-password");
             }}
+            disabled={!isHydrated || isPending}
             type="button"
           >
             {t("auth.forgotPassword")}
@@ -710,6 +727,7 @@ export function LoginForm({
               setMessage(null);
               setMode("sign-in");
             }}
+            disabled={!isHydrated || isPending}
             type="button"
           >
             {t("auth.backToSignIn")}
@@ -719,7 +737,7 @@ export function LoginForm({
         {GOOGLE_AUTH_ENABLED && (mode === "sign-in" || mode === "sign-up") ? (
           <button
             className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.035] px-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/25 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-            disabled={!isConfigured || isPending}
+            disabled={!isHydrated || !isConfigured || isPending}
             onClick={() => handleProviderLogin("google")}
             type="button"
           >

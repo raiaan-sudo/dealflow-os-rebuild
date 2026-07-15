@@ -33,6 +33,17 @@ function assertIncludes(sourceName, marker, message) {
   assert.ok(sources[sourceName].includes(marker), `${message}: ${paths[sourceName]} is missing ${marker}`);
 }
 
+function openingTagContaining(sourceName, tagName, marker) {
+  const source = sources[sourceName];
+  const markerIndex = source.indexOf(marker);
+  assert.ok(markerIndex >= 0, `${paths[sourceName]} is missing ${marker}`);
+  const tagStart = source.lastIndexOf(`<${tagName}`, markerIndex);
+  const closingMarker = tagName === "input" ? "/>" : ">";
+  const tagEnd = source.indexOf(closingMarker, markerIndex);
+  assert.ok(tagStart >= 0 && tagEnd > markerIndex, `${paths[sourceName]} has no ${tagName} tag for ${marker}`);
+  return source.slice(tagStart, tagEnd + closingMarker.length);
+}
+
 function findFunction(source, fileName, functionName) {
   const sourceFile = ts.createSourceFile(
     fileName,
@@ -178,6 +189,35 @@ assertIncludes("feedbackWidget", 'aria-modal="true"', "feedback dialog modal sem
 
 assertIncludes("loginForm", 'role="alert"', "login error live announcement");
 assertIncludes("loginForm", 'role="status"', "login status live announcement");
+assertIncludes(
+  "loginForm",
+  "const [isHydrated, setIsHydrated] = useState(false);",
+  "login credentials must render fail-closed before hydration",
+);
+assert.match(
+  sources.loginForm,
+  /useEffect\(\(\) => \{\s*setIsHydrated\(true\);\s*}, \[\]\);/,
+  "login credentials must unlock only after the client mount effect",
+);
+assert.match(
+  sources.loginForm,
+  /event\.preventDefault\(\);\s*if \(!isHydrated\) \{\s*return;\s*}/,
+  "login submission must retain a fail-closed pre-hydration guard",
+);
+for (const fieldId of ["email", "password"]) {
+  assert.ok(
+    openingTagContaining("loginForm", "input", `id="${fieldId}"`).includes(
+      "disabled={!isHydrated || isPending}",
+    ),
+    `${fieldId} credential input must remain disabled until hydration`,
+  );
+}
+assert.ok(
+  openingTagContaining("loginForm", "button", 'type="submit"').includes(
+    "disabled={!isHydrated || !isConfigured || isPending}",
+  ),
+  "login submit must remain disabled until hydration and configuration readiness",
+);
 assertIncludes(
   "loginForm",
   'aria-label={t("auth.switchToSignIn")}',

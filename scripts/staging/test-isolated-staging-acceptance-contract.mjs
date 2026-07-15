@@ -1664,7 +1664,11 @@ assert.deepEqual(
 );
 assert.match(browserSpec, /credentialSignIn\(page, ROLE_EMAILS\.newDirect/);
 assert.match(browserSpec, /const authForm = page\.locator\("form"\)/);
-assert.match(browserSpec, /authForm\.getByRole\("button", \{ name: "Sign in", exact: true \}\)\.click\(\)/);
+assert.match(browserSpec, /const submitButton = authForm\.getByRole\("button", \{ name: "Sign in", exact: true \}\)/);
+assert.match(browserSpec, /await expect\(emailInput\)\.toBeEditable\(\)/);
+assert.match(browserSpec, /await expect\(passwordInput\)\.toBeEditable\(\)/);
+assert.match(browserSpec, /await expect\(submitButton\)\.toBeEnabled\(\)/);
+assert.match(browserSpec, /submitButton\.click\(\)/);
 assert.match(browserSpec, /const authSubmit = page\.locator\("form"\)\.getByRole\("button", \{/);
 assert.doesNotMatch(browserSpec, /page\.getByRole\("button", \{ name: \/sign in\/i \}\)\.click\(\)/);
 assert.match(browserSpec, /browserCookiesForOrigin\(session/);

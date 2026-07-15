@@ -707,10 +707,16 @@ async function credentialSignIn(
   await page.goto(loginUrl.toString(), {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByRole("textbox", { name: "Email" })).toBeVisible();
-  await page.getByRole("textbox", { name: "Email" }).fill(email);
-  await page.getByLabel("Password").fill(password);
+  const emailInput = page.getByRole("textbox", { name: "Email" });
+  const passwordInput = page.getByLabel("Password");
   const authForm = page.locator("form");
+  const submitButton = authForm.getByRole("button", { name: "Sign in", exact: true });
+  await expect(emailInput).toBeVisible();
+  await expect(emailInput).toBeEditable();
+  await expect(passwordInput).toBeEditable();
+  await expect(submitButton).toBeEnabled();
+  await emailInput.fill(email);
+  await passwordInput.fill(password);
   const challenge = page.getByText(/verification challenge|verify you are human/i);
   expect(
     await challenge.count(),
@@ -718,7 +724,7 @@ async function credentialSignIn(
   ).toBe(0);
   await Promise.all([
     page.waitForURL((url) => url.pathname !== "/login", { timeout: 30_000 }),
-    authForm.getByRole("button", { name: "Sign in", exact: true }).click(),
+    submitButton.click(),
   ]);
 }
 

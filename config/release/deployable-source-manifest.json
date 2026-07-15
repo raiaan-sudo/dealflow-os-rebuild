@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 984,
-  "deployableSourceSha256": "43ad50057e5b493e70e2c530677a9a7be1510f2030b3fa9adf7648b7691d2afd",
+  "deployableSourceSha256": "eaec25df0beb9a0c9f54a31c54ff9a60ac774d5666456d1b702ee9bf6e7f4ea9",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -1080,9 +1080,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 110983,
+      "size": 111276,
       "mode": 33188,
-      "sha256": "6dfb3aa0f6fcbd13123bf33653d47c02f2011a92f92e1d339a073af3df1ab214"
+      "sha256": "06c2c9436a26aa2cdaceeec281762a4b13d4841d2fb1035509f4b4742a352561"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1236,9 +1236,9 @@
     },
     {
       "path": "scripts/test-accessibility-truth-contract.mjs",
-      "size": 10699,
+      "size": 12292,
       "mode": 33188,
-      "sha256": "b20a95ac7032a2ef584ce02c40df77b0856ca426d2da1d7d963b1956c7369a7f"
+      "sha256": "4451c3aa3f4902526bcdbd69a55fea82329436bfbe9ea9ddef43aedab6b9681f"
     },
     {
       "path": "scripts/test-account-deletion-ghl-offboarding.ts",
@@ -2808,9 +2808,9 @@
     },
     {
       "path": "src/components/auth/login-form.tsx",
-      "size": 23221,
+      "size": 23799,
       "mode": 33188,
-      "sha256": "c31e01321e21d187f90c14a5cdf4923830766cb927f2d8b8e3ed5935bd2d7025"
+      "sha256": "578d01647a2b0e40bb5deb494d8dbc93faa1e274bd60331fcdad744b85736411"
     },
     {
       "path": "src/components/billing/checkout-button.tsx",
@@ -5778,9 +5778,9 @@
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
-      "size": 52311,
+      "size": 52519,
       "mode": 33188,
-      "sha256": "7b9ef83b0db4b7d93caafb508df60a408b87141db8e4e6d3a91fc7dfe4649a26"
+      "sha256": "a449ce4be4b76b4123e25db0c43d84311900acfc78b66494ef7fc56ba0037f1e"
     },
     {
       "path": "tests/e2e/expected-navigation-abort.mjs",
