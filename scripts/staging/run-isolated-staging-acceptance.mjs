@@ -1527,7 +1527,9 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.qaHarness?.organizationId !== PAID_ORGANIZATION_ID ||
     !/^[a-f0-9-]{36}$/i.test(parsed.qaHarness?.membershipId ?? "") ||
     parsed.qaHarness?.role !== "member" ||
+    parsed.qaHarness?.authorityResetPolicyApplied !== true ||
     parsed.qaHarness?.organizationMembershipCount !== 1 ||
+    parsed.qaHarness?.partnerMembershipCount !== 0 ||
     parsed.qaHarness?.activePartnerMembershipCount !== 0 ||
     parsed.qaHarness?.ownedOrganizationCount !== 0 ||
     parsed.qaHarness?.profilePartnerId !== null ||

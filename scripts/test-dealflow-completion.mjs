@@ -50,6 +50,7 @@ const tests = [
   "test-meta-campaign-activation-disposable-db.mjs",
   "test-meta-budget-safety.mjs",
   "test-isolated-staging-seed-contract.mjs",
+  "test-synthetic-qa-authority-reset.mjs",
   "staging/test-provider-session-bundle-contract.mjs",
   "staging/test-browser-session-bundle-contract.mjs",
   "staging/test-browser-context-network-boundary.mjs",

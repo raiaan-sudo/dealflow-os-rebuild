@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 986,
-  "deployableSourceSha256": "ab85716fd081427699fc01b2179837625d2b0ddffa66c017e5c360b824997837",
+  "entryCount": 988,
+  "deployableSourceSha256": "c7151343a10a8d0117ad84146ac22891d631f335ee54b995e4cf7e9404fa5c38",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -797,6 +797,12 @@
       "sha256": "2954a75d428a9e7ac1763146e179213972f279abdec00f1243c3ffe7bf1ad155"
     },
     {
+      "path": "scripts/lib/synthetic-qa-authority-reset.mjs",
+      "size": 5354,
+      "mode": 33188,
+      "sha256": "2817f55cef4e69375346f2f24946962c41d34fe2639d14cf626c2503c95b7677"
+    },
+    {
       "path": "scripts/load-test.mjs",
       "size": 7597,
       "mode": 33188,
@@ -870,9 +876,9 @@
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 108636,
+      "size": 111986,
       "mode": 33188,
-      "sha256": "b2584003efc281cacea4d09bcce4f556b7f20f7c32914874d759068b247890dd"
+      "sha256": "65936d5a530fd7832c46dad7785f4925a75f4ae0900af57f70803e7f77f416b4"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -978,9 +984,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 268829,
+      "size": 268945,
       "mode": 33188,
-      "sha256": "c0e176052f80505555a115cfefaf27a17061edf1cdca3e9cfb50edc1239edbbe"
+      "sha256": "930b4c0adfb66acfc545490bb6b2d98b5965ff0a72989988371a8b96ed5fb684"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1080,9 +1086,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 115841,
+      "size": 115999,
       "mode": 33188,
-      "sha256": "87ed226fdc409048c9f70f8f211a1d73b6a2c629260ec3c7d42312015d5af2d9"
+      "sha256": "4e31b09ba178a2bdd5e20ae7aa91d48955e297849bbe1193c08c730172462153"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1350,9 +1356,9 @@
     },
     {
       "path": "scripts/test-dealflow-completion.mjs",
-      "size": 4314,
+      "size": 4357,
       "mode": 33188,
-      "sha256": "e84b2f443647d0906709a4c7d52b3ea28b4741f4c894752fee05487c202f954f"
+      "sha256": "f1c54b4a7336c7a6bdf8019ff886993211774b778efe483cae6e9433192445d1"
     },
     {
       "path": "scripts/test-deployment-target-authority.mjs",
@@ -1548,9 +1554,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 27077,
+      "size": 28529,
       "mode": 33188,
-      "sha256": "b56cfda3a30201501d421cb6f7eb9856386df405e227096150d8a2cde519ff03"
+      "sha256": "cba5df65757880d57af4129b27d8e6279573c23250f41027cc5fa4bf4b774a47"
     },
     {
       "path": "scripts/test-launch-truth-and-schedule.mjs",
@@ -1845,6 +1851,12 @@
       "size": 7855,
       "mode": 33188,
       "sha256": "e36ecff3e99b4e04ee5b715c47c956dd0b8cb31d8a5f43f383ea2872cb2e2f54"
+    },
+    {
+      "path": "scripts/test-synthetic-qa-authority-reset.mjs",
+      "size": 6133,
+      "mode": 33188,
+      "sha256": "95f86f809bae4d065244ea7d67a024706c44a3ba76b6a5b473f09a289f292031"
     },
     {
       "path": "scripts/test-system-job-stage-isolation.mjs",

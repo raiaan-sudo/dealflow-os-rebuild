@@ -5,6 +5,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { buildStagingMetaProviderContract } from "./lib/staging-meta-provider-contract.mjs";
+import {
+  MAX_SYNTHETIC_QA_AUTHORITY_ROWS,
+  resetSyntheticQaHarnessAuthority,
+} from "./lib/synthetic-qa-authority-reset.mjs";
 
 const FIXTURE_LABEL = "DF-STAGING-20260712";
 const FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
@@ -156,6 +160,18 @@ const IDS = Object.freeze({
   rlsProviderSettlementA: "e2000000-0000-4000-8000-000000000001",
   rlsProviderSettlementB: "e2000000-0000-4000-8000-000000000002",
 });
+const EXPECTED_FIXED_ORGANIZATION_IDS = Object.freeze([
+  IDS.organization,
+  IDS.newOrganization,
+  IDS.legacyOrganization,
+  IDS.partnerAdminOrganization,
+  IDS.partnerChildOrganization,
+  IDS.partnerAdminTwoOrganization,
+  IDS.partnerChildTwoOrganization,
+  IDS.operatorOrganization,
+  IDS.attackerOrganization,
+  IDS.deletionOrganization,
+]);
 function requireEnvironment(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
@@ -425,6 +441,74 @@ async function ensureExactOrganizationMembership(admin, expected) {
     throw new Error("The synthetic organization membership was not persisted exactly");
   }
   return persisted;
+}
+
+function createSyntheticQaAuthorityStore(admin, qaHarnessUserId) {
+  const safetyLimit = MAX_SYNTHETIC_QA_AUTHORITY_ROWS + 1;
+  return Object.freeze({
+    listOwnedOrganizations: async () =>
+      assertNoError(
+        await admin
+          .from("organizations")
+          .select("id,owner_user_id")
+          .eq("owner_user_id", qaHarnessUserId)
+          .order("id", { ascending: true })
+          .limit(safetyLimit),
+        "discover synthetic QA-owned organizations",
+      ),
+    listExtraOrganizationMemberships: async () =>
+      assertNoError(
+        await admin
+          .from("organization_memberships")
+          .select("id,user_id")
+          .eq("user_id", qaHarnessUserId)
+          .neq("id", IDS.qaHarnessMembership)
+          .order("id", { ascending: true })
+          .limit(safetyLimit),
+        "discover extra synthetic QA organization memberships",
+      ),
+    listPartnerMemberships: async () =>
+      assertNoError(
+        await admin
+          .from("partner_memberships")
+          .select("id,user_id")
+          .eq("user_id", qaHarnessUserId)
+          .order("id", { ascending: true })
+          .limit(safetyLimit),
+        "discover synthetic QA partner memberships",
+      ),
+    deleteOrganizations: async (expectedIds) =>
+      assertNoError(
+        await admin
+          .from("organizations")
+          .delete()
+          .eq("owner_user_id", qaHarnessUserId)
+          .in("id", expectedIds)
+          .select("id"),
+        "remove exact synthetic QA-owned organizations",
+      ),
+    deleteOrganizationMemberships: async (expectedIds) =>
+      assertNoError(
+        await admin
+          .from("organization_memberships")
+          .delete()
+          .eq("user_id", qaHarnessUserId)
+          .neq("id", IDS.qaHarnessMembership)
+          .in("id", expectedIds)
+          .select("id"),
+        "remove exact synthetic QA organization memberships",
+      ),
+    deletePartnerMemberships: async (expectedIds) =>
+      assertNoError(
+        await admin
+          .from("partner_memberships")
+          .delete()
+          .eq("user_id", qaHarnessUserId)
+          .in("id", expectedIds)
+          .select("id"),
+        "remove exact synthetic QA partner memberships",
+      ),
+  });
 }
 
 async function assertExactCount(query, expected, label) {
@@ -872,6 +956,13 @@ async function main() {
     avatar_url: null,
     partner_id: null,
   }, "id");
+  const qaHarnessAuthorityReset = await resetSyntheticQaHarnessAuthority({
+    store: createSyntheticQaAuthorityStore(admin, qaHarnessAuthUser.id),
+    qaHarnessUserId: qaHarnessAuthUser.id,
+    expectedMembershipId: IDS.qaHarnessMembership,
+    expectedFixedOrganizationIds: EXPECTED_FIXED_ORGANIZATION_IDS,
+  });
+  const qaHarnessAuthorityResetPolicyApplied = qaHarnessAuthorityReset.applied;
   const qaHarnessMembership = await ensureExactOrganizationMembership(admin, {
     id: IDS.qaHarnessMembership,
     organization_id: IDS.organization,
@@ -900,14 +991,16 @@ async function main() {
       .eq("user_id", qaHarnessAuthUser.id),
     "read back all non-admin QA harness organization memberships",
   );
-  const qaHarnessActivePartnerMemberships = await assertNoError(
+  const qaHarnessPartnerMemberships = await assertNoError(
     await admin
       .from("partner_memberships")
-      .select("id")
-      .eq("user_id", qaHarnessAuthUser.id)
-      .eq("status", "active"),
-    "read back active non-admin QA harness partner memberships",
+      .select("id,status")
+      .eq("user_id", qaHarnessAuthUser.id),
+    "read back all non-admin QA harness partner memberships",
   );
+  const qaHarnessActivePartnerMembershipCount = qaHarnessPartnerMemberships.filter(
+    ({ status }) => status === "active",
+  ).length;
   const qaHarnessOwnedOrganizations = await assertNoError(
     await admin
       .from("organizations")
@@ -926,7 +1019,7 @@ async function main() {
       user_id: qaHarnessAuthUser.id,
       role: "member",
     }) &&
-    qaHarnessActivePartnerMemberships.length === 0 &&
+    qaHarnessPartnerMemberships.length === 0 &&
     qaHarnessOwnedOrganizations.length === 0;
   if (!qaHarnessNonElevated) {
     throw new Error("The QA harness staging identity has elevated or ambiguous authority");
@@ -2735,12 +2828,14 @@ async function main() {
     exactFixtureCountsVerified: true,
     exactSyntheticAuthUserCount: finalAuthUsers.length,
     qaHarness: {
+      authorityResetPolicyApplied: qaHarnessAuthorityResetPolicyApplied,
       userId: qaHarnessAuthUser.id,
       organizationId: IDS.organization,
       membershipId: IDS.qaHarnessMembership,
       role: "member",
       organizationMembershipCount: qaHarnessOrganizationMemberships.length,
-      activePartnerMembershipCount: qaHarnessActivePartnerMemberships.length,
+      partnerMembershipCount: qaHarnessPartnerMemberships.length,
+      activePartnerMembershipCount: qaHarnessActivePartnerMembershipCount,
       ownedOrganizationCount: qaHarnessOwnedOrganizations.length,
       profilePartnerId: qaHarnessProfileTruth.partner_id,
       elevated: !qaHarnessNonElevated,

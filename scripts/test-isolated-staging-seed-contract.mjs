@@ -9,6 +9,10 @@ import { buildStagingMetaProviderContract } from "./lib/staging-meta-provider-co
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
+const authorityReset = readFileSync(
+  join(root, "scripts", "lib", "synthetic-qa-authority-reset.mjs"),
+  "utf8",
+);
 const envExample = readFileSync(join(root, ".env.example"), "utf8");
 const activationMigration = readFileSync(
   join(root, "supabase", "migrations", "20260713012000_require_meta_activation_preauthorization.sql"),
@@ -107,14 +111,37 @@ assert.match(source, /role: "member"/);
 assert.match(source, /QA harness staging identity is not the exact non-admin Pro member/);
 assert.match(source, /verify exact synthetic non-admin QA harness membership/);
 assert.match(source, /qaHarnessAuthUser/);
+assert.match(source, /function createSyntheticQaAuthorityStore\(admin, qaHarnessUserId\)/);
+assert.match(authorityReset, /export async function resetSyntheticQaHarnessAuthority\(\{/);
+assert.match(authorityReset, /MAX_SYNTHETIC_QA_AUTHORITY_ROWS = 100/);
+assert.match(authorityReset, /Discover and validate every cleanup class before the first mutation/);
+assert.match(authorityReset, /fixedOrganizationIds\.has\(id\)/);
+assert.match(source, /discover synthetic QA-owned organizations/);
+assert.match(source, /remove exact synthetic QA-owned organizations/);
+assert.match(source, /remove exact synthetic QA organization memberships/);
+assert.match(source, /remove exact synthetic QA partner memberships/);
+assert.equal(
+  source.match(/\.in\("id", expectedIds\)/g)?.length,
+  3,
+  "Each synthetic QA authority cleanup delete must be bound to the exact prevalidated row IDs",
+);
+assert.equal(
+  source.match(/\.limit\(safetyLimit\)/g)?.length,
+  3,
+  "Each synthetic QA authority preflight/readback query must use the bounded safety limit",
+);
+assert.match(authorityReset, /did not reach zero elevation/);
+assert.match(source, /qaHarnessAuthorityResetPolicyApplied/);
+assert.match(source, /authorityResetPolicyApplied: qaHarnessAuthorityResetPolicyApplied/);
 assert.match(source, /read back exact non-admin QA harness profile/);
 assert.match(source, /read back all non-admin QA harness organization memberships/);
-assert.match(source, /read back active non-admin QA harness partner memberships/);
+assert.match(source, /read back all non-admin QA harness partner memberships/);
 assert.match(source, /read back non-admin QA harness organization ownership/);
 assert.match(source, /qaHarnessOrganizationMemberships\.length === 1/);
 assert.match(source, /qaHarnessProfileTruth\.partner_id == null/);
 assert.match(source, /isExactOrganizationMembership\(qaHarnessOrganizationMemberships\[0\], \{/);
-assert.match(source, /qaHarnessActivePartnerMemberships\.length === 0/);
+assert.match(source, /qaHarnessPartnerMemberships\.length === 0/);
+assert.match(source, /partnerMembershipCount: qaHarnessPartnerMemberships\.length/);
 assert.match(source, /qaHarnessOwnedOrganizations\.length === 0/);
 assert.match(source, /profilePartnerId: qaHarnessProfileTruth\.partner_id/);
 assert.match(source, /elevated: !qaHarnessNonElevated/);
