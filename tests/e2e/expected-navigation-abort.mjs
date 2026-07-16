@@ -30,6 +30,21 @@ export function sanitizedRequestTargetFingerprint(rawUrl) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
+/**
+ * Retain only a fixed failure category plus a non-reversible fingerprint of
+ * the complete provider/browser error text. Browser error strings are not a
+ * trusted evidence boundary: they may embed a request URL, credentials, host,
+ * path, query, fragment, or provider response. The raw string is used only in
+ * memory for exact cancellation classification and is never returned here.
+ */
+export function sanitizedRequestFailureDiagnostic(errorText) {
+  const normalized = String(errorText ?? "").trim();
+  const category = EXACT_NAVIGATION_ABORTS.has(normalized)
+    ? "exact_navigation_abort"
+    : "request_failure";
+  return `${category} ${sanitizedRequestTargetFingerprint(normalized)}`;
+}
+
 const TELEMETRY_REQUEST_CLASS = "locally_intercepted_activation_telemetry";
 const PURPOSE_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
 

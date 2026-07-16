@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import {
   isExpectedNavigationAbort,
+  sanitizedRequestFailureDiagnostic,
   sanitizedRequestTargetFingerprint,
 } from "../../tests/e2e/expected-navigation-abort.mjs";
 import { isExpectedCanceledHomepagePrefetch } from "../../tests/e2e/expected-next-prefetch-abort.mjs";
@@ -65,6 +66,36 @@ assert.notEqual(
   protectedFailureFingerprint,
   sanitizedRequestTargetFingerprint(`${protectedFailureTarget}&changed=true`),
 );
+const hostileFailureText =
+  `net::ERR_FAILED at ${protectedFailureTarget} ` +
+  "Bearer fake-sensitive-token x-vercel-protection-bypass=fake-bypass " +
+  "_vercel_jwt=fake-cookie";
+const assembledFailureRecord =
+  `GET ${protectedFailureFingerprint} ` +
+  `${sanitizedRequestFailureDiagnostic(hostileFailureText)} ` +
+  'lifecycle={"failureRecordRawUrlRetained":false,"failureRecordRawHostRetained":false}';
+assert.match(
+  assembledFailureRecord,
+  /^GET sha256:[a-f0-9]{64} request_failure sha256:[a-f0-9]{64} lifecycle=/,
+);
+for (const forbidden of [
+  "user",
+  "password",
+  "protected-project-ref",
+  "supabase.co",
+  "/auth/v1/token",
+  "grant_type",
+  "secret",
+  "fake-sensitive-token",
+  "fake-bypass",
+  "fake-cookie",
+]) {
+  assert.equal(
+    assembledFailureRecord.includes(forbidden),
+    false,
+    `assembled failure record retained forbidden material: ${forbidden}`,
+  );
+}
 const exactCanceledHomepagePrefetch = Object.freeze({
   applicationOrigin: "https://staging.example.test",
   errorText: "net::ERR_ABORTED",
@@ -265,6 +296,7 @@ for (const lifecycleMarker of [
   );
 }
 assert.match(browserSpec, /sanitizedRequestTargetFingerprint\(request\.url\(\)\)/);
+assert.match(browserSpec, /sanitizedRequestFailureDiagnostic\(\s*errorText,?\s*\)/);
 assert.doesNotMatch(
   browserSpec.slice(
     browserSpec.indexOf('context.on("requestfailed"'),

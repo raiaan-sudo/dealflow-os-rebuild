@@ -28,6 +28,7 @@ import {
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
 import {
   isExpectedNavigationAbort,
+  sanitizedRequestFailureDiagnostic,
   sanitizedRequestTargetFingerprint,
 } from "./expected-navigation-abort.mjs";
 
@@ -636,7 +637,7 @@ async function installFailClosedNetworkBoundary(
       failureRecordRawUrlRetained: false,
       failureRecordRawHostRetained: false,
     };
-    const failure = `${request.method()} ${sanitizedRequestTargetFingerprint(request.url())} ${sanitizeBrowserDiagnostic(
+    const failure = `${request.method()} ${sanitizedRequestTargetFingerprint(request.url())} ${sanitizedRequestFailureDiagnostic(
       errorText,
     )} lifecycle=${JSON.stringify(sanitizedLifecycle)}`;
     const expectedNavigationAbort =
