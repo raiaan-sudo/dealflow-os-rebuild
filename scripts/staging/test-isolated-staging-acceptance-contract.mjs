@@ -1736,6 +1736,8 @@ assert.match(browserSpec, /EN FR ES public product routes/);
 assert.match(browserSpec, /paid realtor can use authenticated EN FR ES dashboards/);
 assert.match(browserSpec, /emulateMedia\(\{ reducedMotion: "reduce" \}\)/);
 assert.match(browserSpec, /document\.documentElement\.style\.zoom = "2"/);
+assert.match(browserSpec, /await expect\(authSubmit\)\.toBeEnabled\(\)/);
+assert.match(browserSpec, /page\.locator\("body"\)\.click\(\{ position: \{ x: 1, y: 1 \} \}\)/);
 assert.match(browserSpec, /first keyboard target must retain a visible focus outline/);
 assert.match(browserSpec, /Confirmed state is stale/);
 assert.match(browserSpec, /Showing last confirmed Meta data/);

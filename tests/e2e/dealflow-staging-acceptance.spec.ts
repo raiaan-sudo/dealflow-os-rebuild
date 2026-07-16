@@ -1027,8 +1027,10 @@ test("EN FR ES public product routes preserve language accessibility keyboard re
       exact: true,
     });
     await expect(authSubmit).toBeVisible();
+    await expect(authSubmit).toBeEnabled();
     expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
 
+    await page.locator("body").click({ position: { x: 1, y: 1 } });
     await page.keyboard.press("Tab");
     const focused = await page.evaluate(() => {
       const element = document.activeElement as HTMLElement | null;
