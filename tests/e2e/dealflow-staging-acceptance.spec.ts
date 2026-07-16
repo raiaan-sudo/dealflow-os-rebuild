@@ -4,6 +4,7 @@ import {
   test,
   type Locator,
   type Page,
+  type Request,
   type Route,
   type TestInfo,
 } from "@playwright/test";
@@ -25,7 +26,10 @@ import {
   stagingAccessCookiesForOrigins,
   STAGING_ACCESS_HEADER,
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
-import { isExpectedNavigationAbort } from "./expected-navigation-abort.mjs";
+import {
+  isExpectedNavigationAbort,
+  sanitizedRequestTargetFingerprint,
+} from "./expected-navigation-abort.mjs";
 
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_PARTNER_ONE_HOST =
@@ -404,6 +408,17 @@ async function installFailClosedNetworkBoundary(
     ({ vercelAutomationBypassRequired: required }) => required,
   );
   let activeApplicationOrigin: string | null = null;
+  let requestSequence = 0;
+  let mainFrameNavigationSequence = 0;
+  const observedResponseStatusByRequest = new WeakMap<Request, number>();
+  const requestLifecycle = new WeakMap<
+    Request,
+    {
+      requestSequence: number;
+      startedAt: number;
+      mainFrameNavigationSequenceAtStart: number;
+    }
+  >();
 
   await primeVercelAutomationBypassCookies({
     context,
@@ -522,6 +537,24 @@ async function installFailClosedNetworkBoundary(
   context.on("request", (request) => {
     const url = new URL(request.url());
     const method = request.method().toUpperCase();
+    requestSequence += 1;
+    let exactMainFrameApplicationNavigation = false;
+    try {
+      exactMainFrameApplicationNavigation =
+        request.isNavigationRequest() &&
+        request.frame() === page.mainFrame() &&
+        allowedApplicationOrigins.has(url.origin) &&
+        url.username === "" &&
+        url.password === "";
+    } catch {
+      exactMainFrameApplicationNavigation = false;
+    }
+    if (exactMainFrameApplicationNavigation) mainFrameNavigationSequence += 1;
+    requestLifecycle.set(request, {
+      requestSequence,
+      startedAt: Date.now(),
+      mainFrameNavigationSequenceAtStart: mainFrameNavigationSequence,
+    });
     const optimizerPathname = exactOptimizerPathname(request.url());
     if (
       optimizerPathname &&
@@ -560,9 +593,52 @@ async function installFailClosedNetworkBoundary(
   });
   context.on("requestfailed", (request) => {
     const errorText = request.failure()?.errorText ?? "unknown request failure";
-    const failure = `${request.method()} ${safeHttpEvidenceTarget(request.url())} ${sanitizeBrowserDiagnostic(
+    const requestUrl = new URL(request.url());
+    const headers = request.headers();
+    const lifecycle = requestLifecycle.get(request);
+    let frameMatchesActiveApplicationOrigin = false;
+    try {
+      const frameUrl = new URL(request.frame().url());
+      frameMatchesActiveApplicationOrigin =
+        activeApplicationOrigin !== null &&
+        frameUrl.origin === activeApplicationOrigin &&
+        frameUrl.username === "" &&
+        frameUrl.password === "";
+    } catch {
+      frameMatchesActiveApplicationOrigin = false;
+    }
+    const rscValues = requestUrl.searchParams.getAll("_rsc");
+    const sanitizedLifecycle = {
+      requestSequence: lifecycle?.requestSequence ?? null,
+      mainFrameNavigationSequenceAtStart:
+        lifecycle?.mainFrameNavigationSequenceAtStart ?? null,
+      mainFrameNavigationSequenceAtFailure: mainFrameNavigationSequence,
+      elapsedMs: lifecycle
+        ? Math.min(Math.max(Date.now() - lifecycle.startedAt, 0), 60_000)
+        : null,
+      responseStatus: observedResponseStatusByRequest.get(request) ?? null,
+      resourceType: request.resourceType(),
+      isNavigationRequest: request.isNavigationRequest(),
+      sameActiveApplicationOrigin:
+        activeApplicationOrigin !== null &&
+        requestUrl.origin === activeApplicationOrigin,
+      frameMatchesActiveApplicationOrigin,
+      httpsTransport: requestUrl.protocol === "https:",
+      hasCredentials: requestUrl.username !== "" || requestUrl.password !== "",
+      hasFragment: requestUrl.hash !== "",
+      rscHeader: headers.rsc === "1",
+      nextRouterPrefetchHeader: headers["next-router-prefetch"] === "1",
+      rscQueryCount: rscValues.length,
+      exactBoundedRscQuery:
+        rscValues.length === 1 &&
+        /^[A-Za-z0-9_-]{1,128}$/.test(rscValues[0] ?? ""),
+      queryKeyCount: new Set(requestUrl.searchParams.keys()).size,
+      failureRecordRawUrlRetained: false,
+      failureRecordRawHostRetained: false,
+    };
+    const failure = `${request.method()} ${sanitizedRequestTargetFingerprint(request.url())} ${sanitizeBrowserDiagnostic(
       errorText,
-    )}`;
+    )} lifecycle=${JSON.stringify(sanitizedLifecycle)}`;
     const expectedNavigationAbort =
       request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
     const expectedInterceptedWebKitTurnstileBlobFailure =
@@ -580,6 +656,7 @@ async function installFailClosedNetworkBoundary(
     }
   });
   context.on("response", (response) => {
+    observedResponseStatusByRequest.set(response.request(), response.status());
     if (response.status() >= 500) {
       diagnostics.serverErrors.push(
         `${response.status()} ${safeHttpEvidenceTarget(response.url())}`,
@@ -746,6 +823,19 @@ function waitForExactApplicationRead(
       url.hash === ""
     );
   }, { timeout: 30_000 });
+}
+
+async function openFullySettledPartnerLogin(page: Page, partnerOrigin: string) {
+  const target = new URL("/login", partnerOrigin);
+  const response = await page.goto(target.toString(), { waitUntil: "load" });
+  expect(response, "partner login returned no document response").not.toBeNull();
+  expect(response!.url()).toBe(target.toString());
+  expect(response!.status()).toBe(200);
+  expect(await response!.finished()).toBeNull();
+  await page.waitForURL(
+    (url) => url.origin === target.origin && url.pathname === "/login",
+    { waitUntil: "load", timeout: 30_000 },
+  );
 }
 
 async function navigateAndSettleExactApplicationRead(
@@ -1124,7 +1214,7 @@ test("grandfathered legacy realtor retains reconciled active entitlement", async
 
 test("white-label child receives attributed branding across core product routes", async ({ page }) => {
   const partnerOrigin = requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL");
-  await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
+  await openFullySettledPartnerLogin(page, partnerOrigin);
   await expect(
     page.getByText(PARTNER_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
   ).toBeVisible();
@@ -1172,7 +1262,7 @@ test("white-label child receives attributed branding across core product routes"
 
 test("second white-label child receives only partner-two branding and tenant data", async ({ page }) => {
   const partnerOrigin = requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL");
-  await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
+  await openFullySettledPartnerLogin(page, partnerOrigin);
   await expect(
     page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
   ).toBeVisible();

@@ -15,7 +15,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
-import { isExpectedNavigationAbort } from "../../tests/e2e/expected-navigation-abort.mjs";
+import {
+  isExpectedNavigationAbort,
+  sanitizedRequestTargetFingerprint,
+} from "../../tests/e2e/expected-navigation-abort.mjs";
 import { isExpectedCanceledHomepagePrefetch } from "../../tests/e2e/expected-next-prefetch-abort.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -41,6 +44,27 @@ for (const value of [
 ]) {
   assert.equal(isExpectedNavigationAbort(value), false, `unexpected navigation failure: ${value}`);
 }
+const protectedFailureTarget =
+  "https://user:password@protected-project-ref.supabase.co/auth/v1/token?grant_type=password#secret";
+const protectedFailureFingerprint = sanitizedRequestTargetFingerprint(
+  protectedFailureTarget,
+);
+assert.match(protectedFailureFingerprint, /^sha256:[a-f0-9]{64}$/);
+for (const forbidden of [
+  "user",
+  "password",
+  "protected-project-ref",
+  "supabase.co",
+  "/auth/v1/token",
+  "grant_type",
+  "secret",
+]) {
+  assert.equal(protectedFailureFingerprint.includes(forbidden), false);
+}
+assert.notEqual(
+  protectedFailureFingerprint,
+  sanitizedRequestTargetFingerprint(`${protectedFailureTarget}&changed=true`),
+);
 const exactCanceledHomepagePrefetch = Object.freeze({
   applicationOrigin: "https://staging.example.test",
   errorText: "net::ERR_ABORTED",
@@ -203,6 +227,52 @@ for (const [label, source] of [
     `${label} may suppress an engine abort only for a navigation request`,
   );
 }
+const settledPartnerLoginSource = browserSpec.slice(
+  browserSpec.indexOf("async function openFullySettledPartnerLogin("),
+  browserSpec.indexOf("async function navigateAndSettleExactApplicationRead("),
+);
+assert.match(settledPartnerLoginSource, /page\.goto\(target\.toString\(\), \{ waitUntil: "load" \}\)/);
+assert.match(settledPartnerLoginSource, /expect\(response!\.status\(\)\)\.toBe\(200\)/);
+assert.match(settledPartnerLoginSource, /expect\(await response!\.finished\(\)\)\.toBeNull\(\)/);
+assert.match(settledPartnerLoginSource, /page\.waitForURL\([\s\S]*waitUntil: "load"/);
+assert.equal(
+  (browserSpec.match(/await openFullySettledPartnerLogin\(page, partnerOrigin\)/g) ?? [])
+    .length,
+  2,
+  "both white-label journeys must fully settle the public login document before auth handoff",
+);
+assert.doesNotMatch(
+  browserSpec.slice(
+    browserSpec.indexOf('test("white-label child receives attributed branding'),
+    browserSpec.indexOf('test("partner admin authenticates'),
+  ),
+  /waitUntil: "domcontentloaded"/,
+  "white-label auth handoffs must not replace a partially loaded login document",
+);
+for (const lifecycleMarker of [
+  "observedResponseStatusByRequest",
+  "mainFrameNavigationSequenceAtStart",
+  "mainFrameNavigationSequenceAtFailure",
+  "frameMatchesActiveApplicationOrigin",
+  "exactBoundedRscQuery",
+  "failureRecordRawUrlRetained: false",
+  "failureRecordRawHostRetained: false",
+]) {
+  assert.match(
+    browserSpec,
+    new RegExp(lifecycleMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    `staging failure diagnostics must retain sanitized lifecycle marker: ${lifecycleMarker}`,
+  );
+}
+assert.match(browserSpec, /sanitizedRequestTargetFingerprint\(request\.url\(\)\)/);
+assert.doesNotMatch(
+  browserSpec.slice(
+    browserSpec.indexOf('context.on("requestfailed"'),
+    browserSpec.indexOf('context.on("response"'),
+  ),
+  /safeHttpEvidenceTarget\(request\.url\(\)\)/,
+  "retained request-failure diagnostics must never contain a raw origin or path",
+);
 const globalSafetyPreflight = readFileSync(
   join(root, "tests", "e2e", "global-safety-preflight.ts"),
   "utf8",

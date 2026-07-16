@@ -20,6 +20,16 @@ export function isExpectedNavigationAbort(errorText) {
   return EXACT_NAVIGATION_ABORTS.has(normalized);
 }
 
+/**
+ * Produce a bounded, non-reversible request target for retained failure
+ * diagnostics. Unlike route-level evidence, this never retains an origin,
+ * hostname, path, query, fragment, or embedded credential.
+ */
+export function sanitizedRequestTargetFingerprint(rawUrl) {
+  const value = String(rawUrl ?? "");
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
 const TELEMETRY_REQUEST_CLASS = "locally_intercepted_activation_telemetry";
 const PURPOSE_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
