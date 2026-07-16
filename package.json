@@ -110,7 +110,7 @@
     "test:e2e:safe:list": "playwright test --config=playwright.safe.config.ts --list",
     "test:e2e:safe": "playwright test --config=playwright.safe.config.ts",
     "test:staging-migration-broker-contract": "node ./scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-    "test:dealflow-completion": "node ./scripts/test-dealflow-completion.mjs",
+    "test:dealflow-completion": "node ./scripts/test-dealflow-completion.mjs && NODE_OPTIONS=--conditions=react-server tsx ./scripts/test-app-context-workspace-resolution.ts",
     "release:evidence:current": "node ./scripts/build-current-release-evidence.mjs",
     "test:release-evidence-current": "node ./scripts/test-current-release-evidence-builder-contract.mjs",
     "release:guard": "node ./scripts/generate-release-guard.mjs",

@@ -4,6 +4,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  classifyAbortedInterceptedTelemetry,
+  sanitizedTelemetryPurposeFingerprint,
+} from "./expected-navigation-abort.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -136,13 +140,39 @@ requireAll(
     "successfulResponseStatusByRequest",
     'page.getByTestId("onboarding-current-step-panel")',
     'page.getByTestId("prepaywall-campaign-preview")',
+    'assertReviewCard("agent"',
+    'assertReviewCard("campaign-type"',
+    'assertReviewCard("market"',
+    'assertReviewCard("property-type"',
+    'assertReviewCard("price-deal-size"',
+    'assertReviewCard("daily-budget"',
+    '"Daily ad spend budget"',
+    'assertReviewCard("lead-capture-style"',
+    '"Lead capture style"',
+    '"monthly-estimate"',
+    '"Estimated 30-day media spend: $900."',
+    '"Private Listings and a Fast Buyer Strategy Call"',
+    'assertReviewCard("destination"',
+    '"Pro access: unlimited campaign slots"',
     'name: "Campaign plan not found", exact: true',
     'name: "Selected creative required", exact: true',
     'name: "Final review before launch", exact: true',
     "launchStateCounts.reduce",
     'a[href^="/launching"]',
     'name: "Open dashboard"',
-    'a[href^="/build/creatives"]',
+    'a[href*="/build/creatives?campaignId="]',
+    'expect(["en", "fr", "es"]).toContain(launchLocale)',
+    'expect(buildCreativesUrl.pathname).toBe(`/${launchLocale}/build/creatives`)',
+    'expect([...buildCreativesUrl.searchParams.keys()]).toEqual(["campaignId"])',
+    'expect(buildCreativesUrl.searchParams.get("campaignId")).toBe(expectedCampaignId)',
+    'dealflow.safe-browser-aborted-post-classification.v1',
+    "classifyAbortedInterceptedTelemetry({",
+    "sanitizedTelemetryPurposeFingerprint(request.postData())",
+    "locallyInterceptedTelemetry.get(request) === true",
+    "successfulTelemetryRequests: diagnostics.successfulTelemetryRequests",
+    "userVisibleErrorCount: diagnostics.onboardingUserVisibleErrorCount",
+    'classification === "unproven"',
+    'diagnosticsFor(page).onboardingPersistenceProven = true',
     "page.request.fetch(target.toString()",
     "target.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN",
     'target.pathname !== "/api/internal/qa-auth-session"',
@@ -159,6 +189,92 @@ requireAll(
   ],
   "Browser proof spec",
 );
+assert.doesNotMatch(spec, /getByText\("Daily ad spend",\s*\{ exact: true \}\)/);
+assert.doesNotMatch(spec, /getByText\("Lead capture",\s*\{ exact: true \}\)/);
+assert.doesNotMatch(spec, /following-sibling/);
+assert.doesNotMatch(
+  spec,
+  /errorText === "net::ERR_ABORTED"[^]*requestFailures\.push\([^)]*\)\s*;?\s*}\s*else/s,
+  "Aborted POSTs must remain bound to exact local telemetry and lifecycle proof",
+);
+
+const purposeA = sanitizedTelemetryPurposeFingerprint(JSON.stringify({
+  eventName: "onboarding_step_completed",
+  idempotencyKey: "onboarding_step_completed:00000000-0000-4000-8000-000000000001:intent",
+  metadata: { ignored: "must-not-enter-the-fingerprint" },
+}));
+const purposeB = sanitizedTelemetryPurposeFingerprint(JSON.stringify({
+  eventName: "onboarding_step_completed",
+  idempotencyKey: "onboarding_step_completed:00000000-0000-4000-8000-000000000001:market",
+}));
+assert.match(purposeA ?? "", /^sha256:[a-f0-9]{64}$/);
+assert.match(purposeB ?? "", /^sha256:[a-f0-9]{64}$/);
+assert.notEqual(purposeA, purposeB);
+assert.equal(purposeA?.includes("intent"), false);
+assert.equal(sanitizedTelemetryPurposeFingerprint("not-json"), null);
+
+const exactAbortedTelemetryCandidate = Object.freeze({
+  requestClass: "locally_intercepted_activation_telemetry",
+  method: "POST",
+  errorText: "net::ERR_ABORTED",
+  isNavigationRequest: false,
+  target: "https://safe.invalid/api/activation/events",
+  resourceType: "fetch",
+  initiatorPath: "/onboarding",
+  elapsedMs: 25,
+  telemetrySequence: 1,
+  navigationSequenceAtStart: 1,
+  purposeFingerprint: purposeA,
+  interceptedBeforeNetwork: true,
+});
+const classify = (overrides = {}) => classifyAbortedInterceptedTelemetry({
+  candidate: exactAbortedTelemetryCandidate,
+  completedMainFrameNavigationCount: 1,
+  finalPersistedState: true,
+  successfulTelemetryRequests: [],
+  userVisibleErrorCount: 0,
+  ...overrides,
+});
+
+const successfulSamePurpose = classify({
+  successfulTelemetryRequests: [
+    { telemetrySequence: 2, purposeFingerprint: purposeA, status: 204 },
+  ],
+});
+assert.equal(successfulSamePurpose.classification, "harmless_locally_intercepted_telemetry");
+assert.equal(successfulSamePurpose.supersededBy, "successful_same_purpose_request");
+assert.equal(successfulSamePurpose.duplicateApplicationEffects, 0);
+
+const unrelatedSuccess = classify({
+  successfulTelemetryRequests: [
+    { telemetrySequence: 2, purposeFingerprint: purposeB, status: 204 },
+  ],
+});
+assert.equal(unrelatedSuccess.classification, "unproven");
+assert.equal(unrelatedSuccess.supersededBy, null);
+
+const completedNavigation = classify({
+  completedMainFrameNavigationCount: 2,
+  successfulTelemetryRequests: [
+    { telemetrySequence: 2, purposeFingerprint: purposeB, status: 204 },
+  ],
+});
+assert.equal(completedNavigation.classification, "harmless_locally_intercepted_telemetry");
+assert.equal(completedNavigation.supersededBy, "completed_navigation");
+
+assert.equal(classify({
+  successfulTelemetryRequests: [
+    { telemetrySequence: 2, purposeFingerprint: purposeA, status: 500 },
+  ],
+}).classification, "unproven");
+assert.equal(classify({ finalPersistedState: false }).classification, "unproven");
+assert.equal(classify({ userVisibleErrorCount: 1 }).classification, "unproven");
+const unintercepted = classify({
+  candidate: { ...exactAbortedTelemetryCandidate, interceptedBeforeNetwork: false },
+  completedMainFrameNavigationCount: 2,
+});
+assert.equal(unintercepted.classification, "unproven");
+assert.equal(unintercepted.duplicateApplicationEffects, null);
 
 requireAll(
   canceledHomepagePrefetch,
@@ -391,7 +507,10 @@ requireAll(
     "buildOnboardingDraftEnvelope",
     "currentStep",
     "furthestStepIndex",
-    '[t("onboarding.destination"), t(draft.adDestination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta")]',
+    'label: t("onboarding.destination"), value: t(draft.adDestination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta")',
+    'data-testid={`onboarding-review-${key}`}',
+    'data-testid="onboarding-review-label"',
+    'data-testid="onboarding-review-value"',
     't("onboarding.planArchived")',
     'canUseExistingLaunchAccess ? t("onboarding.continueCreatives") : t("onboarding.activatePro")',
   ],

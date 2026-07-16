@@ -484,8 +484,11 @@ check("campaign persistence materializes the complete onboarding contract", () =
 });
 
 check("onboarding review and copy reflect the selected destination", () => {
-  assert.match(pageSource, /\[t\("onboarding\.captureStyle"\), t\(`/);
-  assert.match(pageSource, /\[t\("onboarding\.destination"\), t\(draft\.adDestination === "website"/);
+  assert.match(pageSource, /key: "lead-capture-style", label: t\("onboarding\.captureStyle"\), value: t\(`/);
+  assert.match(pageSource, /key: "destination", label: t\("onboarding\.destination"\), value: t\(draft\.adDestination === "website"/);
+  assert.match(pageSource, /data-testid=\{`onboarding-review-\$\{key\}`\}/);
+  assert.match(pageSource, /data-testid="onboarding-review-label"/);
+  assert.match(pageSource, /data-testid="onboarding-review-value"/);
   assert.match(pageSource, /t\("onboarding\.setup\.metaQuestions"\)/);
   assert.match(productMessagesSource, /"onboarding\.captureStyle": "Lead capture style"/);
   assert.match(productMessagesSource, /"onboarding\.destination": "Ad destination"/);

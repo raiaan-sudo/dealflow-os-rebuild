@@ -42,6 +42,19 @@ const PRODUCTION_TRUST = Object.freeze({
   reason:
     "This builder has no protected external cryptographic trust input. A caller-authored production attestation cannot authorize release.",
 });
+const RELEASE_DECISION_AUTHORITY = Object.freeze({
+  authority: "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD",
+  schemaVersion: "dealflow.release-guard.v4",
+  command: "npm run release:guard",
+  requiredMode: "release",
+  requiredDecision: "PASS",
+  requiresAllEvidenceValidated: true,
+  requiresProtectedExternalTrustRoot: true,
+  builderRole: "NON_AUTHORIZING_EVIDENCE_SNAPSHOT",
+  builderCanAuthorizeProduction: false,
+  releaseGuardManifestConsumed: false,
+  status: "NOT_EVALUATED",
+});
 
 const CAPABILITIES = Object.freeze([
   {
@@ -1132,10 +1145,9 @@ function main() {
   const providers = buildProviderMatrix(stagingGates, production);
   const productionMatrix = buildProductionMatrix(production);
   const journeys = buildJourneys(stagingGates);
-  // A plain JSON attestation is retained only as operator-provided context. It
-  // is not a protected external trust root and can never authorize production.
-  const productionGo = false;
-  const verdict = productionGo ? "GO" : "NO_GO";
+  // This builder intentionally does not consume protected release-guard output.
+  // Its sanitized snapshot is non-authorizing and therefore always fail-closed.
+  const verdict = "NO_GO";
   const temporary = `${options.output}.partial-${process.pid}`;
   if (existsSync(temporary)) fail("Temporary evidence path already exists");
 
@@ -1219,6 +1231,8 @@ function main() {
       schemaVersion: "dealflow.current-release.snapshot.v1",
       generatedAt: new Date().toISOString(),
       verdict,
+      verdictScope: "NON_AUTHORIZING_EVIDENCE_SNAPSHOT",
+      releaseDecisionAuthority: RELEASE_DECISION_AUTHORITY,
       proofCut: "exact_current_final_source_only",
       statusLegend: {
         PASS: "Required proof passed at the stated proof plane.",
@@ -1259,7 +1273,7 @@ function main() {
       reportedConfirmation: production?.effects ?? { status: "NOT_PROVEN" },
     };
 
-    writeText(join(temporary, "00_EXECUTIVE_VERDICT.md"), `# DealFlow current release verdict\n\n**${verdict}**\n\nThe bundle contains only evidence bound to commit \`${identity.commit}\`, tree \`${identity.tree}\`, and the exact ${migrations.migrationCount}-migration portfolio. ${productionGo ? "Every required production, provider, backup, drain, canary and capability gate is explicitly PASS." : "Production release is not proven. Missing provider or production evidence remains NO_GO and is not relabeled as success."}\n`);
+    writeText(join(temporary, "00_EXECUTIVE_VERDICT.md"), `# DealFlow current release evidence snapshot\n\n**${verdict} — NON-AUTHORIZING SNAPSHOT**\n\nThe bundle contains only evidence bound to commit \`${identity.commit}\`, tree \`${identity.tree}\`, and the exact ${migrations.migrationCount}-migration portfolio. This builder never authorizes production and does not consume protected release-guard output. Only a release-mode \`PASS\` from \`npm run release:guard\`, backed by its protected external trust root and fully validated signed evidence, is the controlling cryptographic release decision. This snapshot cannot be substituted for that guard result.\n`);
     writeJson(join(temporary, "01_NINE_CAPABILITY_MATRIX.json"), capabilities);
     writeText(join(temporary, "01_NINE_CAPABILITY_MATRIX.md"), `# Nine mandatory capabilities\n\n${markdownTable(capabilities, [["ID", "id"], ["Capability", "capability"], ["Local", "implementationProof"], ["Staging", "stagingProof"], ["Production", "productionProof"], ["Final", "finalStatus"]])}\n`);
     writeJson(join(temporary, "02_FINAL_ISSUE_BLOCKER_LEDGER.json"), issues);

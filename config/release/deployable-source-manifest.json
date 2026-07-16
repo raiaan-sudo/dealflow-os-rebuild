@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 985,
-  "deployableSourceSha256": "aa01ee253c4372ea47232389704c0f348f8e02b0a56f7e60367e232f33feee01",
+  "entryCount": 986,
+  "deployableSourceSha256": "b4a012e1f59fd11a7bb479f38628b3f87cbde907fb4d129dbfb9c9508f66331d",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -24,9 +24,9 @@
     },
     {
       "path": "CURRENT_RELEASE_EVIDENCE_BUNDLE.md",
-      "size": 2791,
+      "size": 3894,
       "mode": 33188,
-      "sha256": "2481386f536c1d8f0172dc3b724407e98dc220a2ec39dc5b2435c2edae6c0268"
+      "sha256": "0a847f6906d61e5c015bab72426ad2b3d584b94b1c04e0886440728daeb7b834"
     },
     {
       "path": "README.md",
@@ -78,9 +78,9 @@
     },
     {
       "path": "docs/dealflow-completion/CURRENT_RELEASE_ISSUE_LEDGER.md",
-      "size": 6039,
+      "size": 6172,
       "mode": 33188,
-      "sha256": "c5e70b201985965e16339aa51aba9433b6049bae08be908bfd3b5f829d1a7185"
+      "sha256": "5a0a15eb9ea62e9ba5531c598eea6103b10d060c3be3594a0270d6819356c8c4"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -186,9 +186,9 @@
     },
     {
       "path": "docs/dealflow-completion/RELEASE_EVIDENCE_TRUST_POLICY.md",
-      "size": 5992,
+      "size": 6746,
       "mode": 33188,
-      "sha256": "cb3257632b10ab9b934870b0ee38a66e42a8f17d6cac079310e74efc0991262a"
+      "sha256": "1e9a2c85b266fed887b2edf3f859f03b8cd4ba055ba8dbebcb5fb6893f15bfa6"
     },
     {
       "path": "docs/dealflow-completion/RELIABILITY_WAVE_FIND-002-003-004-041.json",
@@ -564,9 +564,9 @@
     },
     {
       "path": "package.json",
-      "size": 12619,
+      "size": 12716,
       "mode": 33188,
-      "sha256": "34a2cff1c865152c6bf832d45ad68bcdb30ba91801ed3fff12bd7efbcea561f5"
+      "sha256": "b7ed7c907ca70ae60c031afcb9aa74956464249f1e625b8ac47ac1be00665462"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -648,9 +648,9 @@
     },
     {
       "path": "scripts/build-current-release-evidence.mjs",
-      "size": 59430,
+      "size": 60125,
       "mode": 33188,
-      "sha256": "84702d57fc0a922f1ea8a9e3373fedf1f7115060d4ab5df667c20aa331df5d9a"
+      "sha256": "2eb674a614f023393c79854cabe6e900dd2ac02af1cdd5b60f4dea82e6cf378e"
     },
     {
       "path": "scripts/build-dealflow-final-audit-bundle.mjs",
@@ -738,9 +738,9 @@
     },
     {
       "path": "scripts/generate-release-guard.mjs",
-      "size": 72880,
+      "size": 73073,
       "mode": 33261,
-      "sha256": "e5519d194e64ae1e8eb99994c2c0a6e7887a029ca6f18141aeba56319a4a02d9"
+      "sha256": "f324a5e10e5d50c1c50ade41ecd0a732f91e34d63caed3b3dfa0094efc1b9506"
     },
     {
       "path": "scripts/job-observability.md",
@@ -1259,6 +1259,12 @@
       "sha256": "cec19ae2fc79b16ae1ce6a64d934c306f67a7ab8dbe65a86f77615b3199905ad"
     },
     {
+      "path": "scripts/test-app-context-workspace-resolution.ts",
+      "size": 12289,
+      "mode": 33188,
+      "sha256": "a07af5e0320894852c0235500c5cdc789fc6dc25e6895ffe82b7d83649309ef7"
+    },
+    {
       "path": "scripts/test-atomic-public-lead-capture-disposable-db.mjs",
       "size": 14461,
       "mode": 33188,
@@ -1326,9 +1332,9 @@
     },
     {
       "path": "scripts/test-current-release-evidence-builder-contract.mjs",
-      "size": 49663,
+      "size": 50547,
       "mode": 33188,
-      "sha256": "68d2a10f237c9a3190682b6a9a32f42f4f0d3181b91b18cd011303986dce17e2"
+      "sha256": "6e69527236838344c41dd986cd8489c0e2950ebbc34e56cbdb87f73b22c83f93"
     },
     {
       "path": "scripts/test-custom-lead-question-contract.mjs",
@@ -1686,9 +1692,9 @@
     },
     {
       "path": "scripts/test-onboarding-activation-billing-contract.mjs",
-      "size": 18664,
+      "size": 18950,
       "mode": 33188,
-      "sha256": "43456d85f2bc6b49504bedf9dff9ffaa2963b735ffc63fe64d8fc374c48958b7"
+      "sha256": "e149cd0a7977b1d50973253dcd05e053018d34d349a54017c2fc95659744ef86"
     },
     {
       "path": "scripts/test-optimization-evidence-safety.mjs",
@@ -1746,9 +1752,9 @@
     },
     {
       "path": "scripts/test-release-guard.mjs",
-      "size": 41106,
+      "size": 41458,
       "mode": 33188,
-      "sha256": "790fddbadd449962aa7da181786e8b85fd84737a246cf02b3bcd3def4861cadd"
+      "sha256": "a95bf7f891db26f7deaaebe18efba75bf2d3ed84a4948cc39227bc2a715f4e3f"
     },
     {
       "path": "scripts/test-release-secret-scan-contract.mjs",
@@ -2004,9 +2010,9 @@
     },
     {
       "path": "src/app/(app)/onboarding/page.tsx",
-      "size": 71738,
+      "size": 72280,
       "mode": 33188,
-      "sha256": "2f6d81898770c5bdf2927c268734c67f0679b49c59bb29dca4463230aff10759"
+      "sha256": "d7f3a826ba845b581933362a976030c380f921242eac8e78d98d65fe2f587c37"
     },
     {
       "path": "src/app/(app)/paywall/page.tsx",
@@ -4158,9 +4164,9 @@
     },
     {
       "path": "src/lib/services/app-context.ts",
-      "size": 35844,
+      "size": 40565,
       "mode": 33188,
-      "sha256": "4d57f82c22cfb4b031201dae2d402783f05189f2cf2ab370f512509c682f95aa"
+      "sha256": "a078ad91e34799c77083d1b07a534a686da907317da8cbd3f4872e541f95ff12"
     },
     {
       "path": "src/lib/services/asset-generation-lifecycle.ts",
@@ -5772,9 +5778,9 @@
     },
     {
       "path": "tests/e2e/dealflow-safe.spec.ts",
-      "size": 43299,
+      "size": 50193,
       "mode": 33188,
-      "sha256": "a242293534d452e7f91eb847f3187bb401ee38a9bfadcd28089128d391c4b28d"
+      "sha256": "150f7f693f0c28286054ee052c5b6b007b171b041882ccd8c815c3db7392055c"
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
@@ -5784,9 +5790,9 @@
     },
     {
       "path": "tests/e2e/expected-navigation-abort.mjs",
-      "size": 603,
+      "size": 4444,
       "mode": 33188,
-      "sha256": "dfebfa5fda6d6b5b12ba03b9d070148ab523f359375cabb6044272478e1ce01f"
+      "sha256": "377f0cd4808717130a34da016f416c6eb641df7db836933796df0a40c6283749"
     },
     {
       "path": "tests/e2e/expected-next-prefetch-abort.mjs",
@@ -5820,9 +5826,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 17525,
+      "size": 22667,
       "mode": 33188,
-      "sha256": "d9ce08bf1fe5733aa0989f65d06c1d5b8818d319d5ab810847e867e67ce3b537"
+      "sha256": "ae135eda451edf9d3e51e52d813dd5c4e2a3fff196ea13021fb3980fffc91c7d"
     },
     {
       "path": "tests/performance/README.md",

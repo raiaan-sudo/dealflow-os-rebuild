@@ -1,6 +1,28 @@
 # Current release evidence bundle
 
-`scripts/build-current-release-evidence.mjs` creates the final owner handoff from one exact, clean release source. It does not read or modify a historical audit bundle.
+`scripts/build-current-release-evidence.mjs` creates a sanitized owner handoff from one exact, clean release source. It does not read or modify a historical audit bundle, consume protected release-guard output, or authorize production.
+
+## Release-decision authority
+
+This builder is a non-authorizing evidence snapshot and always emits `NO_GO`.
+That is a deliberate fail-closed boundary, not an incomplete production-verdict
+implementation. A caller-authored production attestation is retained only as
+reported context and cannot change the snapshot verdict.
+
+The sole cryptographic production gate is `npm run release:guard`. A downstream
+release consumer may treat its result as authoritative only when the manifest
+uses `dealflow.release-guard.v4` and reports all of the following:
+
+- `gate.mode = release`;
+- `gate.enforced = true`;
+- `gate.decision = PASS`;
+- `gate.decisionAuthority = PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD`; and
+- `gate.allEvidenceValidated = true`.
+
+That guard result must be backed by the independently pinned protected external
+trust root and all six required signed evidence classes. No downstream process
+may wait for this snapshot builder to return `GO`, treat its plain production
+JSON as authority, or substitute it for the release guard.
 
 ## Inputs
 

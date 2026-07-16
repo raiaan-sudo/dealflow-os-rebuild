@@ -43,6 +43,29 @@ export class AccountDeletionWorkspaceSuspendedError extends Error {
   }
 }
 
+export class WorkspaceSelectionRequiredError extends Error {
+  readonly code = "workspace_selection_required";
+
+  constructor() {
+    super("Select a workspace before continuing.");
+    this.name = "WorkspaceSelectionRequiredError";
+  }
+}
+
+export class WorkspaceSelectionDeniedError extends Error {
+  readonly code = "workspace_selection_denied";
+
+  constructor() {
+    super("The selected workspace is not available to this user.");
+    this.name = "WorkspaceSelectionDeniedError";
+  }
+}
+
+const ACTIVE_WORKSPACE_COOKIE = "dealflow_active_workspace";
+const ACTIVE_WORKSPACE_HEADER = "x-dealflow-selected-workspace";
+const WORKSPACE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 async function assertAccountDeletionWorkspaceAccess(
   admin: SupabaseClient | null,
   userId: string,
@@ -266,6 +289,80 @@ async function resolveVerifiedEmbeddedWorkspace(params: {
     capability,
     organization: organizationResult.data[0] as Row<"organizations">,
     membership: membershipResult.data[0] as Row<"organization_memberships">,
+  };
+}
+
+async function readExplicitSelectedWorkspaceId() {
+  const requestHeaders = await headers();
+  const headerSelection = requestHeaders.get(ACTIVE_WORKSPACE_HEADER)?.trim();
+  if (headerSelection) return headerSelection;
+
+  const cookieStore = await cookies();
+  return cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value.trim() || null;
+}
+
+export async function resolveMembershipFirstWorkspace(
+  supabase: SupabaseClient,
+  profile: Row<"users">,
+  selectedOrganizationId: string | null,
+) {
+  if (selectedOrganizationId) {
+    if (!WORKSPACE_ID_PATTERN.test(selectedOrganizationId)) {
+      throw new WorkspaceSelectionDeniedError();
+    }
+
+    const { data: selectedMembershipRaw, error: selectedMembershipError } = await supabase
+      .from("organization_memberships")
+      .select("*")
+      .eq("organization_id", selectedOrganizationId)
+      .eq("user_id", profile.id)
+      .maybeSingle();
+
+    if (selectedMembershipError) throw selectedMembershipError;
+    if (!selectedMembershipRaw) throw new WorkspaceSelectionDeniedError();
+
+    const { data: selectedOrganizationRaw, error: selectedOrganizationError } = await supabase
+      .from("organizations")
+      .select("*")
+      .eq("id", selectedOrganizationId)
+      .maybeSingle();
+
+    if (selectedOrganizationError) throw selectedOrganizationError;
+    if (!selectedOrganizationRaw) throw new WorkspaceSelectionDeniedError();
+
+    return {
+      organization: selectedOrganizationRaw as Row<"organizations">,
+      membership: selectedMembershipRaw as Row<"organization_memberships">,
+    };
+  }
+
+  const { data: membershipRowsRaw, error: membershipRowsError } = await supabase
+    .from("organization_memberships")
+    .select("*")
+    .eq("user_id", profile.id)
+    .order("created_at", { ascending: true })
+    .limit(2);
+
+  if (membershipRowsError) throw membershipRowsError;
+  const memberships = (membershipRowsRaw ?? []) as Row<"organization_memberships">[];
+  if (memberships.length > 1) throw new WorkspaceSelectionRequiredError();
+  if (memberships.length === 0) return null;
+
+  const membership = memberships[0];
+  const { data: organizationRaw, error: organizationError } = await supabase
+    .from("organizations")
+    .select("*")
+    .eq("id", membership.organization_id)
+    .maybeSingle();
+
+  if (organizationError) throw organizationError;
+  if (!organizationRaw) {
+    throw new Error("Active workspace membership references an unavailable organization.");
+  }
+
+  return {
+    organization: organizationRaw as Row<"organizations">,
+    membership,
   };
 }
 
@@ -640,19 +737,10 @@ export async function ensureBusinessProfile(
   organization: Row<"organizations">,
   profile: Row<"users">,
 ) {
-  const { data: existingBusinessProfileRaw, error: existingBusinessProfileError } =
-    await supabase
-      .from("business_profiles")
-      .select("*")
-      .eq("organization_id", organization.id)
-      .maybeSingle();
+  const existingBusinessProfile = await readBusinessProfile(supabase, organization);
 
-  if (existingBusinessProfileError) {
-    throw existingBusinessProfileError;
-  }
-
-  if (existingBusinessProfileRaw) {
-    return existingBusinessProfileRaw as Row<"business_profiles">;
+  if (existingBusinessProfile) {
+    return existingBusinessProfile;
   }
 
   try {
@@ -680,18 +768,56 @@ export async function ensureBusinessProfile(
     }
   }
 
-  const { data: recoveredBusinessProfileRaw, error: recoveredBusinessProfileError } =
+  return readBusinessProfile(supabase, organization);
+}
+
+export async function readBusinessProfile(
+  supabase: SupabaseClient,
+  organization: Row<"organizations">,
+) {
+  const { data: existingBusinessProfileRaw, error: existingBusinessProfileError } =
     await supabase
       .from("business_profiles")
       .select("*")
       .eq("organization_id", organization.id)
       .maybeSingle();
 
-  if (recoveredBusinessProfileError) {
-    throw recoveredBusinessProfileError;
+  if (existingBusinessProfileError) {
+    throw existingBusinessProfileError;
   }
 
-  return (recoveredBusinessProfileRaw as Row<"business_profiles"> | null) ?? null;
+  if (existingBusinessProfileRaw) {
+    return existingBusinessProfileRaw as Row<"business_profiles">;
+  }
+
+  return null;
+}
+
+export function hasCanonicalOwnerWorkspaceAuthority(params: {
+  profile: Row<"users">;
+  organization: Row<"organizations">;
+  membership: Row<"organization_memberships">;
+}) {
+  return (
+    params.organization.owner_user_id === params.profile.id &&
+    params.membership.organization_id === params.organization.id &&
+    params.membership.user_id === params.profile.id &&
+    params.membership.role?.trim().toLowerCase() === "owner"
+  );
+}
+
+export function isWorkspaceBootstrapReadOnly(params: {
+  isEmbeddedWorkspace: boolean;
+  isMembershipWorkspace: boolean;
+  profile: Row<"users">;
+  organization: Row<"organizations">;
+  membership: Row<"organization_memberships">;
+}) {
+  if (params.isEmbeddedWorkspace) return true;
+  return (
+    params.isMembershipWorkspace &&
+    !hasCanonicalOwnerWorkspaceAuthority(params)
+  );
 }
 
 export async function ensureAppContext() {
@@ -721,7 +847,15 @@ export async function ensureAppContext() {
           profile,
         })
       : null;
+    const membershipWorkspace = embeddedWorkspace
+      ? null
+      : await resolveMembershipFirstWorkspace(
+          bootstrapSupabase,
+          profile,
+          await readExplicitSelectedWorkspaceId(),
+        );
     let organization = embeddedWorkspace?.organization ??
+      membershipWorkspace?.organization ??
       await ensureWorkspace(bootstrapSupabase, profile);
     const partnerAttribution = embeddedWorkspace
       ? null
@@ -742,8 +876,18 @@ export async function ensureAppContext() {
       }
     }
     const membership = embeddedWorkspace?.membership ??
+      membershipWorkspace?.membership ??
       await ensureMembership(bootstrapSupabase, profile, organization);
-    const businessProfile = await ensureBusinessProfile(bootstrapSupabase, organization, profile);
+    const workspaceBootstrapIsReadOnly = isWorkspaceBootstrapReadOnly({
+      isEmbeddedWorkspace: Boolean(embeddedWorkspace),
+      isMembershipWorkspace: Boolean(membershipWorkspace),
+      profile,
+      organization,
+      membership,
+    });
+    const businessProfile = workspaceBootstrapIsReadOnly
+      ? await readBusinessProfile(bootstrapSupabase, organization)
+      : await ensureBusinessProfile(bootstrapSupabase, organization, profile);
 
     const context: AppContext = {
       user,
@@ -753,7 +897,7 @@ export async function ensureAppContext() {
       businessProfile,
     };
 
-    if (!embeddedWorkspace) {
+    if (!workspaceBootstrapIsReadOnly) {
       try {
         const { claimPendingAccessKeyForCurrentUser } = await import("@/lib/services/access-key-service");
         await claimPendingAccessKeyForCurrentUser(context);
@@ -768,7 +912,7 @@ export async function ensureAppContext() {
 
     // Capability-bound GHL workspaces are pre-provisioned. Never claim a
     // top-level checkout or create demo/default data in a member iframe.
-    if (!embeddedWorkspace) {
+    if (!workspaceBootstrapIsReadOnly) {
       try {
         await ensureOrganizationSeedData(bootstrapSupabase, context);
       } catch (seedError) {

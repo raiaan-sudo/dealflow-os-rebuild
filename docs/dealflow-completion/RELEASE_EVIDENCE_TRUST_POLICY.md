@@ -12,6 +12,20 @@ No protected production trust root, production signing key, signed deployed
 environment attestation, or signed old-worker drain was available in this run.
 None was invented.
 
+## Controlling release-decision authority
+
+`scripts/generate-release-guard.mjs` in `release` mode is the sole
+cryptographic production gate. Its `PASS` is authoritative only when guard v4
+reports `gate.enforced = true`, all six evidence classes are validated, and the
+decision authority is `PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD`.
+
+`scripts/build-current-release-evidence.mjs` is a separate sanitized handoff
+snapshot. It does not consume the protected trust root or release-guard output,
+can never authorize production, and therefore always emits a scoped `NO_GO`.
+Caller-authored production JSON remains informational. Downstream release logic
+must consume the retained release-guard manifest and must never expect the
+snapshot builder to emit `GO`.
+
 ## Independent trust-root contract
 
 Release mode requires a `dealflow.external-release-trust-policy.v1` JSON file

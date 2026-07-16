@@ -1971,6 +1971,11 @@ function generateManifest(root, parsed) {
       mode: parsed.mode,
       enforced: parsed.mode === RELEASE_MODE,
       decision: parsed.mode === RELEASE_MODE ? "PASS" : "NON_GATING_PREVIEW",
+      decisionAuthority:
+        parsed.mode === RELEASE_MODE
+          ? "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD"
+          : "NONE",
+      currentReleaseEvidenceSnapshotAuthoritative: false,
       repositoryState,
       requiredEvidence: {
         build: evidence.buildEvidence.provided,

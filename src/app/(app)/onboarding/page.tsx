@@ -1566,28 +1566,29 @@ export default function OnboardingPage() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                 {[
-                  [t("onboarding.review.agent"), [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ")],
-                  [t("onboarding.step.type"), t(`onboarding.campaignType.${draft.campaignMode}` as ProductMessageKey)],
-                  [t("common.market"), draft.market],
-                  [t("onboarding.review.propertyType"), draft.propertyType],
-                  [t("onboarding.review.priceDeal"), draft.priceRange],
-                  [t("onboarding.dailyBudget"), formatDailyBudgetFromDraft(draft, locale, t)],
-                  [t("onboarding.review.monthlyEstimate"), formatMonthlyEstimateFromDraft(draft, locale, t) ?? t("common.notSet")],
-                  [t("onboarding.review.offer"), normalizedDraft.offer],
-                  [t("onboarding.captureStyle"), t(`onboarding.capture.${draft.leadCaptureMode === "volume_lead_form" ? "volume" : draft.leadCaptureMode === "quality_funnel" ? "quality" : "highest"}` as ProductMessageKey)],
-                  [t("onboarding.destination"), t(draft.adDestination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta")],
-                  [
-                    t("onboarding.review.launchAccess"),
-                    canUseExistingLaunchAccess
+                  { key: "agent", label: t("onboarding.review.agent"), value: [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ") },
+                  { key: "campaign-type", label: t("onboarding.step.type"), value: t(`onboarding.campaignType.${draft.campaignMode}` as ProductMessageKey) },
+                  { key: "market", label: t("common.market"), value: draft.market },
+                  { key: "property-type", label: t("onboarding.review.propertyType"), value: draft.propertyType },
+                  { key: "price-deal-size", label: t("onboarding.review.priceDeal"), value: draft.priceRange },
+                  { key: "daily-budget", label: t("onboarding.dailyBudget"), value: formatDailyBudgetFromDraft(draft, locale, t) },
+                  { key: "monthly-estimate", label: t("onboarding.review.monthlyEstimate"), value: formatMonthlyEstimateFromDraft(draft, locale, t) ?? t("common.notSet") },
+                  { key: "offer", label: t("onboarding.review.offer"), value: normalizedDraft.offer },
+                  { key: "lead-capture-style", label: t("onboarding.captureStyle"), value: t(`onboarding.capture.${draft.leadCaptureMode === "volume_lead_form" ? "volume" : draft.leadCaptureMode === "quality_funnel" ? "quality" : "highest"}` as ProductMessageKey) },
+                  { key: "destination", label: t("onboarding.destination"), value: t(draft.adDestination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta") },
+                  {
+                    key: "launch-access",
+                    label: t("onboarding.review.launchAccess"),
+                    value: canUseExistingLaunchAccess
                       ? billingStatus?.hasUnlimitedCampaigns
                         ? t("onboarding.review.proUnlimited")
                         : t("onboarding.review.existingSlot")
                       : t("onboarding.plan.positioning"),
-                  ],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                    <p className="text-xs text-white/48">{label}</p>
-                    <p className="mt-1 text-sm font-semibold text-white/86">{value}</p>
+                  },
+                ].map(({ key, label, value }) => (
+                  <div key={key} data-testid={`onboarding-review-${key}`} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                    <p data-testid="onboarding-review-label" className="text-xs text-white/48">{label}</p>
+                    <p data-testid="onboarding-review-value" className="mt-1 text-sm font-semibold text-white/86">{value}</p>
                   </div>
                 ))}
               </div>

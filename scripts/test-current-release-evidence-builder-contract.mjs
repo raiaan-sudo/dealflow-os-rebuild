@@ -356,6 +356,24 @@ function assertSnapshotFirstSourceBindingContract() {
   }
 }
 
+function assertNonAuthorizingSnapshot(snapshot) {
+  assert.equal(snapshot.verdict, "NO_GO");
+  assert.equal(snapshot.verdictScope, "NON_AUTHORIZING_EVIDENCE_SNAPSHOT");
+  assert.deepEqual(snapshot.releaseDecisionAuthority, {
+    authority: "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD",
+    schemaVersion: "dealflow.release-guard.v4",
+    command: "npm run release:guard",
+    requiredMode: "release",
+    requiredDecision: "PASS",
+    requiresAllEvidenceValidated: true,
+    requiresProtectedExternalTrustRoot: true,
+    builderRole: "NON_AUTHORIZING_EVIDENCE_SNAPSHOT",
+    builderCanAuthorizeProduction: false,
+    releaseGuardManifestConsumed: false,
+    status: "NOT_EVALUATED",
+  });
+}
+
 try {
   assertSnapshotFirstSourceBindingContract();
   mkdirSync(repo, { recursive: true });
@@ -568,6 +586,7 @@ try {
     "--output", output,
   ]);
   const snapshot = JSON.parse(readFileSync(join(output, "dealflow-release.snapshot.json"), "utf8"));
+  assertNonAuthorizingSnapshot(snapshot);
   if (snapshot.verdict !== "NO_GO" || snapshot.capabilities.length !== 9 || snapshot.staging.journeys.length !== 35) {
     throw new Error("NO_GO snapshot is incomplete or incorrectly classified");
   }
@@ -645,6 +664,7 @@ try {
   const resumedSnapshot = JSON.parse(
     readFileSync(join(resumedOutput, "dealflow-release.snapshot.json"), "utf8"),
   );
+  assertNonAuthorizingSnapshot(resumedSnapshot);
   if (resumedSnapshot.verdict !== "NO_GO") {
     throw new Error("Read-only exact existing migration verification was not accepted");
   }
@@ -725,6 +745,7 @@ try {
   const forwardSnapshot = JSON.parse(
     readFileSync(join(forwardOutput, "dealflow-release.snapshot.json"), "utf8"),
   );
+  assertNonAuthorizingSnapshot(forwardSnapshot);
   if (forwardSnapshot.verdict !== "NO_GO") {
     throw new Error("Exact forward-only migration application was not accepted");
   }
@@ -778,6 +799,7 @@ try {
   const fabricatedPassSnapshot = JSON.parse(
     readFileSync(join(fabricatedPassOutput, "dealflow-release.snapshot.json"), "utf8"),
   );
+  assertNonAuthorizingSnapshot(fabricatedPassSnapshot);
   if (
     fabricatedPassSnapshot.verdict !== "NO_GO" ||
     fabricatedPassSnapshot.production.releaseAuthorized !== false ||

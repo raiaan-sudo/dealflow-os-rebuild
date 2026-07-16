@@ -38,8 +38,9 @@ older candidate identities and row dispositions are not current release proof.
 4. Close production authority, backup, trust, drain, environment, ancestry,
    canary, and forward-recovery prerequisites.
 5. Release only if every controlling-authorization condition remains satisfied
-   and the final evidence builder returns `GO`; otherwise retain a sealed
-   `NO_GO` handoff.
+   and the protected external-trust release guard returns an enforced
+   release-mode `PASS` with every signed evidence class validated. The current
+   evidence builder is a non-authorizing snapshot and always returns `NO_GO`.
 
 No row in this ledger authorizes production or an external provider/customer
 mutation.

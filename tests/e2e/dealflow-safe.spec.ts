@@ -34,7 +34,11 @@ import {
   stagingAccessCookiesForOrigins,
   STAGING_ACCESS_HEADER,
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
-import { isExpectedNavigationAbort } from "./expected-navigation-abort.mjs";
+import {
+  classifyAbortedInterceptedTelemetry,
+  isExpectedNavigationAbort,
+  sanitizedTelemetryPurposeFingerprint,
+} from "./expected-navigation-abort.mjs";
 import { isExpectedCanceledHomepagePrefetch } from "./expected-next-prefetch-abort.mjs";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3410";
@@ -86,6 +90,29 @@ type BrowserDiagnostics = {
   allowedDevelopmentWebSockets: string[];
   allowedDraftWrites: string[];
   interceptedTelemetry: string[];
+  abortedTelemetryCandidates: Array<{
+    requestClass: "locally_intercepted_activation_telemetry";
+    method: "POST";
+    errorText: "net::ERR_ABORTED";
+    isNavigationRequest: false;
+    target: string;
+    resourceType: string;
+    initiatorPath: string;
+    elapsedMs: number;
+    telemetrySequence: number;
+    navigationSequenceAtStart: number;
+    purposeFingerprint: string | null;
+    interceptedBeforeNetwork: boolean;
+  }>;
+  successfulTelemetryRequests: Array<{
+    telemetrySequence: number;
+    purposeFingerprint: string;
+    status: number;
+  }>;
+  telemetryRequestCount: number;
+  mainFrameNavigationCount: number;
+  onboardingPersistenceProven: boolean;
+  onboardingUserVisibleErrorCount: number | null;
 };
 
 const diagnosticsByPage = new WeakMap<Page, BrowserDiagnostics>();
@@ -214,10 +241,31 @@ async function installSafetyHarness(page: Page) {
     allowedDevelopmentWebSockets: [],
     allowedDraftWrites: [],
     interceptedTelemetry: [],
+    abortedTelemetryCandidates: [],
+    successfulTelemetryRequests: [],
+    telemetryRequestCount: 0,
+    mainFrameNavigationCount: 0,
+    onboardingPersistenceProven: false,
+    onboardingUserVisibleErrorCount: null,
   };
   const context = page.context();
   const successfulResponseStatusByRequest = new WeakMap<Request, number>();
+  const locallyInterceptedTelemetry = new WeakMap<Request, true>();
+  const requestLifecycle = new WeakMap<
+    Request,
+    {
+      startedAt: number;
+      telemetrySequence: number;
+      navigationSequenceAtStart: number;
+      purposeFingerprint: string | null;
+      initiatorPath: string;
+    }
+  >();
   diagnosticsByPage.set(page, diagnostics);
+
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) diagnostics.mainFrameNavigationCount += 1;
+  });
 
   if (HOSTED_ACCEPTANCE) {
     const applicationOrigins = [new URL(BASE_URL).origin];
@@ -258,6 +306,7 @@ async function installSafetyHarness(page: Page) {
       const disposition = mutationDisposition(method, request.url());
       const record = `${method} ${safeHttpEvidenceTarget(request.url())}`;
       if (disposition === "intercepted_telemetry") {
+        locallyInterceptedTelemetry.set(request, true);
         diagnostics.interceptedTelemetry.push(record);
         await route.fulfill({ status: 204, body: "" });
         return;
@@ -328,7 +377,31 @@ async function installSafetyHarness(page: Page) {
       rscHeader: requestHeaders.rsc,
       successfulResponseStatus: successfulResponseStatusByRequest.get(request) ?? null,
     });
-    if (!expectedNavigationAbort && !expectedCanceledHomepagePrefetch) {
+    const lifecycle = requestLifecycle.get(request);
+    const disposition = mutationDisposition(request.method().toUpperCase(), request.url());
+    const exactAbortedInterceptedTelemetry =
+      disposition === "intercepted_telemetry" &&
+      request.method() === "POST" &&
+      !request.isNavigationRequest() &&
+      ["fetch", "xhr"].includes(request.resourceType()) &&
+      errorText === "net::ERR_ABORTED" &&
+      lifecycle?.telemetrySequence;
+    if (exactAbortedInterceptedTelemetry && lifecycle) {
+      diagnostics.abortedTelemetryCandidates.push({
+        requestClass: "locally_intercepted_activation_telemetry",
+        method: "POST",
+        errorText: "net::ERR_ABORTED",
+        isNavigationRequest: false,
+        target: safeHttpEvidenceTarget(request.url()),
+        resourceType: request.resourceType(),
+        initiatorPath: lifecycle.initiatorPath,
+        elapsedMs: Math.min(Math.max(Date.now() - lifecycle.startedAt, 0), 60_000),
+        telemetrySequence: lifecycle.telemetrySequence,
+        navigationSequenceAtStart: lifecycle.navigationSequenceAtStart,
+        purposeFingerprint: lifecycle.purposeFingerprint,
+        interceptedBeforeNetwork: locallyInterceptedTelemetry.get(request) === true,
+      });
+    } else if (!expectedNavigationAbort && !expectedCanceledHomepagePrefetch) {
       diagnostics.requestFailures.push(message);
     }
   });
@@ -336,6 +409,18 @@ async function installSafetyHarness(page: Page) {
   context.on("response", (response) => {
     if (response.status() >= 200 && response.status() < 400) {
       successfulResponseStatusByRequest.set(response.request(), response.status());
+      const lifecycle = requestLifecycle.get(response.request());
+      if (
+        lifecycle?.telemetrySequence &&
+        lifecycle.purposeFingerprint &&
+        locallyInterceptedTelemetry.get(response.request()) === true
+      ) {
+        diagnostics.successfulTelemetryRequests.push({
+          telemetrySequence: lifecycle.telemetrySequence,
+          purposeFingerprint: lifecycle.purposeFingerprint,
+          status: response.status(),
+        });
+      }
     }
     if (response.status() >= 500) {
       diagnostics.serverFailures.push(
@@ -348,6 +433,25 @@ async function installSafetyHarness(page: Page) {
     const method = request.method().toUpperCase();
     const disposition = mutationDisposition(method, request.url());
     const record = `${method} ${safeHttpEvidenceTarget(request.url())}`;
+    const telemetrySequence = disposition === "intercepted_telemetry"
+      ? diagnostics.telemetryRequestCount + 1
+      : 0;
+    if (telemetrySequence > 0) diagnostics.telemetryRequestCount = telemetrySequence;
+    let initiatorPath = "[detached-frame]";
+    try {
+      initiatorPath = pathnameOf(request.frame().url());
+    } catch {
+      // Capture the initiator at request start without retaining its full URL.
+    }
+    requestLifecycle.set(request, {
+      startedAt: Date.now(),
+      telemetrySequence,
+      navigationSequenceAtStart: diagnostics.mainFrameNavigationCount,
+      purposeFingerprint: disposition === "intercepted_telemetry"
+        ? sanitizedTelemetryPurposeFingerprint(request.postData())
+        : null,
+      initiatorPath,
+    });
 
     if (
       disposition === "forbidden_host" &&
@@ -375,8 +479,32 @@ function diagnosticsFor(page: Page) {
   return diagnostics;
 }
 
-function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
+async function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
   const diagnostics = diagnosticsFor(page);
+  const abortedPostClassifications = diagnostics.abortedTelemetryCandidates.map((candidate) =>
+    classifyAbortedInterceptedTelemetry({
+      candidate,
+      completedMainFrameNavigationCount: diagnostics.mainFrameNavigationCount,
+      finalPersistedState: diagnostics.onboardingPersistenceProven,
+      successfulTelemetryRequests: diagnostics.successfulTelemetryRequests,
+      userVisibleErrorCount: diagnostics.onboardingUserVisibleErrorCount,
+    }));
+  for (const classification of abortedPostClassifications) {
+    if (classification.classification === "unproven") {
+      diagnostics.requestFailures.push(
+        `POST ${classification.target} net::ERR_ABORTED unproven lifecycle ${JSON.stringify(classification)}`,
+      );
+    }
+  }
+  if (abortedPostClassifications.length > 0) {
+    await testInfo.attach("aborted-post-classification.json", {
+      body: Buffer.from(JSON.stringify({
+        schemaVersion: "dealflow.safe-browser-aborted-post-classification.v1",
+        records: abortedPostClassifications,
+      }, null, 2)),
+      contentType: "application/json",
+    });
+  }
   const failures = {
     forbiddenHosts: diagnostics.forbiddenHosts,
     forbiddenMutations: diagnostics.forbiddenMutations,
@@ -742,12 +870,37 @@ async function returnToBudget(page: Page) {
 }
 
 async function assertReviewDestination(page: Page, destination: "Website funnel" | "Meta Instant Form") {
-  const destinationLabel = page.getByText("Ad destination", { exact: true });
-  await expect(destinationLabel).toBeVisible();
-  await expect(destinationLabel.locator("xpath=following-sibling::*[1]")).toHaveText(destination);
-  await expect(page.getByText("Daily ad spend", { exact: true }).locator("xpath=following-sibling::*[1]")).toContainText("$30/day");
-  await expect(page.getByText("Lead capture", { exact: true }).locator("xpath=following-sibling::*[1]")).toContainText("Quality leads");
-  await expect(page.getByText("Launch access", { exact: true }).locator("xpath=following-sibling::*[1]")).toContainText(/Pro access|Only launch plan|Existing plan/);
+  const reviewPanel = page.getByTestId("onboarding-current-step-panel");
+  const assertReviewCard = async (key: string, label: string, value: string | RegExp) => {
+    const card = reviewPanel.getByTestId(`onboarding-review-${key}`);
+    await expect(card).toHaveCount(1);
+    await expect(card.getByTestId("onboarding-review-label")).toHaveText(label);
+    await expect(card.getByTestId("onboarding-review-value")).toHaveText(value);
+  };
+
+  await assertReviewCard("agent", "Agent", "Safe Browserproof");
+  await assertReviewCard("campaign-type", "Type", "Buyer leads");
+  await assertReviewCard("market", "Market", "Safe QA Market, ON");
+  await assertReviewCard("property-type", "Property type", "Single Family Homes");
+  await assertReviewCard("price-deal-size", "Price or deal size", "$600k-$900k");
+  await assertReviewCard("daily-budget", "Daily ad spend budget", "$30/day");
+  await assertReviewCard(
+    "monthly-estimate",
+    "30-day estimate",
+    "Estimated 30-day media spend: $900.",
+  );
+  await assertReviewCard(
+    "offer",
+    "Offer",
+    "Private Listings and a Fast Buyer Strategy Call",
+  );
+  await assertReviewCard("lead-capture-style", "Lead capture style", "Quality leads");
+  await assertReviewCard("destination", "Ad destination", destination);
+  await assertReviewCard(
+    "launch-access",
+    "Launch access",
+    "Pro access: unlimited campaign slots",
+  );
   await expect(page.getByTestId("prepaywall-campaign-preview")).toBeVisible();
 }
 
@@ -828,7 +981,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterEach(async ({ page }, testInfo) => {
-  assertDiagnosticsClean(page, testInfo);
+  await assertDiagnosticsClean(page, testInfo);
 });
 
 test.describe("public and unauthenticated route truth", () => {
@@ -976,6 +1129,13 @@ test.describe("authenticated isolated-staging product proof", () => {
     await gotoAndSettle(page, "/onboarding?resume=1");
     await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
     await assertReviewDestination(page, "Meta Instant Form");
+    const userVisibleErrorCount = await page
+      .getByTestId("onboarding-current-step-panel")
+      .locator(".text-rose-300, .text-rose-400")
+      .count();
+    expect(userVisibleErrorCount).toBe(0);
+    diagnosticsFor(page).onboardingPersistenceProven = true;
+    diagnosticsFor(page).onboardingUserVisibleErrorCount = userVisibleErrorCount;
 
     expect(diagnosticsFor(page).allowedDraftWrites.length).toBeGreaterThanOrEqual(5);
     expect(diagnosticsFor(page).interceptedTelemetry.length).toBeGreaterThan(0);
@@ -991,11 +1151,14 @@ test.describe("authenticated isolated-staging product proof", () => {
     await assertNoHorizontalOverflow(page);
     await assertCoreAccessibility(page);
 
-    const campaignLaunchLink = page.locator('a[href^="/launch?campaignId="]').first();
+    const campaignLaunchLink = page.locator('a[href*="/launch?campaignId="]').first();
     const launchLink = (await campaignLaunchLink.count()) > 0
       ? campaignLaunchLink
       : page.locator('a[href="/launch"]').first();
     const campaignLaunchHref = await launchLink.getAttribute("href").catch(() => null);
+    const expectedCampaignId = campaignLaunchHref
+      ? new URL(campaignLaunchHref, BASE_URL).searchParams.get("campaignId")
+      : null;
     await gotoAndSettle(page, campaignLaunchHref || "/launch");
 
     const launchStateHeadings = [
@@ -1023,12 +1186,17 @@ test.describe("authenticated isolated-staging product proof", () => {
       await expect(page.getByRole("link", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
     } else if (launchState === 1) {
-      const buildCreativesLink = page.locator('a[href^="/build/creatives"]');
+      expect(expectedCampaignId).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i);
+      const launchLocale = new URL(page.url()).pathname.split("/")[1];
+      expect(["en", "fr", "es"]).toContain(launchLocale);
+      const buildCreativesLink = page.locator('a[href*="/build/creatives?campaignId="]');
       await expect(buildCreativesLink).toHaveCount(1);
-      await expect(buildCreativesLink).toHaveAttribute(
-        "href",
-        /^\/build\/creatives\?campaignId=[a-f0-9-]{36}$/i,
-      );
+      const buildCreativesHref = await buildCreativesLink.getAttribute("href");
+      expect(buildCreativesHref).toBeTruthy();
+      const buildCreativesUrl = new URL(buildCreativesHref!, BASE_URL);
+      expect(buildCreativesUrl.pathname).toBe(`/${launchLocale}/build/creatives`);
+      expect([...buildCreativesUrl.searchParams.keys()]).toEqual(["campaignId"]);
+      expect(buildCreativesUrl.searchParams.get("campaignId")).toBe(expectedCampaignId);
       await expect(page.locator('a[href^="/launching"]')).toHaveCount(0);
       await expect(page.getByRole("link", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);

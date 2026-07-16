@@ -528,6 +528,11 @@ try {
   assert.equal(manifest.gate.mode, "release");
   assert.equal(manifest.gate.enforced, true);
   assert.equal(manifest.gate.decision, "PASS");
+  assert.equal(
+    manifest.gate.decisionAuthority,
+    "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD",
+  );
+  assert.equal(manifest.gate.currentReleaseEvidenceSnapshotAuthoritative, false);
   assert.equal(manifest.gate.allEvidenceValidated, true);
   assert.equal(manifest.gate.allEvidenceStructurallyValidated, true);
   assert.deepEqual(manifest.gate.requiredEvidence, {
@@ -751,6 +756,11 @@ try {
   assert.equal(previewManifest.gate.mode, "audit-preview");
   assert.equal(previewManifest.gate.enforced, false);
   assert.equal(previewManifest.gate.decision, "NON_GATING_PREVIEW");
+  assert.equal(previewManifest.gate.decisionAuthority, "NONE");
+  assert.equal(
+    previewManifest.gate.currentReleaseEvidenceSnapshotAuthoritative,
+    false,
+  );
   assert.equal(previewManifest.gate.allEvidenceStructurallyValidated, true);
   assert.equal(previewManifest.gate.allEvidenceValidated, false);
   assert.equal(
