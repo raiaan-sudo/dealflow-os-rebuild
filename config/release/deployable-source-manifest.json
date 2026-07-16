@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 988,
-  "deployableSourceSha256": "9e0535f2e0792657012cb8458e2bcc22ca9cbbb1833792575a8ac870aa6f35c5",
+  "deployableSourceSha256": "ca291cf074cfb50763ac30eadea0e00c7f5e3a02f95a288515d2249ece2ea815",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -1242,9 +1242,9 @@
     },
     {
       "path": "scripts/test-accessibility-truth-contract.mjs",
-      "size": 12292,
+      "size": 12429,
       "mode": 33188,
-      "sha256": "4451c3aa3f4902526bcdbd69a55fea82329436bfbe9ea9ddef43aedab6b9681f"
+      "sha256": "6120ce387f4dd2a339975e1539c7d8705a929c52e042969f6c74d22110b3f638"
     },
     {
       "path": "scripts/test-account-deletion-ghl-offboarding.ts",
@@ -2024,7 +2024,7 @@
       "path": "src/app/(app)/onboarding/page.tsx",
       "size": 72280,
       "mode": 33188,
-      "sha256": "d7f3a826ba845b581933362a976030c380f921242eac8e78d98d65fe2f587c37"
+      "sha256": "9c0ff03e79299df12f5c3b5f3bbdfe01b402fce66d4bebcd7232c7965c5d4e0e"
     },
     {
       "path": "src/app/(app)/paywall/page.tsx",
@@ -5790,9 +5790,9 @@
     },
     {
       "path": "tests/e2e/dealflow-safe.spec.ts",
-      "size": 50193,
+      "size": 51087,
       "mode": 33188,
-      "sha256": "150f7f693f0c28286054ee052c5b6b007b171b041882ccd8c815c3db7392055c"
+      "sha256": "adb4b06b9446ee0548a0822b9b8c7b3fbdf5a7b0d05b7f5b9120083890d2c8e3"
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
@@ -5838,9 +5838,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 22667,
+      "size": 23421,
       "mode": 33188,
-      "sha256": "ae135eda451edf9d3e51e52d813dd5c4e2a3fff196ea13021fb3980fffc91c7d"
+      "sha256": "b81402c38169787642d790f9d2d1a079d6ab91f894de315bf281c52d9a036d8d"
     },
     {
       "path": "tests/performance/README.md",

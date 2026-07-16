@@ -954,7 +954,7 @@ export default function OnboardingPage() {
             <IconTile icon={Target} tone="cyan" />
             <div>
               <p className="df-eyebrow">{t("onboarding.currentStep")}</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{stepTitle}</h3>
+              <h1 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{stepTitle}</h1>
               <p className="mt-2 text-sm leading-6 text-white/64">
                 {t("onboarding.answerStep")}
               </p>

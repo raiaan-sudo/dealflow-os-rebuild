@@ -249,6 +249,11 @@ assertIncludes("homepage", 'aria-controls="engine-mode-details"', "engine contro
 assertIncludes("creativeWizard", 'aria-pressed={selected}', "creative selection state");
 assertIncludes("creativeWizard", 'role="group"', "creative selection group semantics");
 assertIncludes("onboarding", 'aria-current={active ? "step" : undefined}', "onboarding current-step semantics");
+assert.match(
+  sources.onboarding,
+  /<h1[^>]*>\{stepTitle\}<\/h1>/,
+  "onboarding current step must remain the page-level heading",
+);
 assert.ok(
   (sources.onboarding.match(/aria-pressed=/g) ?? []).length >= 9,
   "onboarding selection controls must expose their selected state",

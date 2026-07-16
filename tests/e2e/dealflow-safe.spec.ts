@@ -48,6 +48,14 @@ const AUTHENTICATED_STAGING_PROOF_ENABLED = process.env.SAFE_E2E_QA_AUTH === "tr
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
 const EXPECTED_STAGING_PROJECT_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
+const CAMPAIGN_UUID_PATTERN =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const ALLOWED_LAUNCH_PATHNAMES = new Set([
+  "/launch",
+  "/en/launch",
+  "/fr/launch",
+  "/es/launch",
+]);
 const SAFE_SYNTHETIC_ROLE_EMAILS = Object.freeze({
   paidDirect: "dealflow-staging-20260712@example.com",
 });
@@ -1154,12 +1162,24 @@ test.describe("authenticated isolated-staging product proof", () => {
     const campaignLaunchLink = page.locator('a[href*="/launch?campaignId="]').first();
     const launchLink = (await campaignLaunchLink.count()) > 0
       ? campaignLaunchLink
-      : page.locator('a[href="/launch"]').first();
-    const campaignLaunchHref = await launchLink.getAttribute("href").catch(() => null);
-    const expectedCampaignId = campaignLaunchHref
-      ? new URL(campaignLaunchHref, BASE_URL).searchParams.get("campaignId")
-      : null;
-    await gotoAndSettle(page, campaignLaunchHref || "/launch");
+      : page.locator(
+          'a[href="/launch"], a[href="/en/launch"], a[href="/fr/launch"], a[href="/es/launch"]',
+        ).first();
+    await expect(launchLink).toHaveCount(1);
+    const campaignLaunchHref = await launchLink.getAttribute("href");
+    expect(campaignLaunchHref).toBeTruthy();
+    const campaignLaunchUrl = new URL(campaignLaunchHref!, BASE_URL);
+    expect(campaignLaunchUrl.origin).toBe(new URL(BASE_URL).origin);
+    expect(ALLOWED_LAUNCH_PATHNAMES.has(campaignLaunchUrl.pathname)).toBe(true);
+    expect(campaignLaunchUrl.hash).toBe("");
+    const expectedCampaignId = campaignLaunchUrl.searchParams.get("campaignId");
+    if (expectedCampaignId === null) {
+      expect([...campaignLaunchUrl.searchParams.keys()]).toEqual([]);
+    } else {
+      expect([...campaignLaunchUrl.searchParams.keys()]).toEqual(["campaignId"]);
+      expect(expectedCampaignId).toMatch(CAMPAIGN_UUID_PATTERN);
+    }
+    await gotoAndSettle(page, campaignLaunchHref!);
 
     const launchStateHeadings = [
       page.getByRole("heading", { level: 1, name: "Campaign plan not found", exact: true }),
@@ -1186,7 +1206,6 @@ test.describe("authenticated isolated-staging product proof", () => {
       await expect(page.getByRole("link", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
     } else if (launchState === 1) {
-      expect(expectedCampaignId).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i);
       const launchLocale = new URL(page.url()).pathname.split("/")[1];
       expect(["en", "fr", "es"]).toContain(launchLocale);
       const buildCreativesLink = page.locator('a[href*="/build/creatives?campaignId="]');
@@ -1196,7 +1215,11 @@ test.describe("authenticated isolated-staging product proof", () => {
       const buildCreativesUrl = new URL(buildCreativesHref!, BASE_URL);
       expect(buildCreativesUrl.pathname).toBe(`/${launchLocale}/build/creatives`);
       expect([...buildCreativesUrl.searchParams.keys()]).toEqual(["campaignId"]);
-      expect(buildCreativesUrl.searchParams.get("campaignId")).toBe(expectedCampaignId);
+      const resolvedCampaignId = buildCreativesUrl.searchParams.get("campaignId");
+      expect(resolvedCampaignId).toMatch(CAMPAIGN_UUID_PATTERN);
+      if (expectedCampaignId !== null) {
+        expect(resolvedCampaignId).toBe(expectedCampaignId);
+      }
       await expect(page.locator('a[href^="/launching"]')).toHaveCount(0);
       await expect(page.getByRole("link", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
