@@ -28,6 +28,19 @@ const EXPECTED_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
   }),
 ]);
 
+export const STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS = Object.freeze([
+  0,
+  LEGACY_SYNTHETIC_AUTH_IDENTITIES.length,
+  EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length,
+]);
+export const STAGING_AUTH_SURFACE_MAX_USER_COUNT =
+  Math.max(...STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS);
+
+export function isAllowedStagingAuthSurfaceUserCount(value) {
+  return Number.isSafeInteger(value) &&
+    STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS.includes(value);
+}
+
 function sha256(value) {
   return createHash("sha256").update(String(value)).digest("hex");
 }
@@ -61,10 +74,7 @@ export function classifyExactStagingAuthSurface(rows) {
       rawIdentityValuesPersisted: false,
     });
   }
-  if (
-    rows.length !== EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length &&
-    rows.length !== LEGACY_SYNTHETIC_AUTH_IDENTITIES.length
-  ) {
+  if (!isAllowedStagingAuthSurfaceUserCount(rows.length)) {
     throw new Error("Staging auth surface is not the exact synthetic fixture set");
   }
   const identities = rows.map((row) => {

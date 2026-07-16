@@ -26,9 +26,11 @@ import {
   classifyExactStagingAuthSurface,
   classifyPriorMigrationEvidence,
   isExactCommittedForwardRecoverySeal,
+  isAllowedStagingAuthSurfaceUserCount,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
   PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
   PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS,
+  STAGING_AUTH_SURFACE_MAX_USER_COUNT,
 } from "./prior-migration-proof-contract.mjs";
 
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg, ...modeArgs] = process.argv.slice(2);
@@ -986,7 +988,7 @@ function captureAndAssertStagingAuthSurface(label) {
       select email, raw_user_meta_data
       from auth.users
       order by email
-      limit 11
+      limit ${STAGING_AUTH_SURFACE_MAX_USER_COUNT}
     ), auth_count as (
       select count(*)::integer as total_count
       from auth.users
@@ -1012,9 +1014,8 @@ function captureAndAssertStagingAuthSurface(label) {
     label,
   ));
   if (
-    !Number.isSafeInteger(payload?.totalCount) ||
+    !isAllowedStagingAuthSurfaceUserCount(payload?.totalCount) ||
     !Array.isArray(payload.rows) ||
-    ![0, 10].includes(payload.totalCount) ||
     payload.rows.length !== payload.totalCount
   ) {
     throw new Error("Staging auth surface is neither empty nor the exact bounded synthetic fixture set");

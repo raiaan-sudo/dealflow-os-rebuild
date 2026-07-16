@@ -13,9 +13,12 @@ import {
   isExactCommittedForwardRecoverySeal,
   isExactCurrentResumeIdentity,
   isExactSafeStagingAuthSurfaceProof,
+  isAllowedStagingAuthSurfaceUserCount,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
   PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
   PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS,
+  STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS,
+  STAGING_AUTH_SURFACE_MAX_USER_COUNT,
 } from "./prior-migration-proof-contract.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -131,8 +134,24 @@ requireMarker(/captureAndAssertStagingAuthSurface/, "empty-or-exact-synthetic au
 requireMarker(/with bounded_auth_users as \(/, "single-statement bounded auth identity snapshot");
 requireMarker(/auth_count as \(/, "single-statement auth count snapshot");
 requireMarker(/'totalCount', \(select total_count from auth_count\)/, "count and identities share one statement snapshot");
-requireMarker(/!\[0, 10\]\.includes\(payload\.totalCount\)/, "empty-or-exact-ten auth count gate");
-requireMarker(/limit 11/, "bounded auth identity read");
+requireMarker(
+  /!isAllowedStagingAuthSurfaceUserCount\(payload\?\.totalCount\)/,
+  "shared empty-or-exact-fixture auth count gate",
+);
+requireMarker(
+  /limit \$\{STAGING_AUTH_SURFACE_MAX_USER_COUNT\}/,
+  "shared-contract-bounded auth identity read",
+);
+assert.doesNotMatch(
+  source,
+  /!\[[^\]]*\]\.includes\(payload(?:\?\.|\.)totalCount\)/,
+  "The migration broker must not duplicate the canonical auth-surface counts",
+);
+assert.match(
+  priorProofContractSource,
+  /if \(!isAllowedStagingAuthSurfaceUserCount\(rows\.length\)\)/,
+  "The identity classifier must consume the same canonical auth-surface count authority",
+);
 requireMarker(/'email', email/, "raw auth email supplied to canonical classifier");
 assert.doesNotMatch(
   source,
@@ -428,6 +447,23 @@ for (const { email, scenario } of expectedSyntheticAuthRows) {
 const emptyAuthSurfaceProof = classifyExactStagingAuthSurface([]);
 assert.equal(emptyAuthSurfaceProof.status, "EMPTY");
 assert.equal(isExactSafeStagingAuthSurfaceProof(emptyAuthSurfaceProof), true);
+assert.equal(Object.isFrozen(STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS), true);
+assert.deepEqual(STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS, [0, 10, 11]);
+assert.equal(STAGING_AUTH_SURFACE_MAX_USER_COUNT, 11);
+for (const acceptedCount of [0, 10, 11]) {
+  assert.equal(
+    isAllowedStagingAuthSurfaceUserCount(acceptedCount),
+    true,
+    `Canonical staging auth-user count ${acceptedCount} must be accepted`,
+  );
+}
+for (const rejectedCount of [1, 9, 12, -1, 10.5, "10", Number.NaN]) {
+  assert.equal(
+    isAllowedStagingAuthSurfaceUserCount(rejectedCount),
+    false,
+    `Noncanonical staging auth-user count ${String(rejectedCount)} must fail closed`,
+  );
+}
 const syntheticAuthSurfaceProof = classifyExactStagingAuthSurface(
   structuredClone(expectedSyntheticAuthRows).reverse(),
 );
@@ -442,6 +478,14 @@ assert.equal(legacySyntheticAuthSurfaceProof.status, "EXACT_LEGACY_SYNTHETIC_FIX
 assert.equal(legacySyntheticAuthSurfaceProof.userCount, 10);
 assert.equal(isExactSafeStagingAuthSurfaceProof(legacySyntheticAuthSurfaceProof), true);
 for (const [label, rows] of [
+  ["one identity", expectedSyntheticAuthRows.slice(0, 1)],
+  ["nine identities", expectedSyntheticAuthRows.slice(0, 9)],
+  ["twelve identities", [...expectedSyntheticAuthRows, {
+    email: "dealflow-staging-extra-20260712@example.com",
+    fixture: "DF-STAGING-20260712",
+    synthetic: true,
+    scenario: "unexpected_extra_identity",
+  }]],
   ["missing identity", expectedSyntheticAuthRows.slice(1)],
   ["duplicate identity", [...expectedSyntheticAuthRows.slice(0, -1), expectedSyntheticAuthRows[0]]],
   ["unexpected identity", expectedSyntheticAuthRows.map((row, index) => index === 0 ? { ...row, email: "unexpected@example.com" } : row)],
