@@ -97,7 +97,7 @@ async function assertQaUserIsNonAdmin(
 
   const { data: profile, error: profileError } = await admin
     .from("users")
-    .select("id,email")
+    .select("id,email,partner_id")
     .eq("email", qaEmail)
     .maybeSingle();
 
@@ -105,10 +105,22 @@ async function assertQaUserIsNonAdmin(
     throw new ApiError(500, profileError.message, "qa_user_profile_lookup_failed");
   }
 
-  const qaProfile = profile as { id?: string | null; email?: string | null } | null;
+  const qaProfile = profile as {
+    id?: string | null;
+    email?: string | null;
+    partner_id?: string | null;
+  } | null;
 
   if (!qaProfile?.id || qaProfile.email?.toLowerCase() !== qaEmail) {
     throw new ApiError(403, "QA auth harness requires an existing non-admin QA user profile.", "qa_user_profile_missing");
+  }
+
+  if (qaProfile.partner_id) {
+    throw new ApiError(
+      403,
+      "QA auth harness rejects partner-bound users.",
+      "qa_user_partner_binding_rejected",
+    );
   }
 
   const userId = String(qaProfile.id);
@@ -159,6 +171,24 @@ async function assertQaUserIsNonAdmin(
 
   if (elevatedRole) {
     throw new ApiError(403, "QA auth harness rejects elevated organization users.", "qa_user_elevated_membership_rejected");
+  }
+
+  const { data: ownedOrganizations, error: ownedOrganizationsError } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("owner_user_id", userId)
+    .limit(1);
+
+  if (ownedOrganizationsError) {
+    throw new ApiError(500, ownedOrganizationsError.message, "qa_owned_organization_lookup_failed");
+  }
+
+  if (Array.isArray(ownedOrganizations) && ownedOrganizations.length > 0) {
+    throw new ApiError(
+      403,
+      "QA auth harness rejects canonical organization owners.",
+      "qa_user_organization_owner_rejected",
+    );
   }
 
   return { userId };

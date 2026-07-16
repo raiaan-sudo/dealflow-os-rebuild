@@ -8,7 +8,8 @@ import { buildStagingMetaProviderContract } from "./lib/staging-meta-provider-co
 
 const FIXTURE_LABEL = "DF-STAGING-20260712";
 const FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
-const EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example.com";
+const PAID_DIRECT_EMAIL = "dealflow-staging-20260712@example.com";
+const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_STAGING_PROJECT_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
@@ -34,7 +35,7 @@ const SYNTHETIC_SCENARIOS = Object.freeze({
   }),
   paidDirect: Object.freeze({
     key: "paid_direct_realtor",
-    email: EXPECTED_QA_EMAIL,
+    email: PAID_DIRECT_EMAIL,
     fullName: `${FIXTURE_LABEL} Paid Direct Realtor`,
   }),
   legacy: Object.freeze({
@@ -78,8 +79,17 @@ const SYNTHETIC_SCENARIOS = Object.freeze({
     fullName: `${FIXTURE_LABEL} Account Deletion Realtor`,
   }),
 });
+const QA_HARNESS_SCENARIO = Object.freeze({
+  key: "non_admin_qa_harness",
+  email: EXPECTED_QA_EMAIL,
+  fullName: `${FIXTURE_LABEL} Non-Admin QA Harness`,
+});
+const ALL_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
+  ...Object.values(SYNTHETIC_SCENARIOS),
+  QA_HARNESS_SCENARIO,
+]);
 const EXPECTED_SYNTHETIC_AUTH_EMAILS = Object.freeze(
-  Object.values(SYNTHETIC_SCENARIOS).map((scenario) => scenario.email).sort(),
+  ALL_SYNTHETIC_AUTH_IDENTITIES.map((scenario) => scenario.email).sort(),
 );
 const META_FIXTURE = Object.freeze({
   providerAdAccountId: "900000000000001",
@@ -113,6 +123,7 @@ const IDS = Object.freeze({
   partnerAdminTwoOrganizationMembership: "d1000000-0000-4000-8000-000000000018",
   deletionOrganization: "d1000000-0000-4000-8000-000000000019",
   deletionMembership: "d1000000-0000-4000-8000-000000000020",
+  qaHarnessMembership: "d1000000-0000-4000-8000-000000000021",
   campaign: "d2000000-0000-4000-8000-000000000001",
   staleReportingCampaign: "d2000000-0000-4000-8000-000000000002",
   failedReportingCampaign: "d2000000-0000-4000-8000-000000000003",
@@ -330,7 +341,7 @@ function assertExpectedSyntheticAuthSurface(users) {
     throw new Error("The isolated staging auth surface contains a non-attested identity");
   }
   for (const user of users) {
-    const scenario = Object.values(SYNTHETIC_SCENARIOS)
+    const scenario = ALL_SYNTHETIC_AUTH_IDENTITIES
       .find((candidate) => candidate.email === user?.email?.toLowerCase());
     const exactPriorSingleUserFixture =
       scenario?.key === SYNTHETIC_SCENARIOS.paidDirect.key &&
@@ -814,11 +825,17 @@ async function main() {
       qaPassword,
     );
   }
+  const qaHarnessAuthUser = await ensureSyntheticAuthUser(
+    admin,
+    existingByEmail,
+    QA_HARNESS_SCENARIO,
+    qaPassword,
+  );
   const authUser = scenarioAuthUsers.paidDirect;
   const userId = authUser.id;
   await upsert(admin, "users", {
     id: userId,
-    email: qaEmail,
+    email: PAID_DIRECT_EMAIL,
     full_name: SYNTHETIC_SCENARIOS.paidDirect.fullName,
     avatar_url: null,
   }, "id");
@@ -846,6 +863,73 @@ async function main() {
     paidDirectMembership.role !== PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE
   ) {
     throw new Error("The paid direct staging identity is not the exact workspace owner");
+  }
+
+  await upsert(admin, "users", {
+    id: qaHarnessAuthUser.id,
+    email: qaEmail,
+    full_name: QA_HARNESS_SCENARIO.fullName,
+    avatar_url: null,
+    partner_id: null,
+  }, "id");
+  const qaHarnessMembership = await ensureExactOrganizationMembership(admin, {
+    id: IDS.qaHarnessMembership,
+    organization_id: IDS.organization,
+    user_id: qaHarnessAuthUser.id,
+    role: "member",
+  });
+  if (
+    qaHarnessMembership.organization_id !== IDS.organization ||
+    qaHarnessMembership.user_id !== qaHarnessAuthUser.id ||
+    qaHarnessMembership.role !== "member"
+  ) {
+    throw new Error("The QA harness staging identity is not the exact non-admin Pro member");
+  }
+  const qaHarnessProfileTruth = await assertNoError(
+    await admin
+      .from("users")
+      .select("id,email,partner_id")
+      .eq("id", qaHarnessAuthUser.id)
+      .single(),
+    "read back exact non-admin QA harness profile",
+  );
+  const qaHarnessOrganizationMemberships = await assertNoError(
+    await admin
+      .from("organization_memberships")
+      .select("id,organization_id,user_id,role")
+      .eq("user_id", qaHarnessAuthUser.id),
+    "read back all non-admin QA harness organization memberships",
+  );
+  const qaHarnessActivePartnerMemberships = await assertNoError(
+    await admin
+      .from("partner_memberships")
+      .select("id")
+      .eq("user_id", qaHarnessAuthUser.id)
+      .eq("status", "active"),
+    "read back active non-admin QA harness partner memberships",
+  );
+  const qaHarnessOwnedOrganizations = await assertNoError(
+    await admin
+      .from("organizations")
+      .select("id")
+      .eq("owner_user_id", qaHarnessAuthUser.id),
+    "read back non-admin QA harness organization ownership",
+  );
+  const qaHarnessNonElevated =
+    qaHarnessProfileTruth.id === qaHarnessAuthUser.id &&
+    qaHarnessProfileTruth.email === qaEmail &&
+    qaHarnessProfileTruth.partner_id == null &&
+    qaHarnessOrganizationMemberships.length === 1 &&
+    isExactOrganizationMembership(qaHarnessOrganizationMemberships[0], {
+      id: IDS.qaHarnessMembership,
+      organization_id: IDS.organization,
+      user_id: qaHarnessAuthUser.id,
+      role: "member",
+    }) &&
+    qaHarnessActivePartnerMemberships.length === 0 &&
+    qaHarnessOwnedOrganizations.length === 0;
+  if (!qaHarnessNonElevated) {
+    throw new Error("The QA harness staging identity has elevated or ambiguous authority");
   }
 
   const qaClient = createClient(supabaseUrl, anonKey, {
@@ -2411,6 +2495,15 @@ async function main() {
     1,
     "verify exact synthetic paid-direct owner membership",
   );
+  await assertExactCount(
+    admin.from("organization_memberships").select("id", { count: "exact", head: true })
+      .eq("id", IDS.qaHarnessMembership)
+      .eq("organization_id", IDS.organization)
+      .eq("user_id", qaHarnessAuthUser.id)
+      .eq("role", "member"),
+    1,
+    "verify exact synthetic non-admin QA harness membership",
+  );
   for (const organization of organizationScenarios) {
     await assertExactCount(
       admin.from("organizations").select("id", { count: "exact", head: true })
@@ -2588,6 +2681,9 @@ async function main() {
       throw new Error(`The final ${scenario.key} auth identity is not exactly attested`);
     }
   }
+  if (!assertSyntheticAuthUser(finalByEmail.get(QA_HARNESS_SCENARIO.email), QA_HARNESS_SCENARIO)) {
+    throw new Error("The final non-admin QA harness auth identity is not exactly attested");
+  }
 
   process.stdout.write(`${JSON.stringify({
     status: "SEEDED",
@@ -2638,6 +2734,17 @@ async function main() {
     ghlActivationBlocker: ghlActivation.blocker_code ?? null,
     exactFixtureCountsVerified: true,
     exactSyntheticAuthUserCount: finalAuthUsers.length,
+    qaHarness: {
+      userId: qaHarnessAuthUser.id,
+      organizationId: IDS.organization,
+      membershipId: IDS.qaHarnessMembership,
+      role: "member",
+      organizationMembershipCount: qaHarnessOrganizationMemberships.length,
+      activePartnerMembershipCount: qaHarnessActivePartnerMemberships.length,
+      ownedOrganizationCount: qaHarnessOwnedOrganizations.length,
+      profilePartnerId: qaHarnessProfileTruth.partner_id,
+      elevated: !qaHarnessNonElevated,
+    },
     scenarios: Object.fromEntries(
       Object.entries(SYNTHETIC_SCENARIOS).map(([name, scenario]) => [name, {
         scenario: scenario.key,

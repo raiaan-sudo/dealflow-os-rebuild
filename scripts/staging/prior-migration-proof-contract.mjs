@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 const SYNTHETIC_AUTH_FIXTURE_LABEL = "DF-STAGING-20260712";
-const EXPECTED_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
+const LEGACY_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
   ["dealflow-staging-20260712@example.com", "paid_direct_realtor"],
   ["dealflow-staging-attacker-20260712@example.com", "cross_tenant_attacker"],
   ["dealflow-staging-deletion-20260712@example.com", "account_deletion_fail_closed_realtor"],
@@ -18,6 +18,15 @@ const EXPECTED_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
   synthetic: true,
   scenario,
 })));
+const EXPECTED_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
+  ...LEGACY_SYNTHETIC_AUTH_IDENTITIES,
+  Object.freeze({
+    email: "dealflow-staging-qa-harness-20260712@example.com",
+    fixture: SYNTHETIC_AUTH_FIXTURE_LABEL,
+    synthetic: true,
+    scenario: "non_admin_qa_harness",
+  }),
+]);
 
 function sha256(value) {
   return createHash("sha256").update(String(value)).digest("hex");
@@ -29,6 +38,12 @@ const EXPECTED_SYNTHETIC_AUTH_EMAIL_SET_SHA256 = sha256(
 );
 const EXPECTED_SYNTHETIC_AUTH_IDENTITY_SET_SHA256 = sha256(
   JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES),
+);
+const LEGACY_SYNTHETIC_AUTH_EMAIL_SET_SHA256 = sha256(
+  JSON.stringify(LEGACY_SYNTHETIC_AUTH_IDENTITIES.map(({ email }) => email)),
+);
+const LEGACY_SYNTHETIC_AUTH_IDENTITY_SET_SHA256 = sha256(
+  JSON.stringify(LEGACY_SYNTHETIC_AUTH_IDENTITIES),
 );
 
 export function classifyExactStagingAuthSurface(rows) {
@@ -46,7 +61,10 @@ export function classifyExactStagingAuthSurface(rows) {
       rawIdentityValuesPersisted: false,
     });
   }
-  if (rows.length !== EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length) {
+  if (
+    rows.length !== EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length &&
+    rows.length !== LEGACY_SYNTHETIC_AUTH_IDENTITIES.length
+  ) {
     throw new Error("Staging auth surface is not the exact synthetic fixture set");
   }
   const identities = rows.map((row) => {
@@ -67,15 +85,20 @@ export function classifyExactStagingAuthSurface(rows) {
       scenario: row.scenario,
     };
   }).sort((left, right) => left.email.localeCompare(right.email));
+  const identityJson = JSON.stringify(identities);
+  const currentFixture = identityJson === JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES);
+  const exactLegacyFixture = identityJson === JSON.stringify(LEGACY_SYNTHETIC_AUTH_IDENTITIES);
   if (
     new Set(identities.map(({ email }) => email)).size !== identities.length ||
-    JSON.stringify(identities) !== JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES)
+    (!currentFixture && !exactLegacyFixture)
   ) {
     throw new Error("Staging auth surface contains an unexpected or incorrectly labeled identity");
   }
   return Object.freeze({
     schemaVersion: "dealflow.staging-auth-surface-proof.v1",
-    status: "EXACT_SYNTHETIC_FIXTURE_SET",
+    status: currentFixture
+      ? "EXACT_SYNTHETIC_FIXTURE_SET"
+      : "EXACT_LEGACY_SYNTHETIC_FIXTURE_SET",
     userCount: identities.length,
     emailSetSha256: sha256(JSON.stringify(identities.map(({ email }) => email))),
     identitySetSha256: sha256(JSON.stringify(identities)),
@@ -108,10 +131,19 @@ export function isExactSafeStagingAuthSurfaceProof(proof) {
       proof.emailSetSha256 === EMPTY_AUTH_SURFACE_SHA256 &&
       proof.identitySetSha256 === EMPTY_AUTH_SURFACE_SHA256;
   }
-  return proof.status === "EXACT_SYNTHETIC_FIXTURE_SET" &&
+  const exactCurrentFixture =
+    proof.status === "EXACT_SYNTHETIC_FIXTURE_SET" &&
     proof.userCount === EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length &&
     proof.emailSetSha256 === EXPECTED_SYNTHETIC_AUTH_EMAIL_SET_SHA256 &&
     proof.identitySetSha256 === EXPECTED_SYNTHETIC_AUTH_IDENTITY_SET_SHA256;
+  const exactLegacyFixture =
+    ["EXACT_SYNTHETIC_FIXTURE_SET", "EXACT_LEGACY_SYNTHETIC_FIXTURE_SET"].includes(
+      proof.status,
+    ) &&
+    proof.userCount === LEGACY_SYNTHETIC_AUTH_IDENTITIES.length &&
+    proof.emailSetSha256 === LEGACY_SYNTHETIC_AUTH_EMAIL_SET_SHA256 &&
+    proof.identitySetSha256 === LEGACY_SYNTHETIC_AUTH_IDENTITY_SET_SHA256;
+  return exactCurrentFixture || exactLegacyFixture;
 }
 
 const APPLICATION_ARTIFACTS = Object.freeze([

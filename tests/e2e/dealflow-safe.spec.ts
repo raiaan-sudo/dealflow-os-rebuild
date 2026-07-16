@@ -2,6 +2,7 @@ import {
   expect,
   test,
   type Page,
+  type Request,
   type Response,
   type Route,
   type TestInfo,
@@ -34,6 +35,7 @@ import {
   STAGING_ACCESS_HEADER,
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
 import { isExpectedNavigationAbort } from "./expected-navigation-abort.mjs";
+import { isExpectedCanceledHomepagePrefetch } from "./expected-next-prefetch-abort.mjs";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3410";
 const BASE_URL = process.env.SAFE_E2E_BASE_URL?.trim() || DEFAULT_BASE_URL;
@@ -214,6 +216,7 @@ async function installSafetyHarness(page: Page) {
     interceptedTelemetry: [],
   };
   const context = page.context();
+  const successfulResponseStatusByRequest = new WeakMap<Request, number>();
   diagnosticsByPage.set(page, diagnostics);
 
   if (HOSTED_ACCEPTANCE) {
@@ -306,12 +309,34 @@ async function installSafetyHarness(page: Page) {
     }`;
     const expectedNavigationAbort =
       request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
-    if (!expectedNavigationAbort) {
+    let frameUrl = "";
+    try {
+      frameUrl = request.frame().url();
+    } catch {
+      // A detached frame cannot qualify as the exact homepage prefetch.
+    }
+    const requestHeaders = request.headers();
+    const expectedCanceledHomepagePrefetch = isExpectedCanceledHomepagePrefetch({
+      applicationOrigin: new URL(BASE_URL).origin,
+      errorText,
+      frameUrl,
+      isNavigationRequest: request.isNavigationRequest(),
+      method: request.method(),
+      nextRouterPrefetchHeader: requestHeaders["next-router-prefetch"],
+      requestUrl: request.url(),
+      resourceType: request.resourceType(),
+      rscHeader: requestHeaders.rsc,
+      successfulResponseStatus: successfulResponseStatusByRequest.get(request) ?? null,
+    });
+    if (!expectedNavigationAbort && !expectedCanceledHomepagePrefetch) {
       diagnostics.requestFailures.push(message);
     }
   });
 
   context.on("response", (response) => {
+    if (response.status() >= 200 && response.status() < 400) {
+      successfulResponseStatusByRequest.set(response.request(), response.status());
+    }
     if (response.status() >= 500) {
       diagnostics.serverFailures.push(
         `${response.status()} ${response.request().method()} ${safeHttpEvidenceTarget(response.url())}`,
@@ -781,7 +806,12 @@ async function progressFreshOnboardingToReview(page: Page) {
   }
 
   await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
-  await expect(page.getByText("Safe Browserproof", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId("onboarding-current-step-panel").getByText("Safe Browserproof", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("prepaywall-campaign-preview").getByText("Safe Browserproof", { exact: true }),
+  ).toBeVisible();
 }
 
 test.beforeAll(() => {
@@ -968,12 +998,41 @@ test.describe("authenticated isolated-staging product proof", () => {
     const campaignLaunchHref = await launchLink.getAttribute("href").catch(() => null);
     await gotoAndSettle(page, campaignLaunchHref || "/launch");
 
-    const pageText = await page.locator("main").innerText();
-    expect(pageText).toMatch(
-      /Campaign plan not found|Selected creative required|Final review before launch/,
+    const launchStateHeadings = [
+      page.getByRole("heading", { level: 1, name: "Campaign plan not found", exact: true }),
+      page.getByRole("heading", { level: 1, name: "Selected creative required", exact: true }),
+      page.getByRole("heading", { level: 1, name: "Final review before launch", exact: true }),
+    ];
+    const launchStateCounts = await Promise.all(
+      launchStateHeadings.map((heading) => heading.count()),
     );
+    expect(
+      launchStateCounts.reduce((total, count) => total + count, 0),
+      `Launch page must expose exactly one terminal state: ${JSON.stringify(launchStateCounts)}`,
+    ).toBe(1);
+    const launchState = launchStateCounts.findIndex((count) => count === 1);
 
-    if (pageText.includes("Final review before launch")) {
+    if (launchState === 0) {
+      const dashboardRecoveryLink = page.getByRole("link", { name: "Open dashboard" });
+      await expect(dashboardRecoveryLink).toHaveCount(1);
+      await expect(dashboardRecoveryLink).toHaveAttribute(
+        "href",
+        "/dashboard",
+      );
+      await expect(page.locator('a[href^="/launching"]')).toHaveCount(0);
+      await expect(page.getByRole("link", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
+    } else if (launchState === 1) {
+      const buildCreativesLink = page.locator('a[href^="/build/creatives"]');
+      await expect(buildCreativesLink).toHaveCount(1);
+      await expect(buildCreativesLink).toHaveAttribute(
+        "href",
+        /^\/build\/creatives\?campaignId=[a-f0-9-]{36}$/i,
+      );
+      await expect(page.locator('a[href^="/launching"]')).toHaveCount(0);
+      await expect(page.getByRole("link", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Ready to attempt launch|Activate to launch/i })).toHaveCount(0);
+    } else {
       const launchAttemptLink = page.getByRole("link", { name: "Ready to attempt launch" });
       const disabledLaunchButton = page.getByRole("button", { name: "Ready to attempt launch" });
       const activationLink = page.getByRole("link", { name: "Activate to launch" });
@@ -981,7 +1040,7 @@ test.describe("authenticated isolated-staging product proof", () => {
         (await launchAttemptLink.count()) +
         (await disabledLaunchButton.count()) +
         (await activationLink.count());
-      expect(safeGateCount, "Launch page exposed no explicit final gate state.").toBeGreaterThan(0);
+      expect(safeGateCount, "Launch page must expose exactly one explicit final gate state.").toBe(1);
 
       if (await launchAttemptLink.count()) {
         await expect(launchAttemptLink).toHaveAttribute("href", /\/launching\?campaignId=/);
@@ -989,8 +1048,12 @@ test.describe("authenticated isolated-staging product proof", () => {
       if (await disabledLaunchButton.count()) {
         await expect(disabledLaunchButton).toBeDisabled();
       }
-    } else {
-      await expect(page.getByText(/Launch is blocked|Complete onboarding first/i).first()).toBeVisible();
+      if (await activationLink.count()) {
+        await expect(activationLink).toHaveAttribute(
+          "href",
+          /^\/paywall\?campaignId=[a-f0-9-]{36}$/i,
+        );
+      }
     }
 
     expect(diagnosticsFor(page).forbiddenMutations).toEqual([]);

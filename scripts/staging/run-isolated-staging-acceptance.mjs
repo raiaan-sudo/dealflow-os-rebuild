@@ -128,7 +128,7 @@ const EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT =
 const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
   "0f12b45f2ccfe002e7aaea8d857a6034b16684d6fa6ba5013f80dc8635fe9146";
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
-const EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example.com";
+const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
 const EXPECTED_MIGRATION_COUNT = 104;
 const EXPECTED_FINAL_MIGRATION =
@@ -1123,7 +1123,7 @@ function assertFailClosedExecutionEnvironment() {
     throw new Error("QA Supabase project authority does not match the isolated staging project");
   }
   if (requiredEnvironment("QA_EMAIL").toLowerCase() !== EXPECTED_QA_EMAIL) {
-    throw new Error("QA_EMAIL is not the exact paid direct synthetic identity");
+    throw new Error("QA_EMAIL is not the exact non-admin synthetic harness identity");
   }
   requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
   requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY", 32);
@@ -1521,8 +1521,17 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
     parsed.providerCredentialPresent !== false ||
     parsed.providerMutationPerformed !== false ||
-    parsed.exactSyntheticAuthUserCount !== 10 ||
+    parsed.exactSyntheticAuthUserCount !== 11 ||
     parsed.exactFixtureCountsVerified !== true ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.qaHarness?.userId ?? "") ||
+    parsed.qaHarness?.organizationId !== PAID_ORGANIZATION_ID ||
+    !/^[a-f0-9-]{36}$/i.test(parsed.qaHarness?.membershipId ?? "") ||
+    parsed.qaHarness?.role !== "member" ||
+    parsed.qaHarness?.organizationMembershipCount !== 1 ||
+    parsed.qaHarness?.activePartnerMembershipCount !== 0 ||
+    parsed.qaHarness?.ownedOrganizationCount !== 0 ||
+    parsed.qaHarness?.profilePartnerId !== null ||
+    parsed.qaHarness?.elevated !== false ||
     parsed.partner?.domainHost !== new URL(partnerBaseUrl).hostname ||
     parsed.partner?.domainVerified !== true ||
     parsed.partner?.sslActive !== true ||
@@ -1615,6 +1624,7 @@ function assertSeedReplayIsIdempotent(first, second) {
     if (first[key] !== second[key]) throw new Error(`Staging seed replay changed ${key}`);
   }
   if (
+    JSON.stringify(first.qaHarness) !== JSON.stringify(second.qaHarness) ||
     JSON.stringify(first.scenarios) !== JSON.stringify(second.scenarios) ||
     JSON.stringify(first.organizations) !== JSON.stringify(second.organizations) ||
     JSON.stringify(first.partner) !== JSON.stringify(second.partner) ||

@@ -48,7 +48,8 @@ const campaignCreationGateMigration = readFileSync(
 
 assert.match(source, /FIXTURE_LABEL = "DF-STAGING-20260712"/);
 assert.match(source, /FIXTURE_TIMESTAMP = "2026-07-12T12:00:00\.000Z"/);
-assert.match(source, /EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example\.com"/);
+assert.match(source, /PAID_DIRECT_EMAIL = "dealflow-staging-20260712@example\.com"/);
+assert.match(source, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(source, /QA_EMAIL must match the exact synthetic staging fixture identity/);
 assert.match(source, /EXPECTED_STAGING_PROJECT_FINGERPRINT/);
 assert.match(source, /c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c/);
@@ -78,6 +79,7 @@ for (const scenario of [
   "internal_admin_operator",
   "cross_tenant_attacker",
   "account_deletion_fail_closed_realtor",
+  "non_admin_qa_harness",
 ]) {
   assert.match(source, new RegExp(`key: "${scenario}"`), `missing ${scenario} fixture`);
 }
@@ -92,8 +94,8 @@ assert.match(source, /if \(isExactOrganizationMembership\(existing, expected\)\)
 assert.match(source, /The synthetic organization membership was not persisted exactly/);
 assert.equal(
   (source.match(/ensureExactOrganizationMembership\(admin, \{/g) ?? []).length,
-  2,
-  "both direct and scenario membership writes must be replay-safe",
+  3,
+  "paid owner, QA member, and scenario membership writes must be replay-safe",
 );
 assert.match(source, /role: PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE/);
 assert.match(source, /paidDirectOrganization\.owner_user_id !== userId/);
@@ -101,6 +103,21 @@ assert.match(source, /paidDirectMembership\.organization_id !== IDS\.organizatio
 assert.match(source, /paidDirectMembership\.user_id !== userId/);
 assert.match(source, /paidDirectMembership\.role !== PAID_DIRECT_ORGANIZATION_MEMBERSHIP_ROLE/);
 assert.match(source, /paid direct staging identity is not the exact workspace owner/i);
+assert.match(source, /role: "member"/);
+assert.match(source, /QA harness staging identity is not the exact non-admin Pro member/);
+assert.match(source, /verify exact synthetic non-admin QA harness membership/);
+assert.match(source, /qaHarnessAuthUser/);
+assert.match(source, /read back exact non-admin QA harness profile/);
+assert.match(source, /read back all non-admin QA harness organization memberships/);
+assert.match(source, /read back active non-admin QA harness partner memberships/);
+assert.match(source, /read back non-admin QA harness organization ownership/);
+assert.match(source, /qaHarnessOrganizationMemberships\.length === 1/);
+assert.match(source, /qaHarnessProfileTruth\.partner_id == null/);
+assert.match(source, /isExactOrganizationMembership\(qaHarnessOrganizationMemberships\[0\], \{/);
+assert.match(source, /qaHarnessActivePartnerMemberships\.length === 0/);
+assert.match(source, /qaHarnessOwnedOrganizations\.length === 0/);
+assert.match(source, /profilePartnerId: qaHarnessProfileTruth\.partner_id/);
+assert.match(source, /elevated: !qaHarnessNonElevated/);
 assert.match(source, /verify exact synthetic paid-direct owner membership/);
 assert.match(
   ghlActivationMigration,
@@ -449,11 +466,11 @@ assert.match(source, /\[IDS\.workerPendingJob, "pending", "pending worker comple
 assert.match(source, /\[IDS\.workerCrashJob, "processing", "expired worker crash"\]/);
 assert.match(source, /`verify exact synthetic \$\{label\} fixture`/);
 assert.match(source, /failureFixtures:/);
-assert.match(envExample, /^QA_EMAIL=dealflow-staging-20260712@example\.com$/m);
+assert.match(envExample, /^QA_EMAIL=dealflow-staging-qa-harness-20260712@example\.com$/m);
 assert.match(envExample, /^STAGING_QA_PASSWORD=$/m);
 assert.match(envExample, /^PARTNER_ATTRIBUTION_SIGNING_SECRET=$/m);
 assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);
 
 console.log(
-  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic synthetic roles, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
+  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic business roles plus one non-admin QA harness member, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
 );

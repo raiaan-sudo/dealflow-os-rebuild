@@ -414,6 +414,7 @@ const expectedSyntheticAuthRows = [
   ["dealflow-staging-partner-child-20260712@example.com", "white_label_child_realtor"],
   ["dealflow-staging-partner-two-admin-20260712@example.com", "active_white_label_partner_two_admin"],
   ["dealflow-staging-partner-two-child-20260712@example.com", "white_label_partner_two_child_realtor"],
+  ["dealflow-staging-qa-harness-20260712@example.com", "non_admin_qa_harness"],
 ].map(([email, scenario]) => ({
   email,
   fixture: "DF-STAGING-20260712",
@@ -431,9 +432,15 @@ const syntheticAuthSurfaceProof = classifyExactStagingAuthSurface(
   structuredClone(expectedSyntheticAuthRows).reverse(),
 );
 assert.equal(syntheticAuthSurfaceProof.status, "EXACT_SYNTHETIC_FIXTURE_SET");
-assert.equal(syntheticAuthSurfaceProof.userCount, 10);
+assert.equal(syntheticAuthSurfaceProof.userCount, 11);
 assert.equal(syntheticAuthSurfaceProof.rawIdentityValuesPersisted, false);
 assert.equal(isExactSafeStagingAuthSurfaceProof(syntheticAuthSurfaceProof), true);
+const legacySyntheticAuthSurfaceProof = classifyExactStagingAuthSurface(
+  structuredClone(expectedSyntheticAuthRows.slice(0, -1)).reverse(),
+);
+assert.equal(legacySyntheticAuthSurfaceProof.status, "EXACT_LEGACY_SYNTHETIC_FIXTURE_SET");
+assert.equal(legacySyntheticAuthSurfaceProof.userCount, 10);
+assert.equal(isExactSafeStagingAuthSurfaceProof(legacySyntheticAuthSurfaceProof), true);
 for (const [label, rows] of [
   ["missing identity", expectedSyntheticAuthRows.slice(1)],
   ["duplicate identity", [...expectedSyntheticAuthRows.slice(0, -1), expectedSyntheticAuthRows[0]]],

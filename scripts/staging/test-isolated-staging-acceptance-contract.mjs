@@ -16,6 +16,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { isExpectedNavigationAbort } from "../../tests/e2e/expected-navigation-abort.mjs";
+import { isExpectedCanceledHomepagePrefetch } from "../../tests/e2e/expected-next-prefetch-abort.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -39,6 +40,74 @@ for (const value of [
   "unknown request failure",
 ]) {
   assert.equal(isExpectedNavigationAbort(value), false, `unexpected navigation failure: ${value}`);
+}
+const exactCanceledHomepagePrefetch = Object.freeze({
+  applicationOrigin: "https://staging.example.test",
+  errorText: "net::ERR_ABORTED",
+  frameUrl: "https://staging.example.test/",
+  isNavigationRequest: false,
+  method: "GET",
+  nextRouterPrefetchHeader: "1",
+  requestUrl: "https://staging.example.test/privacy?_rsc=opaque",
+  resourceType: "fetch",
+  rscHeader: "1",
+  successfulResponseStatus: 200,
+});
+for (const pathname of ["/", "/data-deletion", "/login", "/privacy", "/terms"]) {
+  assert.equal(
+    isExpectedCanceledHomepagePrefetch({
+      ...exactCanceledHomepagePrefetch,
+      requestUrl: `https://staging.example.test${pathname}?_rsc=opaque`,
+    }),
+    true,
+    `expected exact canceled homepage prefetch path: ${pathname}`,
+  );
+}
+assert.equal(
+  isExpectedCanceledHomepagePrefetch({
+    ...exactCanceledHomepagePrefetch,
+    requestUrl: "https://staging.example.test/login?mode=sign-up&_rsc=opaque",
+  }),
+  true,
+);
+for (const [label, mutation] of [
+  ["missing prior response", { successfulResponseStatus: null }],
+  ["created prior response", { successfulResponseStatus: 201 }],
+  ["empty prior response", { successfulResponseStatus: 204 }],
+  ["redirect prior response", { successfulResponseStatus: 307 }],
+  ["failed prior response", { successfulResponseStatus: 404 }],
+  ["write method", { method: "POST" }],
+  ["external origin", { requestUrl: "https://external.example.test/privacy?_rsc=opaque" }],
+  ["navigation", { isNavigationRequest: true }],
+  ["wrong resource", { resourceType: "document" }],
+  ["wrong error", { errorText: "net::ERR_FAILED" }],
+  ["missing RSC header", { rscHeader: undefined }],
+  ["missing prefetch header", { nextRouterPrefetchHeader: undefined }],
+  ["wrong prefetch header", { nextRouterPrefetchHeader: "2" }],
+  ["unexpected path", { requestUrl: "https://staging.example.test/dashboard?_rsc=opaque" }],
+  ["missing RSC query", { requestUrl: "https://staging.example.test/privacy" }],
+  ["empty RSC query", { requestUrl: "https://staging.example.test/privacy?_rsc=" }],
+  ["unexpected query", { requestUrl: "https://staging.example.test/privacy?_rsc=opaque&extra=1" }],
+  ["duplicate query", { requestUrl: "https://staging.example.test/privacy?_rsc=a&_rsc=b" }],
+  ["wrong signup mode", { requestUrl: "https://staging.example.test/login?mode=other&_rsc=opaque" }],
+  ["application path", { applicationOrigin: "https://staging.example.test/privacy" }],
+  ["application query", { applicationOrigin: "https://staging.example.test/?gate=1" }],
+  ["application hash", { applicationOrigin: "https://staging.example.test/#gate" }],
+  ["application credentials", { applicationOrigin: "https://user:pass@staging.example.test" }],
+  ["malformed application origin", { applicationOrigin: "not a URL" }],
+  ["request credentials", { requestUrl: "https://user:pass@staging.example.test/privacy?_rsc=opaque" }],
+  ["request hash", { requestUrl: "https://staging.example.test/privacy?_rsc=opaque#fragment" }],
+  ["non-homepage frame", { frameUrl: "https://staging.example.test/login" }],
+  ["external frame", { frameUrl: "https://external.example.test/" }],
+  ["frame query", { frameUrl: "https://staging.example.test/?mode=1" }],
+  ["frame hash", { frameUrl: "https://staging.example.test/#fragment" }],
+  ["frame credentials", { frameUrl: "https://user:pass@staging.example.test/" }],
+]) {
+  assert.equal(
+    isExpectedCanceledHomepagePrefetch({ ...exactCanceledHomepagePrefetch, ...mutation }),
+    false,
+    `unexpected canceled homepage prefetch classification: ${label}`,
+  );
 }
 const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs");
 const runner = readFileSync(runnerPath, "utf8");
@@ -528,6 +597,14 @@ assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_MIGRATION_COUNT = 104/);
 assert.match(runner, /20260715010000_move_legacy_org_member_policies_private\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
+assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
+assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
+assert.match(runner, /parsed\.qaHarness\?\.role !== "member"/);
+assert.match(runner, /parsed\.qaHarness\?\.organizationMembershipCount !== 1/);
+assert.match(runner, /parsed\.qaHarness\?\.activePartnerMembershipCount !== 0/);
+assert.match(runner, /parsed\.qaHarness\?\.ownedOrganizationCount !== 0/);
+assert.match(runner, /parsed\.qaHarness\?\.profilePartnerId !== null/);
+assert.match(runner, /parsed\.qaHarness\?\.elevated !== false/);
 
 const authoritativeFalseControls = extractStringArray(zeroEffectsSource, "MUST_BE_FALSE");
 const authoritativeEqualControls = extractStringObject(zeroEffectsSource, "MUST_EQUAL");
@@ -1508,6 +1585,7 @@ assert.ok(seedReplayBody, "seed replay contract must remain statically inspectab
 assert.doesNotMatch(seedReplayBody, /pendingBeforeApproval !== true/);
 assert.doesNotMatch(seedReplayBody, /rejectedWhilePending !== true/);
 assert.match(seedReplayBody, /classifyExactSyntheticRetentionAuthorityReplay\(first, second\)/);
+assert.match(seedReplayBody, /JSON\.stringify\(first\.qaHarness\) !== JSON\.stringify\(second\.qaHarness\)/);
 assert.match(seed, /admin\.rpc\("bind_verified_partner_attribution_v1"/);
 assert.doesNotMatch(seed, /upsert\(admin, "workspace_partner_attribution"/);
 assert.match(seedContract, /attributionBoundAtomically: true/);
@@ -2119,5 +2197,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, read-only-resume, or exact-forward authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 104-migration atomic broker with pinned read-only-proven 103-to-104 forward mode and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, read-only-resume, or exact-forward authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 104-migration atomic broker with pinned read-only-proven 103-to-104 forward mode and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

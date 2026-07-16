@@ -23,6 +23,7 @@ function requireAll(source, markers, label) {
 const config = read("playwright.safe.config.ts");
 const safeEnvironment = read("tests/e2e/safe-browser-environment.ts");
 const spec = read("tests/e2e/dealflow-safe.spec.ts");
+const canceledHomepagePrefetch = read("tests/e2e/expected-next-prefetch-abort.mjs");
 const onboarding = read("src/app/(app)/onboarding/page.tsx");
 const paywall = read("src/app/(app)/paywall/page.tsx");
 const billingStatus = read("src/app/api/billing/status/route.ts");
@@ -131,7 +132,17 @@ requireAll(
     'expect(credits.balance).toBe(1000)',
     'expect(credits.formattedBalance).toBe("$10.00")',
     'getByText("Pro · $297/mo"',
-    "Launch is blocked",
+    "isExpectedCanceledHomepagePrefetch",
+    "successfulResponseStatusByRequest",
+    'page.getByTestId("onboarding-current-step-panel")',
+    'page.getByTestId("prepaywall-campaign-preview")',
+    'name: "Campaign plan not found", exact: true',
+    'name: "Selected creative required", exact: true',
+    'name: "Final review before launch", exact: true',
+    "launchStateCounts.reduce",
+    'a[href^="/launching"]',
+    'name: "Open dashboard"',
+    'a[href^="/build/creatives"]',
     "page.request.fetch(target.toString()",
     "target.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN",
     'target.pathname !== "/api/internal/qa-auth-session"',
@@ -147,6 +158,25 @@ requireAll(
     "appRequestHeaders(",
   ],
   "Browser proof spec",
+);
+
+requireAll(
+  canceledHomepagePrefetch,
+  [
+    "EXACT_HOMEPAGE_PREFETCH_PATHS",
+    'method === "GET"',
+    'resourceType === "fetch"',
+    "isNavigationRequest === false",
+    'errorText === "net::ERR_ABORTED"',
+    'rscHeader === "1"',
+    'nextRouterPrefetchHeader === "1"',
+    "successfulResponseStatus === 200",
+    "rscValues.length !== 1",
+    "/^[A-Za-z0-9_-]{1,128}$/",
+    'frame.pathname !== "/"',
+    "hasExactPrefetchQueryShape(request)",
+  ],
+  "Canceled homepage prefetch classifier",
 );
 
 const qaHarnessClientSource = spec.slice(
@@ -423,6 +453,11 @@ requireAll(
     "assertQaHarnessEnabled",
     "assertQaIsolatedSupabaseProject",
     "assertQaUserIsNonAdmin",
+    'select("id,email,partner_id")',
+    "qa_user_partner_binding_rejected",
+    'from("organizations")',
+    'eq("owner_user_id", userId)',
+    "qa_user_organization_owner_rejected",
     'access: "non_admin_qa"',
     "redactEmail",
   ],
