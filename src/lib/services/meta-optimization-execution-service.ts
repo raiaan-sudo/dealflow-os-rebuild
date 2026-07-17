@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/api/route";
+import { readMetaOptimizationAuthority } from "@/lib/authority/owner-decision-authority";
 import { getDeploymentTarget } from "@/lib/deployment-target";
 import { assertCustomerApprovedMetaBudgetCents } from "@/lib/integrations/meta/budget-safety";
 import { buildMetaGraphUrl, withMetaBearerToken } from "@/lib/integrations/meta/contract";
@@ -383,7 +384,10 @@ export async function processMetaOptimizationExecutionBatch(params: {
   providerFactory?: (claim: OptimizationClaim) => Promise<OptimizationProvider>;
 } = {}) {
   const env = params.environment ?? process.env;
-  const gate = evaluateMetaOptimizationExecutionGate(env);
+  const gate = evaluateMetaOptimizationExecutionGate(
+    env,
+    await readMetaOptimizationAuthority(),
+  );
   if (!gate.enabled) {
     return { enabled: false, blockedReason: gate.blockedReason, claimedCount: 0, completedIds: [] as string[], operatorRequiredIds: [] as string[] };
   }
@@ -448,7 +452,10 @@ export async function processMetaOptimizationExecutionBatch(params: {
 
       // No asynchronous work is permitted between this repeated authority check
       // and the single provider write other than the write itself.
-      const repeatedGate = evaluateMetaOptimizationExecutionGate(env);
+      const repeatedGate = evaluateMetaOptimizationExecutionGate(
+        env,
+        await readMetaOptimizationAuthority(),
+      );
       if (
         !repeatedGate.enabled ||
         repeatedGate.environment !== claim.environment ||

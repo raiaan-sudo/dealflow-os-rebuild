@@ -3,7 +3,7 @@
 > **Predecessor proof matrix.** Historical pass records remain valid only for
 > their bound source states. Current successor truth is
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
-> 108 migrations, 91 commands per final round, both rounds and hosted staging
+> 115 migrations, 91 commands per final round, both rounds and hosted staging
 > `NOT_YET_RUN`, production `NO_GO`.
 
 Overall verdict: `NO_GO`

@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getSafeAuthRedirectPath } from "@/lib/auth/safe-redirect";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import type { ProductMessageKey } from "@/lib/i18n/messages";
 
 type LoginFormProps = {
   redirectedFrom?: string;
   reason?: string;
-  initialMode?: "sign-in" | "sign-up" | "reset-password";
+  initialMode?: "sign-in" | "sign-up" | "reset-password" | "update-password";
   isConfigured: boolean;
   branding?: {
     appName?: string;
@@ -29,36 +30,6 @@ type LoginFormProps = {
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
-function getSafeRedirectPath(
-  value: string | undefined,
-  origin: string,
-  defaultPath: string,
-) {
-  if (
-    !value ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    value.includes("\\")
-  ) {
-    return defaultPath;
-  }
-
-  try {
-    const resolved = new URL(value, origin);
-
-    if (
-      resolved.origin !== new URL(origin).origin ||
-      resolved.pathname === "/" ||
-      resolved.pathname.startsWith("/login")
-    ) {
-      return defaultPath;
-    }
-
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
-  } catch {
-    return defaultPath;
-  }
-}
 
 function customerSafeAuthErrorMessage(
   error: unknown,
@@ -102,7 +73,7 @@ export function LoginForm({
   branding,
   partnerAttribution,
 }: LoginFormProps) {
-  const { href, t } = useProductI18n();
+  const { href, locale, t } = useProductI18n();
   const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -123,16 +94,20 @@ export function LoginForm({
     setIsHydrated(true);
   }, []);
 
-  function getEmailConfirmationRedirectUrl(value?: string) {
-    const nextPath = getSafeRedirectPath(
+  function getAuthCallbackUrl(
+    flow: "oauth" | "signup" | "recovery",
+    value?: string,
+  ) {
+    const nextPath = getSafeAuthRedirectPath(
       value,
       window.location.origin,
       href("/onboarding?fresh=1"),
     );
-    const redirectTo = new URL(href("/login"), window.location.origin);
-    redirectTo.searchParams.set("confirmed", "1");
-    redirectTo.searchParams.set("redirectedFrom", nextPath);
-    return redirectTo.toString();
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("flow", flow);
+    callbackUrl.searchParams.set("locale", locale);
+    callbackUrl.searchParams.set("next", nextPath);
+    return callbackUrl.toString();
   }
 
   function isEmbeddedAuthSurface() {
@@ -180,17 +155,15 @@ export function LoginForm({
     setIsPending(true);
 
     try {
-      const nextPath = getSafeRedirectPath(
+      const nextPath = getSafeAuthRedirectPath(
         redirectedFrom,
         window.location.origin,
         href("/onboarding?fresh=1"),
       );
-      const redirectTo = new URL(nextPath, window.location.origin);
-      redirectTo.searchParams.set("next", nextPath);
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: redirectTo.toString(),
+          redirectTo: getAuthCallbackUrl("oauth", nextPath),
         },
       });
 
@@ -230,9 +203,8 @@ export function LoginForm({
       await requestEmbeddedAuthStorageAccess();
 
       if (mode === "reset-password") {
-        const redirectTo = new URL(href("/login"), window.location.origin);
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: redirectTo.toString(),
+          redirectTo: getAuthCallbackUrl("recovery", redirectedFrom),
           captchaToken: turnstileEnabled ? turnstileToken : undefined,
         });
 
@@ -278,7 +250,7 @@ export function LoginForm({
           throw new Error(t("auth.error.session"));
         }
 
-        const nextPath = getSafeRedirectPath(
+        const nextPath = getSafeAuthRedirectPath(
           redirectedFrom,
           window.location.origin,
           href("/onboarding?fresh=1"),
@@ -322,7 +294,7 @@ export function LoginForm({
         password,
         options: {
           captchaToken: turnstileEnabled ? turnstileToken : undefined,
-          emailRedirectTo: getEmailConfirmationRedirectUrl(redirectedFrom),
+          emailRedirectTo: getAuthCallbackUrl("signup", redirectedFrom),
           data: {
             full_name: fullName,
             ...(partnerAttribution?.bindingToken
@@ -340,7 +312,7 @@ export function LoginForm({
 
       if (signUpData.session) {
         window.location.assign(
-          getSafeRedirectPath(
+          getSafeAuthRedirectPath(
             redirectedFrom,
             window.location.origin,
             href("/onboarding?fresh=1"),
@@ -361,83 +333,6 @@ export function LoginForm({
       setIsPending(false);
     }
   }
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const hashParams = new URLSearchParams(window.location.hash.slice(1));
-    const recoveryType = hashParams.get("type");
-    const accessToken = hashParams.get("access_token");
-    const refreshToken = hashParams.get("refresh_token");
-    const hasRecoveryTokenFragment =
-      recoveryType === "recovery" && Boolean(accessToken || refreshToken);
-    const recoveryTokens =
-      recoveryType === "recovery" && accessToken && refreshToken
-        ? { accessToken, refreshToken }
-        : null;
-
-    if (hasRecoveryTokenFragment) {
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}${window.location.search}`,
-      );
-    }
-
-    const supabase = createClient();
-
-    if (!supabase) {
-      if (hasRecoveryTokenFragment) {
-        setError(t("auth.error.unavailable"));
-      }
-      return;
-    }
-
-    const client = supabase;
-
-    async function recoverSessionFromHash() {
-      if (!hasRecoveryTokenFragment) {
-        return;
-      }
-
-      if (!recoveryTokens) {
-        setError(t("auth.error.recovery"));
-        return;
-      }
-
-      const { error: sessionError } = await client.auth.setSession({
-        access_token: recoveryTokens.accessToken,
-        refresh_token: recoveryTokens.refreshToken,
-      });
-
-      if (sessionError) {
-        setError(customerSafeAuthErrorMessage(sessionError, t));
-        return;
-      }
-
-      setError(null);
-      setMessage(t("auth.message.newPassword"));
-      setPassword("");
-      setMode("update-password");
-    }
-
-    void recoverSessionFromHash();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setError(null);
-        setMessage(t("auth.message.newPassword"));
-        setPassword("");
-        setMode("update-password");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [t]);
 
   useEffect(() => {
     if (!requiresTurnstile) {
@@ -665,6 +560,24 @@ export function LoginForm({
         {reason === "confirmed" ? (
           <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
             {t("auth.message.confirmed")}
+          </div>
+        ) : null}
+
+        {reason === "recovery" ? (
+          <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+            {t("auth.message.newPassword")}
+          </div>
+        ) : null}
+
+        {reason === "recovery_failed" ? (
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200" role="alert">
+            {t("auth.error.recovery")}
+          </div>
+        ) : null}
+
+        {reason === "auth_callback_failed" ? (
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200" role="alert">
+            {t("auth.error.generic")}
           </div>
         ) : null}
 

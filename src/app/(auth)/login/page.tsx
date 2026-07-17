@@ -32,9 +32,15 @@ export default async function LoginPage({
     resolvedSearchParams && typeof resolvedSearchParams.reason === "string"
       ? resolvedSearchParams.reason
       : undefined;
+  const requestedMode =
+    resolvedSearchParams && typeof resolvedSearchParams.mode === "string"
+      ? resolvedSearchParams.mode
+      : null;
   const initialMode =
-    resolvedSearchParams && resolvedSearchParams.mode === "sign-up"
-      ? "sign-up"
+    requestedMode === "sign-up" ||
+    requestedMode === "reset-password" ||
+    requestedMode === "update-password"
+      ? requestedMode
       : "sign-in";
   const requestHeaders = await headers();
   const locale = parseProductLocalePathname(

@@ -6,6 +6,7 @@ import type { CampaignStrategyInput } from "@/lib/services/campaign-orchestrator
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import type { Database, Json } from "@/lib/supabase/types";
 import { finalizePaidCreativeProjection } from "@/lib/services/paid-creative-dispatch-service";
+import { importGeneratedStaticToCanonicalStorage } from "@/lib/services/generated-static-storage-service";
 
 type PersistStaticCreativeAssetsParams = {
   supabase: SupabaseClient<Database>;
@@ -36,8 +37,107 @@ function buildPaidCreativeAssetId(dispatchId: string, role: "image_frame" | "thu
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`;
 }
 
+function firstRow(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+async function bindGeneratedStaticStorage(params: {
+  supabase: SupabaseClient<Database>;
+  dispatchId: string;
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  imageAssetId: string;
+  thumbnailAssetId: string;
+  storageBucket: string;
+  storagePath: string;
+  fileUrl: string;
+  contentSha256: string;
+  contentLength: number;
+  mimeType: string;
+}) {
+  const { data, error } = await params.supabase.rpc(
+    "bind_generated_static_storage_v1" as never,
+    {
+      p_dispatch_id: params.dispatchId,
+      p_organization_id: params.organizationId,
+      p_user_id: params.userId,
+      p_campaign_id: params.campaignId,
+      p_image_asset_id: params.imageAssetId,
+      p_thumbnail_asset_id: params.thumbnailAssetId,
+      p_storage_bucket: params.storageBucket,
+      p_storage_path: params.storagePath,
+      p_file_url: params.fileUrl,
+      p_content_sha256: params.contentSha256,
+      p_content_length: params.contentLength,
+      p_mime_type: params.mimeType,
+    } as never,
+  );
+  const receipt = firstRow(data) as Record<string, unknown> | null;
+  if (error || !receipt || receipt.bound !== true) {
+    throw new ApiError(
+      500,
+      error?.message ?? "Generated static media could not be bound to its tenant.",
+      "generated_static_storage_binding_failed",
+    );
+  }
+  return receipt;
+}
+
+type PreparedStaticCreativeAsset = StaticCreativeAsset & {
+  canonicalStorage: Awaited<ReturnType<typeof importGeneratedStaticToCanonicalStorage>> | null;
+};
+
+async function prepareStaticCreativeAssetsForPersistence(
+  params: PersistStaticCreativeAssetsParams,
+): Promise<PreparedStaticCreativeAsset[]> {
+  const prepared: PreparedStaticCreativeAsset[] = [];
+  for (const asset of Array.isArray(params.staticAds) ? params.staticAds : []) {
+    const sourceUrl = asset.imageUrl?.trim() ?? "";
+    if (asset.imageGenerationState !== "generated") {
+      if (sourceUrl) {
+        throw new ApiError(
+          409,
+          "A non-generated static creative cannot carry provider media.",
+          "static_creative_state_media_mismatch",
+        );
+      }
+      prepared.push({ ...asset, imageUrl: "", canonicalStorage: null });
+      continue;
+    }
+    if (!sourceUrl || !asset.providerDispatchId?.trim() || !params.organizationId) {
+      throw new ApiError(
+        409,
+        "Generated static media requires a paid dispatch and workspace-scoped canonical storage.",
+        "static_creative_canonical_identity_missing",
+      );
+    }
+    const canonicalStorage = await importGeneratedStaticToCanonicalStorage({
+      client: params.supabase as any,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      providerName: "openai",
+      dispatchId: asset.providerDispatchId,
+      sourceUrl,
+    });
+    // The caller persists this same array into the campaign plan after the
+    // creative rows. Propagate only the DealFlow-owned URL so the provider URL
+    // cannot survive in either customer-facing persistence path.
+    asset.imageUrl = canonicalStorage.publicUrl;
+    prepared.push({
+      ...asset,
+      imageUrl: canonicalStorage.publicUrl,
+      canonicalStorage,
+    });
+  }
+  return prepared;
+}
+
 export async function persistStaticCreativeAssets(params: PersistStaticCreativeAssetsParams) {
-  const staticAds = Array.isArray(params.staticAds) ? params.staticAds : [];
+  // Validate and import every generated provider output before any creative row
+  // write or paid-dispatch settlement can occur.
+  const staticAds = await prepareStaticCreativeAssetsForPersistence(params);
 
   if (staticAds.length === 0) {
     return [];
@@ -73,6 +173,17 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       imageGenerationModel: asset.imageGenerationModel,
       imageGenerationMessage: asset.imageGenerationMessage,
       paidCreativeDispatchId: asset.providerDispatchId ?? null,
+      canonicalStorage: asset.canonicalStorage
+        ? {
+            bucket: asset.canonicalStorage.storageBucket,
+            path: asset.canonicalStorage.storagePath,
+            contentSha256: asset.canonicalStorage.contentSha256,
+            contentLength: asset.canonicalStorage.contentLength,
+            mimeType: asset.canonicalStorage.mimeType,
+            reused: asset.canonicalStorage.reusedExistingObject,
+            provenance: "dealflow_canonical_storage",
+          }
+        : null,
       recommended: asset.recommended,
       score: asset.score,
       scoreBreakdown: asset.scoreBreakdown,
@@ -172,6 +283,45 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         "paid_creative_projection_incomplete",
       );
     }
+    const imageAsset = persisted.find(
+      (row: Record<string, unknown>) =>
+        row.paid_creative_dispatch_id === asset.providerDispatchId &&
+        row.asset_type === "image_frame",
+    ) as Record<string, unknown> | undefined;
+    const thumbnailAsset = persisted.find(
+      (row: Record<string, unknown>) =>
+        row.paid_creative_dispatch_id === asset.providerDispatchId &&
+        row.asset_type === "thumbnail",
+    ) as Record<string, unknown> | undefined;
+    if (!imageAsset || !thumbnailAsset || !asset.canonicalStorage) {
+      throw new ApiError(
+        500,
+        "Paid static creative storage identity was incomplete.",
+        "paid_creative_storage_projection_incomplete",
+      );
+    }
+    await bindGeneratedStaticStorage({
+      supabase: params.supabase,
+      dispatchId: asset.providerDispatchId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      imageAssetId: String(imageAsset.id),
+      thumbnailAssetId: String(thumbnailAsset.id),
+      storageBucket: asset.canonicalStorage.storageBucket,
+      storagePath: asset.canonicalStorage.storagePath,
+      fileUrl: asset.imageUrl,
+      contentSha256: asset.canonicalStorage.contentSha256,
+      contentLength: asset.canonicalStorage.contentLength,
+      mimeType: asset.canonicalStorage.mimeType,
+    });
+    // The binding RPC is the canonical database write. Mirror the confirmed
+    // identity into this return value so callers never observe metadata-only
+    // storage truth after the transaction succeeds.
+    for (const row of [imageAsset, thumbnailAsset]) {
+      row.storage_bucket = asset.canonicalStorage.storageBucket;
+      row.storage_path = asset.canonicalStorage.storagePath;
+    }
     await finalizePaidCreativeProjection({
       supabase: params.supabase as any,
       dispatchId: asset.providerDispatchId,
@@ -182,6 +332,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         campaignId: params.campaignId,
         staticAssetId: asset.id,
         creativeAssetIds: assetIds,
+        storageBucket: asset.canonicalStorage?.storageBucket ?? null,
+        storagePath: asset.canonicalStorage?.storagePath ?? null,
+        contentSha256: asset.canonicalStorage?.contentSha256 ?? null,
       },
     });
   }

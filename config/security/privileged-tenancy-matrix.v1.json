@@ -1,0 +1,221 @@
+{
+  "schemaVersion": "dealflow.privileged-tenancy-matrix.v1",
+  "requirementIds": [
+    "SEC-PRIVILEGED-TENANCY-001"
+  ],
+  "scope": {
+    "sourceRoots": [
+      "src/app",
+      "src/lib"
+    ],
+    "migrationRoot": "supabase/migrations",
+    "finalMigration": "20260717060000_install_owner_decision_authority_grants.sql",
+    "expectedMigrationCount": 115
+  },
+  "invariant": "Every privileged or tenant-bypass path must bind an exact actor, organization or explicitly classified global authority, and resource before access or mutation. Unknown surfaces fail closed.",
+  "classes": [
+    {
+      "id": "authenticated_rls",
+      "actorFence": "auth.uid or authenticated membership",
+      "organizationFence": "organization_id, workspace/partner lineage, or an explicitly service-only global table",
+      "resourceFence": "RLS policy target table and row predicate",
+      "proofs": ["scripts/test-privileged-tenancy-disposable-db.mjs"]
+    },
+    {
+      "id": "service_role",
+      "actorFence": "server-only credential factory or exact service-role RPC",
+      "organizationFence": "organization/workspace/partner parameter or classified global control plane",
+      "resourceFence": "exact campaign, dispatch, job, event, mapping, account, or idempotency identity",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    },
+    {
+      "id": "database_owner",
+      "actorFence": "isolated migration owner only",
+      "organizationFence": "not a runtime tenant actor",
+      "resourceFence": "exact migration chain and disposable database",
+      "proofs": ["scripts/test-integrated-migration-chain-disposable-db.mjs"]
+    },
+    {
+      "id": "cron_internal_worker",
+      "actorFence": "assertInternalSystemRequest",
+      "organizationFence": "tenant-scoped durable claim or explicitly isolated proof target",
+      "resourceFence": "bounded job, outbox, schedule, deletion task, or proof operation",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    },
+    {
+      "id": "security_definer_rpc",
+      "actorFence": "auth.role/auth.uid or non-callable row trigger",
+      "organizationFence": "exact tenant arguments and database lineage checks",
+      "resourceFence": "exact routine arguments, row locks, nonce/generation, or trigger row",
+      "proofs": ["scripts/test-privileged-tenancy-disposable-db.mjs"]
+    },
+    {
+      "id": "storage_objects",
+      "actorFence": "authenticated manual upload or service-role capability",
+      "organizationFence": "canonical path includes exact organization/user/campaign lineage",
+      "resourceFence": "bucket, path, dispatch/asset, digest, bytes, and MIME",
+      "proofs": [
+        "scripts/test-generated-video-storage.ts",
+        "scripts/test-static-creative-asset-integrity.ts",
+        "scripts/test-privileged-tenancy-disposable-db.mjs"
+      ]
+    },
+    {
+      "id": "cache_keys",
+      "actorFence": "public-only cached loaders",
+      "organizationFence": "no authenticated or private tenant payload",
+      "resourceFence": "dynamic public funnel slug or partner slug",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    },
+    {
+      "id": "realtime_channels",
+      "actorFence": "disabled",
+      "organizationFence": "disabled",
+      "resourceFence": "future channel discovery is a contract failure until classified",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    },
+    {
+      "id": "provider_mappings",
+      "actorFence": "authenticated actor, signed provider event, or internal worker",
+      "organizationFence": "workspace/organization/partner mapping lineage",
+      "resourceFence": "mapping, installation, account, route, campaign, or provider object",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    },
+    {
+      "id": "jobs_leases",
+      "actorFence": "internal worker identity plus claim token/generation",
+      "organizationFence": "organization carried by the claimed row or immutable parent",
+      "resourceFence": "job/outbox/intent id, lease, nonce, generation, and settlement receipt",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    },
+    {
+      "id": "platform_admin",
+      "actorFence": "candidate-bound platform operator grant and recent AAL2",
+      "organizationFence": "platform-global authority explicitly separated from workspace membership",
+      "resourceFence": "environment, candidate, action, grant generation, and immutable receipt",
+      "proofs": [
+        "scripts/test-admin-page-authorization-contract.mjs",
+        "scripts/test-privileged-tenancy-disposable-db.mjs"
+      ]
+    },
+    {
+      "id": "impersonation_qa_harness",
+      "actorFence": "internal request secret and synthetic non-admin QA user",
+      "organizationFence": "exact isolated Supabase project and allowlisted QA organization",
+      "resourceFence": "nonproduction host, QA user, session, and zero-external-effects boundary",
+      "proofs": ["scripts/test-privileged-tenancy-matrix.mjs"]
+    }
+  ],
+  "rlsOwnerBypassClassifications": {
+    "app_schema_metadata": "service-only schema control plane",
+    "billing_access_key_events": "service-only pre-workspace checkout audit ledger",
+    "billing_access_keys": "service-only pre-workspace checkout capability ledger",
+    "rate_limit_buckets": "service-only global abuse-prevention buckets"
+  },
+  "serviceRoleExceptions": {
+    "src/app/api/billing/status/route.ts": {
+      "mode": "authenticated_context_delegated",
+      "requiredMarkers": ["getAppContext", "getBillingSummary"]
+    },
+    "src/lib/api/rate-limit.ts": {
+      "mode": "global_resource_fence",
+      "requiredMarkers": ["p_bucket_key", "consume_rate_limit_bucket"]
+    },
+    "src/lib/server/supabase-admin.ts": {
+      "mode": "credential_factory_only",
+      "requiredMarkers": ["createSupabaseClient", "env.serviceRoleKey"]
+    },
+    "src/lib/services/client-error-telemetry-service.ts": {
+      "mode": "session_resource_fence",
+      "requiredMarkers": ["buildEventKey", "normalizeRoutePath"]
+    },
+    "src/lib/services/ghl-lifecycle-service.ts": {
+      "mode": "database_claim_scope",
+      "requiredMarkers": ["p_provider_event_id", "ingest_ghl_lifecycle_webhook_v1"]
+    },
+    "src/lib/services/ghl-provider-worker-service.ts": {
+      "mode": "database_claim_scope",
+      "requiredMarkers": ["workerId", "processGhl"]
+    },
+    "src/lib/services/meta-deletion-service.ts": {
+      "mode": "signed_provider_resource",
+      "requiredMarkers": ["p_user_id_hash", "accept_meta_data_deletion_request"]
+    },
+    "src/lib/authority/owner-decision-authority.ts": {
+      "mode": "platform_global_release_authority",
+      "requiredMarkers": [
+        "p_host_project_id_sha256",
+        "p_candidate_commit",
+        "p_candidate_tree",
+        "p_candidate_digest",
+        "p_migration_portfolio_sha256"
+      ]
+    },
+    "src/lib/services/platform-operator-authority-service.ts": {
+      "mode": "platform_global_signed_authority",
+      "requiredMarkers": ["candidateIdentity.commit", "authorize_platform_operator_access_v1"]
+    },
+    "src/lib/supabase/admin.ts": {
+      "mode": "credential_factory_only",
+      "requiredMarkers": ["createClient", "serviceRoleKey"]
+    },
+    "src/lib/white-label/workspace-branding.ts": {
+      "mode": "workspace_resource_delegated",
+      "requiredMarkers": ["organizationId", "workspace"]
+    }
+  },
+  "providerMappingExceptions": {
+    "src/lib/services/ghl-provider-worker-service.ts": "database claim carries tenant mapping",
+    "src/lib/services/ghl-sandbox-authority-service.ts": "isolated environment authority, no customer actor",
+    "src/lib/services/meta-campaign-execution-service.ts": "caller supplies tenant-bound campaign execution",
+    "src/lib/types/campaign-execution.ts": "type-only tenant projection"
+  },
+  "jobLeaseExceptions": {
+    "src/lib/services/ghl-provider-worker-service.ts": "database claim carries tenant",
+    "src/lib/services/system-job-lease-service.ts": "lease helper receives already authorized job"
+  },
+  "storageSourceInventory": [
+    "src/lib/services/account-deletion-service.ts",
+    "src/lib/services/creative-builder-service.ts",
+    "src/lib/services/generated-static-storage-service.ts",
+    "src/lib/services/generated-video-storage-service.ts",
+    "src/lib/services/static-creative-asset-service.ts",
+    "src/lib/services/video-generation-job.ts",
+    "src/lib/types/creative-assets.ts"
+  ],
+  "storageMigrationInventory": [
+    "supabase/migrations/20260710235700_protect_creative_asset_storage_identity.sql",
+    "supabase/migrations/20260713025000_add_generated_video_canonical_storage.sql",
+    "supabase/migrations/20260713026000_add_account_deletion_and_provider_offboarding.sql",
+    "supabase/migrations/20260717040000_bind_generated_static_storage_tenancy.sql"
+  ],
+  "cacheInventory": {
+    "src/app/f/[slug]/page.tsx": {
+      "mode": "public_resource",
+      "resourceMarker": "slug",
+      "cacheMarker": "public-funnel-page"
+    },
+    "src/app/p/[partnerSlug]/checkout/page.tsx": {
+      "mode": "public_resource",
+      "resourceMarker": "partnerSlug",
+      "cacheMarker": "loadPublicPartnerCheckout"
+    }
+  },
+  "realtimeInventory": [],
+  "adminServerPageInventory": [
+    "src/app/(app)/admin/access-keys/page.tsx",
+    "src/app/(app)/admin/command-center/page.tsx",
+    "src/app/(app)/admin/issues/page.tsx",
+    "src/app/(app)/admin/launch-monitor/page.tsx"
+  ],
+  "adminClientChildInventory": [
+    "src/app/(app)/admin/command-center/brief-me-button.tsx",
+    "src/app/(app)/admin/command-center/command-center-console.tsx"
+  ],
+  "adminRouteInventory": [
+    "src/app/api/admin/access-keys/[id]/revoke/route.ts"
+  ],
+  "qaHarnessInventory": [
+    "src/app/api/internal/qa-auth-session/route.ts"
+  ]
+}

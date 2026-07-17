@@ -141,7 +141,7 @@ const order = [
   "claim_meta_optimization_execution_intent",
   "provider.readState(claim)",
   "arm_meta_optimization_execution_intent",
-  "const repeatedGate = evaluateMetaOptimizationExecutionGate(env)",
+  "const repeatedGate = evaluateMetaOptimizationExecutionGate(",
   "await confirmProviderDispatch(",
   "provider.apply(claim, executionToken, dispatchAuthorityNonce)",
   "await settleArmed({",
@@ -163,6 +163,11 @@ assert.match(
   /providerMutationPerformed: providerDispatchAuthorized[\s\S]{0,260}meta_optimization_post_dispatch_ambiguous/,
 );
 assert.doesNotMatch(executor, /access_token=|[?&]access_token/);
+assert.equal(
+  executor.match(/readMetaOptimizationAuthority\(\)/g)?.length,
+  2,
+  "signed owner authority must be checked before claim and before dispatch",
+);
 
 const optimizeRoute = readFileSync("src/app/api/campaigns/[id]/optimize/route.ts", "utf8");
 assert.doesNotMatch(optimizeRoute, /approvedPolicy:\s*null/);

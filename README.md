@@ -1,3 +1,9 @@
+# DealFlow
+
+The current A-to-Z completion sequence is documented in the [final full-stack execution plan](docs/dealflow-completion/FINAL_FULL_STACK_EXECUTION_PLAN.md). Its 43 owner/legal choices are represented by a candidate-bound, fail-closed [authority packet](config/authority/dealflow-owner-decisions.v1.json); validate it with `npm run authority:validate` and `npm run test:authority`.
+
+The authority packet does not grant production release authority. Unsigned decisions retain their explicit safe defaults.
+
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
 ## Getting Started

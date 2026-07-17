@@ -385,7 +385,7 @@ export async function prepareCampaignDeployment(params?: {
   await updateMetaPublishResult({
     status:
       result.status === "success"
-        ? "published"
+        ? "provider_paused"
         : result.status === "partial_success"
           ? "partial"
           : "failed",

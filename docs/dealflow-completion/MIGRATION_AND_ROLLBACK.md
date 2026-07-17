@@ -3,7 +3,7 @@
 > **Historical predecessor contract.** The 104-migration and 103-to-104 details
 > below remain evidence for that exact predecessor only. Current successor truth
 > is [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
-> 108 migrations ending at `20260716200000_harden_stripe_payment_lifecycle.sql`,
+> 115 migrations ending at `20260717060000_install_owner_decision_authority_grants.sql`,
 > with clean-seal, staging, drain and production proof all `NOT_YET_RUN`.
 
 Overall verdict: `NO_GO`

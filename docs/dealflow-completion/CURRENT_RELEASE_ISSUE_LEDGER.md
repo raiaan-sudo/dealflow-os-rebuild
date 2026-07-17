@@ -3,7 +3,7 @@
 > **Superseded current-status snapshot.** This document records the predecessor
 > 104-migration candidate. Current successor truth is
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
-> unsealed 108-migration / 91-command successor, exact rounds and hosted staging
+> unsealed 115-migration / 91-command successor, exact rounds and hosted staging
 > `NOT_YET_RUN`, production `NO_GO` and not authorized.
 
 Current verdict: `NO_GO`

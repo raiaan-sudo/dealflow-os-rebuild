@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -586,6 +586,10 @@ export default function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [isNewCampaignFlow, setIsNewCampaignFlow] = useState(false);
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const serverRevisionRef = useRef(0);
+  const serverDigestRef = useRef<string | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const draftConflictRef = useRef(false);
   const canUseExistingLaunchAccess =
     billingStatus?.canUseExistingLaunchAccess === true &&
     (!isNewCampaignFlow || billingStatus.canCreateAdditionalCampaign);
@@ -627,6 +631,46 @@ export default function OnboardingPage() {
 
   const stepTitle = t(`onboarding.title.${currentStep}` as ProductMessageKey);
 
+  function enqueueDraftSave(params: {
+    draft: DraftState;
+    currentStep: OnboardingStepKey;
+    furthestStepIndex: number;
+  }) {
+    const operation = saveQueueRef.current.then(async () => {
+      const envelope = buildOnboardingDraftEnvelope(params);
+      const response = await fetch("/api/onboarding/plan", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...envelope, expectedRevision: serverRevisionRef.current }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { revision?: number; draftPayloadDigest?: string }
+        | null;
+      if (!response.ok || !Number.isInteger(data?.revision) || typeof data?.draftPayloadDigest !== "string") {
+        if (response.status === 409) draftConflictRef.current = true;
+        throw new Error("onboarding_draft_save_failed");
+      }
+      serverRevisionRef.current = data.revision as number;
+      serverDigestRef.current = data.draftPayloadDigest;
+      draftConflictRef.current = false;
+      return { revision: data.revision as number, draftPayloadDigest: data.draftPayloadDigest };
+    });
+    saveQueueRef.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
+  function deleteServerDraft() {
+    const operation = saveQueueRef.current.then(async () => {
+      const response = await fetch("/api/onboarding/plan", { method: "DELETE" });
+      if (!response.ok) throw new Error("onboarding_draft_delete_failed");
+      serverRevisionRef.current = 0;
+      serverDigestRef.current = null;
+      draftConflictRef.current = false;
+    });
+    saveQueueRef.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
   useEffect(() => {
     let cancelled = false;
     for (const legacyStorageKey of LEGACY_PII_STORAGE_KEYS) {
@@ -637,11 +681,20 @@ export default function OnboardingPage() {
     setIsNewCampaignFlow(shouldStartFresh);
 
     if (shouldStartFresh) {
-      setDraft({ ...createLocalizedDefaultDraft(locale), idempotencySeed: createIdempotencySeed() });
-      setCurrentStep("intent");
-      setFurthestStepIndex(0);
-      setHydrated(true);
-      return;
+      void deleteServerDraft()
+        .catch(() => {
+          draftConflictRef.current = true;
+          if (!cancelled) setErrors({ submit: t("onboarding.error.create") });
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setDraft({ ...createLocalizedDefaultDraft(locale), idempotencySeed: createIdempotencySeed() });
+          setCurrentStep("intent");
+          setFurthestStepIndex(0);
+          setPersistenceRevision(0);
+          setHydrated(true);
+        });
+      return () => { cancelled = true; };
     }
 
     async function loadServerDraft() {
@@ -659,6 +712,8 @@ export default function OnboardingPage() {
               draft?: unknown;
               currentStep?: unknown;
               furthestStepIndex?: unknown;
+              revision?: unknown;
+              draftPayloadDigest?: unknown;
             }
           | null;
         const parsedDraft = onboardingDraftSchema.safeParse(data?.draft);
@@ -676,6 +731,12 @@ export default function OnboardingPage() {
               Math.max(Math.floor(data.furthestStepIndex), 0),
               STEPS.length - 1,
             );
+          }
+          if (Number.isInteger(data.revision) && Number(data.revision) >= 1) {
+            serverRevisionRef.current = Number(data.revision);
+          }
+          if (typeof data.draftPayloadDigest === "string") {
+            serverDigestRef.current = data.draftPayloadDigest;
           }
         }
       } catch {
@@ -695,7 +756,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [locale, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -738,7 +799,7 @@ export default function OnboardingPage() {
     // Hydration, billing reads, and automatic routing are observational. A
     // durable draft write begins only after an explicit user interaction has
     // incremented the revision.
-    if (!hydrated || persistenceRevision === 0) return;
+    if (!hydrated || persistenceRevision === 0 || submitting || draftConflictRef.current) return;
 
     const saveTimer = window.setTimeout(() => {
       let envelope: ReturnType<typeof buildOnboardingDraftEnvelope>;
@@ -753,15 +814,11 @@ export default function OnboardingPage() {
         return;
       }
 
-      void fetch("/api/onboarding/plan", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(envelope),
-      });
+      void enqueueDraftSave(envelope).catch(() => undefined);
     }, 800);
 
     return () => window.clearTimeout(saveTimer);
-  }, [currentStep, draft, furthestStepIndex, hydrated, persistenceRevision]);
+  }, [currentStep, draft, furthestStepIndex, hydrated, persistenceRevision, submitting]);
 
   function updateDraft(nextDraft: Partial<DraftState>) {
     setDraft((current) => ({ ...current, ...nextDraft }));
@@ -840,12 +897,21 @@ export default function OnboardingPage() {
 
     try {
       const submission = buildOnboardingSubmission(preparedDraft);
+      const savedDraft = await enqueueDraftSave({
+        draft: preparedDraft,
+        currentStep: "review",
+        furthestStepIndex: 9,
+      });
       const response = await fetch("/api/onboarding/plan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(submission),
+        body: JSON.stringify({
+          submission,
+          expectedRevision: savedDraft.revision,
+          draftPayloadDigest: savedDraft.draftPayloadDigest,
+        }),
       });
       const data = (await response.json().catch(() => null)) as
         | { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string }
@@ -926,8 +992,16 @@ export default function OnboardingPage() {
     setDraft(freshDraft);
     setCurrentStep("intent");
     setFurthestStepIndex(0);
-    setPersistenceRevision((current) => current + 1);
+    setPersistenceRevision(0);
+    setHydrated(false);
     setErrors({});
+    void deleteServerDraft()
+      .then(() => setHydrated(true))
+      .catch(() => {
+        draftConflictRef.current = true;
+        setErrors({ submit: t("onboarding.error.create") });
+        setHydrated(true);
+      });
   }
 
   const activeErrorMessages = Object.values(errors).filter(

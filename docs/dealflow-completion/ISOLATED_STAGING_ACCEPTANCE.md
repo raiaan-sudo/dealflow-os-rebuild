@@ -2,10 +2,11 @@
 
 > **Predecessor harness contract.** References below to the exact prior-103
 > state and a single 103-to-104 forward application are historical and are not a
-> valid path for the 108-migration successor. See
+> valid path for the 115-migration successor. See
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md).
-> Successor staging is `NOT_YET_RUN` and requires exact fresh-108 proof or a
-> separately reviewed multi-migration forward plan.
+> Successor staging is `NOT_YET_RUN` and requires exact fresh-115 proof, exact
+> read-only resume at 115, or the independently reviewed and identity-pinned
+> 104-to-115 forward transition.
 
 This harness is the only supported one-pass path from an exact local release seal to the isolated DealFlow staging project. It is fail-closed and does not authorize production.
 
@@ -64,8 +65,8 @@ npm run staging:acceptance -- \
   --execute \
   --apply-forward-migration \
   --deploy \
-  --prior-migration-proof-dir /absolute/path/to/pinned-read-only-103-run/migration-proof \
-  --evidence-dir /private/tmp/dealflow-staging-acceptance-evidence-<seal> \
+  --prior-migration-proof-dir /Users/raiaanreza/DealFlow-Recovery/staging-evidence/dealflow-staging-acceptance-evidence-3ab010b-verify104-r5/migration-proof \
+  --evidence-dir /absolute/durable/owner-only/dealflow-staging-acceptance-evidence-<seal> \
   --round-one /absolute/path/to/round-1/verification-summary.json \
   --round-two /absolute/path/to/round-2/verification-summary.json
 ```
@@ -79,12 +80,13 @@ DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_
 For a genuinely empty isolated project, `--apply-migrations` is the fresh atomic
 mode and forbids a prior proof. `--verify-existing-migrations` is the exact
 read-only schema mode. Exactly one mode is accepted. The pinned qibh project has
-retained read-only proof of its exact 103-migration state. The current candidate
-therefore uses `--apply-forward-migration`, which accepts only that pinned
-pre-state and may commit only migration 104 plus its history receipt in one
-outer transaction. This 103-to-104 transition has not run. After a successful
+retained, digest-bound read-only proof of its exact 104-migration state. The
+current candidate therefore uses `--apply-forward-migration`, which accepts
+only that exact predecessor seal and may commit only the ordered, individually
+SHA-pinned migrations 105 through 115 plus their history receipts in one outer
+transaction. It never falls back to fresh application. After a successful
 sealed transition, later acceptance runs must use
-`--verify-existing-migrations` with the latest passing exact 104-migration
+`--verify-existing-migrations` with the latest passing exact 115-migration
 proof; the one-time forward mode must not be reused.
 
 Without the required flags, that authorization, every required secure input, an exact clean branch/commit/tree, and both accepted round summaries, the runner performs no remote mutation.
@@ -92,8 +94,8 @@ Without the required flags, that authorization, every required secure input, an 
 ## Fixed order
 
 1. Verify local repo, Node, branch, commit, tree, tracked-file digest, migration portfolio, Supabase fingerprint, Vercel fingerprints, all safety flags, secure inputs, and both local verification rounds.
-2. Provision the exact allowlisted isolated-staging Vercel environment through stdin and reject any unexpected existing variable name.
-3. For the current qibh state, verify the pinned exact committed 103-migration history, schema, catalog, ACLs, closed runtime controls, storage surface, and bounded synthetic auth surface before mutation. Commit only migration 104 and its history receipt in one outer transaction, then prove the exact 104 history and stable post-state. Fresh apply is allowed only for a genuinely empty isolated project; forward mode never falls back to fresh apply on nonempty state. After the exact 104 transition passes, future runs use read-only exact-104 verification.
+2. Reconcile the exact 91-key isolated-staging Vercel environment. Read current metadata first; batch-upsert only missing or value-drifted encrypted keys; patch structural drift by exact variable ID; respect `Retry-After`; stop on deterministic 4xx; and perform provider readback before any retry after transport or 5xx ambiguity. Encrypted values require decrypted digest readback. The ten Vercel-sensitive values are intentionally unreadable after creation, so they require exact-ID idempotent rewrite, successful provider acknowledgement, and exact metadata readback without claiming value decryption. Reject unexpected names and persist no values or value digests.
+3. For the current qibh state, verify the exact sealed 104-migration history, independently pinned schema and catalog identities, ACLs, closed runtime controls, empty storage, exact synthetic auth surface, and exact synthetic relational/credential row surface before mutation. Commit only the 11 ordered migrations 105 through 115 and their history receipts in one outer transaction, then prove the exact 115 history and independently pinned post-state. Fresh apply is allowed only for a genuinely empty isolated project; forward mode never falls back to fresh apply on nonempty state. After the exact 104-to-115 transition passes, future runs use read-only exact-115 verification.
 4. Through a separate database-owner broker, install, tightly recover, or exactly reuse the qibh-only synthetic retention policy. Prove service-role SELECT-only access, zero table- or column-level writes, zero anon/authenticated/PUBLIC grants, exact policy values, and the actual relation owner.
 5. Deploy the exact commit to the isolated Vercel staging project and verify deployment metadata. Assign each allowlisted app alias one at a time and prove the exact control-plane mapping. The monotonic, 180-second edge-propagation gate may retry only Vercel's exact `404 DEPLOYMENT_NOT_FOUND` surface. An alias that is not additionally protected must reach DealFlow's exact closed 404 gate. An alias protected by Vercel Authentication must first return the exact public `302 https://vercel.com/sso-api` shape, then reach DealFlow's exact closed 404 only when the automation-bypass header is sent to that same alias without the DealFlow gate secret. Raw redirect queries, nonces, bypass values, and cookies are never persisted. Recheck the candidate mapping before loading the DealFlow staging secret, then prove the unauthenticated, header, and cookie surfaces sequentially before assigning the next alias. Prove the real Next chunk remains gated; the release-bound private source, exact public direct-asset portfolio, Open Graph image, signed provider-media source, and retired source satisfy their complete matrices; both provider-owned optimizer paths return only the pinned normalized Vercel edge rejection; and the custom optimizer path returns only DealFlow's exact closure. Unexpected redirects, URL changes, public 200s, optimizer image responses, broad status acceptance, generic or altered Vercel errors, mixed provider-path dispositions, mapping drift, and deadline exhaustion fail closed and trigger rollback.
 6. Seed the deployment-bound white-label hosts and ten synthetic roles twice, proving idempotency and atomic partner attribution.

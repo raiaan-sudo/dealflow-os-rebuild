@@ -6,6 +6,10 @@ import {
   isCanonicalGeneratedVideoStorageIdentity,
 } from "../src/lib/services/creative-asset-storage-identity";
 import { importGeneratedVideoToCanonicalStorage } from "../src/lib/services/generated-video-storage-service";
+import {
+  validateCreativeAssetContent,
+  validateManualCreativeAssetFile,
+} from "../src/lib/services/creative-asset-content-validation";
 
 const ids = {
   organizationId: "10000000-0000-4000-8000-000000000001",
@@ -22,6 +26,28 @@ const mp4 = Buffer.from([
   0x69, 0x73, 0x6f, 0x6d,
   0x6d, 0x70, 0x34, 0x32,
 ]);
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x02, 0x00, 0x00, 0xff, 0xd9]);
+const gif = Buffer.from([
+  ...Buffer.from("GIF89a", "ascii"),
+  0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+  0x3b,
+]);
+const webp = Buffer.from([
+  ...Buffer.from("RIFF", "ascii"),
+  0x0c, 0x00, 0x00, 0x00,
+  ...Buffer.from("WEBPVP8X", "ascii"),
+  0x00, 0x00, 0x00, 0x00,
+]);
+const quicktime = Buffer.from([
+  0x00, 0x00, 0x00, 0x10,
+  ...Buffer.from("ftypqt  ", "ascii"),
+  0x00, 0x00, 0x00, 0x00,
+]);
+const webm = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x81, 0x00, 0x00, 0x00]);
 const mutableEnv = process.env as Record<string, string | undefined>;
 
 type Stored = { body: Uint8Array; metadata: Record<string, unknown>; contentType: string };
@@ -132,6 +158,52 @@ function createStorageHarness(publicOrigin: string, options?: { failBinding?: bo
 }
 
 async function main() {
+  for (const [bytes, declaredMimeType, kind, expectedMimeType] of [
+    [png, "image/png", "image", "image/png"],
+    [jpeg, "image/jpeg", "image", "image/jpeg"],
+    [gif, "image/gif", "image", "image/gif"],
+    [webp, "image/webp", "image", "image/webp"],
+    [mp4, "video/mp4", "video", "video/mp4"],
+    [quicktime, "video/quicktime", "video", "video/quicktime"],
+    [webm, "video/webm", "video", "video/webm"],
+  ] as const) {
+    const validated = validateCreativeAssetContent({
+      bytes,
+      declaredMimeType,
+      kind,
+      maxBytes: 1024,
+    });
+    assert.equal(validated.mimeType, expectedMimeType);
+    assert.equal(validated.contentLength, bytes.length);
+    assert.match(validated.contentSha256, /^[0-9a-f]{64}$/);
+  }
+  for (const input of [
+    { bytes: Buffer.alloc(0), declaredMimeType: "image/png", kind: "image" as const },
+    { bytes: png.subarray(0, 24), declaredMimeType: "image/png", kind: "image" as const },
+    { bytes: jpeg.subarray(0, -2), declaredMimeType: "image/jpeg", kind: "image" as const },
+    { bytes: mp4.subarray(0, 12), declaredMimeType: "video/mp4", kind: "video" as const },
+    { bytes: png, declaredMimeType: "image/jpeg", kind: "image" as const },
+    { bytes: png, declaredMimeType: "image/png", kind: "video" as const },
+    { bytes: Buffer.from("not-media"), declaredMimeType: "image/png", kind: "image" as const },
+  ]) {
+    assert.throws(
+      () => validateCreativeAssetContent({ ...input, maxBytes: 1024 }),
+      /empty|truncated|does not match|not a supported|signature/i,
+    );
+  }
+  const manualPng = await validateManualCreativeAssetFile({
+    file: new File([png], "fake.jpg", { type: "image/png" }),
+    kind: "image",
+  });
+  assert.equal(manualPng.extension, "png", "manual storage extension trusted the filename");
+  await assert.rejects(
+    validateManualCreativeAssetFile({
+      file: new File([png], "fake.jpg", { type: "image/jpeg" }),
+      kind: "image",
+    }),
+    /does not match/,
+  );
+
   let videoRequests = 0;
   const server = http.createServer((request, response) => {
     if (request.url === "/redirect") {
@@ -163,6 +235,18 @@ async function main() {
       response.statusCode = 200;
       response.setHeader("content-type", "video/mp4");
       response.end("not a video");
+      return;
+    }
+    if (request.url === "/truncated") {
+      response.statusCode = 200;
+      response.setHeader("content-type", "video/mp4");
+      response.end(mp4.subarray(0, 12));
+      return;
+    }
+    if (request.url === "/mime-mismatch") {
+      response.statusCode = 200;
+      response.setHeader("content-type", "video/webm");
+      response.end(mp4);
       return;
     }
     if (request.url === "/video") {
@@ -256,6 +340,8 @@ async function main() {
       ["70000000-0000-4000-8000-000000000007", "/bad-mime", /MIME type/],
       ["80000000-0000-4000-8000-000000000008", "/bad-signature", /declared video format/],
       ["90000000-0000-4000-8000-000000000009", "/unsafe-redirect", /credential-free HTTPS/],
+      ["90000000-0000-4000-8000-000000000010", "/truncated", /declared video format/],
+      ["90000000-0000-4000-8000-000000000011", "/mime-mismatch", /declared video format/],
     ] as const) {
       const invalidHarness = createStorageHarness(origin);
       await assert.rejects(

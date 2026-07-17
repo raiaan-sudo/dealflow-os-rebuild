@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { isDeepStrictEqual } from "node:util";
 import { createAdminClient } from "@/lib/server/supabase-admin";
+import { ApiError } from "@/lib/api/route";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CampaignIntent } from "@/lib/campaign-intent";
 import type { CampaignPlan } from "@/lib/services/campaign-plan-service";
+import { decideCampaignRuntimeWrite } from "@/lib/services/campaign-lifecycle-state-machine";
 import { debugLog } from "@/lib/debug";
 import type { PersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
@@ -16,12 +19,24 @@ import {
   getLaunchStatusFromPlan,
   getLeadLoopVerifiedFromPlan,
   getPublicSlugFromPlan,
+  mergeCampaignPlanDocument,
   readCampaignPlanDocument,
   toCampaignPlanJson,
 } from "@/lib/services/campaign-plan-document";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 type CampaignPlanClient = SupabaseClient<Database>;
+
+export class CampaignPlanWriteConflictError extends ApiError {
+  constructor() {
+    super(
+      409,
+      "The campaign changed while this update was being applied. Reload the current campaign state before retrying.",
+      "campaign_plan_write_conflict",
+    );
+    this.name = "CampaignPlanWriteConflictError";
+  }
+}
 
 export const CAMPAIGN_PLAN_CRITICAL_FIELD_AUTHORITY = {
   launch_status: "plan_json",
@@ -432,6 +447,10 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     .eq("id", params.campaignId)
     .eq("organization_id", organizationId);
 
+  if (typeof existingRow.updated_at === "string" && existingRow.updated_at.trim()) {
+    query = query.eq("updated_at", existingRow.updated_at);
+  }
+
   if (requireCreatorMatch && params.userId) {
     query = query.eq("user_id", params.userId);
   }
@@ -460,7 +479,71 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     throw new Error("Campaign plan update succeeded but no row could be recovered.");
   }
 
-  return recoveredRow as CampaignPlanRow;
+  const recoveredPlan = readCampaignPlanDocument(recoveredRow.plan);
+  if (isDeepStrictEqual(recoveredPlan, normalizedPlan)) {
+    return recoveredRow as CampaignPlanRow;
+  }
+
+  throw new CampaignPlanWriteConflictError();
+}
+
+function getRuntimeRecord(plan: unknown) {
+  const normalizedPlan = readCampaignPlanDocument(plan);
+  return normalizedPlan.runtime &&
+    typeof normalizedPlan.runtime === "object" &&
+    !Array.isArray(normalizedPlan.runtime)
+    ? (normalizedPlan.runtime as Record<string, unknown>)
+    : {};
+}
+
+export async function persistCampaignRuntimeTransition(params: {
+  campaignId: string;
+  organizationId: string;
+  userId: string;
+  expectedStatusUpdatedAt: string | null;
+  runtime: CampaignPlan["runtime"];
+  source: string;
+}) {
+  const writeClient = createAdminClient();
+  if (!writeClient) {
+    throw new Error("Supabase service-role client is required for campaign runtime persistence.");
+  }
+
+  const existingRow = await loadCampaignPlanRecordForPersistence({
+    supabase: writeClient,
+    campaignId: params.campaignId,
+    organizationId: params.organizationId,
+    userId: params.userId,
+  });
+  if (!existingRow) {
+    throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
+  }
+
+  const currentRuntime = getRuntimeRecord(existingRow.plan);
+  const targetRuntime = params.runtime as unknown as Record<string, unknown>;
+  const writeDecision = decideCampaignRuntimeWrite({
+    currentRuntime,
+    targetRuntime,
+    expectedStatusUpdatedAt: params.expectedStatusUpdatedAt,
+  });
+  if (writeDecision === "idempotent") return existingRow;
+  if (writeDecision === "conflict") {
+    throw new CampaignPlanWriteConflictError();
+  }
+
+  const nextPlan = mergeCampaignPlanDocument(existingRow.plan, {
+    runtime: targetRuntime,
+  });
+
+  return persistCampaignPlanDocumentUpdate({
+    supabase: writeClient,
+    campaignId: params.campaignId,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    plan: nextPlan,
+    source: params.source,
+    existingRow,
+  });
 }
 
 function getErrorMessage(error: unknown) {

@@ -1,8 +1,12 @@
 import { ApiError } from "@/lib/api/route";
-import { getPublicAppUrl, isInternalAdminEmail } from "@/lib/env";
+import { getPublicAppUrl } from "@/lib/env";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { getAppContext } from "@/lib/services/app-context";
 import { getCampaignPlanConsistencyStatus } from "@/lib/services/campaign-plan-persistence-service";
+import {
+  authorizePlatformOperatorAccess,
+  type PlatformOperatorAction,
+} from "@/lib/services/platform-operator-authority-service";
 
 type RawCampaignPlanRow = {
   id: string;
@@ -159,24 +163,30 @@ export type OperatorIssueRow = {
   rawReference: string;
 };
 
-export async function assertInternalOperatorAccess() {
+export async function assertInternalOperatorAccess({
+  requiredAction = "admin:read",
+}: {
+  requiredAction?: PlatformOperatorAction;
+} = {}) {
   const context = await getAppContext();
 
   if (!context) {
     throw new ApiError(401, "Authentication is required.", "unauthorized");
   }
 
-  const email = context.user.email ?? context.profile?.email ?? null;
-
-  if (!isInternalAdminEmail(email)) {
+  const operatorAccess = await authorizePlatformOperatorAccess({
+    userId: context.user.id,
+    requiredAction,
+  });
+  if (!operatorAccess) {
     throw new ApiError(
       403,
-      "This internal route is restricted to approved operator accounts.",
+      "This internal route requires current signed operator authority and recent two-factor verification.",
       "forbidden",
     );
   }
 
-  return context;
+  return { ...context, operatorAccess };
 }
 
 function asRecord(value: unknown) {

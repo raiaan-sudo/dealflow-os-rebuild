@@ -132,6 +132,26 @@ export const onboardingDraftEnvelopeSchema = z
   })
   .strict();
 
+export const onboardingDraftWriteSchema = onboardingDraftEnvelopeSchema
+  .extend({
+    expectedRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const onboardingDraftDeleteSchema = z
+  .object({
+    expectedRevision: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+export const onboardingSubmitRequestSchema = z
+  .object({
+    submission: onboardingSubmissionSchema,
+    expectedRevision: z.number().int().min(1),
+    draftPayloadDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+
 export const activationJourneyEventSchema = z.discriminatedUnion("eventName", [
   z
     .object({
@@ -169,6 +189,8 @@ export type OnboardingStepKey = z.infer<typeof onboardingStepKeySchema>;
 export type OnboardingDraft = z.infer<typeof onboardingDraftSchema>;
 export type OnboardingSubmission = z.infer<typeof onboardingSubmissionSchema>;
 export type OnboardingDraftEnvelope = z.infer<typeof onboardingDraftEnvelopeSchema>;
+export type OnboardingDraftWrite = z.infer<typeof onboardingDraftWriteSchema>;
+export type OnboardingSubmitRequest = z.infer<typeof onboardingSubmitRequestSchema>;
 export type ActivationJourneyEvent = z.infer<typeof activationJourneyEventSchema>;
 
 export function buildOnboardingSubmission(draft: OnboardingDraft): OnboardingSubmission {

@@ -35,8 +35,21 @@ const expectedPublicApiMethodGuards = new Map([
     ["POST", ["isExactVerifiedPartnerRequestOrigin", "decryptGhlSignedUserContext"]],
   ])],
   ["/api/integrations/ghl/webhook", new Map([
-    ["POST", ["resolveGhlLifecycleEnvironment", "verifyGhlWebhookSignature"]],
+    ["POST", ["resolveGhlLifecycleEnvironment", "verifyGhlWebhookSignatures"]],
   ])],
+]);
+
+const expectedPrivateGetApiRoutes = new Map([
+  ["/api/integrations/ghl/marketplace/connect", {
+    methods: new Set(["GET"]),
+    requiredCalls: ["getAuthenticatedContext", "createGhlMarketplaceConnectBinding"],
+    requiredIdentifiers: ["GHL_MARKETPLACE_STATE_COOKIE"],
+  }],
+  ["/api/integrations/ghl/marketplace/callback", {
+    methods: new Set(["GET"]),
+    requiredCalls: ["getAuthenticatedContext", "completeGhlMarketplaceOAuthCallback"],
+    requiredIdentifiers: ["GHL_MARKETPLACE_STATE_COOKIE"],
+  }],
 ]);
 
 const expectedInternalApiRoutes = new Map([
@@ -162,6 +175,7 @@ function emptyFacts() {
   return {
     calls: new Set(),
     env: new Set(),
+    identifiers: new Set(),
     propertyPaths: new Set(),
     filterFields: new Set(),
   };
@@ -218,6 +232,10 @@ export function analyzeRouteSource(text, fileName = "route.ts") {
     const visitedLocalFunctions = new Set();
 
     function visit(node) {
+      if (ts.isIdentifier(node)) {
+        facts.identifiers.add(node.text);
+      }
+
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
         const fullPath = propertyPath(node);
         if (fullPath) {
@@ -376,6 +394,39 @@ function hasSameOriginGuard(facts) {
   return facts.calls.has("assertSameOriginRequest") || facts.calls.has("assertInternalSystemRequest");
 }
 
+function checkPrivateGetApiGuards(routeAnalyses, publicApiRoutes) {
+  for (const [route, expected] of expectedPrivateGetApiRoutes) {
+    if (publicApiRoutes.has(route)) {
+      fail("Private GET public exposure", `${route} must not be in PUBLIC_API_PATHS`);
+    }
+
+    const analysis = routeAnalyses.get(route);
+    if (!analysis) {
+      fail("Private GET route file", `${route} route.ts was not found`);
+      continue;
+    }
+
+    compareMethodSurface("Private GET method surface", route, analysis.methods, expected.methods);
+
+    for (const method of expected.methods) {
+      const facts = analysis.handlerFacts.get(method) ?? emptyFacts();
+      const missingCalls = expected.requiredCalls.filter((name) => !facts.calls.has(name));
+      const missingIdentifiers = expected.requiredIdentifiers.filter((name) => !facts.identifiers.has(name));
+      if (missingCalls.length === 0 && missingIdentifiers.length === 0) {
+        pass(
+          "Private GET route guard",
+          `${route} ${method} reaches authenticated context and one-time state binding`,
+        );
+      } else {
+        fail(
+          "Private GET route guard",
+          `${route} ${method} missing ${[...missingCalls, ...missingIdentifiers].join(", ")}`,
+        );
+      }
+    }
+  }
+}
+
 function checkPrivateMutationGuards(routeAnalyses, publicApiRoutes) {
   for (const [route, analysis] of routeAnalyses) {
     if (publicApiRoutes.has(route)) {
@@ -484,6 +535,7 @@ function main() {
 
   checkPublicAllowlist(publicApiRoutes, routeAnalyses);
   checkInternalApiGuards(publicApiRoutes, routeAnalyses);
+  checkPrivateGetApiGuards(routeAnalyses, publicApiRoutes);
   checkPrivateMutationGuards(routeAnalyses, publicApiRoutes);
   checkDynamicOwnershipMarkers(routeAnalyses, publicApiRoutes);
 

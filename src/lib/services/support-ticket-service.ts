@@ -17,6 +17,93 @@ export type { SupportTicketInput } from "@/lib/support-ticket-contract";
 
 type SupportTicketClient = SupabaseClient<Database>;
 
+export type SupportTicketSummary = {
+  id: string;
+  reference: string;
+  category: "product_feedback" | "product_blocker" | null;
+  subject: string;
+  status: "open" | "in_progress" | "resolved" | "closed";
+  operatorNotificationStatus:
+    | "pending"
+    | "processing"
+    | "retrying"
+    | "delivered"
+    | "failed"
+    | "operator_action_required"
+    | "unavailable";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listSupportTickets(params: {
+  supabase: SupportTicketClient;
+  organizationId: string;
+  userId: string;
+  limit?: number;
+}): Promise<SupportTicketSummary[]> {
+  const limit = Math.min(Math.max(Math.floor(params.limit ?? 10), 1), 25);
+  const { data, error } = await (params.supabase as any)
+    .from("support_tickets")
+    .select(
+      "id,correlation_id,category,subject,status,created_at,updated_at,support_notification_outbox(status)",
+    )
+    .eq("organization_id", params.organizationId)
+    .eq("user_id", params.userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new ApiError(500, "Support history could not be loaded.", "support_history_fetch_failed");
+  }
+
+  return ((data ?? []) as Array<Record<string, unknown>>).flatMap((row) => {
+    if (
+      typeof row.id !== "string" ||
+      typeof row.correlation_id !== "string" ||
+      typeof row.subject !== "string" ||
+      typeof row.status !== "string" ||
+      typeof row.created_at !== "string" ||
+      typeof row.updated_at !== "string"
+    ) {
+      return [];
+    }
+
+    const allowedStatuses = new Set(["open", "in_progress", "resolved", "closed"]);
+    if (!allowedStatuses.has(row.status)) return [];
+    const rawOutbox = Array.isArray(row.support_notification_outbox)
+      ? row.support_notification_outbox[0]
+      : row.support_notification_outbox;
+    const notificationStatus =
+      rawOutbox && typeof rawOutbox === "object" && "status" in rawOutbox
+        ? (rawOutbox as { status?: unknown }).status
+        : null;
+    const allowedNotificationStatuses = new Set([
+      "pending",
+      "processing",
+      "retrying",
+      "delivered",
+      "failed",
+      "operator_action_required",
+    ]);
+
+    return [{
+      id: row.id,
+      reference: row.correlation_id.slice(0, 8),
+      category:
+        row.category === "product_feedback" || row.category === "product_blocker"
+          ? row.category
+          : null,
+      subject: row.subject,
+      status: row.status as SupportTicketSummary["status"],
+      operatorNotificationStatus: allowedNotificationStatuses.has(String(notificationStatus))
+        ? notificationStatus as SupportTicketSummary["operatorNotificationStatus"]
+        : "unavailable",
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }];
+  });
+}
+
 export async function createSupportTicket(params: {
   supabase: SupportTicketClient;
   organizationId: string;

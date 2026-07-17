@@ -14,7 +14,7 @@ import {
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
 const EXPECTED_STAGING_PROJECT_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
-const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
+const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 61;
 const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 
 function requireValue(name: string) {

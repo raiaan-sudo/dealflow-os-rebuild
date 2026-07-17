@@ -1,5 +1,6 @@
 export const MANUAL_CREATIVE_STORAGE_BUCKET = "creative-assets";
 export const GENERATED_VIDEO_STORAGE_BUCKET = MANUAL_CREATIVE_STORAGE_BUCKET;
+export const GENERATED_STATIC_STORAGE_BUCKET = MANUAL_CREATIVE_STORAGE_BUCKET;
 
 const SAFE_ID_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
 const SAFE_FILE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
@@ -86,6 +87,33 @@ export function buildGeneratedVideoStoragePath(params: {
     params.campaignId,
     params.providerName,
     `${params.assetId}.video`,
+  ].join("/");
+}
+
+export function buildGeneratedStaticStoragePath(params: {
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  providerName: "openai";
+  dispatchId: string;
+}) {
+  if (
+    !isSafeIdSegment(params.organizationId) ||
+    !isSafeIdSegment(params.userId) ||
+    !isSafeIdSegment(params.campaignId) ||
+    !isSafeIdSegment(params.dispatchId) ||
+    params.providerName !== "openai"
+  ) {
+    throw new Error("Generated static storage identity contains an unsafe path segment.");
+  }
+
+  return [
+    "generated-static",
+    params.organizationId,
+    params.userId,
+    params.campaignId,
+    params.providerName,
+    `${params.dispatchId}.image`,
   ].join("/");
 }
 

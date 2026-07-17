@@ -24,7 +24,7 @@ const ACTIVE_APP_CONTRACT_TABLES = [
 const FROZEN_FOUNDATION_LAST_FILE =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
 const FROZEN_FOUNDATION_MIGRATION_COUNT = 80;
-const EXACT_INTEGRATED_MIGRATION_COUNT = 108;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 115;
 const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260712213000_create_ghl_sandbox_provider_path.sql",
   "20260712214000_create_continuous_reporting_and_safe_optimizer.sql",
@@ -54,6 +54,13 @@ const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260716180000_harden_credit_top_up_request_idempotency.sql",
   "20260716190000_add_ghl_marketplace_oauth_install_foundation.sql",
   "20260716200000_harden_stripe_payment_lifecycle.sql",
+  "20260717010000_harden_onboarding_draft_integrity.sql",
+  "20260717013000_complete_ghl_marketplace_runtime_lifecycle.sql",
+  "20260717020000_canonicalize_campaign_lifecycle_truth.sql",
+  "20260717030000_harden_platform_operator_authority.sql",
+  "20260717040000_bind_generated_static_storage_tenancy.sql",
+  "20260717050000_create_privacy_consent_dsar_authority.sql",
+  "20260717060000_install_owner_decision_authority_grants.sql",
 ];
 
 function fail(message, details = {}) {
@@ -94,8 +101,12 @@ function mergedAuthorityCategories(publicCurrent, privateAuthority) {
 }
 
 function tableCreates(sql) {
-  return [...sql.matchAll(/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?public"?\.)?"?([a-zA-Z0-9_]+)"?/gi)]
-    .map((match) => ({ table: match[1].toLowerCase(), index: match.index }));
+  return [...sql.matchAll(/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?([a-zA-Z0-9_]+)"?\.)?"?([a-zA-Z0-9_]+)"?/gi)]
+    .map((match) => {
+      const schema = (match[1] ?? "public").toLowerCase();
+      const table = match[2].toLowerCase();
+      return { schema, table, identity: `${schema}.${table}`, index: match.index };
+    });
 }
 
 function foreignKeyReferences(sql) {
@@ -261,17 +272,17 @@ for (const record of generated) {
 const allCreates = new Map();
 for (const record of records) {
   for (const create of tableCreates(record.sql)) {
-    const occurrences = allCreates.get(create.table) ?? [];
+    const occurrences = allCreates.get(create.identity) ?? [];
     occurrences.push({
       file: record.file,
       generated: record.sql.includes("-- dealflow:migration "),
       guarded: /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS/i.test(record.sql.slice(create.index, create.index + 80)),
     });
-    allCreates.set(create.table, occurrences);
+    allCreates.set(create.identity, occurrences);
   }
 }
 for (const [table, occurrences] of allCreates) {
-  const toleratedSealedGuard = table === "app_schema_metadata"
+  const toleratedSealedGuard = table === "public.app_schema_metadata"
     && occurrences.length === 2
     && occurrences.every((item) => !item.generated && item.guarded);
   if (occurrences.length !== 1 && !toleratedSealedGuard) {
@@ -351,14 +362,15 @@ for (const record of records) {
   ].sort((left, right) => left.index - right.index || (left.kind === "create" ? -1 : 1));
   for (const event of events) {
     if (event.kind === "create") {
-      created.add(`public.${event.table}`);
+      created.add(event.identity);
     } else if (event.schema === "public" && !created.has(`public.${event.table}`)) {
       fail("foreign-key reference occurs before CREATE TABLE", { file: record.file, table: event.table });
     }
   }
 }
 
-const partnerCreate = records.find(({ sql }) => tableCreates(sql).some(({ table }) => table === "partners"));
+const partnerCreate = records.find(({ sql }) =>
+  tableCreates(sql).some(({ schema, table }) => schema === "public" && table === "partners"));
 if (partnerCreate?.version !== "20260531160000") {
   fail("public.partners must be created in the May-31 white-label foundation", { actual: partnerCreate?.file ?? null });
 }
@@ -371,7 +383,7 @@ for (const record of records) {
 }
 
 for (const table of ACTIVE_APP_CONTRACT_TABLES) {
-  const occurrences = allCreates.get(table) ?? [];
+  const occurrences = allCreates.get(`public.${table}`) ?? [];
   if (occurrences.length !== 1 || !occurrences[0].file.startsWith("20260710235994_")) {
     fail("active app-contract table is not owned exactly once by 20260710235994", { table, occurrences: occurrences.map(({ file }) => file) });
   }
@@ -443,7 +455,7 @@ const summary = {
   authorityIntegrity: failures.some(({ message }) => /authority|provenance/.test(message)) ? "FAIL" : "PASS",
   uniqueCreateTableCount: allCreates.size,
   duplicateCreateTableCount: failures.filter(({ message }) => message === "duplicate CREATE TABLE identity").length,
-  toleratedSealedGuardedDuplicateCount: [...allCreates.entries()].filter(([table, items]) => table === "app_schema_metadata" && items.length === 2 && items.every((item) => !item.generated && item.guarded)).length,
+  toleratedSealedGuardedDuplicateCount: [...allCreates.entries()].filter(([table, items]) => table === "public.app_schema_metadata" && items.length === 2 && items.every((item) => !item.generated && item.guarded)).length,
   referencesBeforeCreateCount: failures.filter(({ message }) => message.includes("before CREATE TABLE")).length,
   failureCount: failures.length,
   failures,

@@ -21,6 +21,13 @@ import {
   extractFinalVerificationNativePostgresRuntime,
 } from "../lib/final-verification-command-contract.mjs";
 import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
+import {
+  assertExactForward104To115Portfolio,
+  classifyForward104RemoteHistory,
+  FORWARD_104_TO_115_AUTHORITY,
+  loadExactPrior104StagingSeal,
+  loadExactPrior104SyntheticSurfaceSeal,
+} from "./forward-104-to-115-contract.mjs";
 
 import {
   classifyExactStagingAuthSurface,
@@ -36,7 +43,7 @@ import {
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg, ...modeArgs] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg) {
   throw new Error(
-    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir> | --apply-forward-exact <prior-103-migration-proof-dir>]",
+    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir> | --apply-forward-exact <prior-104-migration-proof-dir>]",
   );
 }
 let priorMigrationProofDir = null;
@@ -95,11 +102,11 @@ const expectedPriorMigrationPortfolioSha256 =
 const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
-const exactMigrationCount = 108;
+const exactMigrationCount = 115;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260716200000_harden_stripe_payment_lifecycle.sql";
+  "20260717060000_install_owner_decision_authority_grants.sql";
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -300,7 +307,7 @@ function captureCleanReleaseIdentity() {
     ["rev-parse", "--abbrev-ref", "HEAD"],
     "Unable to identify the release branch",
   ).trim();
-  if (branch !== "codex/dealflow-overnight-release-20260712") {
+  if (branch !== "codex/dealflow-final-master-20260716") {
     throw new Error("The migration broker requires the exact isolated release branch");
   }
   const tracked = trackedWorktreeIdentity();
@@ -530,12 +537,10 @@ if (roundSummaryPaths[0] === roundSummaryPaths[1]) {
 }
 const releaseIdentity = captureCleanReleaseIdentity();
 const migrationIdentity = migrationPortfolioIdentity();
-const disabledLegacySuccessorForwardMode = ["APPLY", "FORWARD", "EXACT"].join("_");
-if (migrationMode === disabledLegacySuccessorForwardMode) {
-  throw new Error(
-    "Legacy single-migration forward mode is disabled for the 108-migration successor; use a fresh isolated staging database or a separately reviewed exact multi-migration authority",
-  );
-}
+const successorForwardPortfolio = assertExactForward104To115Portfolio(
+  migrationIdentity.records,
+  migrationDir,
+);
 const migrationSources = migrations.map((file) => {
   const body = readFileSync(join(migrationDir, file), "utf8");
   return {
@@ -546,11 +551,8 @@ const migrationSources = migrations.map((file) => {
   };
 });
 const atomicMigrationTransaction = buildAtomicMigrationTransaction(migrationSources);
-// Retained solely for the unreachable historical 103-to-104 proof branch below.
-// The successor gate above prevents this transaction from being selected.
 const forwardMigrationSources = migrationSources.slice(
-  expectedPriorMigrationCount,
-  expectedPriorMigrationCount + 1,
+  FORWARD_104_TO_115_AUTHORITY.prior.migrationCount,
 );
 const forwardAtomicMigrationTransaction = buildAtomicMigrationTransaction(
   forwardMigrationSources,
@@ -921,6 +923,253 @@ function captureRemoteCatalogIdentity(label) {
   });
 }
 
+function captureManagedCatalogIdentity(label) {
+  const material = sql(
+    `with catalog(item) as (
+       select jsonb_build_array('namespace', namespace.nspname, namespace.nspacl)::text
+       from pg_namespace namespace
+       where namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('relation', namespace.nspname, relation.relname,
+         relation.relkind, relation.relpersistence, relation.relrowsecurity,
+         relation.relforcerowsecurity, relation.relacl)::text
+       from pg_class relation
+       join pg_namespace namespace on namespace.oid=relation.relnamespace
+       where namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('column', namespace.nspname, relation.relname,
+         attribute.attnum, attribute.attname,
+         format_type(attribute.atttypid,attribute.atttypmod), attribute.attnotnull,
+         pg_get_expr(default_value.adbin,default_value.adrelid))::text
+       from pg_attribute attribute
+       join pg_class relation on relation.oid=attribute.attrelid
+       join pg_namespace namespace on namespace.oid=relation.relnamespace
+       left join pg_attrdef default_value
+         on default_value.adrelid=attribute.attrelid
+        and default_value.adnum=attribute.attnum
+       where attribute.attnum > 0 and not attribute.attisdropped
+         and namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('constraint', namespace.nspname, relation.relname,
+         constraint_record.conname, constraint_record.contype,
+         pg_get_constraintdef(constraint_record.oid,true))::text
+       from pg_constraint constraint_record
+       join pg_class relation on relation.oid=constraint_record.conrelid
+       join pg_namespace namespace on namespace.oid=relation.relnamespace
+       where namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('function', namespace.nspname, procedure.proname,
+         pg_get_function_identity_arguments(procedure.oid), procedure.prokind,
+         procedure.prosecdef, procedure.provolatile, procedure.proparallel,
+         procedure.proacl, procedure.proconfig)::text
+       from pg_proc procedure
+       join pg_namespace namespace on namespace.oid=procedure.pronamespace
+       where namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('type', namespace.nspname, type_record.typname,
+         type_record.typtype, type_record.typcategory, type_record.typnotnull,
+         type_record.typacl)::text
+       from pg_type type_record
+       join pg_namespace namespace on namespace.oid=type_record.typnamespace
+       where namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('enum', namespace.nspname, type_record.typname,
+         enum_record.enumsortorder, enum_record.enumlabel)::text
+       from pg_enum enum_record
+       join pg_type type_record on type_record.oid=enum_record.enumtypid
+       join pg_namespace namespace on namespace.oid=type_record.typnamespace
+       where namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('policy', schemaname, tablename, policyname,
+         permissive, roles, cmd, qual, with_check)::text
+       from pg_policies
+       where schemaname in ('public','private')
+       union all
+       select jsonb_build_array('trigger', namespace.nspname, relation.relname,
+         trigger_record.tgname, pg_get_triggerdef(trigger_record.oid,true))::text
+       from pg_trigger trigger_record
+       join pg_class relation on relation.oid=trigger_record.tgrelid
+       join pg_namespace namespace on namespace.oid=relation.relnamespace
+       where not trigger_record.tgisinternal
+         and namespace.nspname in ('public','private')
+       union all
+       select jsonb_build_array('publication_relation', publication.pubname,
+         namespace.nspname, relation.relname)::text
+       from pg_publication_rel publication_relation
+       join pg_publication publication on publication.oid=publication_relation.prpubid
+       join pg_class relation on relation.oid=publication_relation.prrelid
+       join pg_namespace namespace on namespace.oid=relation.relnamespace
+       where namespace.nspname in ('public','private')
+     ) select item from catalog order by item;`,
+    label,
+    300_000,
+  );
+  return Object.freeze({
+    managedStructuralCatalogSha256: sha256(material),
+    managedStructuralCatalogRecordCount: material ? material.split("\n").length : 0,
+  });
+}
+
+// This is intentionally the same independently reviewed security projection
+// used by the disposable PostgreSQL 17.6 integrated-chain oracle. It excludes
+// Supabase-owned platform schemas while binding every DealFlow-managed ACL,
+// policy, routine definition, and default privilege in public/private.
+function captureManagedSecurityOracle(labelPrefix) {
+  const sections = [
+    ["schema_acl", `
+      select jsonb_build_object(
+        'schema', namespace.nspname,
+        'grantor', grantor.rolname,
+        'grantee', coalesce(grantee.rolname, 'PUBLIC'),
+        'privilege', privilege.privilege_type,
+        'grantable', privilege.is_grantable
+      )::text
+      from pg_namespace namespace
+      cross join lateral aclexplode(coalesce(
+        namespace.nspacl,
+        acldefault('n'::"char", namespace.nspowner)
+      )) privilege
+      join pg_roles grantor on grantor.oid = privilege.grantor
+      left join pg_roles grantee on grantee.oid = privilege.grantee
+      where namespace.nspname in ('public', 'private')
+      order by namespace.nspname, grantor.rolname,
+        coalesce(grantee.rolname, 'PUBLIC'), privilege.privilege_type,
+        privilege.is_grantable;
+    `],
+    ["relation_acl", `
+      select jsonb_build_object(
+        'schema', namespace.nspname,
+        'relation', relation.relname,
+        'kind', relation.relkind,
+        'grantor', grantor.rolname,
+        'grantee', coalesce(grantee.rolname, 'PUBLIC'),
+        'privilege', privilege.privilege_type,
+        'grantable', privilege.is_grantable
+      )::text
+      from pg_class relation
+      join pg_namespace namespace on namespace.oid = relation.relnamespace
+      cross join lateral aclexplode(coalesce(
+        relation.relacl,
+        acldefault(
+          case when relation.relkind = 'S' then 'S'::"char" else 'r'::"char" end,
+          relation.relowner
+        )
+      )) privilege
+      join pg_roles grantor on grantor.oid = privilege.grantor
+      left join pg_roles grantee on grantee.oid = privilege.grantee
+      where namespace.nspname in ('public', 'private')
+        and relation.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+      order by namespace.nspname, relation.relname, relation.relkind,
+        grantor.rolname, coalesce(grantee.rolname, 'PUBLIC'),
+        privilege.privilege_type, privilege.is_grantable;
+    `],
+    ["routine_acl", `
+      select jsonb_build_object(
+        'schema', namespace.nspname,
+        'routine', routine.proname,
+        'arguments', pg_get_function_identity_arguments(routine.oid),
+        'grantor', grantor.rolname,
+        'grantee', coalesce(grantee.rolname, 'PUBLIC'),
+        'privilege', privilege.privilege_type,
+        'grantable', privilege.is_grantable
+      )::text
+      from pg_proc routine
+      join pg_namespace namespace on namespace.oid = routine.pronamespace
+      cross join lateral aclexplode(coalesce(
+        routine.proacl,
+        acldefault('f'::"char", routine.proowner)
+      )) privilege
+      join pg_roles grantor on grantor.oid = privilege.grantor
+      left join pg_roles grantee on grantee.oid = privilege.grantee
+      where namespace.nspname in ('public', 'private')
+      order by namespace.nspname, routine.proname,
+        pg_get_function_identity_arguments(routine.oid), grantor.rolname,
+        coalesce(grantee.rolname, 'PUBLIC'), privilege.privilege_type,
+        privilege.is_grantable;
+    `],
+    ["default_acl", `
+      select jsonb_build_object(
+        'owner', owner.rolname,
+        'schema', coalesce(namespace.nspname, '*'),
+        'objectType', defaults.defaclobjtype,
+        'grantor', grantor.rolname,
+        'grantee', coalesce(grantee.rolname, 'PUBLIC'),
+        'privilege', privilege.privilege_type,
+        'grantable', privilege.is_grantable
+      )::text
+      from pg_default_acl defaults
+      join pg_roles owner on owner.oid = defaults.defaclrole
+      left join pg_namespace namespace on namespace.oid = defaults.defaclnamespace
+      cross join lateral aclexplode(defaults.defaclacl) privilege
+      join pg_roles grantor on grantor.oid = privilege.grantor
+      left join pg_roles grantee on grantee.oid = privilege.grantee
+      where namespace.nspname in ('public', 'private')
+         or defaults.defaclnamespace = 0
+      order by owner.rolname, coalesce(namespace.nspname, '*'),
+        defaults.defaclobjtype, grantor.rolname,
+        coalesce(grantee.rolname, 'PUBLIC'), privilege.privilege_type,
+        privilege.is_grantable;
+    `],
+    ["policies", `
+      select jsonb_build_object(
+        'schema', namespace.nspname,
+        'table', relation.relname,
+        'name', policy.polname,
+        'permissive', policy.polpermissive,
+        'command', policy.polcmd,
+        'roles', coalesce((
+          select string_agg(
+            coalesce(role_name.rolname, 'PUBLIC'),
+            ',' order by coalesce(role_name.rolname, 'PUBLIC')
+          )
+          from unnest(policy.polroles) as policy_role(oid)
+          left join pg_roles role_name on role_name.oid = policy_role.oid
+        ), ''),
+        'using', coalesce(pg_get_expr(policy.polqual, policy.polrelid), ''),
+        'withCheck', coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), '')
+      )::text
+      from pg_policy policy
+      join pg_class relation on relation.oid = policy.polrelid
+      join pg_namespace namespace on namespace.oid = relation.relnamespace
+      where namespace.nspname in ('public', 'private')
+      order by namespace.nspname, relation.relname, policy.polname;
+    `],
+    ["functions", `
+      select jsonb_build_object(
+        'schema', namespace.nspname,
+        'name', routine.proname,
+        'arguments', pg_get_function_identity_arguments(routine.oid),
+        'result', pg_get_function_result(routine.oid),
+        'language', language.lanname,
+        'securityDefiner', routine.prosecdef,
+        'volatility', routine.provolatile,
+        'parallel', routine.proparallel,
+        'strict', routine.proisstrict,
+        'leakproof', routine.proleakproof,
+        'configuration', coalesce(array_to_string(routine.proconfig, ','), ''),
+        'definition', pg_get_functiondef(routine.oid)
+      )::text
+      from pg_proc routine
+      join pg_namespace namespace on namespace.oid = routine.pronamespace
+      join pg_language language on language.oid = routine.prolang
+      where namespace.nspname in ('public', 'private')
+      order by namespace.nspname, routine.proname,
+        pg_get_function_identity_arguments(routine.oid);
+    `],
+  ];
+  const rendered = sections.map(([name, query]) =>
+    `${name}\n${sql(query, `${labelPrefix} ${name}`, 300_000)}`
+  );
+  const normalized = rendered.join("\n-- next security oracle section --\n");
+  return Object.freeze({
+    managedSecurityOracleSha256: sha256(normalized),
+    managedSecurityOracleBytes: Buffer.byteLength(normalized),
+    managedSecuritySectionSha256: Object.freeze(Object.fromEntries(
+      rendered.map((value, index) => [sections[index][0], sha256(value)]),
+    )),
+  });
+}
+
 function captureRemoteStructuralState(labelPrefix, attributeStage = null) {
   const setStage = (stage) => {
     if (attributeStage) attributeStage(stage);
@@ -1032,6 +1281,241 @@ function captureAndAssertStagingAuthSurface(label) {
   return proof;
 }
 
+function captureAndAssertSyntheticRelationalSurface(
+  syntheticAuthority,
+  labelPrefix,
+  { requireSuccessorCredentialTables = false } = {},
+) {
+  const quoteUuidArray = (values) =>
+    `array[${values.map((value) => `'${value}'::uuid`).join(",")}]`;
+  const allowedUsers = quoteUuidArray(syntheticAuthority.userIds);
+  const allowedOrganizations = quoteUuidArray(syntheticAuthority.organizationIds);
+  const organizationRows = sql(
+    "select id::text || '|' || owner_user_id::text from public.organizations order by id;",
+    `${labelPrefix} exact organization roots`,
+  ).split("\n").filter(Boolean);
+  const organizationIds = organizationRows.map((row) => row.split("|")[0]).sort();
+  const organizationOwnerIds = organizationRows.map((row) => row.split("|")[1]);
+  if (
+    JSON.stringify(organizationIds) !== JSON.stringify(syntheticAuthority.organizationIds) ||
+    organizationOwnerIds.some((value) => !syntheticAuthority.userIds.includes(value))
+  ) {
+    throw new Error("The staging relational surface contains an unsealed organization root");
+  }
+  const applicationUserIds = sql(
+    "select id::text from public.users order by id;",
+    `${labelPrefix} exact application-user roots`,
+  ).split("\n").filter(Boolean).sort();
+  if (JSON.stringify(applicationUserIds) !== JSON.stringify(syntheticAuthority.userIds)) {
+    throw new Error("The staging relational surface contains an unsealed application-user root");
+  }
+
+  const rootColumns = sql(
+    `select table_schema || '|' || table_name || '|' || column_name
+       from information_schema.columns
+      where table_schema in ('public','private')
+        and data_type = 'uuid'
+        and (
+          column_name ~ '(^|_)(organization|workspace)_id$'
+          or column_name ~ '(^|_)(user_id|owner_user_id|actor_user_id|author_user_id|requested_by_user_id|assigned_user_id|claimed_by_user_id)$'
+          or column_name in ('owner_id','created_by','updated_by','assigned_by','recorded_by')
+        )
+      order by table_schema, table_name, column_name;`,
+    `${labelPrefix} classified tenant-root columns`,
+  ).split("\n").filter(Boolean);
+  if (rootColumns.length === 0) {
+    throw new Error("The staging relational surface has no classified tenant-root columns");
+  }
+  const rootRecords = [];
+  for (const item of rootColumns) {
+    const [schema, table, column] = item.split("|");
+    if (
+      !/^(?:public|private)$/.test(schema ?? "") ||
+      !/^[a-z][a-z0-9_]{0,62}$/.test(table ?? "") ||
+      !/^[a-z][a-z0-9_]{0,62}$/.test(column ?? "")
+    ) {
+      throw new Error("The staging tenant-root inventory contains an unsupported identifier");
+    }
+    const organizationScoped = /(?:^|_)(?:organization|workspace)_id$/.test(column);
+    const allowed = organizationScoped ? allowedOrganizations : allowedUsers;
+    const [totalCount, unexpectedRootCount] = sql(
+      `select count(*)::text || '|' ||
+              count(*) filter (where "${column}" is not null and not ("${column}" = any(${allowed})))::text
+         from "${schema}"."${table}";`,
+      `${labelPrefix} bounded root scan ${schema}.${table}.${column}`,
+    ).split("|").map(Number);
+    if (
+      !Number.isSafeInteger(totalCount) ||
+      !Number.isSafeInteger(unexpectedRootCount) ||
+      totalCount < 0 ||
+      unexpectedRootCount !== 0
+    ) {
+      throw new Error("The staging relational surface contains a row outside the sealed synthetic roots");
+    }
+    rootRecords.push({ schema, table, column, totalCount, unexpectedRootCount });
+  }
+
+  const tableNames = sql(
+    `select namespace.nspname || '|' || relation.relname
+       from pg_catalog.pg_class relation
+       join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+      where namespace.nspname in ('public','private')
+        and relation.relkind in ('r','p')
+      order by namespace.nspname, relation.relname;`,
+    `${labelPrefix} complete managed table inventory`,
+  ).split("\n").filter(Boolean);
+  const tableRowCounts = {};
+  for (const item of tableNames) {
+    const [schema, table] = item.split("|");
+    if (
+      !/^(?:public|private)$/.test(schema ?? "") ||
+      !/^[a-z][a-z0-9_]{0,62}$/.test(table ?? "")
+    ) {
+      throw new Error("The staging managed table inventory contains an unsupported identifier");
+    }
+    const count = Number(sql(
+      `select count(*) from "${schema}"."${table}";`,
+      `${labelPrefix} managed row count ${schema}.${table}`,
+    ));
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new Error("The staging managed table inventory contains an invalid row count");
+    }
+    tableRowCounts[`${schema}.${table}`] = count;
+  }
+
+  const exactHighRiskCounts = {};
+  for (const [table, expected] of Object.entries(
+    syntheticAuthority.evidence.exactHighRiskCounts,
+  )) {
+    if (!/^[a-z][a-z0-9_]{0,62}$/.test(table)) {
+      throw new Error("The sealed high-risk row-count authority contains an invalid table");
+    }
+    const count = Number(sql(
+      `select count(*) from public."${table}";`,
+      `${labelPrefix} exact high-risk row count ${table}`,
+    ));
+    if (!Number.isSafeInteger(count) || count !== expected) {
+      throw new Error(`The staging ${table} row count drifted from the sealed synthetic authority`);
+    }
+    exactHighRiskCounts[table] = count;
+  }
+
+  const providerCredentialCounts = {
+    marketingAccountSecrets: Number(sql(
+      `select count(*) from public.marketing_accounts
+        where access_token_encrypted is not null
+           or refresh_token_encrypted is not null
+           or verification_token is not null;`,
+      `${labelPrefix} Meta credential emptiness`,
+    )),
+    ghlInstallationCredentialRefs: Number(sql(
+      "select count(*) from public.ghl_installations where encrypted_credential_ref is not null;",
+      `${labelPrefix} GHL installation credential emptiness`,
+    )),
+    ghlLocationCredentialRefs: Number(sql(
+      "select count(*) from public.ghl_location_mappings where forms_readonly_credential_ref is not null;",
+      `${labelPrefix} GHL location credential emptiness`,
+    )),
+    partnerGhlCredentialRows: Number(sql(
+      "select count(*) from public.partner_ghl_config;",
+      `${labelPrefix} partner GHL credential emptiness`,
+    )),
+  };
+  if (requireSuccessorCredentialTables) {
+    Object.assign(providerCredentialCounts, {
+      marketplaceAuthorities: Number(sql(
+        "select count(*) from public.ghl_marketplace_authorities;",
+        `${labelPrefix} Marketplace authority emptiness`,
+      )),
+      marketplaceCredentials: Number(sql(
+        "select count(*) from public.ghl_marketplace_encrypted_credentials;",
+        `${labelPrefix} Marketplace credential emptiness`,
+      )),
+      marketplaceOauthStates: Number(sql(
+        "select count(*) from public.ghl_marketplace_oauth_states;",
+        `${labelPrefix} Marketplace OAuth-state emptiness`,
+      )),
+      marketplaceTokenSets: Number(sql(
+        "select count(*) from public.ghl_marketplace_token_sets;",
+        `${labelPrefix} Marketplace token-set emptiness`,
+      )),
+    });
+  }
+  if (
+    Object.values(providerCredentialCounts).some(
+      (value) => !Number.isSafeInteger(value) || value !== 0,
+    )
+  ) {
+    throw new Error("The staging relational surface contains provider credential authority");
+  }
+  const normalized = JSON.stringify({
+    rootRecords,
+    tableRowCounts,
+    exactHighRiskCounts,
+    providerCredentialCounts,
+  });
+  return Object.freeze({
+    schemaVersion: "dealflow.synthetic-relational-surface-proof.v1",
+    status: "EXACT_SEALED_SYNTHETIC_ROOTS_ONLY",
+    classifiedRootColumnCount: rootRecords.length,
+    unexpectedRootCount: 0,
+    managedTableCount: Object.keys(tableRowCounts).length,
+    tableRowCounts: Object.freeze(tableRowCounts),
+    exactHighRiskCounts: Object.freeze(exactHighRiskCounts),
+    providerCredentialCounts: Object.freeze(providerCredentialCounts),
+    syntheticRelationalSurfaceSha256: sha256(normalized),
+    sourceAuthority: syntheticAuthority.evidence,
+    rawIdentityValuesPersisted: false,
+    rawRelationalValuesPersisted: false,
+    containsRealCustomerData: false,
+    providerCredentialPresent: false,
+  });
+}
+
+function assertPrior104RowCountContinuity(
+  preForward,
+  postForward,
+  { allowExpectedControlPlaneCountChanges = false } = {},
+) {
+  const expectedControlPlaneCountChanges = new Set([
+    "public.account_deletion_data_inventory",
+    "public.app_schema_metadata",
+  ]);
+  const unchangedManagedTables = [];
+  for (const [table, preCount] of Object.entries(preForward.tableRowCounts)) {
+    if (!Object.hasOwn(postForward.tableRowCounts, table)) {
+      throw new Error(`The 104-to-115 transition removed the pre-existing managed table ${table}`);
+    }
+    if (
+      allowExpectedControlPlaneCountChanges &&
+      expectedControlPlaneCountChanges.has(table)
+    ) continue;
+    if (postForward.tableRowCounts[table] !== preCount) {
+      throw new Error(`The 104-to-115 transition changed the row count of ${table}`);
+    }
+    unchangedManagedTables.push(table);
+  }
+  for (const table of expectedControlPlaneCountChanges) {
+    if (!Object.hasOwn(preForward.tableRowCounts, table)) {
+      throw new Error(`The prior-104 row-count authority is missing ${table}`);
+    }
+  }
+  return Object.freeze({
+    schemaVersion: "dealflow.prior-104-row-count-continuity.v1",
+    status: "EXACT_PREEXISTING_CUSTOMER_ROW_COUNTS_PRESERVED",
+    unchangedManagedTableCount: unchangedManagedTables.length,
+    expectedControlPlaneCountChanges: Object.freeze(
+      allowExpectedControlPlaneCountChanges
+        ? [...expectedControlPlaneCountChanges].sort()
+        : [],
+    ),
+    unchangedManagedTableSetSha256: sha256(
+      JSON.stringify(unchangedManagedTables.sort()),
+    ),
+    rawRelationalValuesPersisted: false,
+  });
+}
+
 function isExactEmptyPlatformState(state, expectedStructuralCatalogSha256 = null) {
   return state.historyTableExists === false &&
     state.migrationHistoryCount === 0 &&
@@ -1076,6 +1560,34 @@ function captureNormalizedSchemaDump() {
       "--schema=private",
     ],
     { timeoutMs: 300_000, errorLabel: "Remote schema dump failed" },
+  )
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        !line.startsWith("\\restrict ") &&
+        !line.startsWith("\\unrestrict ") &&
+        !line.startsWith("-- Dumped from") &&
+        !line.startsWith("-- Dumped by"),
+    )
+    .join("\n")
+    .trim();
+}
+
+function captureManagedNormalizedSchemaDump() {
+  return runPostgresCommand(
+    pgDump,
+    [
+      "--schema-only",
+      "--no-owner",
+      "--no-privileges",
+      "--no-comments",
+      "--no-security-labels",
+      "--no-publications",
+      "--no-subscriptions",
+      "--schema=public",
+      "--schema=private",
+    ],
+    { timeoutMs: 300_000, errorLabel: "Remote managed schema dump failed" },
   )
     .split(/\r?\n/)
     .filter(
@@ -1819,6 +2331,731 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
 }
 
 if (migrationMode === "APPLY_FORWARD_EXACT") {
+  if (!priorMigrationProofDir) {
+    throw new Error("Exact 104-to-115 forward mode requires the pinned prior-104 proof directory");
+  }
+  assertOutsideRelease(priorMigrationProofDir, "Prior 104 migration proof directory");
+  if (realpathSync(priorMigrationProofDir) === realpathSync(evidenceDir)) {
+    throw new Error("Prior and current migration evidence directories must be distinct");
+  }
+  const priorApplication = loadExactPrior104StagingSeal(priorMigrationProofDir);
+  const priorSyntheticSurface = loadExactPrior104SyntheticSurfaceSeal(
+    priorMigrationProofDir,
+  );
+  const priorTree = git(
+    ["rev-parse", "--verify", `${priorApplication.applicationCommit}^{tree}`],
+    "Unable to verify the exact prior-104 proof commit",
+  ).trim();
+  if (priorTree !== priorApplication.applicationTree) {
+    throw new Error("Exact prior-104 proof commit and tree do not match retained Git history");
+  }
+  const priorBrokerSource = git(
+    ["show", `${priorApplication.applicationCommit}:${brokerRelativePath}`],
+    "Unable to recover the exact prior-104 broker source",
+  );
+  if (sha256(priorBrokerSource) !== FORWARD_104_TO_115_AUTHORITY.prior.brokerSourceSha256) {
+    throw new Error("Exact prior-104 broker is not bound to retained Git history");
+  }
+  git(
+    ["merge-base", "--is-ancestor", priorApplication.applicationCommit, releaseIdentity.headCommit],
+    "Exact prior-104 staging seal is not an ancestor of the current release",
+  );
+
+  const expectedPriorVersions = successorForwardPortfolio.priorVersions;
+  const expectedForwardVersions = successorForwardPortfolio.forwardVersions;
+  const expectedCurrentVersions = successorForwardPortfolio.currentVersions;
+  const forwardMigrations = FORWARD_104_TO_115_AUTHORITY.forwardMigrations.map((item) => ({
+    version: item.version,
+    file: item.file,
+    sha256: item.sha256,
+    bytes: item.bytes,
+  }));
+  const common = {
+    migrationMode: "APPLY_FORWARD_EXACT",
+    transition: "EXACT_104_TO_115",
+    forwardOnly: true,
+    priorMigrationCount: FORWARD_104_TO_115_AUTHORITY.prior.migrationCount,
+    forwardMigrationCount: forwardMigrations.length,
+    forwardMigrations,
+    terminalVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    idempotencyPolicy: "FAIL_CLOSED_READ_ONLY_REPROOF_AFTER_ANY_COMMIT_OR_AMBIGUITY",
+    broker: brokerEvidenceIdentity,
+    brokerSourceSha256: brokerSourceIdentity.sha256,
+    runtime: process.version,
+    expectedPostgresVersion: "17.6",
+    projectFingerprint: sha256(projectRef),
+    safeSuffix: projectRef.slice(-4),
+    releaseBranch: releaseIdentity.branch,
+    headCommit: releaseIdentity.headCommit,
+    headTree: releaseIdentity.headTree,
+    trackedWorktreeSha256: releaseIdentity.trackedWorktreeSha256,
+    trackedFileCount: releaseIdentity.trackedFileCount,
+    dependencyLockSha256,
+    postgresBinarySha256,
+    tlsServerAuthentication,
+    migrationCount: migrationIdentity.migrationCount,
+    migrationPortfolioSha256: migrationIdentity.migrationPortfolioSha256,
+    verificationRoundSummarySha256,
+    priorApplication,
+    priorSyntheticRelationalAuthority: priorSyntheticSurface.evidence,
+    rawDatabaseValuesPersisted: false,
+  };
+  const preflightRecord = writeJsonEvidence("staging-broker-preflight.json", {
+    schemaVersion: "dealflow.staging-broker-preflight.v1",
+    status: "PREPARED_EXACT_FORWARD_104_TO_115",
+    remoteReadStarted: false,
+    remoteMutationStarted: false,
+    remoteMutationCompleted: false,
+    ...common,
+  });
+  const preflightSummaryRecord = writeJsonEvidence(
+    "staging-migration-summary.pre-mutation.json",
+    {
+      schemaVersion: "dealflow.staging-migration-summary.v1",
+      status: "PREPARED_EXACT_FORWARD_104_TO_115",
+      remoteReadStarted: false,
+      remoteMutationStarted: false,
+      remoteMutationCompleted: false,
+      ...common,
+    },
+  );
+  const preflightManifestRecord = writeJsonEvidence(
+    "evidence-manifest.pre-mutation.json",
+    {
+      schemaVersion: "dealflow.staging-evidence-manifest.v1",
+      status: "PREPARED_EXACT_FORWARD_104_TO_115",
+      remoteMutationStarted: false,
+      remoteMutationCompleted: false,
+      broker: brokerEvidenceIdentity,
+      brokerSourceSha256: brokerSourceIdentity.sha256,
+      artifacts: [preflightRecord, preflightSummaryRecord],
+    },
+  );
+  assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
+  const readStartedRecord = writeJsonEvidence("staging-remote-read-started.json", {
+    schemaVersion: "dealflow.staging-remote-read-status.v1",
+    status: "REMOTE_READ_STARTED_EXACT_FORWARD_104_TO_115",
+    remoteReadStarted: true,
+    remoteMutationStarted: false,
+    remoteMutationCompleted: false,
+    ...common,
+  });
+
+  let serverVersion = null;
+  let preForwardState = null;
+  let preForwardSchemaSha256 = null;
+  let preForwardAuthSurface = null;
+  let mutationStartedRecord = null;
+  let transactionExecution = Object.freeze({
+    succeeded: false,
+    transactionCommitMarkerSeen: false,
+    attempted: [],
+    appliedInTransaction: [],
+    lastAttemptedVersion: null,
+    lastAppliedVersion: null,
+    processExitStatus: null,
+    processSignal: null,
+    processError: false,
+    processErrorCode: null,
+    databaseSqlstate: null,
+    sanitizedDatabaseDiagnostic: null,
+    sanitizedDatabaseDiagnosticSha256: null,
+  });
+  let remoteMutationStarted = false;
+  let remoteMutationCompleted = false;
+  let terminalStatus = "FAILED_PRE_MUTATION_READ";
+  let failureCode = "prior_104_remote_state_not_proven";
+  let terminalError = null;
+  let postForwardState = null;
+  let postForwardSchemaSha256 = null;
+  let postForwardSchemaBytes = null;
+  let postForwardCatalogRepeatSha256 = null;
+  let postForwardAuthSurface = null;
+  let preForwardRelationalSurface = null;
+  let postForwardRelationalSurface = null;
+  let prior104RowCountContinuity = null;
+  let postForwardManagedSchemaSha256 = null;
+  let postForwardManagedSchemaBytes = null;
+  let postForwardManagedCatalog = null;
+  let postForwardManagedSecurity = null;
+  let retentionAuthorityAcl = null;
+  let forcedRlsCount = null;
+
+  const assertExactSafeAuthSurface = (proof, label) => {
+    const exactHistoricalSynthetic =
+      proof.status === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.status &&
+      proof.userCount === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.userCount &&
+      proof.emailSetSha256 === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.emailSetSha256 &&
+      proof.identitySetSha256 === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.identitySetSha256;
+    if (
+      proof.unexpectedIdentityCount !== 0 ||
+      proof.rawIdentityValuesPersisted !== false ||
+      !(proof.status === "EMPTY" || exactHistoricalSynthetic)
+    ) {
+      throw new Error(`${label} is not empty or the exact historical synthetic qibh fixture set`);
+    }
+  };
+
+  try {
+    failureCode = "forward_postgres_version_read_failed";
+    serverVersion = sql("show server_version;", "Forward staging PostgreSQL version check");
+    if (!serverVersion.startsWith("17.6")) {
+      failureCode = "forward_postgres_version_mismatch";
+      throw new Error("The forward staging PostgreSQL version does not match exact 17.6");
+    }
+    failureCode = "prior_104_structural_state_read_failed";
+    preForwardState = captureRemoteStructuralState("Forward staging prior-104 verification");
+    if (
+      classifyForward104RemoteHistory(preForwardState.migrationHistoryVersions, {
+        priorVersions: expectedPriorVersions,
+        currentVersions: expectedCurrentVersions,
+      }) !==
+        "EXACT_PRIOR_104_CANDIDATE" ||
+      preForwardState.historyTableExists !== true ||
+      preForwardState.migrationHistoryCount !== expectedPriorVersions.length ||
+      JSON.stringify(preForwardState.migrationHistoryVersions) !==
+        JSON.stringify(expectedPriorVersions)
+    ) {
+      failureCode = "prior_104_history_not_exact";
+      throw new Error("Remote staging history is not the exact ordered prior-104 portfolio");
+    }
+    if (
+      preForwardState.structuralCatalogSha256 !==
+      FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256
+    ) {
+      failureCode = "prior_104_catalog_not_exact";
+      throw new Error("Remote staging catalog drifted from the pinned prior-104 qibh seal");
+    }
+    failureCode = "prior_104_schema_first_capture_failed";
+    const preForwardDump = captureNormalizedSchemaDump();
+    failureCode = "prior_104_schema_repeat_capture_failed";
+    const preForwardDumpRepeat = captureNormalizedSchemaDump();
+    preForwardSchemaSha256 = sha256(preForwardDump);
+    if (
+      preForwardSchemaSha256 !== FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256 ||
+      preForwardSchemaSha256 !== sha256(preForwardDumpRepeat)
+    ) {
+      failureCode = "prior_104_schema_not_exact_or_stable";
+      throw new Error("Remote staging schema is not the exact stable prior-104 qibh seal");
+    }
+    if (preForwardState.storageObjectCount !== 0) {
+      failureCode = "prior_104_storage_surface_not_empty";
+      throw new Error("Remote staging storage surface is not empty");
+    }
+    failureCode = "prior_104_auth_surface_not_exact";
+    preForwardAuthSurface = captureAndAssertStagingAuthSurface(
+      "Verify pre-forward auth surface is empty or exact synthetic qibh fixtures",
+    );
+    assertExactSafeAuthSurface(preForwardAuthSurface, "Pre-forward auth surface");
+    if (preForwardAuthSurface.userCount !== preForwardState.authUserCount) {
+      failureCode = "prior_104_auth_surface_count_mismatch";
+      throw new Error("Pre-forward synthetic auth identity and structural counts diverged");
+    }
+    failureCode = "prior_104_relational_or_credential_surface_not_exact";
+    preForwardRelationalSurface = captureAndAssertSyntheticRelationalSurface(
+      priorSyntheticSurface,
+      "Verify pre-forward synthetic relational surface",
+    );
+    failureCode = "provider_controls_read_failed_before_forward_115";
+    const activationControls = sql(
+      "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
+      "Verify pre-forward closed Meta activation controls",
+    ).split("\n").filter(Boolean);
+    const ghlControls = sql(
+      "select environment || ':' || provisioning_writes_enabled::text || ':' || lead_writes_enabled::text || ':' || lifecycle_webhook_enabled::text from public.ghl_runtime_controls order by environment;",
+      "Verify pre-forward closed GHL controls",
+    ).split("\n").filter(Boolean);
+    if (
+      activationControls.length < 2 ||
+      activationControls.some((row) => !row.endsWith(":false")) ||
+      ghlControls.length !== 3 ||
+      ghlControls.some((row) => !row.endsWith(":false:false:false"))
+    ) {
+      failureCode = "provider_controls_not_closed_before_forward_115";
+      throw new Error("Provider runtime controls are not fail-closed before forward migration");
+    }
+
+    assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
+    mutationStartedRecord = writeJsonEvidence("staging-mutation-started.json", {
+      schemaVersion: "dealflow.staging-mutation-status.v1",
+      status: "FORWARD_104_TO_115_MUTATION_STARTED",
+      remoteMutationStarted: true,
+      remoteMutationCompleted: false,
+      singleOuterTransaction: true,
+      migrationHistoryReceiptsInsideOuterTransaction: true,
+      expectedForwardMigrationCount: expectedForwardVersions.length,
+      preflightStructuralCatalogSha256: preForwardState.structuralCatalogSha256,
+      preflightNormalizedSchemaSha256: preForwardSchemaSha256,
+      preflightAuthSurface: preForwardAuthSurface,
+      ...common,
+    });
+    remoteMutationStarted = true;
+    // This immutable marker is the final operation before the only remote
+    // write. Migrations 105-115 and all 11 history receipts share one outer
+    // PostgreSQL transaction. There is no retry after this boundary.
+    failureCode = "forward_104_to_115_atomic_transaction_failed";
+    transactionExecution = executeForwardMigrationTransaction();
+    if (
+      !transactionExecution.succeeded ||
+      !transactionExecution.transactionCommitMarkerSeen ||
+      JSON.stringify(transactionExecution.attempted) !== JSON.stringify(expectedForwardVersions) ||
+      JSON.stringify(transactionExecution.appliedInTransaction) !==
+        JSON.stringify(expectedForwardVersions)
+    ) {
+      throw new Error("The exact migrations 105-115 transaction did not commit completely");
+    }
+    remoteMutationCompleted = true;
+
+    failureCode = "forward_115_structural_state_read_failed";
+    postForwardState = captureRemoteStructuralState("Forward staging post-115 verification");
+    if (
+      !hasExactMigrationHistory(postForwardState) ||
+      JSON.stringify(postForwardState.migrationHistoryVersions) !==
+        JSON.stringify(expectedCurrentVersions)
+    ) {
+      failureCode = "forward_115_history_mismatch";
+      throw new Error("Remote staging does not contain the exact ordered 115-migration history");
+    }
+    if (postForwardState.storageObjectCount !== 0) {
+      failureCode = "post_forward_storage_surface_not_empty";
+      throw new Error("Remote staging storage surface is not empty after forward migration");
+    }
+    failureCode = "post_forward_auth_surface_not_exact";
+    postForwardAuthSurface = captureAndAssertStagingAuthSurface(
+      "Verify post-forward auth surface remains exact synthetic qibh fixtures",
+    );
+    assertExactSafeAuthSurface(postForwardAuthSurface, "Post-forward auth surface");
+    if (JSON.stringify(postForwardAuthSurface) !== JSON.stringify(preForwardAuthSurface)) {
+      failureCode = "post_forward_auth_surface_changed";
+      throw new Error("Forward migration changed the bounded synthetic auth identity surface");
+    }
+    failureCode = "post_forward_relational_or_credential_surface_not_exact";
+    postForwardRelationalSurface = captureAndAssertSyntheticRelationalSurface(
+      priorSyntheticSurface,
+      "Verify post-forward synthetic relational surface",
+      { requireSuccessorCredentialTables: true },
+    );
+    failureCode = "forward_115_prior_customer_row_counts_changed";
+    prior104RowCountContinuity = assertPrior104RowCountContinuity(
+      preForwardRelationalSurface,
+      postForwardRelationalSurface,
+      { allowExpectedControlPlaneCountChanges: true },
+    );
+    failureCode = "forward_115_catalog_repeat_read_failed";
+    const postForwardCatalogRepeat = captureRemoteCatalogIdentity(
+      "Forward staging repeated post-115 catalog identity",
+    );
+    postForwardCatalogRepeatSha256 = postForwardCatalogRepeat.structuralCatalogSha256;
+    if (postForwardCatalogRepeatSha256 !== postForwardState.structuralCatalogSha256) {
+      failureCode = "forward_115_catalog_nondeterministic";
+      throw new Error("Post-migration structural catalog was not stable across repeated capture");
+    }
+    failureCode = "forward_115_managed_catalog_first_capture_failed";
+    postForwardManagedCatalog = captureManagedCatalogIdentity(
+      "Forward staging post-115 managed catalog oracle",
+    );
+    failureCode = "forward_115_managed_catalog_repeat_capture_failed";
+    const postForwardManagedCatalogRepeat = captureManagedCatalogIdentity(
+      "Forward staging repeated post-115 managed catalog oracle",
+    );
+    if (
+      postForwardManagedCatalog.managedStructuralCatalogSha256 !==
+        FORWARD_104_TO_115_AUTHORITY.current.managedStructuralCatalogSha256 ||
+      postForwardManagedCatalog.managedStructuralCatalogSha256 !==
+        postForwardManagedCatalogRepeat.managedStructuralCatalogSha256 ||
+      postForwardManagedCatalog.managedStructuralCatalogRecordCount !==
+        postForwardManagedCatalogRepeat.managedStructuralCatalogRecordCount
+    ) {
+      failureCode = "forward_115_managed_catalog_not_exact_or_stable";
+      throw new Error("Post-migration managed catalog does not match the independent 115 oracle");
+    }
+    failureCode = "forward_115_schema_first_capture_failed";
+    const postForwardDump = captureNormalizedSchemaDump();
+    failureCode = "forward_115_schema_repeat_capture_failed";
+    const postForwardDumpRepeat = captureNormalizedSchemaDump();
+    postForwardSchemaSha256 = sha256(postForwardDump);
+    postForwardSchemaBytes = Buffer.byteLength(postForwardDump);
+    if (postForwardSchemaSha256 !== sha256(postForwardDumpRepeat)) {
+      failureCode = "forward_115_schema_nondeterministic";
+      throw new Error("Post-migration normalized schema was not stable across repeated capture");
+    }
+    failureCode = "forward_115_managed_schema_first_capture_failed";
+    const postForwardManagedDump = captureManagedNormalizedSchemaDump();
+    failureCode = "forward_115_managed_schema_repeat_capture_failed";
+    const postForwardManagedDumpRepeat = captureManagedNormalizedSchemaDump();
+    postForwardManagedSchemaSha256 = sha256(postForwardManagedDump);
+    postForwardManagedSchemaBytes = Buffer.byteLength(postForwardManagedDump);
+    if (
+      postForwardManagedSchemaSha256 !==
+        FORWARD_104_TO_115_AUTHORITY.current.managedNormalizedSchemaSha256 ||
+      postForwardManagedSchemaSha256 !== sha256(postForwardManagedDumpRepeat)
+    ) {
+      failureCode = "forward_115_managed_schema_not_exact_or_stable";
+      throw new Error("Post-migration managed schema does not match the independent 115 oracle");
+    }
+    failureCode = "forward_115_managed_security_capture_failed";
+    postForwardManagedSecurity = captureManagedSecurityOracle(
+      "Forward staging post-115 managed security oracle",
+    );
+    if (
+      postForwardManagedSecurity.managedSecurityOracleSha256 !==
+      FORWARD_104_TO_115_AUTHORITY.current.managedSecurityOracleSha256
+    ) {
+      failureCode = "forward_115_managed_security_not_exact";
+      throw new Error("Post-migration ACL, policy, or routine state drifted from the independent 115 oracle");
+    }
+    failureCode = "retention_table_or_column_acl_not_hardened";
+    retentionAuthorityAcl = captureAndAssertRetentionAuthorityAcl(
+      "Verify post-forward retention authority table and column ACLs",
+    );
+    failureCode = "provider_controls_read_failed_after_forward_115";
+    const postActivationControls = sql(
+      "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
+      "Verify post-forward closed Meta activation controls",
+    ).split("\n").filter(Boolean);
+    const postGhlControls = sql(
+      "select environment || ':' || provisioning_writes_enabled::text || ':' || lead_writes_enabled::text || ':' || lifecycle_webhook_enabled::text from public.ghl_runtime_controls order by environment;",
+      "Verify post-forward closed GHL controls",
+    ).split("\n").filter(Boolean);
+    if (
+      postActivationControls.length < 2 ||
+      postActivationControls.some((row) => !row.endsWith(":false")) ||
+      postGhlControls.length !== 3 ||
+      postGhlControls.some((row) => !row.endsWith(":false:false:false"))
+    ) {
+      failureCode = "provider_controls_not_closed_after_forward_115";
+      throw new Error("Provider runtime controls are not fail-closed after forward migration");
+    }
+    failureCode = "forward_115_forced_rls_count_read_failed";
+    forcedRlsCount = Number(sql(
+      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and c.relrowsecurity and c.relforcerowsecurity;",
+      "Count post-forward forced-RLS tables",
+    ));
+    failureCode = "forward_115_broker_source_rebind_failed";
+    assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
+    terminalStatus = "PASS";
+    failureCode = null;
+  } catch (error) {
+    terminalError = error;
+    if (remoteMutationStarted) {
+      try {
+        const observedState = captureRemoteStructuralState(
+          "Forward staging ambiguity recovery readback",
+        );
+        const observedHistoryClass = classifyForward104RemoteHistory(
+          observedState.migrationHistoryVersions,
+          {
+            priorVersions: expectedPriorVersions,
+            currentVersions: expectedCurrentVersions,
+          },
+        );
+        const observedDump = captureNormalizedSchemaDump();
+        const observedDumpRepeat = captureNormalizedSchemaDump();
+        const observedSchemaSha256 = sha256(observedDump);
+        const observedCatalogRepeat = captureRemoteCatalogIdentity(
+          "Forward staging ambiguity repeated catalog readback",
+        );
+        const observedAuthSurface = captureAndAssertStagingAuthSurface(
+          "Forward staging ambiguity auth-surface readback",
+        );
+        assertExactSafeAuthSurface(observedAuthSurface, "Ambiguity readback auth surface");
+        const observedRelationalSurface = captureAndAssertSyntheticRelationalSurface(
+          priorSyntheticSurface,
+          "Forward staging ambiguity relational readback",
+          {
+            requireSuccessorCredentialTables:
+              observedHistoryClass ===
+              "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF",
+          },
+        );
+        let observedRowCountContinuity = null;
+        if (preForwardRelationalSurface) {
+          observedRowCountContinuity = assertPrior104RowCountContinuity(
+            preForwardRelationalSurface,
+            observedRelationalSurface,
+            {
+              allowExpectedControlPlaneCountChanges:
+                observedHistoryClass ===
+                "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF",
+            },
+          );
+        }
+        let observedManagedSchemaSha256 = null;
+        let observedManagedCatalogSha256 = null;
+        let observedManagedSecuritySha256 = null;
+        if (
+          observedHistoryClass ===
+          "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF"
+        ) {
+          const observedManagedDump = captureManagedNormalizedSchemaDump();
+          const observedManagedDumpRepeat = captureManagedNormalizedSchemaDump();
+          observedManagedSchemaSha256 = sha256(observedManagedDump);
+          if (observedManagedSchemaSha256 !== sha256(observedManagedDumpRepeat)) {
+            throw new Error("Ambiguity readback managed schema is nondeterministic");
+          }
+          observedManagedSecuritySha256 = captureManagedSecurityOracle(
+            "Forward staging ambiguity managed security readback",
+          ).managedSecurityOracleSha256;
+          observedManagedCatalogSha256 = captureManagedCatalogIdentity(
+            "Forward staging ambiguity managed catalog readback",
+          ).managedStructuralCatalogSha256;
+        }
+        if (
+          observedHistoryClass === "EXACT_PRIOR_104_CANDIDATE" &&
+          JSON.stringify(observedState.migrationHistoryVersions) ===
+            JSON.stringify(expectedPriorVersions) &&
+          observedState.structuralCatalogSha256 ===
+            FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256 &&
+          observedSchemaSha256 === FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256 &&
+          observedSchemaSha256 === sha256(observedDumpRepeat) &&
+          observedCatalogRepeat.structuralCatalogSha256 ===
+            observedState.structuralCatalogSha256 &&
+          observedState.storageObjectCount === 0 &&
+          observedRowCountContinuity?.status ===
+            "EXACT_PREEXISTING_CUSTOMER_ROW_COUNTS_PRESERVED" &&
+          observedRelationalSurface.status === "EXACT_SEALED_SYNTHETIC_ROOTS_ONLY"
+        ) {
+          remoteMutationCompleted = false;
+          terminalStatus = "ROLLED_BACK_EXACT_PRIOR_104";
+        } else if (
+          observedHistoryClass === "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF" &&
+          JSON.stringify(observedState.migrationHistoryVersions) ===
+            JSON.stringify(expectedCurrentVersions) &&
+          observedSchemaSha256 === sha256(observedDumpRepeat) &&
+          observedCatalogRepeat.structuralCatalogSha256 ===
+            observedState.structuralCatalogSha256 &&
+          observedState.storageObjectCount === 0 &&
+          observedRowCountContinuity?.status ===
+            "EXACT_PREEXISTING_CUSTOMER_ROW_COUNTS_PRESERVED" &&
+          observedRelationalSurface.status === "EXACT_SEALED_SYNTHETIC_ROOTS_ONLY" &&
+          observedManagedSchemaSha256 ===
+            FORWARD_104_TO_115_AUTHORITY.current.managedNormalizedSchemaSha256 &&
+          observedManagedCatalogSha256 ===
+            FORWARD_104_TO_115_AUTHORITY.current.managedStructuralCatalogSha256 &&
+          observedManagedSecuritySha256 ===
+            FORWARD_104_TO_115_AUTHORITY.current.managedSecurityOracleSha256
+        ) {
+          terminalStatus = remoteMutationCompleted
+            ? "FAILED_AFTER_FORWARD_115_COMMIT"
+            : "FAILED_FORWARD_115_STATE_DETECTED_REQUIRES_READ_ONLY_REPROOF";
+          remoteMutationCompleted = remoteMutationCompleted ? true : null;
+        } else {
+          remoteMutationCompleted = null;
+          terminalStatus = "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN";
+        }
+      } catch {
+        remoteMutationCompleted = null;
+        terminalStatus = "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN";
+      }
+    }
+  }
+
+  if (!mutationStartedRecord) {
+    mutationStartedRecord = writeJsonEvidence("staging-mutation-started.json", {
+      schemaVersion: "dealflow.staging-mutation-status.v1",
+      status: "FORWARD_104_TO_115_MUTATION_NOT_STARTED",
+      remoteMutationStarted: false,
+      remoteMutationCompleted: false,
+      ...common,
+    });
+  }
+  const mutationStatusRecord = writeJsonEvidence("staging-mutation-status.json", {
+    schemaVersion: "dealflow.staging-mutation-status.v1",
+    status: terminalStatus,
+    failureCode,
+    remoteMutationStarted,
+    remoteMutationCompleted,
+    singleOuterTransaction: true,
+    migrationHistoryReceiptsInsideOuterTransaction: true,
+    lastAttemptedVersion: transactionExecution.lastAttemptedVersion,
+    lastAppliedVersion: transactionExecution.lastAppliedVersion,
+    lastCommittedVersion: remoteMutationCompleted === true
+      ? transactionExecution.lastAppliedVersion
+      : null,
+    attemptedCount: transactionExecution.attempted.length,
+    appliedInTransactionCount: transactionExecution.appliedInTransaction.length,
+    processExitStatus: transactionExecution.processExitStatus,
+    processSignal: transactionExecution.processSignal,
+    processError: transactionExecution.processError,
+    processErrorCode: transactionExecution.processErrorCode,
+    transactionCommitMarkerSeen: transactionExecution.transactionCommitMarkerSeen,
+    databaseSqlstate: transactionExecution.databaseSqlstate,
+    sanitizedDatabaseDiagnostic: transactionExecution.sanitizedDatabaseDiagnostic,
+    sanitizedDatabaseDiagnosticSha256:
+      transactionExecution.sanitizedDatabaseDiagnosticSha256,
+    preflightStructuralCatalogSha256: preForwardState?.structuralCatalogSha256 ?? null,
+    preflightNormalizedSchemaSha256: preForwardSchemaSha256,
+    preflightSyntheticRelationalSurfaceSha256:
+      preForwardRelationalSurface?.syntheticRelationalSurfaceSha256 ?? null,
+    postStructuralCatalogSha256: postForwardState?.structuralCatalogSha256 ?? null,
+    postNormalizedSchemaSha256: postForwardSchemaSha256,
+    postManagedNormalizedSchemaSha256: postForwardManagedSchemaSha256,
+    postManagedSecurityOracleSha256:
+      postForwardManagedSecurity?.managedSecurityOracleSha256 ?? null,
+    postSyntheticRelationalSurfaceSha256:
+      postForwardRelationalSurface?.syntheticRelationalSurfaceSha256 ?? null,
+    ...common,
+  });
+
+  if (terminalError) {
+    const failureRecord = writeJsonEvidence("staging-migration-failure.json", {
+      schemaVersion: "dealflow.isolated-staging-migration-failure.v1",
+      status: terminalStatus,
+      failureCode,
+      remoteMutationStarted,
+      remoteMutationCompleted,
+      databaseSqlstate: transactionExecution.databaseSqlstate,
+      sanitizedDatabaseDiagnostic: transactionExecution.sanitizedDatabaseDiagnostic,
+      sanitizedDatabaseDiagnosticSha256:
+        transactionExecution.sanitizedDatabaseDiagnosticSha256,
+      rawErrorPersisted: false,
+      ...common,
+    });
+    const failureSummaryRecord = writeJsonEvidence("staging-migration-summary.json", {
+      schemaVersion: "dealflow.staging-migration-summary.v1",
+      status: terminalStatus,
+      failureCode,
+      remoteMutationStarted,
+      remoteMutationCompleted,
+      singleOuterTransaction: true,
+      migrationHistoryReceiptsInsideOuterTransaction: true,
+      lastAttemptedVersion: transactionExecution.lastAttemptedVersion,
+      lastAppliedVersion: transactionExecution.lastAppliedVersion,
+      lastCommittedVersion: remoteMutationCompleted === true
+        ? transactionExecution.lastAppliedVersion
+        : null,
+      rawErrorPersisted: false,
+      ...common,
+    });
+    const failureManifestRecord = writeJsonEvidence("evidence-manifest.json", {
+      schemaVersion: "dealflow.staging-evidence-manifest.v1",
+      status: terminalStatus,
+      migrationMode: "APPLY_FORWARD_EXACT",
+      transition: "EXACT_104_TO_115",
+      remoteMutationStarted,
+      remoteMutationCompleted,
+      broker: brokerEvidenceIdentity,
+      brokerSourceSha256: brokerSourceIdentity.sha256,
+      priorApplication,
+      artifacts: [
+        preflightRecord,
+        preflightSummaryRecord,
+        preflightManifestRecord,
+        readStartedRecord,
+        mutationStartedRecord,
+        mutationStatusRecord,
+        failureRecord,
+        failureSummaryRecord,
+      ],
+    });
+    throw new Error(
+      `Exact forward migrations 105-115 ${terminalStatus}; evidence manifest ${failureManifestRecord.sha256}`,
+    );
+  }
+
+  const applied = migrationSources.map(({ file, version, body }) => ({
+    version,
+    file,
+    sha256: sha256(body),
+  }));
+  const result = {
+    schemaVersion: "dealflow.isolated-staging-migration-proof.v1",
+    status: "PASS",
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+    portfolioApplicationRemoteMutationCompleted: true,
+    serverVersion,
+    migrationHistoryCount: postForwardState.migrationHistoryCount,
+    publicTableCount: postForwardState.publicTableCount,
+    forcedRlsCount,
+    activationRuntimeControlsDefaultClosed: true,
+    ghlRuntimeControlsDefaultClosed: true,
+    ...retentionAuthorityAcl,
+    preForwardAuthSurface,
+    postForwardAuthSurface,
+    preForwardRelationalSurface,
+    postForwardRelationalSurface,
+    prior104RowCountContinuity,
+    storageObjectCountAtVerification: postForwardState.storageObjectCount,
+    normalizedSchemaSha256: postForwardSchemaSha256,
+    normalizedSchemaBytes: postForwardSchemaBytes,
+    managedNormalizedSchemaSha256: postForwardManagedSchemaSha256,
+    managedNormalizedSchemaBytes: postForwardManagedSchemaBytes,
+    ...postForwardManagedCatalog,
+    ...postForwardManagedSecurity,
+    repeatedStructuralCatalogSha256: postForwardCatalogRepeatSha256,
+    singleOuterTransaction: true,
+    migrationHistoryReceiptsInsideOuterTransaction: true,
+    lastAttemptedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastAppliedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastCommittedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    remoteStateVerification: {
+      status: "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
+      readOnly: true,
+      exactPrior104StateBeforeMutation: true,
+      exactCommittedPortfolioState: true,
+      repeatedCatalogAndSchemaStable: true,
+      state: postForwardState,
+    },
+    applied,
+    ...common,
+  };
+  const proofRecord = writeJsonEvidence("staging-migration-proof.json", result);
+  const summaryRecord = writeJsonEvidence("staging-migration-summary.json", {
+    schemaVersion: "dealflow.staging-migration-summary.v1",
+    status: "PASS",
+    failureCode: null,
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+    portfolioApplicationRemoteMutationCompleted: true,
+    singleOuterTransaction: true,
+    migrationHistoryReceiptsInsideOuterTransaction: true,
+    serverVersion,
+    migrationHistoryCount: postForwardState.migrationHistoryCount,
+    normalizedSchemaSha256: postForwardSchemaSha256,
+    managedNormalizedSchemaSha256: postForwardManagedSchemaSha256,
+    managedStructuralCatalogSha256:
+      postForwardManagedCatalog.managedStructuralCatalogSha256,
+    managedSecurityOracleSha256:
+      postForwardManagedSecurity.managedSecurityOracleSha256,
+    preForwardRelationalSurface,
+    postForwardRelationalSurface,
+    prior104RowCountContinuity,
+    ...retentionAuthorityAcl,
+    lastAttemptedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastAppliedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastCommittedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    remoteStateVerificationStatus: "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
+    ...common,
+  });
+  const manifestRecord = writeJsonEvidence("evidence-manifest.json", {
+    schemaVersion: "dealflow.staging-evidence-manifest.v1",
+    status: "PASS",
+    migrationMode: "APPLY_FORWARD_EXACT",
+    transition: "EXACT_104_TO_115",
+    remoteMutationStarted: true,
+    remoteMutationCompleted: true,
+    broker: brokerEvidenceIdentity,
+    brokerSourceSha256: brokerSourceIdentity.sha256,
+    priorApplication,
+    artifacts: [
+      preflightRecord,
+      preflightSummaryRecord,
+      preflightManifestRecord,
+      readStartedRecord,
+      mutationStartedRecord,
+      mutationStatusRecord,
+      proofRecord,
+      summaryRecord,
+    ],
+  });
+  process.stdout.write(
+    `Exact forward migrations 105-115 PASS: prior 104 qibh seal proven, 11 migrations committed, PostgreSQL ${serverVersion}, schema ${postForwardSchemaSha256}, manifest ${manifestRecord.sha256}\n`,
+  );
+  process.exit(0);
+}
+
+if (migrationMode === "APPLY_LEGACY_FORWARD_EXACT_DISABLED") {
   const priorApplication = loadAndValidatePriorMigrationProof({
     requirePinnedPrior103: true,
   });

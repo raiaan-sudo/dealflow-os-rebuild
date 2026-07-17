@@ -77,11 +77,32 @@ try {
     authorizationCodeRef: "enc-ref:v1:oauth/code/synthetic-0001",
     pkceVerifierRef: verifierRef,
     redirectUriRef: "binding:redirect-uri:dealflow-ghl",
+    userTypeRef: "binding:user-type:Location",
   });
   assert.equal(codeExchange.path, "/oauth/token");
   assert.equal(codeExchange.effect, "disabled_contract_only");
-  assert.equal(codeExchange.status, "operator_required");
-  assert.equal(codeExchange.blockerCode, "ghl_marketplace_inbound_pkce_support_unattested");
+  assert.equal(codeExchange.status, "ready_for_separately_authorized_executor");
+  assert.equal(codeExchange.blockerCode, null);
+
+  const stateOnlyBinding = contract.createGhlMarketplaceOAuthBinding({
+    state: "another-one-time-cookie-state",
+    appId,
+    accountId,
+    scopes: ["contacts.readonly", "users.write"],
+    companyId,
+    locationId: accountId,
+  });
+  assert.equal(stateOnlyBinding.stateProtection, "single_use_hash_cookie_binding");
+  assert.equal(stateOnlyBinding.pkceChallenge, null);
+  assert.equal(stateOnlyBinding.encryptedPkceVerifierRef, null);
+  assert.throws(() => contract.createGhlMarketplaceOAuthBinding({
+    state: "incomplete-pkce-binding-state",
+    codeVerifier: verifier,
+    appId,
+    accountId,
+    scopes: ["contacts.readonly"],
+    companyId,
+  }), /ghl_pkce_binding_incomplete/);
 
   const refresh = contract.buildGhlOAuthRefreshContract({
     clientCredentialRef: "enc-ref:v1:oauth/client/synthetic-0001",
@@ -131,6 +152,12 @@ try {
     "company_to_location_token_exchange",
     "app_install",
     "app_uninstall",
+    "app_update",
+    "user_created",
+    "user_updated",
+    "user_deleted",
+    "location_created",
+    "location_updated",
     "user_create",
     "user_invite",
     "user_revoke",

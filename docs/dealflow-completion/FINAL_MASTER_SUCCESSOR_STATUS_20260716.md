@@ -4,8 +4,8 @@ Overall verdict: `NO_GO`
 
 Source state: `UNSEALED_WORKING_TREE`
 
-Migration portfolio: `108`, ending at
-`20260716200000_harden_stripe_payment_lifecycle.sql`
+Migration portfolio: `115`, ending at
+`20260717060000_install_owner_decision_authority_grants.sql`
 
 Final verification portfolio: `91` commands per round
 
@@ -25,29 +25,42 @@ proof for this successor.
 
 ## Exact successor boundary
 
-- The immutable starting point is commit
+- The historical lineage ancestor is commit
   `3ab010b692d3870d59effed3022ec631c1006289`, tree
   `4e07ee3ff7c188ed4242c928a9fa406c710092dc`.
-- The successor is still an uncommitted isolated working tree. A final commit,
+- The current isolated execution baseline is branch
+  `codex/dealflow-final-master-20260716`, commit
+  `042fed5d9080a2cd4ba3393420584b61d6f3eb7e`, tree
+  `c80d60c2612883af6a9663fe98d8ef4695af2a8d`.
+- The successor remains an uncommitted isolated working tree above that
+  baseline. A final commit,
   tree, tracked-content digest, dependency-lock digest, migration digest and
   clean-worktree attestation do not yet exist.
-- The ordered migration portfolio contains 108 files. Migrations 1-104 retain
+- The ordered migration portfolio contains 115 files. Migrations 1-104 retain
   their predecessor meaning. The additive successor tranche is:
 
   - 105: `20260716010000_require_optimizer_cpl_minimum_lead_sample.sql`
   - 106: `20260716180000_harden_credit_top_up_request_idempotency.sql`
   - 107: `20260716190000_add_ghl_marketplace_oauth_install_foundation.sql`
   - 108: `20260716200000_harden_stripe_payment_lifecycle.sql`
+  - 109: `20260717010000_harden_onboarding_draft_integrity.sql`
+  - 110: `20260717013000_complete_ghl_marketplace_runtime_lifecycle.sql`
+  - 111: `20260717020000_canonicalize_campaign_lifecycle_truth.sql`
+  - 112: `20260717030000_harden_platform_operator_authority.sql`
+  - 113: `20260717040000_bind_generated_static_storage_tenancy.sql`
+  - 114: `20260717050000_create_privacy_consent_dsar_authority.sql`
+  - 115: `20260717060000_install_owner_decision_authority_grants.sql`
 - The final-verification contract now contains exactly 91 commands per round,
   including one grouped final-master delta command. Neither authoritative
   clean-seal round has run for the final successor.
 - The retained 80-migration foundation, exact prior-103 staging state and
   single-migration 103-to-104 forward proof architecture remain predecessor
-  evidence only. They do not prove or authorize the 108-migration successor.
+  evidence only. They do not prove or authorize the 115-migration successor.
   The legacy single-migration forward mode is not a valid successor release
-  path. Successor staging requires an exact fresh isolated 108-migration
-  application, or a separately reviewed and proven multi-migration forward
-  plan.
+  path. Successor staging requires an exact fresh isolated 115-migration
+  application, an exact read-only resume at 115, or the independently reviewed,
+  identity-pinned 104-to-115 forward transition. None has run against staging
+  for this successor yet.
 
 ## Implemented in the unsealed successor
 
@@ -87,7 +100,7 @@ repeated by the final 91-command runner after sealing.
 2. Run the complete 91-command portfolio twice on the same exact seal under the
    required Node 24 and PostgreSQL 17.6 authorities, with zero failures,
    nondeterminism, residue, secret exposure or external effects.
-3. Apply all 108 migrations to a genuinely isolated empty staging database,
+3. Apply all 115 migrations to a genuinely isolated empty staging database,
    then prove exact history, deterministic replay, schema/ACL/RLS equality,
    tenant isolation, failure atomicity, cleanup and forward recovery.
 4. Deploy only that exact seal to protected isolated staging and run the full

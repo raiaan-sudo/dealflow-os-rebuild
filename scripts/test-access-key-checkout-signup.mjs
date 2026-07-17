@@ -106,6 +106,9 @@ assert.match(adminRevokeRoute, /assertSameOriginRequest/, "admin revoke must be 
 assert.match(adminRevokeRoute, /assertInternalOperatorAccess/, "admin revoke must require internal operator access");
 assert.match(adminRevokeRoute, /formData/, "admin revoke route must accept operator revoke reason");
 assert.match(adminRevokeRoute, /revokeAccessKey/, "admin revoke route must call service revoke");
+assert.match(adminAccessKeysPage, /assertInternalOperatorAccess/, "admin access-key page must require internal operator access before reading service-role data");
+assert.match(adminAccessKeysPage, /error instanceof ApiError && error\.status === 403/, "admin access-key page must fail closed for non-operator accounts");
+assert.match(adminAccessKeysPage, /notFound\(\)/, "admin access-key page must hide the restricted surface from non-operators");
 assert.match(adminAccessKeysPage, /listAccessKeyEventsForAdmin/, "admin page must show access-key event timeline");
 assert.match(adminAccessKeysPage, /name="q"/, "admin page must support search");
 assert.match(adminAccessKeysPage, /name="status"/, "admin page must support status filter");

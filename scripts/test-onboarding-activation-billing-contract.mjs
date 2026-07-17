@@ -436,13 +436,17 @@ const migrationSource = fs.readFileSync(
   path.join(root, "supabase/migrations/20260710180000_activation_onboarding_contract.sql"),
   "utf8",
 );
+const integrityMigrationSource = fs.readFileSync(
+  path.join(root, "supabase/migrations/20260717010000_harden_onboarding_draft_integrity.sql"),
+  "utf8",
+);
 
 check("browser render stores no draft or navigation and removes the legacy PII key", () => {
   assert.doesNotMatch(pageSource, /dealflow-guided-onboarding-v4-navigation/);
   assert.match(pageSource, /dealflow-guided-onboarding-v3/);
   assert.doesNotMatch(pageSource, /localStorage\.(?:setItem|getItem)/);
   assert.match(pageSource, /method: "PUT"/);
-  assert.match(pageSource, /if \(!hydrated \|\| persistenceRevision === 0\) return/);
+  assert.match(pageSource, /if \(!hydrated \|\| persistenceRevision === 0 \|\| submitting/);
   assert.match(pageSource, /setPersistenceRevision\(\(current\) => current \+ 1\)/);
 });
 
@@ -477,8 +481,9 @@ check("campaign persistence materializes the complete onboarding contract", () =
   assert.match(routeSource, /submission\.adDestination === "meta_instant_form"/);
   assert.match(routeSource, /campaign_payload:/);
   assert.match(routeSource, /campaignIdFromOnboardingIdempotencyKey/);
-  assert.match(routeSource, /campaignId: deterministicCampaignId/);
-  assert.match(routeSource, /createOnly: true/);
+  assert.match(routeSource, /p_campaign_id: deterministicCampaignId/);
+  assert.match(routeSource, /submit_onboarding_draft_v2/);
+  assert.match(pageSource, /expectedRevision: savedDraft\.revision/);
   assert.match(routeSource, /onboarding_idempotency_key: idempotencyKey/);
   assert.match(routeSource, /organizationId\}\|\$\{userId\}\|/);
 });
@@ -506,6 +511,9 @@ check("database contract serializes activation and initial credit atomically", (
   assert.match(migrationSource, /commercial activation user is not a member of the organization/);
   assert.match(migrationSource, /commercial_activations_append_only_guard/);
   assert.match(migrationSource, /onboarding_drafts_campaign_tenant_fk/);
+  assert.match(integrityMigrationSource, /save_onboarding_draft_v2/);
+  assert.match(integrityMigrationSource, /submit_onboarding_draft_v2/);
+  assert.match(integrityMigrationSource, /onboarding_draft_stale_revision/);
 });
 
 check("billing handler verifies durable identity before applying a qualifying payment", () => {

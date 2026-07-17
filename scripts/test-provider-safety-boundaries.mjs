@@ -29,21 +29,38 @@ function loadTypeScriptModule(file, dependencies = new Map()) {
 }
 
 const deployment = loadTypeScriptModule("src/lib/deployment-target.ts");
+const deniedAnalyticsAuthority = Object.freeze({
+  authorized: false,
+  capability: "vercel_analytics",
+  reason: "packet_not_externally_signed",
+});
 const analyticsGate = loadTypeScriptModule(
   "src/lib/telemetry/vercel-analytics-gate.ts",
-  new Map([["@/lib/deployment-target", deployment]]),
+  new Map([
+    ["server-only", {}],
+    ["@/lib/deployment-target", deployment],
+    [
+      "@/lib/authority/owner-decision-authority",
+      { readVercelAnalyticsAuthority: () => deniedAnalyticsAuthority },
+    ],
+  ]),
 );
 const exactStagingAnalyticsGate = loadTypeScriptModule(
   "src/lib/telemetry/vercel-analytics-gate.ts",
   new Map([
+    ["server-only", {}],
     [
       "@/lib/deployment-target",
-      { isExplicitNonProductionDeployment: () => true },
+      { isExactProductionVercelHost: () => false },
+    ],
+    [
+      "@/lib/authority/owner-decision-authority",
+      { readVercelAnalyticsAuthority: () => deniedAnalyticsAuthority },
     ],
   ]),
 );
 assert.equal(
-  exactStagingAnalyticsGate.shouldRenderVercelAnalytics({
+  await exactStagingAnalyticsGate.shouldRenderVercelAnalytics({
     VERCEL: "1",
     VERCEL_ENV: "production",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
@@ -52,7 +69,7 @@ assert.equal(
   "an externally verified staging production slot must not load production analytics telemetry",
 );
 assert.equal(
-  analyticsGate.shouldRenderVercelAnalytics({
+  await analyticsGate.shouldRenderVercelAnalytics({
     VERCEL: "1",
     VERCEL_ENV: "preview",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
@@ -61,7 +78,7 @@ assert.equal(
   "isolated staging must not load production analytics telemetry",
 );
 assert.equal(
-  analyticsGate.shouldRenderVercelAnalytics({
+  await analyticsGate.shouldRenderVercelAnalytics({
     VERCEL: "1",
     VERCEL_ENV: "preview",
   }),
@@ -69,15 +86,15 @@ assert.equal(
   "hosted previews must not load production analytics telemetry",
 );
 assert.equal(
-  analyticsGate.shouldRenderVercelAnalytics({
+  await analyticsGate.shouldRenderVercelAnalytics({
     VERCEL: "1",
     VERCEL_ENV: "production",
   }),
-  true,
-  "unknown hosted production behavior must remain unchanged pending protected classification",
+  false,
+  "hosted production metadata without exact host and signed privacy authority must stay off",
 );
 assert.equal(
-  analyticsGate.shouldRenderVercelAnalytics({ NODE_ENV: "production" }),
+  await analyticsGate.shouldRenderVercelAnalytics({ NODE_ENV: "production" }),
   false,
   "a production build alone must not enable hosted telemetry",
 );

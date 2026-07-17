@@ -32,7 +32,12 @@ import { cn } from "@/lib/utils";
 const signupHref = "/login?mode=sign-up";
 const scrollTrackingMilestones = [25, 50, 75, 90] as const;
 
-function trackHomepageEvent(event: string, properties: Record<string, string | number | boolean> = {}) {
+function trackHomepageEvent(
+  analyticsEnabled: boolean,
+  event: string,
+  properties: Record<string, string | number | boolean> = {},
+) {
+  if (!analyticsEnabled) return;
   try {
     track(event, {
       page: "homepage",
@@ -43,17 +48,17 @@ function trackHomepageEvent(event: string, properties: Record<string, string | n
   }
 }
 
-function useHomepageScrollTracking(progress: number) {
+function useHomepageScrollTracking(progress: number, analyticsEnabled: boolean) {
   const trackedMilestones = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     for (const milestone of scrollTrackingMilestones) {
       if (progress >= milestone / 100 && !trackedMilestones.current.has(milestone)) {
         trackedMilestones.current.add(milestone);
-        trackHomepageEvent("homepage_scroll_depth", { depth: milestone });
+        trackHomepageEvent(analyticsEnabled, "homepage_scroll_depth", { depth: milestone });
       }
     }
-  }, [progress]);
+  }, [analyticsEnabled, progress]);
 }
 
 const navItems = [
@@ -1219,7 +1224,7 @@ function ProductEngineSection() {
   );
 }
 
-function AgencyFatigueSection() {
+function AgencyFatigueSection({ analyticsEnabled }: { analyticsEnabled: boolean }) {
   return (
     <section
       id="agency-fatigue"
@@ -1252,7 +1257,7 @@ function AgencyFatigueSection() {
           <Link
             className="mt-8 inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-200 via-indigo-200 to-purple-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_90px_-28px_rgba(129,140,248,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_30px_110px_-24px_rgba(192,132,252,0.95)] focus:outline-none focus:ring-2 focus:ring-indigo-200/50 sm:w-auto"
             href={signupHref}
-            onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "agency_fatigue_get_software_access", destination: signupHref })}
+            onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_cta_click", { cta: "agency_fatigue_get_software_access", destination: signupHref })}
           >
             Get software access
             <ArrowRight className="size-4" />
@@ -1496,7 +1501,7 @@ function FitSection() {
   );
 }
 
-function ConversionPathSection() {
+function ConversionPathSection({ analyticsEnabled }: { analyticsEnabled: boolean }) {
   return (
     <section className="df-cinematic-section py-20 sm:py-28">
       <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:px-8">
@@ -1527,7 +1532,7 @@ function ConversionPathSection() {
             <Link
               className="group relative overflow-hidden rounded-lg border border-cyan-200/25 bg-cyan-200 p-5 text-slate-950 shadow-[0_26px_90px_-38px_rgba(103,232,249,0.95)] transition hover:-translate-y-1 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50 sm:col-span-3"
               href={signupHref}
-              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "conversion_direct_software_path", destination: signupHref })}
+              onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_cta_click", { cta: "conversion_direct_software_path", destination: signupHref })}
             >
               <span className="flex items-center justify-between gap-4">
                 <span>
@@ -1562,10 +1567,10 @@ function SectionHeader({
   );
 }
 
-export function HomeCommandCenter() {
+export function HomeCommandCenter({ analyticsEnabled = false }: { analyticsEnabled?: boolean }) {
   const mainRef = useRef<HTMLElement | null>(null);
   const scrollProgress = useScrollProgress();
-  useHomepageScrollTracking(scrollProgress);
+  useHomepageScrollTracking(scrollProgress, analyticsEnabled);
 
   function handlePointerMove(event: PointerEvent<HTMLElement>) {
     const node = mainRef.current;
@@ -1620,14 +1625,14 @@ export function HomeCommandCenter() {
             <Link
               className="hidden min-h-10 items-center px-2 text-sm font-medium text-white/60 transition hover:text-white sm:inline-flex"
               href="/login"
-              onClick={() => trackHomepageEvent("homepage_signin_click", { destination: "/login" })}
+              onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_signin_click", { destination: "/login" })}
             >
               Sign in
             </Link>
             <Link
               className="hidden h-10 items-center gap-2 rounded-full bg-cyan-200 px-4 text-sm font-semibold text-slate-950 shadow-[0_18px_54px_-24px_rgba(103,232,249,0.95)] transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50 sm:inline-flex"
               href={signupHref}
-              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "nav_get_access", destination: signupHref })}
+              onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_cta_click", { cta: "nav_get_access", destination: signupHref })}
             >
               Get Access
               <ArrowRight className="size-4" />
@@ -1671,7 +1676,7 @@ export function HomeCommandCenter() {
             <Link
               className="group inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white px-6 text-base font-semibold text-slate-950 shadow-[0_18px_70px_-34px_rgba(255,255,255,0.72)] transition hover:-translate-y-0.5 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-white/50 sm:w-auto"
               href={signupHref}
-              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_get_access", destination: signupHref })}
+              onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_cta_click", { cta: "hero_get_access", destination: signupHref })}
             >
               Get Access
               <ArrowRight className="size-4 transition group-hover:translate-x-1" />
@@ -1679,7 +1684,7 @@ export function HomeCommandCenter() {
             <a
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-white/12 bg-white/[0.045] px-6 text-base font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:-translate-y-0.5 hover:bg-white/[0.075] focus:outline-none focus:ring-2 focus:ring-white/20 sm:w-auto"
               href="#system"
-              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_see_the_system", destination: "#system" })}
+              onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_cta_click", { cta: "hero_see_the_system", destination: "#system" })}
             >
               See the system
               <ChevronRight className="size-4" />
@@ -1737,7 +1742,7 @@ export function HomeCommandCenter() {
 
       <OperatingLayerSection />
 
-      <AgencyFatigueSection />
+      <AgencyFatigueSection analyticsEnabled={analyticsEnabled} />
 
       <OperatorBuiltSection />
 
@@ -1839,7 +1844,7 @@ export function HomeCommandCenter() {
 
       <FitSection />
 
-      <ConversionPathSection />
+      <ConversionPathSection analyticsEnabled={analyticsEnabled} />
 
       <section id="access" className="py-20 sm:py-28">
         <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:px-8">
@@ -1857,7 +1862,7 @@ export function HomeCommandCenter() {
               className="mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-cyan-200 px-6 text-sm font-semibold text-slate-950 transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50"
               href={signupHref}
               onClick={() =>
-                trackHomepageEvent("homepage_cta_click", {
+                trackHomepageEvent(analyticsEnabled, "homepage_cta_click", {
                   cta: "access_section_get_access",
                   destination: signupHref,
                 })
@@ -1980,7 +1985,7 @@ export function HomeCommandCenter() {
             <Link
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-cyan-200 px-7 text-base font-semibold text-slate-950 shadow-[0_24px_70px_-28px_rgba(103,232,249,0.95)] transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50"
               href={signupHref}
-              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "final_get_access", destination: signupHref })}
+              onClick={() => trackHomepageEvent(analyticsEnabled, "homepage_cta_click", { cta: "final_get_access", destination: signupHref })}
             >
               Get Access
               <Rocket className="size-4" />

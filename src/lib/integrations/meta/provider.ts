@@ -186,8 +186,6 @@ class MetaMarketingProvider
       );
     }
 
-    await markMetaPublishing();
-
     if (
       request.userId &&
       payload?.campaignId &&
@@ -196,6 +194,7 @@ class MetaMarketingProvider
       payload.destination_url &&
       payload.budget_type
     ) {
+      await markMetaPublishing(payload.campaignId);
       const result = await executeFullAutopilotLaunch(payload.campaignId, request.userId, {
         campaignId: payload.campaignId,
         objective: payload.objective,
@@ -222,6 +221,7 @@ class MetaMarketingProvider
       };
     }
 
+    await markMetaPublishing();
     const result = await prepareCampaignDeployment({ launchMode });
     const campaignId = result.campaign?.id;
 

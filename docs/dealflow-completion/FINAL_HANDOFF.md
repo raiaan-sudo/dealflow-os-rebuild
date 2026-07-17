@@ -3,7 +3,7 @@
 > **Superseded predecessor handoff.** Do not use the 104-migration status below
 > as current release proof. Current successor truth is
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
-> unsealed 108 migrations, 91 commands per exact round, staging `NOT_YET_RUN`,
+> unsealed 115 migrations, 91 commands per exact round, staging `NOT_YET_RUN`,
 > production `NO_GO` and not authorized.
 
 Current verdict: `NO_GO`

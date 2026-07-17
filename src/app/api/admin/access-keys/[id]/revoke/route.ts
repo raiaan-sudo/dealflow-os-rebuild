@@ -12,7 +12,9 @@ export async function POST(
 ) {
   try {
     assertSameOriginRequest(request);
-    const operator = await assertInternalOperatorAccess();
+    const operator = await assertInternalOperatorAccess({
+      requiredAction: "access_keys:revoke",
+    });
     const { id } = await context.params;
     const accessKeyId = id?.trim();
 

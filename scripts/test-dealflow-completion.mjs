@@ -61,6 +61,7 @@ const tests = [
   "staging/test-playwright-failure-diagnostic-contract.mjs",
   "staging/test-deployable-source-path-set-contract.mjs",
   "staging/test-vercel-dry-run-source-contract.mjs",
+  "staging/test-vercel-environment-sync-contract.mjs",
   "staging/test-vercel-alias-propagation-contract.mjs",
   "staging/test-vercel-cli-selection-contract.mjs",
   "staging/test-exact-supabase-project-url.mjs",

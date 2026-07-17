@@ -1,8 +1,8 @@
 import {
   getDeploymentTarget,
   isExactIsolatedStagingVercelHost,
-  isExactProductionVercelHost,
 } from "@/lib/deployment-target";
+import type { MetaOptimizationAuthorityResult } from "@/lib/authority/owner-decision-authority-contract";
 
 export const DEALFLOW_PRODUCTION_META_OPTIMIZATION_ATTESTATION_VALUE =
   "DEALFLOW_PRODUCTION_META_OPTIMIZATION_EXACT_V1" as const;
@@ -23,9 +23,17 @@ type OpenGate = {
 
 export function evaluateMetaOptimizationExecutionGate(
   env: Record<string, string | undefined> = process.env,
+  ownerAuthority?: MetaOptimizationAuthorityResult,
 ): ClosedGate | OpenGate {
   const target = getDeploymentTarget(env);
   if (target === "staging" && isExactIsolatedStagingVercelHost(env)) {
+    if (
+      !ownerAuthority?.authorized ||
+      ownerAuthority.capability !== "meta_optimization_provider_writes" ||
+      ownerAuthority.authorityMode !== "synthetic_staging"
+    ) {
+      return { enabled: false, environment: null, accountIds: [], blockedReason: "optimizer_signed_owner_authority_required" };
+    }
     if (env.META_OPTIMIZATION_EXECUTION_MODE !== "sandbox") {
       return { enabled: false, environment: null, accountIds: [], blockedReason: "optimizer_sandbox_mode_required" };
     }
@@ -38,7 +46,22 @@ export function evaluateMetaOptimizationExecutionGate(
     }
     return { enabled: true, environment: "staging", accountIds: [accountId], blockedReason: null };
   }
-  if (target === "production" && isExactProductionVercelHost(env)) {
+  const productionHostClaim = Boolean(env.VERCEL_ENV === "production" &&
+    env.DEALFLOW_DEPLOYMENT_TARGET === "production" &&
+    env.VERCEL_PROJECT_ID?.trim());
+  if ((target === "production" || target === "unknown") && productionHostClaim) {
+    if (
+      !ownerAuthority?.authorized ||
+      ownerAuthority.capability !== "meta_optimization_provider_writes" ||
+      ownerAuthority.authorityMode !== "production"
+    ) {
+      return {
+        enabled: false,
+        environment: null,
+        accountIds: [],
+        blockedReason: "optimizer_signed_owner_authority_required",
+      };
+    }
     if (env.META_OPTIMIZATION_EXECUTION_MODE !== "live") {
       return { enabled: false, environment: null, accountIds: [], blockedReason: "optimizer_live_mode_required" };
     }

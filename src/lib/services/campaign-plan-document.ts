@@ -97,12 +97,20 @@ function deriveLaunchStatusFromPlanValue(value: Record<string, unknown>) {
   const metaPushStatus = normalizeOptionalText(runtime?.metaPushStatus);
   const runtimeStatus = normalizeOptionalText(runtime?.status);
 
-  if (explicitLaunchStatus) {
-    return explicitLaunchStatus;
-  }
-
   if (metaPushStatus === "published") {
     return "live";
+  }
+
+  if (metaPushStatus === "provider_paused") {
+    return "provider_paused";
+  }
+
+  if (metaPushStatus === "provider_processing") {
+    return "provider_processing";
+  }
+
+  if (metaPushStatus === "operator_action_required") {
+    return "operator_action_required";
   }
 
   if (metaPushStatus === "failed") {
@@ -113,7 +121,7 @@ function deriveLaunchStatusFromPlanValue(value: Record<string, unknown>) {
     return "partial";
   }
 
-  return runtimeStatus;
+  return runtimeStatus ?? explicitLaunchStatus;
 }
 
 function derivePublicSlugFromPlanValue(value: Record<string, unknown>) {
@@ -346,6 +354,10 @@ export function withLaunchRuntime(
       ? "live"
       : metaPushStatus === "provider_paused"
         ? "provider_paused"
+      : metaPushStatus === "provider_processing"
+        ? "provider_processing"
+      : metaPushStatus === "operator_action_required"
+        ? "operator_action_required"
       : metaPushStatus === "failed"
         ? "failed"
         : runtimeStatus === "launching"

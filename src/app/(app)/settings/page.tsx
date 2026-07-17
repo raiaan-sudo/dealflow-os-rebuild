@@ -5,12 +5,13 @@ import { PortalButton } from "@/components/billing/portal-button";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
 import { AccountDeletionCard } from "@/components/settings/account-deletion-card";
+import { PrivacyRequestCard } from "@/components/settings/privacy-request-card";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
 import { getRequestProductI18n } from "@/lib/i18n/server";
 
 export default async function SettingsPage() {
-  const { currency, t } = await getRequestProductI18n();
+  const { currency, dateTime, t } = await getRequestProductI18n();
   const [billing, credits] = await Promise.all([
     getBillingSummary().catch(() => null),
     getCreditSummaryForCurrentUser().catch(() => null),
@@ -40,20 +41,53 @@ export default async function SettingsPage() {
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("billing.credits")}</p>
             <h2 className="mt-2 text-xl font-semibold">{t("billing.generationCredits")}</h2>
             <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-              <p>{t("settings.balance")}: {currency((credits?.balance ?? 0) / 100, "USD")}</p>
+              <p>{t("settings.availableBalance")}: {currency((credits?.availableBalanceCents ?? credits?.balance ?? 0) / 100, "USD")}</p>
+              <p>
+                {t("settings.reservedBalance")}: {credits?.reservationStatus === "complete"
+                  ? currency((credits.reservedBalanceCents ?? 0) / 100, "USD")
+                  : t("settings.balanceUnavailable")}
+              </p>
               <p>{t("settings.imageCost")}: {currency((credits?.imageGenerationCostCents ?? 100) / 100, "USD")} {t("settings.perAsset")}</p>
               <p>{t("settings.videoCost")}: {currency((credits?.videoGenerationCostCents ?? 500) / 100, "USD")} {t("settings.perAsset")}</p>
             </div>
           </div>
           <CreditTopUpButton
             amountCents={credits?.minimumTopUpCents ?? 2500}
-            label={`${t("billing.addCredits")} · ${currency((credits?.minimumTopUpCents ?? 2500) / 100, "USD")}`}
+            minimumAmountCents={credits?.minimumTopUpCents ?? 2500}
+            maximumAmountCents={credits?.maximumTopUpCents ?? 100000}
+            allowAmountSelection
             disabled={!billing?.commerciallyActivated || !billing.launchAllowed}
           />
           {!billing?.commerciallyActivated || !billing.launchAllowed ? (
             <p className="text-sm leading-6 text-muted-foreground">
               {t("settings.activateCredits")}
             </p>
+          ) : null}
+
+          {credits?.activity?.length ? (
+            <div className="border-t border-white/8 pt-5">
+              <h3 className="text-sm font-semibold text-foreground">{t("billing.creditActivity")}</h3>
+              <ul className="mt-3 divide-y divide-white/8" aria-label={t("billing.creditActivity")}>
+                {credits.activity.map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between gap-4 py-3 text-sm">
+                    <div>
+                      <p className="font-medium text-foreground">
+                        {entry.deltaCents >= 0 ? t("billing.creditAdded") : t("billing.creditUsed")}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.reason.replaceAll("_", " ")} · {dateTime(entry.createdAt, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </p>
+                    </div>
+                    <p className={entry.deltaCents >= 0 ? "font-semibold text-emerald-300" : "font-semibold text-foreground"}>
+                      {entry.deltaCents >= 0 ? "+" : "−"}{currency(Math.abs(entry.deltaCents) / 100, "USD")}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
         </div>
       </Card>
@@ -83,6 +117,7 @@ export default async function SettingsPage() {
         </div>
       </Card>
 
+      <PrivacyRequestCard />
       <AccountDeletionCard />
     </PageShell>
   );

@@ -12,15 +12,15 @@ import {
 import type { Database } from "@/lib/supabase/types";
 import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  GENERATED_VIDEO_MAX_BYTES,
+  isSupportedCreativeAssetMimeType,
+  normalizeCreativeAssetMimeType,
+  validateCreativeAssetContent,
+} from "@/lib/services/creative-asset-content-validation";
 
 const GENERATED_VIDEO_FETCH_TIMEOUT_MS = 30_000;
 const GENERATED_VIDEO_MAX_REDIRECTS = 2;
-const GENERATED_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
-const SUPPORTED_VIDEO_MIME_TYPES = new Set([
-  "video/mp4",
-  "video/quicktime",
-  "video/webm",
-]);
 const DEFAULT_PROVIDER_MEDIA_HOST_SUFFIXES: Record<VideoProviderName, readonly string[]> = {
   higgsfield: ["higgsfield.ai"],
   heygen: ["heygen.ai"],
@@ -118,21 +118,32 @@ function normalizeCredentialFreeUrl(
   return parsed;
 }
 
-function normalizeMimeType(value: string | null) {
-  return value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-}
-
-function hasSupportedVideoSignature(bytes: Uint8Array, mimeType: string) {
-  if (mimeType === "video/webm") {
-    return bytes.length >= 4 &&
-      bytes[0] === 0x1a &&
-      bytes[1] === 0x45 &&
-      bytes[2] === 0xdf &&
-      bytes[3] === 0xa3;
+function validateGeneratedVideoContent(bytes: Uint8Array, mimeType: string) {
+  try {
+    return validateCreativeAssetContent({
+      bytes,
+      declaredMimeType: mimeType,
+      kind: "video",
+      maxBytes: GENERATED_VIDEO_MAX_BYTES,
+    });
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      [
+        "creative_asset_signature_invalid",
+        "creative_asset_kind_mismatch",
+        "creative_asset_mime_mismatch",
+        "creative_asset_truncated",
+      ].includes(error.code)
+    ) {
+      throw new ApiError(
+        502,
+        "Generated output did not match its declared video format.",
+        "generated_video_signature_invalid",
+      );
+    }
+    throw error;
   }
-
-  return bytes.length >= 12 &&
-    String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
 }
 
 async function fetchBoundedLoopbackVideo(params: {
@@ -217,8 +228,8 @@ async function fetchBoundedLoopbackVideo(params: {
       );
     }
 
-    const mimeType = normalizeMimeType(response.headers.get("content-type"));
-    if (!SUPPORTED_VIDEO_MIME_TYPES.has(mimeType)) {
+    const mimeType = normalizeCreativeAssetMimeType(response.headers.get("content-type"));
+    if (!isSupportedCreativeAssetMimeType(mimeType, "video")) {
       throw new ApiError(
         502,
         "Generated output did not have an approved video MIME type.",
@@ -274,19 +285,13 @@ async function fetchBoundedLoopbackVideo(params: {
         "generated_video_length_mismatch",
       );
     }
-    if (!hasSupportedVideoSignature(bytes, mimeType)) {
-      throw new ApiError(
-        502,
-        "Generated output did not match its declared video format.",
-        "generated_video_signature_invalid",
-      );
-    }
+    const validated = validateGeneratedVideoContent(bytes, mimeType);
 
     return {
-      bytes,
-      mimeType,
-      contentLength: byteLength,
-      contentSha256: createHash("sha256").update(bytes).digest("hex"),
+      bytes: validated.bytes,
+      mimeType: validated.mimeType,
+      contentLength: validated.contentLength,
+      contentSha256: validated.contentSha256,
     };
   }
 
@@ -348,9 +353,9 @@ function consumePinnedGeneratedVideo(
     contentLength: number;
     contentSha256: string;
   }>((resolve, reject) => {
-    const mimeType = normalizeMimeType(String(response.headers["content-type"] ?? ""));
+    const mimeType = normalizeCreativeAssetMimeType(String(response.headers["content-type"] ?? ""));
     const declaredLength = Number(response.headers["content-length"] ?? "");
-    if (!SUPPORTED_VIDEO_MIME_TYPES.has(mimeType)) {
+    if (!isSupportedCreativeAssetMimeType(mimeType, "video")) {
       response.resume();
       reject(new ApiError(502, "Generated output did not have an approved video MIME type.", "generated_video_mime_invalid"));
       return;
@@ -392,16 +397,17 @@ function consumePinnedGeneratedVideo(
         return;
       }
       const bytes = new Uint8Array(Buffer.concat(chunks, byteLength));
-      if (!hasSupportedVideoSignature(bytes, mimeType)) {
-        reject(new ApiError(502, "Generated output did not match its declared video format.", "generated_video_signature_invalid"));
-        return;
+      try {
+        const validated = validateGeneratedVideoContent(bytes, mimeType);
+        resolve({
+          bytes: validated.bytes,
+          mimeType: validated.mimeType,
+          contentLength: validated.contentLength,
+          contentSha256: validated.contentSha256,
+        });
+      } catch (error) {
+        reject(error);
       }
-      resolve({
-        bytes,
-        mimeType,
-        contentLength: byteLength,
-        contentSha256: createHash("sha256").update(bytes).digest("hex"),
-      });
     });
   });
 }
@@ -571,7 +577,7 @@ function parseExistingMetadata(value: unknown): GeneratedVideoMetadata | null {
       contentLength > 0 &&
       contentLength <= GENERATED_VIDEO_MAX_BYTES &&
       typeof metadata.mimeType === "string" &&
-      SUPPORTED_VIDEO_MIME_TYPES.has(metadata.mimeType)
+      isSupportedCreativeAssetMimeType(metadata.mimeType, "video")
     ) {
       parsed.push({
         dealflowKind: "generated_video",

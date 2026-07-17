@@ -8,7 +8,7 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
-const migrationName = "20260716190000_add_ghl_marketplace_oauth_install_foundation.sql";
+const migrationName = "20260717013000_complete_ghl_marketplace_runtime_lifecycle.sql";
 const migrationPath = path.join(migrationsDir, migrationName);
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = fs.readdirSync(migrationsDir)
@@ -44,6 +44,7 @@ function sha(value) {
 
 const APP = sha("synthetic-marketplace-app");
 const APP_2 = sha("synthetic-marketplace-app-2");
+const APP_3 = sha("synthetic-marketplace-runtime-app-3");
 const COMPANY = sha(AGENCY_ID);
 const LOCATION = sha(LOCATION_ID);
 const LOCATION_B = sha(LOCATION_B_ID);
@@ -62,6 +63,25 @@ const REFRESH_REF_1 = "enc-ref:v1:oauth/refresh/synthetic-generation-0001";
 const ACCESS_REF_2 = "enc-ref:v1:oauth/access/synthetic-generation-0002";
 const REFRESH_REF_2 = "enc-ref:v1:oauth/refresh/synthetic-generation-0002";
 const PKCE_REF = "enc-ref:v1:oauth/pkce/synthetic-state-0001";
+const STATE_V2 = sha("synthetic-runtime-state-v2");
+const REDIRECT_V2 = sha("https://app.example.invalid/api/integrations/ghl/marketplace/callback");
+const RUNTIME_ACCESS_REF_1 = "enc-ref:v1:ghl-marketplace/access/10000000-0000-4000-8000-000000000001";
+const RUNTIME_REFRESH_REF_1 = "enc-ref:v1:ghl-marketplace/refresh/10000000-0000-4000-8000-000000000002";
+const RUNTIME_ACCESS_REF_2 = "enc-ref:v1:ghl-marketplace/access/10000000-0000-4000-8000-000000000003";
+const RUNTIME_REFRESH_REF_2 = "enc-ref:v1:ghl-marketplace/refresh/10000000-0000-4000-8000-000000000004";
+
+function encryptedEnvelope(reference, purpose) {
+  return JSON.stringify({
+    version: 1,
+    algorithm: "A256GCM",
+    keyVersion: 1,
+    purpose,
+    reference,
+    iv: "c3ludGhldGljLWl2",
+    ciphertext: "c3ludGhldGljLWNpcGhlcnRleHQ",
+    tag: "c3ludGhldGljLXRhZw",
+  });
+}
 
 function migrationSource(file) {
   let source = fs.readFileSync(path.join(migrationsDir, file), "utf8");
@@ -96,7 +116,7 @@ function mustFail(session, sql, pattern, label) {
 let createdPostgresRole = false;
 try {
   assert.ok(fs.existsSync(migrationPath), `migration missing: ${migrationPath}`);
-  assert.ok(migrations.indexOf(migrationName) > migrations.indexOf("20260716180000_harden_credit_top_up_request_idempotency.sql"));
+  assert.ok(migrations.indexOf(migrationName) > migrations.indexOf("20260717010000_harden_onboarding_draft_integrity.sql"));
   adapter.preflight();
   if (adapter.psql("select exists(select 1 from pg_roles where rolname='postgres');") !== "t") {
     adapter.psql("create role postgres superuser nologin;");
@@ -433,15 +453,189 @@ try {
       );
     `), { label: "Reject revoked realtor user" })), "revoked_user");
 
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','INSTALL','${sha("runtime-install-event")}', '${sha("runtime-install-payload")}',
+        '${APP_3}','${COMPANY}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), { label: "Durably hold install event before callback" })), "pending_authority");
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','UPDATE','${sha("runtime-drifted-update-event")}', '${sha("runtime-drifted-update-payload")}',
+        '${APP_3}','${sha("wrong-runtime-company")}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), { label: "Durably hold drifted update event before callback" })), "pending_authority");
+    const runtimeStateId = lastLine(session.psql(asRole("service_role", `
+      select public.create_ghl_marketplace_oauth_state_v2(
+        '${ORG_A}','${USER_A}',null,'test','${STATE_V2}','${INSTALLATION}',null,'company',
+        '${APP_3}','${COMPANY}','${SCOPE}','${COMPANY}',null,'${REDIRECT_V2}',
+        '/settings?tab=integrations',false,timezone('utc',now()) + interval '5 minutes'
+      );
+    `), { label: "Create hash-only Marketplace callback state" }));
+    assert.match(runtimeStateId, /^[a-f0-9-]{36}$/);
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select result_outcome from public.consume_ghl_marketplace_oauth_state_v2(
+        '${STATE_V2}','${ORG_A}','${USER_A}','${sha("wrong-redirect")}',timezone('utc',now())
+      );
+    `), { label: "Reject callback redirect drift" })), "binding_mismatch");
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select result_outcome from public.consume_ghl_marketplace_oauth_state_v2(
+        '${STATE_V2}','${ORG_A}','${USER_A}','${REDIRECT_V2}',timezone('utc',now())
+      );
+    `), { label: "Consume exact hash-only callback state" })), "consumed");
+    session.psql(asRole("service_role", `
+      select * from public.store_staged_ghl_marketplace_credential_pair_v2(
+        '${runtimeStateId}',null,'${ORG_A}',
+        '${RUNTIME_ACCESS_REF_1}','${encryptedEnvelope(RUNTIME_ACCESS_REF_1, "access")}'::jsonb,'${sha("runtime-access-1")}',
+        '${RUNTIME_REFRESH_REF_1}','${encryptedEnvelope(RUNTIME_REFRESH_REF_1, "refresh")}'::jsonb,'${sha("runtime-refresh-1")}',
+        1,1,timezone('utc',now())
+      );
+    `), { label: "Stage encrypted callback credential pair" });
+    const runtimeFinalized = lastLine(session.psql(asRole("service_role", `
+      select concat_ws('|',result_outcome,result_authority_id,result_token_set_id)
+      from public.finalize_ghl_marketplace_oauth_callback_v2(
+        '${runtimeStateId}','${RUNTIME_ACCESS_REF_1}','${RUNTIME_REFRESH_REF_1}',
+        '${COMPANY}','${SCOPE}','${COMPANY}',null,
+        timezone('utc',now()) + interval '1 day',timezone('utc',now()) + interval '365 days',1,timezone('utc',now())
+      );
+    `), { label: "Atomically finalize encrypted company callback" }));
+    assert.match(runtimeFinalized, /^finalized\|[a-f0-9-]{36}\|[a-f0-9-]{36}$/);
+    const [, runtimeAuthorityId, runtimeCompanyTokenId] = runtimeFinalized.split("|");
+    assert.equal(lastLine(session.psql(`
+      select outcome from public.ghl_marketplace_runtime_events
+      where event_fingerprint='${sha("runtime-install-event")}';
+    `, { label: "Reconcile install event with callback authority" })), "reconciled");
+    assert.equal(lastLine(session.psql(`
+      select concat_ws('|',outcome,operator_blocker_code)
+      from public.ghl_marketplace_runtime_events
+      where event_fingerprint='${sha("runtime-drifted-update-event")}';
+    `, { label: "Reject drifted pending event during callback reconciliation" })),
+    "rejected|ghl_marketplace_event_tenant_binding_mismatch");
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','INSTALL','${sha("runtime-install-event")}', '${sha("runtime-install-payload")}',
+        '${APP_3}','${COMPANY}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), { label: "Deduplicate exact runtime event" })), "duplicate");
+    mustFail(session, asRole("service_role", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','INSTALL','${sha("runtime-install-event")}', '${sha("runtime-install-payload-altered")}',
+        '${APP_3}','${COMPANY}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), /ghl_marketplace_runtime_event_identity_collision/i,
+    "runtime event idempotency key accepted altered payload");
+    mustFail(session, asRole("service_role", `
+      select public.request_ghl_marketplace_location_token_exchange_v2(
+        '${runtimeCompanyTokenId}','${ORG_B}','${MAPPING_B}',null,
+        '${sha("runtime-cross-tenant-request")}','runtime:cross-tenant',timezone('utc',now())
+      );
+    `), /ghl_marketplace_company_token_tenant_mismatch/i,
+    "company token crossed the workspace tenant boundary");
+    const runtimeExchangeId = lastLine(session.psql(asRole("service_role", `
+      select public.request_ghl_marketplace_location_token_exchange_v2(
+        '${runtimeCompanyTokenId}','${ORG_A}','${MAPPING}',null,
+        '${sha("runtime-location-request")}','runtime:location:1',timezone('utc',now())
+      );
+    `), { label: "Request tenant-bound location token" }));
+    session.psql(asRole("service_role", `
+      select * from public.store_staged_ghl_marketplace_credential_pair_v2(
+        null,'${runtimeAuthorityId}','${ORG_A}',
+        '${RUNTIME_ACCESS_REF_2}','${encryptedEnvelope(RUNTIME_ACCESS_REF_2, "access")}'::jsonb,'${sha("runtime-access-2")}',
+        '${RUNTIME_REFRESH_REF_2}','${encryptedEnvelope(RUNTIME_REFRESH_REF_2, "refresh")}'::jsonb,'${sha("runtime-refresh-2")}',
+        1,1,timezone('utc',now())
+      );
+    `), { label: "Stage encrypted location credential pair" });
+    assert.match(lastLine(session.psql(asRole("service_role", `
+      select concat_ws('|',result_outcome,result_token_set_id)
+      from public.settle_ghl_marketplace_location_exchange_encrypted_v2(
+        '${runtimeExchangeId}','succeeded','${RUNTIME_ACCESS_REF_2}','${RUNTIME_REFRESH_REF_2}',
+        timezone('utc',now()) + interval '1 day',timezone('utc',now()) + interval '365 days',1,timezone('utc',now())
+      );
+    `), { label: "Settle encrypted location-token exchange" })), /^succeeded\|[a-f0-9-]{36}$/);
+
+    const transientRefreshClaim = lastLine(session.psql(asRole("service_role", `
+      select result_claim_token
+      from public.claim_ghl_marketplace_token_refresh_v1(
+        '${runtimeCompanyTokenId}',1,'runtime-transient-worker',timezone('utc',now()),120
+      );
+    `), { label: "Claim runtime token before provider-confirmed transient failure" }));
+    assert.match(transientRefreshClaim, /^[a-f0-9-]{36}$/);
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select public.release_ghl_marketplace_token_refresh_retry_v2(
+        '${runtimeCompanyTokenId}','${transientRefreshClaim}',1,
+        'ghl_oauth_rate_limited',timezone('utc',now())
+      );
+    `), { label: "Release exact 429 refresh claim without rotation ambiguity" })),
+    "retry_released");
+    assert.equal(lastLine(session.psql(`
+      select status||'|'||(
+        select count(*) from public.ghl_marketplace_token_events event
+        where event.token_set_id='${runtimeCompanyTokenId}'
+          and event.event_type='retry_released'
+      )::text
+      from public.ghl_marketplace_token_sets where id='${runtimeCompanyTokenId}';
+    `)), "active|1");
+
+    const rejectedRefreshClaim = lastLine(session.psql(asRole("service_role", `
+      select result_claim_token
+      from public.claim_ghl_marketplace_token_refresh_v1(
+        '${runtimeCompanyTokenId}',1,'runtime-rejected-worker',timezone('utc',now()),120
+      );
+    `), { label: "Claim runtime token before deterministic credential rejection" }));
+    assert.match(rejectedRefreshClaim, /^[a-f0-9-]{36}$/);
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select public.mark_ghl_marketplace_token_refresh_reconnect_required_v2(
+        '${runtimeCompanyTokenId}','${rejectedRefreshClaim}',1,
+        'ghl_oauth_credential_rejected',timezone('utc',now())
+      );
+    `), { label: "Convert exact 401 refresh claim to reconnect-required revocation" })),
+    "reconnect_required");
+    assert.equal(lastLine(session.psql(`
+      select concat_ws('|',token.status,token.revocation_code,token.operator_blocker_code,
+        (select count(*) from public.ghl_marketplace_token_events event
+          where event.token_set_id=token.id and event.event_type='revoked'),
+        (select count(*) from public.ghl_marketplace_encrypted_credentials credential
+          where credential.authority_id=token.authority_id and credential.status='revoked')
+      ) from public.ghl_marketplace_token_sets token
+      where token.id='${runtimeCompanyTokenId}';
+    `, { label: "Prove immutable reconnect receipt and encrypted credential retirement" })),
+    "revoked|ghl_refresh_reconnect_required|ghl_oauth_credential_rejected|1|2");
+    mustFail(session, `
+      update public.ghl_marketplace_token_events set event_type='created'
+      where token_set_id='${runtimeCompanyTokenId}' and event_type='revoked';
+    `, /receipt_is_append_only/i, "refresh rejection receipt was mutable");
+
+    assert.equal(lastLine(session.psql(asRole("service_role", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','UNINSTALL','${sha("runtime-uninstall-event")}', '${sha("runtime-uninstall-payload")}',
+        '${APP_3}','${COMPANY}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), { label: "Apply Marketplace uninstall" })), "applied");
+    assert.equal(lastLine(session.psql(`
+      select concat_ws('|',
+        (select status from public.ghl_marketplace_authorities where id='${runtimeAuthorityId}'),
+        (select count(*) from public.ghl_marketplace_token_sets where authority_id='${runtimeAuthorityId}' and status='revoked'),
+        (select count(*) from public.ghl_marketplace_encrypted_credentials where authority_id='${runtimeAuthorityId}' and status='revoked'),
+        (select count(*) from public.ghl_marketplace_encrypted_credentials
+          where encrypted_envelope::text ~* '(access_token|refresh_token|client_secret|authorizationcode)')
+      );
+    `, { label: "Prove uninstall revocation and no raw credential fields" })), "uninstalled|2|4|0");
+
     assert.equal(lastLine(session.psql(`
       select count(*) from public.account_deletion_data_inventory
       where relation_name in (
         'ghl_marketplace_oauth_states','ghl_marketplace_authorities',
         'ghl_marketplace_lifecycle_events','ghl_marketplace_token_sets',
         'ghl_marketplace_token_events','ghl_marketplace_location_token_exchanges',
-        'ghl_marketplace_realtor_user_operations'
+        'ghl_marketplace_realtor_user_operations','ghl_marketplace_encrypted_credentials',
+        'ghl_marketplace_runtime_events'
       ) and disposition='provider_detach' and executor_task='delete_operational_data';
-    `, { label: "Verify deletion inventory" })), "7");
+    `, { label: "Verify deletion inventory" })), "9");
     assert.equal(lastLine(session.psql(`
       select count(*) from public.ghl_marketplace_token_sets
       where encrypted_access_credential_ref !~ '^enc-ref:'

@@ -123,10 +123,10 @@ assert.match(migrationContract, /Forward recovery, not destructive rollback/);
 
 assert.match(successorStatus, /Overall verdict: `NO_GO`/);
 assert.match(successorStatus, /Source state: `UNSEALED_WORKING_TREE`/);
-assert.match(successorStatus, /Migration portfolio: `108`/);
+assert.match(successorStatus, /Migration portfolio: `115`/);
 assert.match(
   successorStatus,
-  /`20260716200000_harden_stripe_payment_lifecycle\.sql`/,
+  /`20260717060000_install_owner_decision_authority_grants\.sql`/,
 );
 assert.match(successorStatus, /Final verification portfolio: `91` commands per round/);
 assert.match(successorStatus, /Two exact clean-seal rounds: `NOT_YET_RUN`/);
@@ -138,7 +138,14 @@ assert.match(successorStatus, /105: `20260716010000_require_optimizer_cpl_minimu
 assert.match(successorStatus, /106: `20260716180000_harden_credit_top_up_request_idempotency\.sql`/);
 assert.match(successorStatus, /107: `20260716190000_add_ghl_marketplace_oauth_install_foundation\.sql`/);
 assert.match(successorStatus, /108: `20260716200000_harden_stripe_payment_lifecycle\.sql`/);
+assert.match(successorStatus, /109: `20260717010000_harden_onboarding_draft_integrity\.sql`/);
+assert.match(successorStatus, /110: `20260717013000_complete_ghl_marketplace_runtime_lifecycle\.sql`/);
+assert.match(successorStatus, /111: `20260717020000_canonicalize_campaign_lifecycle_truth\.sql`/);
+assert.match(successorStatus, /112: `20260717030000_harden_platform_operator_authority\.sql`/);
+assert.match(successorStatus, /113: `20260717040000_bind_generated_static_storage_tenancy\.sql`/);
+assert.match(successorStatus, /114: `20260717050000_create_privacy_consent_dsar_authority\.sql`/);
+assert.match(successorStatus, /115: `20260717060000_install_owner_decision_authority_grants\.sql`/);
 
 console.log(
-  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103/104 proof remain predecessor-only, and the unsealed 108-migration successor remains NO_GO pending exact seal, fresh isolated staging, drain, and production proof.",
+  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103/104 proof remain predecessor-only, and the unsealed 115-migration successor remains NO_GO pending exact seal, fresh isolated staging, drain, and production proof.",
 );

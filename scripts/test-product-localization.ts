@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ACCOUNT_DELETION_COPY } from "../src/lib/i18n/account-deletion-copy";
 import { PRODUCT_LOCALES } from "../src/lib/i18n/config";
 import { LEGAL_COPY } from "../src/lib/i18n/legal-copy";
@@ -19,7 +20,7 @@ import {
   replaceProductLocaleInPathname,
 } from "../src/lib/i18n/routing";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const locales = [...PRODUCT_LOCALES];
 
 function read(relativePath: string) {
@@ -158,6 +159,14 @@ const rootLayout = read("src/app/layout.tsx");
 assert.ok(rootLayout.includes('requestHeaders.get("x-pathname")'), "root layout must derive locale from trusted pathname header");
 assert.ok(rootLayout.includes("<html lang={locale}"), "server-rendered html lang must match route locale");
 assert.ok(!rootLayout.includes('<html lang="en"'), "root layout must not hard-code English html language");
+
+for (const [route, document] of [["privacy", "privacy"], ["terms", "terms"]] as const) {
+  const source = read(`src/app/${route}/page.tsx`);
+  assert.ok(source.includes("LocalizedLegalPage"), `root ${route} route must use canonical localized legal renderer`);
+  assert.ok(source.includes(`LEGAL_COPY.en.${document}`), `root ${route} route must use canonical English legal copy`);
+  assert.ok(!source.includes("April 28, 2026"), `root ${route} route must not retain stale legal copy`);
+  assert.ok(!source.includes("raiaan@scaleholdings.co"), `root ${route} route must not retain stale support contact`);
+}
 
 const proxy = read("src/proxy.ts");
 assert.ok(proxy.includes('requestHeaders.set("x-pathname", rawPathname)'), "proxy must pass the trusted raw pathname");

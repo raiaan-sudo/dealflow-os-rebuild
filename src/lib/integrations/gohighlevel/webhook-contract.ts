@@ -5,6 +5,21 @@ export const GHL_WEBHOOK_BODY_LIMIT_BYTES = 128 * 1024;
 export const GHL_ED25519_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAi2HR1srL4o18O8BRa7gVJY7G7bupbN3H9AwJrHCDiOg=
 -----END PUBLIC KEY-----`;
+export const GHL_LEGACY_RSA_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAokvo/r9tVgcfZ5DysOSC
+Frm602qYV0MaAiNnX9O8KxMbiyRKWeL9JpCpVpt4XHIcBOK4u3cLSqJGOLaPuXw6
+dO0t6Q/ZVdAV5Phz+ZtzPL16iCGeK9po6D6JHBpbi989mmzMryUnQJezlYJ3DVfB
+csedpinheNnyYeFXolrJvcsjDtfAeRx5ByHQmTnSdFUzuAnC9/GepgLT9SM4nCpv
+uxmZMxrJt5Rw+VUaQ9B8JSvbMPpez4peKaJPZHBbU3OdeCVx5klVXXZQGNHOs8gF
+3kvoV5rTnXV0IknLBXlcKKAQLZcY/Q9rG6Ifi9c+5vqlvHPCUJFT5XUGG5RKgOKU
+J062fRtN+rLYZUV+BjafxQauvC8wSWeYja63VSUruvmNj8xkx2zE/Juc+yjLjTXp
+IocmaiFeAO6fUtNjDeFVkhf5LNb59vECyrHD2SQIrhgXpO4Q3dVNA5rw576PwTzN
+h/AMfHKIjE4xQA1SZuYJmNnmVZLIZBlQAF9Ntd03rfadZ+yDiOXCCs9FkHibELhC
+HULgCsnuDJHcrGNd5/Ddm5hxGQ0ASitgHeMZ0kcIOwKDOzOU53lDza6/Y09T7sYJ
+PQe7z0cvj7aE4B+Ax1ZoZGPzpJlZtGXCsu9aTEGEnKzmsFqwcSsnw3JB31IGKAyk
+T1hhTiaCeIY/OwwwNUY2yvcCAwEAAQ==
+-----END PUBLIC KEY-----`;
+export const GHL_LEGACY_SIGNATURE_CUTOFF_MS = Date.parse("2026-09-01T00:00:00.000Z");
 
 type JsonRecord = Record<string, unknown>;
 
@@ -42,6 +57,41 @@ export function verifyGhlWebhookSignature(
     const signature = Buffer.from(signatureHeader, "base64");
     if (signature.length !== 64) return false;
     return verify(null, Buffer.from(rawBody, "utf8"), typeof publicKey === "string" ? createPublicKey(publicKey) : publicKey, signature);
+  } catch {
+    return false;
+  }
+}
+
+export function verifyGhlWebhookSignatures(
+  rawBody: string,
+  headers: { ghl: string | null; legacy: string | null },
+  options: {
+    now?: Date;
+    ed25519PublicKey?: string | ReturnType<typeof createPublicKey>;
+    legacyPublicKey?: string | ReturnType<typeof createPublicKey>;
+  } = {},
+) {
+  // A present current signature is authoritative. Never downgrade to the
+  // legacy signature when an attacker supplies an invalid current header.
+  if (headers.ghl) {
+    return verifyGhlWebhookSignature(
+      rawBody,
+      headers.ghl,
+      options.ed25519PublicKey ?? GHL_ED25519_PUBLIC_KEY,
+    );
+  }
+  if (
+    !headers.legacy ||
+    (options.now ?? new Date()).getTime() >= GHL_LEGACY_SIGNATURE_CUTOFF_MS ||
+    headers.legacy.length > 2_048
+  ) return false;
+  try {
+    return verify(
+      "sha256",
+      Buffer.from(rawBody, "utf8"),
+      options.legacyPublicKey ?? GHL_LEGACY_RSA_PUBLIC_KEY,
+      Buffer.from(headers.legacy, "base64"),
+    );
   } catch {
     return false;
   }

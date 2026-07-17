@@ -68,6 +68,7 @@ const deliveryAdapterSource = await readFile(
   "utf8",
 );
 const routeSource = await readFile("src/app/api/feedback/route.ts", "utf8");
+const supportPageSource = await readFile("src/app/(app)/support/page.tsx", "utf8");
 const widgetSource = await readFile("src/components/layout/feedback-widget.tsx", "utf8");
 const migrationSource = await readFile(
   "supabase/migrations/20260710235000_create_launch_receipts_optimizer_support.sql",
@@ -80,6 +81,11 @@ const externalDeliveryMigrationSource = await readFile(
 const runnerSource = await readFile("src/app/api/internal/system-jobs/route.ts", "utf8");
 const monitorSource = await readFile("src/lib/services/internal-launch-monitor.ts", "utf8");
 assert.match(serviceSource, /create_support_ticket_with_outbox/);
+assert.match(serviceSource, /export async function listSupportTickets/);
+assert.match(serviceSource, /\.from\("support_tickets"\)/);
+assert.match(serviceSource, /support_notification_outbox\(status\)/);
+assert.match(serviceSource, /\.eq\("organization_id", params\.organizationId\)/);
+assert.match(serviceSource, /\.eq\("user_id", params\.userId\)/);
 assert.match(serviceSource, /p_request_id: params\.input\.requestId/);
 assert.doesNotMatch(serviceSource, /support ticket was recorded but the operator outbox row failed/i);
 assert.match(serviceSource, /claim_support_notification_outbox/);
@@ -153,5 +159,8 @@ assert.doesNotMatch(routeSource, /email: z\.string/);
 assert.match(widgetSource, /const requestId = crypto\.randomUUID\(\)/);
 assert.match(widgetSource, /body: JSON\.stringify\(\{\s*requestId,/);
 assert.doesNotMatch(widgetSource, /feedback-email|setEmail/);
+assert.match(supportPageSource, /listSupportTickets/);
+assert.match(supportPageSource, /support\.historyTitle/);
+assert.match(supportPageSource, /operatorNotificationStatus/);
 
 console.log("support ticket contract: PASS");

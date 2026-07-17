@@ -26,6 +26,9 @@ const EXTERNAL_TRUST_POLICY_SHA256_ENV = "DEALFLOW_RELEASE_TRUST_POLICY_SHA256";
 const EXTERNAL_TRUST_PREVIOUS_SHA256_ENV =
   "DEALFLOW_RELEASE_TRUST_PREVIOUS_POLICY_SHA256";
 const SIGNATURE_ALGORITHM = "ed25519";
+const OWNER_DECISION_AUTHORITY_PURPOSE = "owner-decision-authority";
+const OWNER_DECISION_TEMPLATE_PATH =
+  "config/authority/dealflow-owner-decisions.v1.json";
 const REQUIRED_SECRET_STRENGTH_POLICIES = [
   "accessKeyHashPepperStrongOrFeatureDisabled",
   "accessKeyRevealEncryptionKeyStrongOrFeatureDisabled",
@@ -563,6 +566,19 @@ function parseExternalAuthorities(policy) {
         `External authority ${authorityId} has invalid allowedEvidenceTypes.`,
       );
     }
+    const allowedAuthorityPurposes = authority.allowedAuthorityPurposes ?? [];
+    if (
+      !Array.isArray(allowedAuthorityPurposes) ||
+      allowedAuthorityPurposes.some(
+        (entry) => entry !== OWNER_DECISION_AUTHORITY_PURPOSE,
+      ) ||
+      new Set(allowedAuthorityPurposes).size !== allowedAuthorityPurposes.length
+    ) {
+      fail(
+        "release_guard_external_trust_policy_invalid",
+        `External authority ${authorityId} has invalid allowedAuthorityPurposes.`,
+      );
+    }
     if (
       typeof authority.publicKeyPem !== "string" ||
       authority.publicKeyPem.length > 10_000 ||
@@ -602,9 +618,70 @@ function parseExternalAuthorities(policy) {
       publicKey,
       publicKeySha256: authority.publicKeySha256.toLowerCase(),
       allowedEvidenceTypes: new Set(authority.allowedEvidenceTypes),
+      allowedAuthorityPurposes: new Set(allowedAuthorityPurposes),
     });
   }
   return authorities;
+}
+
+function parseExternalOwnerDecisionAuthority(policy, authorities) {
+  if (policy.ownerDecisionAuthority === undefined) return null;
+  const owner = assertPlainObject(
+    policy.ownerDecisionAuthority,
+    "External owner-decision authority policy",
+  );
+  const exactKeys = [
+    "allowSyntheticIsolatedStaging",
+    "authorizedEnvelopeSha256",
+    "decisionInventorySha256",
+    "minimumEnvelopeGeneration",
+    "minimumRevocationGeneration",
+    "previousEnvelopeSha256",
+    "purpose",
+    "requirementInventorySha256",
+    "templatePath",
+    "templateSha256",
+  ].sort();
+  if (Object.keys(owner).sort().join("\n") !== exactKeys.join("\n") ||
+    owner.purpose !== OWNER_DECISION_AUTHORITY_PURPOSE ||
+    owner.templatePath !== OWNER_DECISION_TEMPLATE_PATH ||
+    !isSha256(owner.templateSha256) ||
+    !isSha256(owner.decisionInventorySha256) ||
+    !isSha256(owner.requirementInventorySha256) ||
+    !isSha256(owner.authorizedEnvelopeSha256) ||
+    !Number.isSafeInteger(owner.minimumEnvelopeGeneration) ||
+    owner.minimumEnvelopeGeneration < 1 ||
+    !Number.isSafeInteger(owner.minimumRevocationGeneration) ||
+    owner.minimumRevocationGeneration < 0 ||
+    !(owner.previousEnvelopeSha256 === null ||
+      isSha256(owner.previousEnvelopeSha256)) ||
+    typeof owner.allowSyntheticIsolatedStaging !== "boolean") {
+    fail(
+      "release_guard_external_trust_policy_invalid",
+      "External owner-decision authority policy is invalid.",
+    );
+  }
+  if (![...authorities.values()].some((authority) =>
+    authority.allowedAuthorityPurposes.has(OWNER_DECISION_AUTHORITY_PURPOSE))) {
+    fail(
+      "release_guard_external_trust_policy_invalid",
+      "Owner-decision authority requires an Ed25519 authority explicitly scoped by the protected external trust root.",
+    );
+  }
+  return {
+    purpose: OWNER_DECISION_AUTHORITY_PURPOSE,
+    templatePath: OWNER_DECISION_TEMPLATE_PATH,
+    templateSha256: owner.templateSha256.toLowerCase(),
+    decisionInventorySha256: owner.decisionInventorySha256.toLowerCase(),
+    requirementInventorySha256: owner.requirementInventorySha256.toLowerCase(),
+    authorizedEnvelopeSha256: owner.authorizedEnvelopeSha256.toLowerCase(),
+    minimumEnvelopeGeneration: owner.minimumEnvelopeGeneration,
+    minimumRevocationGeneration: owner.minimumRevocationGeneration,
+    previousEnvelopeSha256: owner.previousEnvelopeSha256 === null
+      ? null
+      : owner.previousEnvelopeSha256.toLowerCase(),
+    allowSyntheticIsolatedStaging: owner.allowSyntheticIsolatedStaging,
+  };
 }
 
 function externalTrustUnavailable(candidatePolicy) {
@@ -619,6 +696,7 @@ function externalTrustUnavailable(candidatePolicy) {
     requiredEnvironment: candidatePolicy.requiredEnvironment,
     authorities: new Map(),
     authorizedCandidatePolicy: null,
+    ownerDecisionAuthority: null,
     rotation: null,
     source: null,
   };
@@ -794,6 +872,7 @@ function parseExternalTrustPolicy(root, mode, candidatePolicy) {
   }
 
   const authorities = parseExternalAuthorities(policy);
+  const ownerDecisionAuthority = parseExternalOwnerDecisionAuthority(policy, authorities);
   return {
     provided: true,
     schemaVersion: EXTERNAL_TRUST_POLICY_SCHEMA_VERSION,
@@ -810,6 +889,7 @@ function parseExternalTrustPolicy(root, mode, candidatePolicy) {
       path: REQUIRED_TARGET_PATHS.trustPolicy,
       sha256: candidatePolicyAuthorization.sha256.toLowerCase(),
     },
+    ownerDecisionAuthority,
     rotation: {
       generation: rotationInput.generation,
       previousPolicySha256:
@@ -2026,11 +2106,14 @@ function generateManifest(root, parsed) {
             source: authority.source,
             publicKeySha256: authority.publicKeySha256,
             allowedEvidenceTypes: [...authority.allowedEvidenceTypes].sort(compareText),
+            allowedAuthorityPurposes:
+              [...authority.allowedAuthorityPurposes].sort(compareText),
           }))
           .sort((left, right) => compareText(left.authorityId, right.authorityId)),
           maxEvidenceAgeSeconds: externalTrustPolicy.maxEvidenceAgeSeconds,
           allowedFutureSkewSeconds: externalTrustPolicy.allowedFutureSkewSeconds,
           requiredEnvironment: externalTrustPolicy.requiredEnvironment,
+          ownerDecisionAuthority: externalTrustPolicy.ownerDecisionAuthority,
         },
       },
       packageLock,

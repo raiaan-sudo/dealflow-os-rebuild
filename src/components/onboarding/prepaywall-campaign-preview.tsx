@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   BadgeCheck,
@@ -82,12 +81,6 @@ type PrepaywallCampaignPreviewProps = {
   density?: "standard" | "sidecar";
   className?: string;
 };
-
-type StoredOnboardingDraft = Partial<PrepaywallCampaignPreviewDraft> & {
-  campaignId?: string;
-};
-
-const STORAGE_KEY = "dealflow-guided-onboarding-v3";
 
 const defaultPreviewDraft: PrepaywallCampaignPreviewDraft = {
   campaignMode: "buyer",
@@ -642,7 +635,6 @@ export function PrepaywallCampaignPreview({
 
 export function PrepaywallCampaignPreviewFromStorage({
   selectedPlanTier,
-  campaignId,
   fallbackDraft,
   className,
 }: {
@@ -651,34 +643,11 @@ export function PrepaywallCampaignPreviewFromStorage({
   fallbackDraft?: PrepaywallCampaignPreviewDraft | null;
   className?: string;
 }) {
-  const [storedDraft, setStoredDraft] = useState<PrepaywallCampaignPreviewDraft | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as StoredOnboardingDraft;
-      const mode = parsed.campaignMode;
-
-      if (mode !== "buyer" && mode !== "seller" && mode !== "investor" && mode !== "commercial") {
-        return;
-      }
-
-      if (campaignId && parsed.campaignId && parsed.campaignId !== campaignId) {
-        return;
-      }
-
-      setStoredDraft({
-        ...parsed,
-        campaignMode: mode,
-        planTier: selectedPlanTier ?? parsed.planTier ?? "pro",
-      });
-    } catch {
-      setStoredDraft(null);
-    }
-  }, [campaignId, selectedPlanTier]);
-
-  const previewDraft = storedDraft ?? fallbackDraft ?? null;
+  // Kept as a compatibility export for checkout surfaces. Onboarding PII is
+  // server-only; callers must pass an explicit in-memory fallback.
+  const previewDraft = fallbackDraft
+    ? { ...fallbackDraft, planTier: selectedPlanTier ?? fallbackDraft.planTier ?? "pro" }
+    : null;
 
   if (!previewDraft) {
     return null;

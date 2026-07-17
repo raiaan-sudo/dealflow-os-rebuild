@@ -8,6 +8,7 @@ import {
   fetchDeliveryMetrics,
   getMetaSyncMode,
   getMetaSyncStatus,
+  type MetaAdInsight,
 } from "@/lib/integrations/meta/status-sync";
 import type {
   MetaCampaignSyncSnapshot,
@@ -17,7 +18,10 @@ import type {
   MetaSyncError,
 } from "@/lib/integrations/meta/types";
 import { getMetaAccessToken } from "@/lib/integrations/meta/execution";
-import { buildMetaReportingWindow } from "@/lib/integrations/meta/reporting-contract";
+import {
+  buildFailedMetaReportingTruth,
+  buildMetaReportingWindow,
+} from "@/lib/integrations/meta/reporting-contract";
 import { getAppContext } from "@/lib/services/app-context";
 import { refreshCampaignActionSuggestions } from "@/lib/services/campaign-action-service";
 import { refreshCampaignDraftActions } from "@/lib/services/campaign-draft-action-service";
@@ -33,6 +37,7 @@ import { getCampaignByIdForInternalActor } from "@/lib/services/campaign-persist
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
+import { reconcileCampaignProviderReadback } from "@/lib/services/campaign-runtime-service";
 import { logError, logWarn } from "@/lib/logging";
 import type { Json } from "@/lib/supabase/types";
 
@@ -114,6 +119,17 @@ function formatSyncError(stage: "campaign" | "ad_set" | "ad" | "insights" | "con
   return target ? `[${stage}] ${message} (${target})` : `[${stage}] ${message}`;
 }
 
+function mapReportingCompleteness(
+  value: unknown,
+): NonNullable<MetaCampaignSyncSnapshot["reportingCompleteness"]> {
+  return value === "complete" ||
+    value === "partial" ||
+    value === "missing" ||
+    value === "failed"
+    ? value
+    : "failed";
+}
+
 function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncSnapshot | null {
   if (!row) {
     return null;
@@ -159,6 +175,13 @@ function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncS
     syncMetadata,
     syncErrors: mapSyncErrors(row.sync_errors),
     deliveryMetricsConfirmed: row.delivery_metrics_confirmed === true,
+    reportingCompleteness: mapReportingCompleteness(
+      syncMetadata.reporting_truth &&
+        typeof syncMetadata.reporting_truth === "object" &&
+        !Array.isArray(syncMetadata.reporting_truth)
+        ? (syncMetadata.reporting_truth as Record<string, unknown>).completeness
+        : undefined,
+    ),
     syncedAt: String(row.synced_at ?? row.created_at ?? new Date().toISOString()),
   };
 }
@@ -242,6 +265,92 @@ function resolveLaunchIds(params: {
     adIds: params.runtimeAdIds.length > 0 ? params.runtimeAdIds : params.launchAdIds,
     source: "mutable_runtime" as const,
   };
+}
+
+function normalizeProviderStatus(value: string | null | undefined) {
+  return value?.trim().toUpperCase() ?? "";
+}
+
+function classifyProviderReadback(params: {
+  campaignStatus: MetaEntityStatus | null;
+  adSetStatuses: MetaEntityStatus[];
+  adStatuses: MetaEntityStatus[];
+  expectedCampaignId: string;
+  expectedAdSetIds: string[];
+  expectedAdIds: string[];
+}) {
+  const expectedAdSetIds = new Set(params.expectedAdSetIds);
+  const expectedAdIds = new Set(params.expectedAdIds);
+  const exactIdentity =
+    params.campaignStatus?.id === params.expectedCampaignId &&
+    params.adSetStatuses.length === expectedAdSetIds.size &&
+    params.adStatuses.length === expectedAdIds.size &&
+    params.adSetStatuses.every((status) => expectedAdSetIds.has(status.id)) &&
+    params.adStatuses.every((status) => expectedAdIds.has(status.id));
+  if (!exactIdentity) return null;
+
+  const statuses = [
+    params.campaignStatus!,
+    ...params.adSetStatuses,
+    ...params.adStatuses,
+  ];
+  const effectiveStatuses = statuses.map((status) =>
+    normalizeProviderStatus(status.effectiveStatus ?? status.status),
+  );
+  const configuredStatuses = statuses.map((status) =>
+    normalizeProviderStatus(status.configuredStatus),
+  );
+
+  if (effectiveStatuses.every((status) => status === "ACTIVE")) {
+    return "active" as const;
+  }
+  if (
+    statuses.every((_, index) => configuredStatuses[index] === "ACTIVE") &&
+    effectiveStatuses.every((status) =>
+      ["ACTIVE", "IN_PROCESS", "PENDING_REVIEW", "PREAPPROVED"].includes(status),
+    )
+  ) {
+    return "processing" as const;
+  }
+  if (
+    configuredStatuses.some((status) => status === "PAUSED") ||
+    effectiveStatuses.some((status) => status === "PAUSED" || status.endsWith("_PAUSED"))
+  ) {
+    return "paused" as const;
+  }
+  return "operator_action_required" as const;
+}
+
+async function readActivationAuthority(params: {
+  supabase: any;
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("meta_campaign_activation_intents")
+    .select("status,provider_delivery_status")
+    .eq("organization_id", params.organizationId)
+    .eq("user_id", params.userId)
+    .eq("campaign_id", params.campaignId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logWarn("Meta activation authority readback failed", {
+      campaignId: params.campaignId,
+      message: error.message,
+    });
+    return null;
+  }
+
+  const row = data as Record<string, unknown> | null;
+  return Boolean(
+    row?.status === "active" &&
+      (row.provider_delivery_status === "delivery_active" ||
+        row.provider_delivery_status === "configured_active_pending_review"),
+  );
 }
 
 export async function getLatestMetaCampaignSyncSnapshot() {
@@ -424,7 +533,9 @@ export async function syncMetaCampaignStatus(params?: {
     reach: 0,
   };
   let deliveryMetricsConfirmed = false;
-  let adInsights: ReturnType<typeof fetchAdInsights> extends Promise<infer T> ? T : never = [];
+  let deliveryReportingTruth = buildFailedMetaReportingTruth({ reportingWindow });
+  let adInsights: MetaAdInsight[] = [];
+  let adInsightsReportingTruth = buildFailedMetaReportingTruth({ reportingWindow });
 
   try {
     campaignStatus = await fetchCampaignStatus({
@@ -482,15 +593,27 @@ export async function syncMetaCampaignStatus(params?: {
   }
 
   try {
-    deliveryMetrics = await fetchDeliveryMetrics({
+    const deliveryResult = await fetchDeliveryMetrics({
       campaignId: ids.campaignId,
       accessToken,
       mode,
       campaignStatus: campaignStatus?.status ?? null,
       reportingWindow,
     });
-    deliveryMetricsConfirmed = true;
+    deliveryMetrics = deliveryResult.metrics;
+    deliveryReportingTruth = deliveryResult.reportingTruth;
+    deliveryMetricsConfirmed = deliveryReportingTruth.completeness === "complete";
+    if (!deliveryMetricsConfirmed) {
+      errors.push(formatSyncError(
+        "insights",
+        `Meta delivery insights are ${deliveryReportingTruth.completeness}; missing fields: ${
+          deliveryReportingTruth.missingFields.join(",") || "unknown"
+        }.`,
+        ids.campaignId,
+      ));
+    }
   } catch (error) {
+    deliveryReportingTruth = buildFailedMetaReportingTruth({ reportingWindow });
     const message =
       error instanceof Error ? error.message : "Delivery metrics could not be loaded.";
     logError("Meta delivery metrics sync failed", {
@@ -502,14 +625,26 @@ export async function syncMetaCampaignStatus(params?: {
 
   if (ids.adIds.length > 0) {
     try {
-      adInsights = await fetchAdInsights({
+      const adInsightResult = await fetchAdInsights({
         campaignId: ids.campaignId,
         accessToken,
         mode,
         adIds: ids.adIds,
         reportingWindow,
       });
+      adInsights = adInsightResult.insights;
+      adInsightsReportingTruth = adInsightResult.reportingTruth;
+      if (adInsightsReportingTruth.completeness !== "complete") {
+        errors.push(formatSyncError(
+          "ad",
+          `Meta ad insights are ${adInsightsReportingTruth.completeness}; missing fields: ${
+            adInsightsReportingTruth.missingFields.join(",") || "unknown"
+          }.`,
+          ids.campaignId,
+        ));
+      }
     } catch (error) {
+      adInsightsReportingTruth = buildFailedMetaReportingTruth({ reportingWindow });
       const message =
         error instanceof Error ? error.message : "Ad insights could not be loaded.";
       logWarn("Meta ad insights sync degraded", {
@@ -521,7 +656,7 @@ export async function syncMetaCampaignStatus(params?: {
   }
 
   const syncResult = getMetaSyncStatus(campaignStatus, errors);
-  const syncedAt = new Date().toISOString();
+  const syncedAt = deliveryReportingTruth.receivedAt;
   const internalCampaignId =
     scopedRecord?.campaign.id ??
     requestedCampaignId ??
@@ -552,6 +687,8 @@ export async function syncMetaCampaignStatus(params?: {
       campaign_configured_status: campaignStatus?.configuredStatus ?? null,
       campaign_effective_status: campaignStatus?.effectiveStatus ?? null,
       ad_insights: adInsights,
+      reporting_truth: deliveryReportingTruth,
+      ad_insights_truth: adInsightsReportingTruth,
       reporting_window: reportingWindow,
       synced_from_runtime: {
         campaignId: plan.runtime.campaignId,
@@ -592,6 +729,46 @@ export async function syncMetaCampaignStatus(params?: {
 
   if (!snapshot) {
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");
+  }
+
+  if (ids.source === "durable_success_receipt" && internalCampaignId) {
+    const providerState = classifyProviderReadback({
+      campaignStatus,
+      adSetStatuses,
+      adStatuses,
+      expectedCampaignId: ids.campaignId,
+      expectedAdSetIds: ids.adSetIds,
+      expectedAdIds: ids.adIds,
+    });
+    if (providerState) {
+      const activationAuthorized =
+        providerState === "paused" || providerState === "operator_action_required"
+          ? false
+          : await readActivationAuthority({
+              supabase,
+              organizationId: context.organization.id,
+              userId: context.user.id,
+              campaignId: internalCampaignId,
+            });
+      if (activationAuthorized !== null) {
+        await reconcileCampaignProviderReadback({
+          internalCampaignId,
+          metaCampaignId: ids.campaignId,
+          providerState,
+          activationAuthorized,
+          readAt: syncedAt,
+          message:
+            providerState === "active" && activationAuthorized
+              ? "Meta readback confirmed the exact authorized provider hierarchy is active."
+              : providerState === "processing" && activationAuthorized
+                ? "Meta readback confirmed activation while delivery review or startup is still processing."
+                : providerState === "paused"
+                  ? "Meta readback confirmed the exact provider hierarchy is paused."
+                  : "Meta readback did not match a safely classifiable authorized delivery state; operator reconciliation is required.",
+          internalActor: params?.internalActor,
+        });
+      }
+    }
   }
 
   if (!deliveryMetricsConfirmed) {

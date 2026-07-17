@@ -13,6 +13,7 @@ import { enqueueMetaOptimizationExecutionIntent } from "@/lib/services/meta-opti
 import {
   metaCtrRatioToPolicyPercent,
   readMetaReportingWindow,
+  readMetaReportingTruth,
 } from "@/lib/integrations/meta/reporting-contract";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { SystemJobLease } from "@/lib/services/system-job-lease-service";
@@ -68,10 +69,21 @@ export async function processMetaReportingSyncJob(params: {
         userId: params.job.user_id,
       },
     });
-    if (snapshot.deliveryMetricsConfirmed !== true) {
+    const syncMetadata =
+      snapshot.syncMetadata &&
+      typeof snapshot.syncMetadata === "object" &&
+      !Array.isArray(snapshot.syncMetadata)
+        ? (snapshot.syncMetadata as Record<string, unknown>)
+        : null;
+    const reportingTruth = readMetaReportingTruth(syncMetadata?.reporting_truth);
+    if (
+      snapshot.deliveryMetricsConfirmed !== true ||
+      snapshot.syncResult !== "success" ||
+      reportingTruth?.completeness !== "complete"
+    ) {
       throw new ApiError(
         503,
-        "Meta delivery insights were not confirmed; the last known-good metrics remain authoritative.",
+        "Meta delivery insights were not complete and confirmed; the last known-good metrics remain authoritative.",
         "meta_delivery_metrics_unconfirmed",
       );
     }
@@ -80,12 +92,6 @@ export async function processMetaReportingSyncJob(params: {
     const clicks = Number(raw.clicks ?? 0);
     const spend = Number(raw.spend ?? 0);
     const leads = Number(raw.leads ?? 0);
-    const syncMetadata =
-      snapshot.syncMetadata &&
-      typeof snapshot.syncMetadata === "object" &&
-      !Array.isArray(snapshot.syncMetadata)
-        ? (snapshot.syncMetadata as Record<string, unknown>)
-        : null;
     const reportingWindow = readMetaReportingWindow(syncMetadata?.reporting_window);
     if (!reportingWindow) {
       throw new ApiError(
@@ -152,7 +158,7 @@ export async function processMetaReportingSyncJob(params: {
     const customerCeiling = activePolicy
       ? activePolicy.customerDailyBudgetCeilingMinor / 100
       : Number(controls?.customer_daily_budget_ceiling ?? 0);
-    const snapshotSyncedAt = snapshot.syncedAt ?? null;
+    const snapshotSyncedAt = reportingTruth.receivedAt;
     const approvedPolicy = activePolicy?.approvedPolicy ?? null;
     const evidence = evaluateOptimizationEvidence({
       sourceStatus: snapshot.syncResult === "success" ? "confirmed" : "partial",

@@ -17,8 +17,8 @@ const trustBundle = readFileSync(
 
 assert.match(source, /authority broker requires Node 24/);
 assert.match(source, /!\/\^v24\\\.\/.+value\.runtime/s);
-assert.match(source, /expectedMigrationCount = 108/);
-assert.match(source, /20260716200000_harden_stripe_payment_lifecycle\.sql/);
+assert.match(source, /expectedMigrationCount = 115/);
+assert.match(source, /20260717060000_install_owner_decision_authority_grants\.sql/);
 assert.match(source, /expectedProjectSafeSuffix = "qibh"/);
 assert.match(source, /expectedProjectFingerprint/);
 assert.match(source, /config\/security\/supabase-prod-ca-2021\.crt/);
@@ -31,7 +31,7 @@ assert.equal(
   createHash("sha256").update(trustBundle).digest("hex"),
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
 );
-assert.match(source, /expectedBranch = "codex\/dealflow-overnight-release-20260712"/);
+assert.match(source, /expectedBranch = "codex\/dealflow-final-master-20260716"/);
 assert.match(
   source,
   /expectedRepo = realpathSync\([\s\S]*fileURLToPath\(import\.meta\.url\)[\s\S]*"\.\.\/\.\."/,
@@ -81,6 +81,38 @@ assert.match(source, /dealflow_retention_approved_policy_recovery_race/);
 assert.match(source, /exact_approved_policy_recovery_committed/);
 assert.match(source, /exact_existing_reused/);
 assert.match(source, /dealflow_unexpected_retention_authority/);
+assert.match(source, /expectedVercelProjectIdFingerprint/);
+assert.match(source, /vercel_analytics/);
+assert.match(source, /meta_optimization_provider_writes/);
+assert.match(source, /platform_admin_security_surface/);
+assert.match(source, /privacy_consent_dsar_authority/);
+assert.match(source, /owner_decision_authority_grants/);
+assert.match(source, /owner_decision_authority_revocations/);
+assert.match(source, /exact_synthetic_owner_grants_installed/);
+assert.match(source, /exact_synthetic_owner_grants_rotated/);
+assert.match(source, /exact_synthetic_owner_grants_reused/);
+assert.match(source, /exact_synthetic_privacy_grant_installed/);
+assert.match(source, /exact_synthetic_privacy_grant_rotated/);
+assert.match(source, /exact_synthetic_privacy_grant_reused/);
+assert.match(source, /max\(existing\.generation\) \+ 1/);
+assert.match(source, /install_privacy_inventory_classifications_v1/);
+assert.match(source, /jsonb_agg\(jsonb_build_object/);
+assert.match(source, /synthetic_staging_test_only/);
+assert.match(source, /synthetic_test_only/);
+assert.match(source, /inventoryAuthorityTableCount/);
+assert.match(source, /inventoryUnresolvedCount/);
+assert.match(source, /inventoryNullExecutorCount/);
+assert.match(source, /inventoryWrongGrantCount/);
+assert.match(source, /inventoryWrongSnapshotCount/);
+assert.match(source, /productionOwnerGrantCount/);
+assert.match(source, /productionPrivacyGrantCount/);
+assert.match(source, /privacyLegalRetentionAuthorizedCount/);
+assert.match(source, /workerAndLegalHoldExecutionAuthorized: false/);
+assert.match(source, /exact_authority_projection_refresh_committed/);
+assert.match(
+  source,
+  /bounded_generation_rotation_or_unexpired_exact_replay_with_catalog_rebind/,
+);
 for (const privilege of [
   "INSERT",
   "UPDATE",

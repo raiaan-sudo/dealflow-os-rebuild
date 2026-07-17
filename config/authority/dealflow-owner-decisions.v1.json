@@ -1,0 +1,1561 @@
+{
+  "$schema": "./dealflow-owner-decisions.schema.json",
+  "schemaVersion": "dealflow.owner-decisions.v1",
+  "packetStatus": "UNRESOLVED_FAIL_CLOSED",
+  "signatureStatus": "NOT_SIGNED",
+  "packetDigest": null,
+  "decisionInventorySha256": "12d0d5780a28dd93696f17ed1e7177ed85460428c4c3b02e180cf68db9073b8d",
+  "generatedFrom": {
+    "sourceRegister": "dealflow-final-master-execution-20260716-final-r3/OWNER_DECISION_REGISTER.json",
+    "sourceRegisterSha256": "a1abcdcfed44565587f4728612b97b6dfe81c4bbc9e7730c67a17669e3a8ca02",
+    "controllingPlan": "dealflow-final-master-execution-20260716-final-r3/inputs/CONTROLLING_MASTER_PLAN.txt",
+    "controllingPlanSha256": "22f787c57a3fbf00081db0a57ec0c3ebfcf1f28d8a939556cb3da069db969b37"
+  },
+  "candidateBinding": {
+    "bindingType": "DETACHED_SIGNED_AUTHORITY_REQUIRED",
+    "envelopeSchemaVersion": "dealflow.owner-decision-authority-envelope.v1",
+    "templatePath": "config/authority/dealflow-owner-decisions.v1.json",
+    "exactCandidateIdentityLocation": "DETACHED_AUTHORITY_ENVELOPE",
+    "trackedTemplateCannotGrantAuthority": true,
+    "trackedSuccessorRequiresNewDetachedAuthority": true
+  },
+  "planBinding": {
+    "requirementCount": 53,
+    "requirementIds": [
+      "CORE-ADMIN-001",
+      "CORE-AUTH-001",
+      "CORE-CAMPAIGN-001",
+      "CORE-FUNNEL-001",
+      "CORE-ONBOARDING-001",
+      "CORE-QUALITY-SCALE-001",
+      "CORE-SECURITY-DATA-001",
+      "CORE-UI-001",
+      "PRIVACY-COMPLIANCE-001",
+      "PVD-CONTENT-RIGHTS-001",
+      "PVD-CREATIVE-001",
+      "PVD-DELETE-001",
+      "PVD-FOUNDATION-001",
+      "PVD-GHL-001",
+      "PVD-GHL-COMMUNICATION-SAFETY-001",
+      "PVD-GOLDEN-001",
+      "PVD-LEAD-OUTCOME-FEEDBACK-001",
+      "PVD-LOCALIZATION-001",
+      "PVD-META-001",
+      "PVD-OPTIMIZER-001",
+      "PVD-REPORT-001",
+      "PVD-STRIPE-001",
+      "PVD-TWILIO-001",
+      "PVD-WHITELABEL-001",
+      "REL-ALIASES-001",
+      "REL-CANARY-001",
+      "REL-CANARY-INGRESS-001",
+      "REL-CAPABILITY-001",
+      "REL-CUTOVER-001",
+      "REL-DEPLOYMENT-001",
+      "REL-DOMAINS-001",
+      "REL-DRAIN-001",
+      "REL-ENV-001",
+      "REL-GOLDEN-001",
+      "REL-GUARD-001",
+      "REL-LEGACY-FUNNEL-MIGRATION-001",
+      "REL-MIGRATION-001",
+      "REL-MIGRATION-IMPACT-001",
+      "REL-MONITOR-001",
+      "REL-OBS-001",
+      "REL-POST-ALIAS-GUARD-AND-RAMP-001",
+      "REL-POST-MIGRATION-GUARD-001",
+      "REL-PRE-ALIAS-001",
+      "REL-PROD-TRUTH-001",
+      "REL-RECOVERY-001",
+      "REL-SEAL-001",
+      "REL-SIGNED-PREREQUISITE-INDEX-001",
+      "REL-SOURCE-001",
+      "REL-SUPPLY-CHAIN-001",
+      "REL-TRUST-001",
+      "REL-WHOLE-SYSTEM-DR-001",
+      "SEC-PRIVILEGED-TENANCY-001",
+      "VISION-SUPPORT-001"
+    ],
+    "sortedRequirementIdsSha256": "8c6bf382bb5f7d0233ecb7edbf591167dad3c18f5f14206735d38f830f3c9bc4"
+  },
+  "globalPolicy": {
+    "unresolvedBehavior": "APPLY_SAFE_DEFAULT_AND_BLOCK_EFFECT_OR_RELEASE",
+    "environmentVariablesCannotGrantAuthority": true,
+    "unsignedValuesCannotGrantAuthority": true,
+    "providerCredentialsCannotGrantAuthority": true,
+    "productionReleaseAuthorized": false
+  },
+  "counts": {
+    "total": 43,
+    "unresolved": 43,
+    "approved": 0,
+    "primary": 19,
+    "privacy": 9,
+    "importedDebt": 12,
+    "experimentalScope": 2,
+    "adminSecurity": 1
+  },
+  "decisions": [
+    {
+      "id": "OWNER-001",
+      "category": "PRIMARY",
+      "question": "Exact Stripe test and production product and price ownership",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-STRIPE-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-002",
+      "category": "PRIMARY",
+      "question": "Currency, tax, cadence, cancellation, grace, refund, dispute, chargeback, credit expiry, and failed-generation compensation policy",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-STRIPE-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-003",
+      "category": "PRIMARY",
+      "question": "GHL agency and Marketplace authority, snapshot, manifest, slots, and location ownership",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-GOLDEN-001",
+        "REL-GOLDEN-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-004",
+      "category": "PRIMARY",
+      "question": "GHL data ownership, export and portability, owned-versus-customer location behavior, and offboarding",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-005",
+      "category": "PRIMARY",
+      "question": "Fixed question-slot versus documented dynamic-label strategy",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "fixed preinstalled GHL question slots",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-ONBOARDING-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-LOCALIZATION-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-006",
+      "category": "PRIMARY",
+      "question": "Meta app, accounts, Pages, Pixels, forms, scopes, and canary budget",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-GOLDEN-001",
+        "PVD-LEAD-OUTCOME-FEEDBACK-001",
+        "PVD-META-001",
+        "REL-GOLDEN-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-007",
+      "category": "PRIMARY",
+      "question": "Optimizer policy, currencies, ceilings, cooldowns, kill switches, and escalation",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-LEAD-OUTCOME-FEEDBACK-001",
+        "PVD-OPTIMIZER-001",
+        "PVD-REPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-008",
+      "category": "PRIMARY",
+      "question": "Creative-provider accounts and exact maximum test cost",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-CREATIVE-001",
+        "PVD-GOLDEN-001",
+        "REL-GOLDEN-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-009",
+      "category": "PRIMARY",
+      "question": "Commercial output, uploaded-asset, stock, music, font, likeness, training, retention, and white-label rights",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-CONTENT-RIGHTS-001",
+        "PVD-CREATIVE-001",
+        "PVD-LOCALIZATION-001",
+        "PVD-WHITELABEL-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-010",
+      "category": "PRIMARY",
+      "question": "Twilio messaging service, test recipient, consent scope, and whether lead-facing SMS remains disabled",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "lead-facing automated SMS disabled",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-TWILIO-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-011",
+      "category": "PRIMARY",
+      "question": "Support mailbox, gateway, monitoring owner, and SLA",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-012",
+      "category": "PRIMARY",
+      "question": "Production retention, financial and receipt retention, legal hold, and deletion SLA",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-STRIPE-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-013",
+      "category": "PRIMARY",
+      "question": "Qualified lead, meaningful conversation, activation, first launch, first lead, time-to-value, MRR, retention, churn, lead quality definitions and targets",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-LEAD-OUTCOME-FEEDBACK-001",
+        "PVD-OPTIMIZER-001",
+        "PVD-REPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-014",
+      "category": "PRIMARY",
+      "question": "Pixel and CAPI consent, versioning, collection, expiry, withdrawal, retention, and deletion",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "Meta CAPI disabled and Browser Pixel explicit opt-in only",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-LEAD-OUTCOME-FEEDBACK-001",
+        "PVD-META-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-015",
+      "category": "PRIMARY",
+      "question": "Production and partner domains plus explicit exclusions",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-WHITELABEL-001",
+        "REL-ALIASES-001",
+        "REL-CANARY-001",
+        "REL-CANARY-INGRESS-001",
+        "REL-CAPABILITY-001",
+        "REL-CUTOVER-001",
+        "REL-DEPLOYMENT-001",
+        "REL-DOMAINS-001",
+        "REL-DRAIN-001",
+        "REL-ENV-001",
+        "REL-GOLDEN-001",
+        "REL-GUARD-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-MIGRATION-001",
+        "REL-MIGRATION-IMPACT-001",
+        "REL-MONITOR-001",
+        "REL-OBS-001",
+        "REL-POST-ALIAS-GUARD-AND-RAMP-001",
+        "REL-POST-MIGRATION-GUARD-001",
+        "REL-PRE-ALIAS-001",
+        "REL-PROD-TRUTH-001",
+        "REL-RECOVERY-001",
+        "REL-SEAL-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001",
+        "REL-SUPPLY-CHAIN-001",
+        "REL-TRUST-001",
+        "REL-WHOLE-SYSTEM-DR-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-016",
+      "category": "PRIMARY",
+      "question": "Release signer, database owner, provider owners, monitoring owner, and forward-recovery owner",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "REL-ALIASES-001",
+        "REL-CANARY-001",
+        "REL-CANARY-INGRESS-001",
+        "REL-CAPABILITY-001",
+        "REL-CUTOVER-001",
+        "REL-DEPLOYMENT-001",
+        "REL-DOMAINS-001",
+        "REL-DRAIN-001",
+        "REL-ENV-001",
+        "REL-GOLDEN-001",
+        "REL-GUARD-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-MIGRATION-001",
+        "REL-MIGRATION-IMPACT-001",
+        "REL-MONITOR-001",
+        "REL-OBS-001",
+        "REL-POST-ALIAS-GUARD-AND-RAMP-001",
+        "REL-POST-MIGRATION-GUARD-001",
+        "REL-PRE-ALIAS-001",
+        "REL-PROD-TRUTH-001",
+        "REL-RECOVERY-001",
+        "REL-SEAL-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001",
+        "REL-SUPPLY-CHAIN-001",
+        "REL-TRUST-001",
+        "REL-WHOLE-SYSTEM-DR-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-017",
+      "category": "PRIMARY",
+      "question": "RPO, RTO, incident commander, on-call owner, and ambiguity or dead-letter response times",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-DELETE-001",
+        "REL-ALIASES-001",
+        "REL-CANARY-001",
+        "REL-CANARY-INGRESS-001",
+        "REL-CAPABILITY-001",
+        "REL-CUTOVER-001",
+        "REL-DEPLOYMENT-001",
+        "REL-DOMAINS-001",
+        "REL-DRAIN-001",
+        "REL-ENV-001",
+        "REL-GOLDEN-001",
+        "REL-GUARD-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-MIGRATION-001",
+        "REL-MIGRATION-IMPACT-001",
+        "REL-MONITOR-001",
+        "REL-OBS-001",
+        "REL-POST-ALIAS-GUARD-AND-RAMP-001",
+        "REL-POST-MIGRATION-GUARD-001",
+        "REL-PRE-ALIAS-001",
+        "REL-PROD-TRUTH-001",
+        "REL-RECOVERY-001",
+        "REL-SEAL-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001",
+        "REL-SUPPLY-CHAIN-001",
+        "REL-TRUST-001",
+        "REL-WHOLE-SYSTEM-DR-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-018",
+      "category": "PRIMARY",
+      "question": "Production canary spend, charge, refund, and communication ceilings",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "PVD-CREATIVE-001",
+        "PVD-META-001",
+        "PVD-STRIPE-001",
+        "PVD-TWILIO-001",
+        "REL-ALIASES-001",
+        "REL-CANARY-001",
+        "REL-CANARY-INGRESS-001",
+        "REL-CAPABILITY-001",
+        "REL-CUTOVER-001",
+        "REL-DEPLOYMENT-001",
+        "REL-DOMAINS-001",
+        "REL-DRAIN-001",
+        "REL-ENV-001",
+        "REL-GOLDEN-001",
+        "REL-GUARD-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-MIGRATION-001",
+        "REL-MIGRATION-IMPACT-001",
+        "REL-MONITOR-001",
+        "REL-OBS-001",
+        "REL-POST-ALIAS-GUARD-AND-RAMP-001",
+        "REL-POST-MIGRATION-GUARD-001",
+        "REL-PRE-ALIAS-001",
+        "REL-PROD-TRUTH-001",
+        "REL-RECOVERY-001",
+        "REL-SEAL-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001",
+        "REL-SUPPLY-CHAIN-001",
+        "REL-TRUST-001",
+        "REL-WHOLE-SYSTEM-DR-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-019",
+      "category": "PRIMARY",
+      "question": "Final production release authorization scope",
+      "source": "Controlling master plan section 5",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "REL-ALIASES-001",
+        "REL-CANARY-001",
+        "REL-CANARY-INGRESS-001",
+        "REL-CAPABILITY-001",
+        "REL-CUTOVER-001",
+        "REL-DEPLOYMENT-001",
+        "REL-DOMAINS-001",
+        "REL-DRAIN-001",
+        "REL-ENV-001",
+        "REL-GOLDEN-001",
+        "REL-GUARD-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-MIGRATION-001",
+        "REL-MIGRATION-IMPACT-001",
+        "REL-MONITOR-001",
+        "REL-OBS-001",
+        "REL-POST-ALIAS-GUARD-AND-RAMP-001",
+        "REL-POST-MIGRATION-GUARD-001",
+        "REL-PRE-ALIAS-001",
+        "REL-PROD-TRUTH-001",
+        "REL-RECOVERY-001",
+        "REL-SEAL-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001",
+        "REL-SUPPLY-CHAIN-001",
+        "REL-TRUST-001",
+        "REL-WHOLE-SYSTEM-DR-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-001",
+      "category": "PRIVACY",
+      "question": "Controller and processor roles for DealFlow, white-label partners, realtors, GHL, Meta, Stripe, Twilio and creative providers",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-002",
+      "category": "PRIVACY",
+      "question": "Lawful basis for every collection, enrichment, generation, advertising, communication, analytics, billing and support purpose",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-003",
+      "category": "PRIVACY",
+      "question": "Subprocessor register, DPAs, approval authority and change-notification process",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-004",
+      "category": "PRIVACY",
+      "question": "Data residency, cross-border transfer mechanism and regional restrictions",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-005",
+      "category": "PRIVACY",
+      "question": "Access, correction, deletion, portability and DSAR identity-verification workflow",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-006",
+      "category": "PRIVACY",
+      "question": "EN/FR/ES consent copy, version evidence, withdrawal propagation and proof retention",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-007",
+      "category": "PRIVACY",
+      "question": "Breach-notification owner, timelines, evidence and customer or authority communication rules",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-008",
+      "category": "PRIVACY",
+      "question": "Jurisdiction-specific email, SMS and phone consent, quiet-hours, suppression and revocation rules",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-PRIVACY-009",
+      "category": "PRIVACY",
+      "question": "No lead-data sale, tenant commingling, unauthorized model training or secondary-use policy",
+      "source": "Controlling master plan privacy and compliance authority",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "FAIL_CLOSED_NO_UNAPPROVED_PROCESSING_OR_COMMUNICATION",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-SECURITY-DATA-001",
+        "PRIVACY-COMPLIANCE-001",
+        "PVD-DELETE-001",
+        "PVD-GHL-001",
+        "PVD-GHL-COMMUNICATION-SAFETY-001",
+        "PVD-META-001",
+        "PVD-TWILIO-001",
+        "VISION-SUPPORT-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-001",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-001: Eleven app/checkouts plus non-Git copies share overlapping DealFlow source lineage.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-001",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-001"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-002",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-002: REPO-007 linked worktree points to an absent /private/tmp Git directory.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-002",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-002"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-003",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-003: REPO-008 Next 16 test branch has no valid local or remote head.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-003",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-003"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-004",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-004: REPO-009 wrapper Git repo has no valid head/index and only contains nested repos.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-004",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-004"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-005",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-005: REPO-012 dealflow-os-local is a non-Git runner/jobs prototype.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-005",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-005"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-006",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-006: Sales Brain exists as nested untracked docs and a separate 28-file copy; exact equality not proven.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-006",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-006"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-007",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-007: Revenue OS and Sales Brain knowledge packages are untracked inside the primary dirty checkout.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-007",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-007"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-008",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-008: 262 of 934 primary inventory rows are generated, backup, or prior-output artifacts explicitly excluded from source truth.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-008",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-008"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-009",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-009: Across four UI candidates, 124 page instances collapse to 71 unique patterns plus 53 duplicate instances.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-009",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-009"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-010",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-010: Sixteen routes exist only in alternate UI candidates, including SEO and control-room surfaces.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-010",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-010"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-011",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-011: Marketing homepage centers on an approximately 2000-line client component with multiple runtime effects.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-011",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-011"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-012",
+      "category": "IMPORTED_DEBT",
+      "question": "Choose a signed preserve, quarantine, deprecate or remediate disposition for DEBT:DEBT-020: Results and selected legacy build routes act as compatibility/recovery redirects; current necessity not owner-decided.",
+      "source": "IMPLEMENTATION_LEDGER inherited row DEBT:DEBT-020",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "PRESERVE_OR_QUARANTINE_FAIL_CLOSED_NO_PRODUCTION_EXPOSURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-FUNNEL-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-ALIASES-001",
+        "REL-LEGACY-FUNNEL-MIGRATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001",
+        "REL-SOURCE-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "DEBT:DEBT-020"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-GROWTH-AGENT",
+      "category": "EXPERIMENTAL_SCOPE",
+      "question": "Classify Growth Agent as current product scope or internal/future experimental scope",
+      "source": "Inherited FEATURE:FEAT-036 plus WORKFLOW:FLOW-015",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "UNREACHABLE_INTERNAL_OR_FUTURE_AND_RELEASE_BLOCKED_PENDING_SIGNATURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-ADMIN-001",
+        "CORE-AUTH-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "FEATURE:FEAT-036",
+        "WORKFLOW:FLOW-015"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-SCOPE-SALES-COPILOT",
+      "category": "EXPERIMENTAL_SCOPE",
+      "question": "Classify Sales Copilot as current product scope or internal/future experimental scope",
+      "source": "Inherited FEATURE:FEAT-037 plus WORKFLOW:FLOW-016",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "UNREACHABLE_INTERNAL_OR_FUTURE_AND_RELEASE_BLOCKED_PENDING_SIGNATURE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-ADMIN-001",
+        "CORE-AUTH-001",
+        "CORE-UI-001",
+        "PVD-FOUNDATION-001",
+        "REL-SIGNED-PREREQUISITE-INDEX-001"
+      ],
+      "directlyAffectedLegacyKeys": [
+        "FEATURE:FEAT-037",
+        "WORKFLOW:FLOW-016"
+      ],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    },
+    {
+      "id": "OWNER-ADMIN-SECURITY-SURFACE",
+      "category": "ADMIN_SECURITY",
+      "question": "Choose whether the admin security surface is backed by accepted evidence or removed/unavailable",
+      "source": "Controlling master plan section 6A",
+      "releaseBlocking": true,
+      "status": "UNRESOLVED_SIGNED_DECISION_REQUIRED",
+      "safeDefault": "REMOVE_OR_RENDER_UNAVAILABLE_NEVER_FABRICATE_A_SECURITY_SCORE",
+      "selectedValue": null,
+      "effectiveAt": null,
+      "reviewAt": null,
+      "approver": {
+        "role": "UNASSIGNED",
+        "identityRef": null,
+        "approvedAt": null,
+        "signatureRef": null
+      },
+      "affectedRequirementIds": [
+        "CORE-ADMIN-001",
+        "CORE-SECURITY-DATA-001"
+      ],
+      "directlyAffectedLegacyKeys": [],
+      "activationGates": [
+        "SAFE_DEFAULT_ACTIVE",
+        "RELEASE_BLOCKED_UNTIL_SIGNED_APPROVAL"
+      ]
+    }
+  ]
+}

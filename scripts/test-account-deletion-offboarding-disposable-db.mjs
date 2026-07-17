@@ -12,7 +12,7 @@ const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
 const proposalPath = process.env.ACCOUNT_DELETION_MIGRATION_PROPOSAL
   ?? path.join(migrationsDir, "20260713026000_add_account_deletion_and_provider_offboarding.sql");
-const requiredFinalMigration = "20260716200000_harden_stripe_payment_lifecycle.sql";
+const requiredFinalMigration = "20260717060000_install_owner_decision_authority_grants.sql";
 const retentionAuthorityMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -49,6 +49,8 @@ const GHL_MAPPING_A = "97000000-0000-4000-8000-000000000003";
 const CREATIVE_A = "98000000-0000-4000-8000-000000000001";
 const CREATIVE_B = "98000000-0000-4000-8000-000000000002";
 const CREATIVE_VIDEO_A = "98000000-0000-4000-8000-000000000003";
+const CREATIVE_VIDEO_EVENT_A = "98100000-0000-4000-8000-000000000001";
+const CREATIVE_VIDEO_DISPATCH_A = "98200000-0000-4000-8000-000000000001";
 const STRIPE_CLAIM = "99000000-0000-4000-8000-000000000001";
 const HOLD_HASH = `sha256:${"a".repeat(64)}`;
 const EMAIL_HASH = `sha256:${"b".repeat(64)}`;
@@ -90,7 +92,7 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 108, "test expects the exact 108-migration candidate");
+  assert.equal(migrations.length, 115, "test expects the exact 115-migration candidate");
   assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
@@ -297,24 +299,33 @@ try {
       insert into public.client_error_events(event_key,message,metadata) values
         ('error:tenant-a','Sensitive browser error','{"organizationId":"${ORG_A}","private":"tenant-a"}'::jsonb),
         ('error:tenant-b','Other browser error','{"organizationId":"${ORG_B}","private":"tenant-b"}'::jsonb);
+      insert into public.provider_usage_events(
+        id,organization_id,user_id,campaign_id,provider,operation,idempotency_key,
+        status,attempt_key,settlement_generation
+      ) values (
+        '${CREATIVE_VIDEO_EVENT_A}','${ORG_A}','${USER_A}','${CAMPAIGN_A}',
+        'higgsfield','higgsfield_video_generation','deletion-video-proof','reserved',
+        'provider_usage_attempt:deletion-video-proof',1
+      );
+      insert into public.paid_creative_dispatches(
+        id,provider_usage_event_id,organization_id,user_id,campaign_id,provider,
+        operation,attempt_key,request_fingerprint,request_payload,state,
+        dispatch_token,provider_request_id,provider_output,accepted_at
+      ) values (
+        '${CREATIVE_VIDEO_DISPATCH_A}','${CREATIVE_VIDEO_EVENT_A}','${ORG_A}',
+        '${USER_A}','${CAMPAIGN_A}','higgsfield','higgsfield_video_generation',
+        'provider_usage_attempt:deletion-video-proof','${"9".repeat(64)}','{}'::jsonb,
+        'accepted',gen_random_uuid(),'provider-video-a','{"status":"queued"}'::jsonb,
+        timezone('utc',now())
+      );
       insert into public.creative_assets(
         id,user_id,campaign_id,provider_name,status,storage_bucket,storage_path,
-        provider_asset_id,file_url
+        provider_asset_id,file_url,paid_creative_dispatch_id
       ) values
-        ('${CREATIVE_A}','${USER_A}','${CAMPAIGN_A}','manual_upload','ready','creative-assets','${USER_A}/${CAMPAIGN_A}/tenant-a.png',null,null),
-        ('${CREATIVE_B}','${USER_B}','${CAMPAIGN_B}','manual_upload','ready','creative-assets','${USER_B}/${CAMPAIGN_B}/tenant-b.png',null,null),
-        ('${CREATIVE_VIDEO_A}','${USER_A}','${CAMPAIGN_A}','higgsfield','ready','creative-assets','generated-video/${ORG_A}/${USER_A}/${CAMPAIGN_A}/higgsfield/${CREATIVE_VIDEO_A}.video','provider-video-a','https://project.invalid/storage/v1/object/public/creative-assets/generated-video/${ORG_A}/${USER_A}/${CAMPAIGN_A}/higgsfield/${CREATIVE_VIDEO_A}.video');
-      insert into private.generated_video_storage_bindings(
-        asset_id,organization_id,user_id,campaign_id,provider_name,
-        provider_asset_id_digest,storage_bucket,storage_path,file_url,
-        content_sha256,content_length,mime_type
-      ) values (
-        '${CREATIVE_VIDEO_A}','${ORG_A}','${USER_A}','${CAMPAIGN_A}','higgsfield',
-        '${"d".repeat(64)}','creative-assets',
-        'generated-video/${ORG_A}/${USER_A}/${CAMPAIGN_A}/higgsfield/${CREATIVE_VIDEO_A}.video',
-        'https://project.invalid/storage/v1/object/public/creative-assets/generated-video/${ORG_A}/${USER_A}/${CAMPAIGN_A}/higgsfield/${CREATIVE_VIDEO_A}.video',
-        '${"e".repeat(64)}',42,'video/mp4'
-      );
+        ('${CREATIVE_A}','${USER_A}','${CAMPAIGN_A}','manual_upload','ready','creative-assets','${USER_A}/${CAMPAIGN_A}/tenant-a.png',null,null,null),
+        ('${CREATIVE_B}','${USER_B}','${CAMPAIGN_B}','manual_upload','ready','creative-assets','${USER_B}/${CAMPAIGN_B}/tenant-b.png',null,null,null),
+        ('${CREATIVE_VIDEO_A}','${USER_A}','${CAMPAIGN_A}','higgsfield','generating',null,null,
+          'provider-video-a','https://provider.invalid/video-a','${CREATIVE_VIDEO_DISPATCH_A}');
       insert into public.billing_subscriptions(
         organization_id,user_id,stripe_customer_id,stripe_subscription_id,
         stripe_price_id,plan_tier,status,cancel_at_period_end
@@ -332,6 +343,15 @@ try {
       where singleton;
       reset role;
     `, { label: "Seed two isolated tenants" });
+    session.psql(asRole("service_role", `
+      select * from public.bind_generated_video_storage_v1(
+        '${CREATIVE_VIDEO_A}','${ORG_A}','${USER_A}','${CAMPAIGN_A}',
+        'higgsfield','provider-video-a','creative-assets',
+        'generated-video/${ORG_A}/${USER_A}/${CAMPAIGN_A}/higgsfield/${CREATIVE_VIDEO_A}.video',
+        'https://project.invalid/storage/v1/object/public/creative-assets/generated-video/${ORG_A}/${USER_A}/${CAMPAIGN_A}/higgsfield/${CREATIVE_VIDEO_A}.video',
+        '${"e".repeat(64)}',42,'video/mp4'
+      );
+    `), { label: "Create canonical generated-video binding through its exact RPC" });
 
     mustFail(session, asRole("authenticated", `
       select id from public.create_account_deletion_request_v1(
@@ -587,7 +607,7 @@ try {
       const task = claimTask("delete_creative_storage");
       const inventory = session.psql(asRole("service_role", `
         select asset_id||'|'||storage_bucket||'|'||storage_path||'|'||inventory_state
-        from public.get_account_deletion_creative_storage_inventory_v1(
+        from public.get_account_deletion_creative_storage_inventory_v2(
           '${task.id}','${task.claim_token}',${Number(task.claim_generation)}
         ) order by asset_id;
       `), { label: "Inventory tenant-scoped creative storage" });
@@ -595,7 +615,7 @@ try {
       assert.match(inventory, new RegExp(`^${CREATIVE_VIDEO_A}\\|creative-assets\\|generated-video/`, "m"));
       assert.doesNotMatch(inventory, new RegExp(CREATIVE_B), "tenant B creative entered tenant A inventory");
       assert.equal(lastLine(session.psql(asRole("service_role", `
-        select public.finalize_account_deletion_creative_storage_v1(
+        select public.finalize_account_deletion_creative_storage_v2(
           '${task.id}','${task.claim_token}',${Number(task.claim_generation)},
           array['${CREATIVE_A}'::uuid,'${CREATIVE_VIDEO_A}'::uuid]
         );
@@ -636,7 +656,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 108 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 115 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }

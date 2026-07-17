@@ -13,6 +13,8 @@ type GenerationCreditBucket =
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_500;
 export const CREDIT_TOP_UP_MAXIMUM_CENTS = 100_000;
+export const CREDIT_ACTIVITY_LIMIT = 20;
+const CREDIT_RESERVATION_SCAN_LIMIT = 500;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
   openai_image_generation: 100,
@@ -55,26 +57,116 @@ export async function getCreditSummaryForCurrentUser() {
     throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
   }
 
-  const { data: creditRowRaw, error } = await admin
-    .from("organization_user_credits")
-    .select("balance, updated_at")
-    .eq("organization_id", context.organization.id)
-    .eq("user_id", context.user.id)
-    .maybeSingle();
+  const [creditResult, activityResult, reservationResult] = await Promise.all([
+    admin
+      .from("organization_user_credits")
+      .select("balance, updated_at")
+      .eq("organization_id", context.organization.id)
+      .eq("user_id", context.user.id)
+      .maybeSingle(),
+    admin
+      .from("user_credit_ledger")
+      .select("id, delta, balance_after, reason, reference_type, created_at")
+      .eq("organization_id", context.organization.id)
+      .eq("user_id", context.user.id)
+      .order("created_at", { ascending: false })
+      .limit(CREDIT_ACTIVITY_LIMIT),
+    admin
+      .from("provider_usage_events")
+      .select("credit_ledger_id")
+      .eq("organization_id", context.organization.id)
+      .eq("user_id", context.user.id)
+      .eq("status", "reserved")
+      .not("credit_ledger_id", "is", null)
+      .limit(CREDIT_RESERVATION_SCAN_LIMIT + 1),
+  ]);
 
-  if (error) {
-    throw new ApiError(500, error.message, "credit_balance_fetch_failed");
+  if (creditResult.error) {
+    throw new ApiError(500, creditResult.error.message, "credit_balance_fetch_failed");
+  }
+  if (activityResult.error) {
+    throw new ApiError(500, activityResult.error.message, "credit_activity_fetch_failed");
+  }
+  if (reservationResult.error) {
+    throw new ApiError(500, reservationResult.error.message, "credit_reservation_fetch_failed");
   }
 
+  const creditRowRaw = creditResult.data;
   const creditRow = creditRowRaw as { balance?: unknown; updated_at?: unknown } | null;
   const balance = typeof creditRow?.balance === "number" ? creditRow.balance : 0;
+  const rawActivity = (activityResult.data ?? []) as Array<Record<string, unknown>>;
+  const activity = rawActivity.flatMap((row) => {
+    if (
+      typeof row.id !== "string" ||
+      typeof row.delta !== "number" ||
+      typeof row.balance_after !== "number" ||
+      typeof row.reason !== "string" ||
+      typeof row.created_at !== "string"
+    ) {
+      return [];
+    }
+
+    return [{
+      id: row.id,
+      deltaCents: row.delta,
+      balanceAfterCents: row.balance_after,
+      reason: row.reason,
+      referenceType: typeof row.reference_type === "string" ? row.reference_type : null,
+      createdAt: row.created_at,
+    }];
+  });
+
+  const reservationRows = (reservationResult.data ?? []) as Array<{
+    credit_ledger_id?: unknown;
+  }>;
+  const reservationScanComplete = reservationRows.length <= CREDIT_RESERVATION_SCAN_LIMIT;
+  const reservationLedgerIds = reservationRows
+    .slice(0, CREDIT_RESERVATION_SCAN_LIMIT)
+    .flatMap((row) => (typeof row.credit_ledger_id === "string" ? [row.credit_ledger_id] : []));
+
+  let reservedBalanceCents: number | null = 0;
+  if (!reservationScanComplete) {
+    reservedBalanceCents = null;
+  } else if (reservationLedgerIds.length > 0) {
+    const reservedLedgerRows: Array<Record<string, unknown>> = [];
+    for (let offset = 0; offset < reservationLedgerIds.length; offset += 100) {
+      const { data, error } = await admin
+        .from("user_credit_ledger")
+        .select("id, delta")
+        .eq("organization_id", context.organization.id)
+        .eq("user_id", context.user.id)
+        .in("id", reservationLedgerIds.slice(offset, offset + 100));
+
+      if (error) {
+        throw new ApiError(500, error.message, "credit_reservation_ledger_fetch_failed");
+      }
+      reservedLedgerRows.push(...((data ?? []) as Array<Record<string, unknown>>));
+    }
+
+    const matchedLedgerIds = new Set(
+      reservedLedgerRows.flatMap((row) => (typeof row.id === "string" ? [row.id] : [])),
+    );
+    if (matchedLedgerIds.size !== new Set(reservationLedgerIds).size) {
+      reservedBalanceCents = null;
+    } else {
+      reservedBalanceCents = reservedLedgerRows.reduce(
+        (total, row) => total + (typeof row.delta === "number" && row.delta < 0 ? -row.delta : 0),
+        0,
+      );
+    }
+  }
 
   return {
     userId: context.user.id,
     organizationId: context.organization.id,
     balance,
     formattedBalance: formatCreditCurrency(balance),
+    availableBalanceCents: balance,
+    reservedBalanceCents,
+    reservationStatus: reservedBalanceCents === null ? "incomplete" as const : "complete" as const,
+    activity,
     minimumTopUpCents: CREDIT_TOP_UP_MINIMUM_CENTS,
+    maximumTopUpCents: CREDIT_TOP_UP_MAXIMUM_CENTS,
     formattedMinimumTopUp: formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS),
     imageGenerationCostCents: getGenerationCreditCostCents("openai_image_generation"),
     videoGenerationCostCents: getGenerationCreditCostCents("higgsfield_video_generation"),

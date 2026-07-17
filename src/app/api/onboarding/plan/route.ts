@@ -10,13 +10,17 @@ import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib
 import {
   ONBOARDING_CONTRACT_VERSION,
   getDraftFromOnboardingSubmission,
-  onboardingDraftEnvelopeSchema,
+  onboardingDraftDeleteSchema,
   onboardingDraftSchema,
+  onboardingDraftWriteSchema,
   onboardingStepKeySchema,
-  onboardingSubmissionSchema,
-  type OnboardingDraftEnvelope,
+  onboardingSubmitRequestSchema,
   type OnboardingSubmission,
 } from "@/lib/onboarding-contract";
+import {
+  ONBOARDING_PROVENANCE_VERSION,
+  buildOnboardingProvenance,
+} from "@/lib/onboarding-provenance";
 import { normalizePhone } from "@/lib/phone";
 import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
 import {
@@ -28,11 +32,13 @@ import {
   mergeCampaignPlanDocument,
   readCampaignPlanDocument,
 } from "@/lib/services/campaign-plan-document";
-import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
-import { saveCampaignPlan, type OnboardingInput } from "@/lib/services/campaign-plan-service";
+import {
+  prepareCampaignPlanPayload,
+  type OnboardingInput,
+} from "@/lib/services/campaign-plan-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import type { Json } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -109,63 +115,28 @@ async function getAuthenticatedRequestContext() {
   return { supabase, context };
 }
 
-async function persistOnboardingDraft(params: {
-  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
-  organizationId: string;
-  userId: string;
-  envelope: OnboardingDraftEnvelope;
-  campaignId?: string | null;
-  submissionStatus?: "draft" | "submitted";
-}) {
-  const { error } = await (params.supabase as any).from("onboarding_drafts").upsert(
-    {
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      contract_version: ONBOARDING_CONTRACT_VERSION,
-      payload: params.envelope.draft as Json,
-      current_step: params.envelope.currentStep,
-      furthest_step_index: params.envelope.furthestStepIndex,
-      ...(params.campaignId !== undefined ? { campaign_id: params.campaignId } : {}),
-      ...(params.submissionStatus ? { submission_status: params.submissionStatus } : {}),
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "organization_id,user_id" },
-  );
-
-  if (error) {
-    throw new ApiError(500, "Onboarding draft could not be saved.", "onboarding_draft_persist_failed");
+function mapOnboardingRpcError(error: { message?: string } | null | undefined, fallback: string) {
+  const message = error?.message ?? "";
+  if (message.includes("stale_revision") || message.includes("draft_changed")) {
+    throw new ApiError(409, "This onboarding draft changed in another session.", "onboarding_draft_stale_revision");
   }
+  if (message.includes("expired")) {
+    throw new ApiError(409, "This onboarding draft expired. Start a fresh draft.", "onboarding_draft_expired");
+  }
+  if (message.includes("already_consumed") || message.includes("consumed_collision")) {
+    throw new ApiError(409, "This onboarding draft was already submitted.", "onboarding_draft_consumed");
+  }
+  if (message.includes("forbidden") || message.includes("not_member") || message.includes("service_role_required")) {
+    throw new ApiError(403, "Onboarding draft access was denied.", "onboarding_draft_forbidden");
+  }
+  throw new ApiError(500, "Onboarding could not be saved.", fallback);
 }
 
-async function findExistingCampaign(params: {
-  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
-  organizationId: string;
-  userId: string;
-  campaignId: string;
-}) {
-  const { data, error } = await (params.supabase as any)
-    .from("campaign_plans")
-    .select("id,plan,organization_id")
-    .eq("id", params.campaignId)
-    .eq("organization_id", params.organizationId)
-    .eq("user_id", params.userId)
-    .maybeSingle();
-
-  if (error) {
-    throw new ApiError(500, "Existing onboarding submission could not be checked.", "onboarding_idempotency_lookup_failed");
-  }
-
-  return data && typeof data.id === "string" ? (data as { id: string; plan: unknown }) : null;
-}
-
-async function persistCompleteOnboardingContract(params: {
-  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
-  campaignId: string;
-  organizationId: string;
-  userId: string;
+function buildCompleteOnboardingContract(params: {
   currentPlan: unknown;
   submission: OnboardingSubmission;
   idempotencyKey: string;
+  provenance: ReturnType<typeof buildOnboardingProvenance>;
 }) {
   const submission = params.submission;
   const agentName = `${submission.agentFirstName} ${submission.agentLastName}`.trim();
@@ -174,6 +145,10 @@ async function persistCompleteOnboardingContract(params: {
     language: submission.funnelLanguage,
     customQuestions: submission.leadFormQuestions,
   });
+  const provenanceReference = {
+    provenanceVersion: params.provenance.provenanceVersion,
+    provenanceDigest: params.provenance.provenanceDigest,
+  };
   const funnel = {
     ...buildWinningFunnel({
       market: submission.market,
@@ -202,17 +177,23 @@ async function persistCompleteOnboardingContract(params: {
       },
     }),
     customLeadFormQuestions: effectiveLeadFormQuestions,
+    onboardingProvenance: {
+      ...provenanceReference,
+      inputDigest: params.provenance.funnelInputDigest,
+    },
   };
+  const planRecord = params.currentPlan && typeof params.currentPlan === "object"
+    ? (params.currentPlan as Record<string, unknown>)
+    : {};
+  const creativeBrief = planRecord.creative_brief && typeof planRecord.creative_brief === "object"
+    ? (planRecord.creative_brief as Record<string, unknown>)
+    : {};
 
-  await persistCampaignPlanDocumentUpdate({
-    supabase: params.supabase,
-    campaignId: params.campaignId,
-    organizationId: params.organizationId,
-    userId: params.userId,
-    plan: mergeCampaignPlanDocument(readCampaignPlanDocument(params.currentPlan), {
+  return mergeCampaignPlanDocument(readCampaignPlanDocument(params.currentPlan), {
       industry_mode: "real_estate",
       onboarding_contract_version: ONBOARDING_CONTRACT_VERSION,
       onboarding_contract: submission as unknown as Record<string, unknown>,
+      onboarding_provenance: params.provenance,
       onboarding_idempotency_key: params.idempotencyKey,
       onboarding_focus: submission.campaignMode,
       onboarding_targeting: submission.audience,
@@ -247,6 +228,17 @@ async function persistCompleteOnboardingContract(params: {
       brokerage_name: submission.agentCompanyName,
       phone: submission.agentPhone,
       plan_tier: submission.planTier,
+      creative_brief: {
+        ...creativeBrief,
+        onboardingProvenance: {
+          ...provenanceReference,
+          inputDigest: params.provenance.creativeInputDigest,
+        },
+      },
+      launch_input_provenance: {
+        ...provenanceReference,
+        inputDigest: params.provenance.launchInputDigest,
+      },
       campaign_payload: {
         market: submission.market,
         audience: submission.audience,
@@ -264,10 +256,12 @@ async function persistCompleteOnboardingContract(params: {
         lead_form_questions: effectiveLeadFormQuestions,
         theme: funnel.theme,
         funnel,
+        onboardingProvenance: {
+          ...provenanceReference,
+          inputDigest: params.provenance.campaignInputDigest,
+        },
       },
-    }),
-    source: "onboarding_contract_v1",
-  });
+    });
 }
 
 export async function GET() {
@@ -275,7 +269,7 @@ export async function GET() {
     const { supabase, context } = await getAuthenticatedRequestContext();
     const { data, error } = await (supabase as any)
       .from("onboarding_drafts")
-      .select("contract_version,payload,current_step,furthest_step_index,campaign_id,submission_status,updated_at")
+      .select("contract_version,payload,current_step,furthest_step_index,revision,payload_digest,expires_at,updated_at")
       .eq("organization_id", context.organization.id)
       .eq("user_id", context.user.id)
       .maybeSingle();
@@ -297,8 +291,9 @@ export async function GET() {
       draft,
       currentStep,
       furthestStepIndex: Number(data.furthest_step_index) || 0,
-      campaignId: typeof data.campaign_id === "string" ? data.campaign_id : null,
-      submissionStatus: data.submission_status === "submitted" ? "submitted" : "draft",
+      revision: Number(data.revision),
+      draftPayloadDigest: data.payload_digest,
+      expiresAt: data.expires_at,
       updatedAt: typeof data.updated_at === "string" ? data.updated_at : null,
     });
   } catch (error) {
@@ -320,28 +315,61 @@ export async function PUT(request: Request) {
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const envelope = await parseJsonBody(request, onboardingDraftEnvelopeSchema, {
+    const envelope = await parseJsonBody(request, onboardingDraftWriteSchema, {
       maxBytes: 64 * 1024,
       code: "onboarding_draft_body_too_large",
     });
 
-    await persistOnboardingDraft({
-      supabase,
-      organizationId: context.organization.id,
-      userId: context.user.id,
-      envelope,
+    const { data, error } = await (supabase as any).rpc("save_onboarding_draft_v2", {
+      p_organization_id: context.organization.id,
+      p_user_id: context.user.id,
+      p_expected_revision: envelope.expectedRevision,
+      p_contract_version: ONBOARDING_CONTRACT_VERSION,
+      p_payload: envelope.draft,
+      p_current_step: envelope.currentStep,
+      p_furthest_step_index: envelope.furthestStepIndex,
     });
+    if (error) mapOnboardingRpcError(error, "onboarding_draft_persist_failed");
+    const saved = Array.isArray(data) ? data[0] : data;
+    if (!saved || !Number.isInteger(Number(saved.accepted_revision))) {
+      throw new ApiError(500, "Onboarding draft could not be saved.", "onboarding_draft_persist_failed");
+    }
 
-    return NextResponse.json({ saved: true, contractVersion: ONBOARDING_CONTRACT_VERSION });
+    return NextResponse.json({
+      saved: true,
+      contractVersion: ONBOARDING_CONTRACT_VERSION,
+      revision: Number(saved.accepted_revision),
+      draftPayloadDigest: saved.accepted_payload_digest,
+      expiresAt: saved.accepted_expires_at,
+      reusedConsumedReceipt: saved.reused_consumed_receipt === true,
+    });
   } catch (error) {
     return handleApiError(error, "Onboarding draft write");
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    assertSameOriginRequest(request);
+    const { supabase, context } = await getAuthenticatedRequestContext();
+    const text = await request.text();
+    const payload = text.trim() ? onboardingDraftDeleteSchema.parse(JSON.parse(text)) : {};
+    const { data, error } = await (supabase as any).rpc("delete_onboarding_draft_v2", {
+      p_organization_id: context.organization.id,
+      p_user_id: context.user.id,
+      p_expected_revision: payload.expectedRevision ?? null,
+    });
+    if (error) mapOnboardingRpcError(error, "onboarding_draft_delete_failed");
+    return NextResponse.json({ deleted: data === true });
+  } catch (error) {
+    return handleApiError(error, "Onboarding draft delete");
   }
 }
 
 export async function POST(request: Request) {
   try {
     assertSameOriginRequest(request);
-    const { supabase, context } = await getAuthenticatedRequestContext();
+    const { context } = await getAuthenticatedRequestContext();
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "onboarding-plan", context.user.id),
       limit: 4,
@@ -352,10 +380,11 @@ export async function POST(request: Request) {
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const submission = await parseJsonBody(request, onboardingSubmissionSchema, {
+    const requestPayload = await parseJsonBody(request, onboardingSubmitRequestSchema, {
       maxBytes: 64 * 1024,
       code: "onboarding_body_too_large",
     });
+    const submission = requestPayload.submission;
     if (
       !hasOnlyApprovedRealtorQualificationQuestions({
         language: submission.funnelLanguage,
@@ -384,54 +413,46 @@ export async function POST(request: Request) {
       submission,
     );
     const deterministicCampaignId = campaignIdFromOnboardingIdempotencyKey(idempotencyKey);
-    const existing = await findExistingCampaign({
-      supabase,
-      organizationId: context.organization.id,
-      userId: context.user.id,
-      campaignId: deterministicCampaignId,
+    const draftPayload = getDraftFromOnboardingSubmission(submission);
+    const provenance = buildOnboardingProvenance(submission, requestPayload.draftPayloadDigest);
+    const preparedPlan = await prepareCampaignPlanPayload(buildCampaignInput(submission), {
+      onboarding_contract_version: ONBOARDING_CONTRACT_VERSION,
+      onboarding_idempotency_key: idempotencyKey,
     });
-
-    let campaignId = existing?.id ?? null;
-    let currentPlan = existing?.plan ?? null;
-
-    if (!campaignId) {
-      const savedPlan = await saveCampaignPlan(buildCampaignInput(submission), {
-        campaignId: deterministicCampaignId,
-        createOnly: true,
-        initialPlanPatch: {
-          onboarding_contract_version: ONBOARDING_CONTRACT_VERSION,
-          onboarding_idempotency_key: idempotencyKey,
-        },
-      });
-      campaignId = savedPlan.id;
-
-      const { data: savedRow, error: savedRowError } = await (supabase as any)
-        .from("campaign_plans")
-        .select("plan,organization_id")
-        .eq("id", campaignId)
-        .eq("organization_id", context.organization.id)
-        .eq("user_id", context.user.id)
-        .maybeSingle();
-
-      if (savedRowError || !savedRow) {
-        throw new ApiError(
-          500,
-          "Saved campaign could not be reloaded.",
-          "onboarding_campaign_reload_failed",
-        );
-      }
-      currentPlan = savedRow.plan;
-    }
-
-    await persistCompleteOnboardingContract({
-      supabase,
-      campaignId,
-      organizationId: context.organization.id,
-      userId: context.user.id,
-      currentPlan,
+    const completePlan = buildCompleteOnboardingContract({
+      currentPlan: preparedPlan,
       submission,
       idempotencyKey,
+      provenance,
     });
+    const admin = createAdminClient();
+    if (!admin) {
+      throw new ApiError(503, "Onboarding persistence is unavailable.", "onboarding_service_unavailable");
+    }
+    const { data: submittedData, error: submitError } = await (admin as any).rpc(
+      "submit_onboarding_draft_v2",
+      {
+        p_organization_id: context.organization.id,
+        p_user_id: context.user.id,
+        p_expected_revision: requestPayload.expectedRevision,
+        p_draft_payload: draftPayload,
+        p_draft_payload_digest: requestPayload.draftPayloadDigest,
+        p_submission: submission,
+        p_submission_input_digest: provenance.submissionInputDigest,
+        p_provenance_version: ONBOARDING_PROVENANCE_VERSION,
+        p_provenance_digest: provenance.provenanceDigest,
+        p_campaign_id: deterministicCampaignId,
+        p_campaign_plan: completePlan,
+      },
+    );
+    if (submitError) mapOnboardingRpcError(submitError, "onboarding_submit_failed");
+    const submitted = Array.isArray(submittedData) ? submittedData[0] : submittedData;
+    const campaignId = typeof submitted?.submitted_campaign_id === "string"
+      ? submitted.submitted_campaign_id
+      : null;
+    if (!campaignId) {
+      throw new ApiError(500, "Onboarding campaign could not be created.", "onboarding_submit_failed");
+    }
 
     await upsertAgentProfile({
       tenantId: context.organization.id,
@@ -443,26 +464,12 @@ export async function POST(request: Request) {
       companyName: submission.agentCompanyName,
     });
 
-    await persistOnboardingDraft({
-      supabase,
-      organizationId: context.organization.id,
-      userId: context.user.id,
-      envelope: {
-        contractVersion: ONBOARDING_CONTRACT_VERSION,
-        draft: getDraftFromOnboardingSubmission(submission),
-        currentStep: "review",
-        furthestStepIndex: 9,
-      },
-      campaignId,
-      submissionStatus: "submitted",
-    });
-
     return NextResponse.json({
       success: true,
       campaignId,
       data: { campaignId },
       contractVersion: ONBOARDING_CONTRACT_VERSION,
-      reusedExisting: Boolean(existing),
+      reusedExisting: submitted.reused_existing === true,
     });
   } catch (error) {
     return handleApiError(error, "Onboarding plan");

@@ -10,6 +10,11 @@ export const GHL_MARKETPLACE_DOCUMENTATION = Object.freeze({
   locationToken: "https://marketplace.gohighlevel.com/docs/ghl/oauth/get-location-access-token/",
   appInstall: "https://marketplace.gohighlevel.com/docs/webhook/AppInstall/",
   appUninstall: "https://marketplace.gohighlevel.com/docs/webhook/AppUninstall/",
+  appUpdate: "https://marketplace.gohighlevel.com/docs/webhook/AppUpdate/",
+  webhookSecurity: "https://marketplace.gohighlevel.com/docs/2021-07-28/webhook/WebhookIntegrationGuide/",
+  userCreateWebhook: "https://marketplace.gohighlevel.com/docs/webhook/UserCreate/",
+  userUpdateWebhook: "https://marketplace.gohighlevel.com/docs/webhook/UserUpdate/",
+  userDeleteWebhook: "https://marketplace.gohighlevel.com/docs/webhook/UserDelete/",
   createUser: "https://marketplace.gohighlevel.com/docs/ghl/users/create-user/",
   deleteUser: "https://marketplace.gohighlevel.com/docs/ghl/users/delete-user/",
 } as const);
@@ -20,6 +25,12 @@ export const GHL_MARKETPLACE_OPERATIONS = [
   "company_to_location_token_exchange",
   "app_install",
   "app_uninstall",
+  "app_update",
+  "user_created",
+  "user_updated",
+  "user_deleted",
+  "location_created",
+  "location_updated",
   "user_create",
   "user_invite",
   "user_revoke",
@@ -45,9 +56,10 @@ export type GhlMarketplaceProviderContract = Readonly<{
 
 export type GhlMarketplaceOAuthBinding = Readonly<{
   stateHash: string;
-  pkceChallenge: string;
-  pkceMethod: "S256";
-  encryptedPkceVerifierRef: string;
+  stateProtection: "single_use_hash_cookie_binding";
+  pkceChallenge: string | null;
+  pkceMethod: "S256" | null;
+  encryptedPkceVerifierRef: string | null;
   appFingerprint: string;
   accountFingerprint: string;
   scopeFingerprint: string;
@@ -103,8 +115,8 @@ export function deriveGhlPkceS256Challenge(codeVerifier: string): string {
 
 export function createGhlMarketplaceOAuthBinding(input: {
   state: string;
-  codeVerifier: string;
-  encryptedPkceVerifierRef: string;
+  codeVerifier?: string | null;
+  encryptedPkceVerifierRef?: string | null;
   appId: string;
   accountId: string;
   scopes: readonly string[];
@@ -112,14 +124,19 @@ export function createGhlMarketplaceOAuthBinding(input: {
   locationId?: string | null;
 }): GhlMarketplaceOAuthBinding {
   const locationId = input.locationId?.trim() || null;
+  const codeVerifier = input.codeVerifier?.trim() || null;
+  const verifierRef = input.encryptedPkceVerifierRef?.trim() || null;
+  if (Boolean(codeVerifier) !== Boolean(verifierRef)) {
+    throw new Error("ghl_pkce_binding_incomplete");
+  }
   return Object.freeze({
     stateHash: fingerprintGhlAuthorityValue(requireNonEmpty(input.state, "oauth_state")),
-    pkceChallenge: deriveGhlPkceS256Challenge(input.codeVerifier),
-    pkceMethod: "S256",
-    encryptedPkceVerifierRef: assertGhlEncryptedReference(
-      input.encryptedPkceVerifierRef,
-      "pkce_verifier_reference",
-    ),
+    stateProtection: "single_use_hash_cookie_binding",
+    pkceChallenge: codeVerifier ? deriveGhlPkceS256Challenge(codeVerifier) : null,
+    pkceMethod: codeVerifier ? "S256" : null,
+    encryptedPkceVerifierRef: verifierRef
+      ? assertGhlEncryptedReference(verifierRef, "pkce_verifier_reference")
+      : null,
     appFingerprint: fingerprintGhlAuthorityValue(input.appId),
     accountFingerprint: fingerprintGhlAuthorityValue(input.accountId),
     scopeFingerprint: fingerprintGhlScopes(input.scopes),
@@ -131,9 +148,11 @@ export function createGhlMarketplaceOAuthBinding(input: {
 export function buildGhlOAuthCodeExchangeContract(input: {
   clientCredentialRef: string;
   authorizationCodeRef: string;
-  pkceVerifierRef: string;
   redirectUriRef: string;
+  userTypeRef: string;
+  pkceVerifierRef?: string | null;
 }): GhlMarketplaceProviderContract {
+  const pkceVerifierRef = input.pkceVerifierRef?.trim();
   return Object.freeze({
     operation: "oauth_code_exchange",
     effect: "disabled_contract_only",
@@ -143,11 +162,16 @@ export function buildGhlOAuthCodeExchangeContract(input: {
     requiredEncryptedReferences: Object.freeze([
       assertGhlEncryptedReference(input.clientCredentialRef, "client_credential_reference"),
       assertGhlEncryptedReference(input.authorizationCodeRef, "authorization_code_reference"),
-      assertGhlEncryptedReference(input.pkceVerifierRef, "pkce_verifier_reference"),
+      ...(pkceVerifierRef
+        ? [assertGhlEncryptedReference(pkceVerifierRef, "pkce_verifier_reference")]
+        : []),
     ]),
-    requiredOpaqueBindings: Object.freeze([requireNonEmpty(input.redirectUriRef, "redirect_uri_reference")]),
-    status: "operator_required",
-    blockerCode: "ghl_marketplace_inbound_pkce_support_unattested",
+    requiredOpaqueBindings: Object.freeze([
+      requireNonEmpty(input.redirectUriRef, "redirect_uri_reference"),
+      requireNonEmpty(input.userTypeRef, "user_type_reference"),
+    ]),
+    status: "ready_for_separately_authorized_executor",
+    blockerCode: null,
   });
 }
 

@@ -5,9 +5,11 @@ import {
 } from "@/lib/integrations/meta/contract";
 import { fetchMetaResponse } from "@/lib/integrations/meta/request";
 import {
+  buildMetaReportingTruth,
   buildMetaReportingWindow,
   metaReportingTimeRange,
   normalizeMetaDeliveryInsight,
+  type MetaReportingTruth,
   type MetaReportingWindow,
 } from "@/lib/integrations/meta/reporting-contract";
 import type {
@@ -37,27 +39,49 @@ export type MetaAdInsight = {
   leads: number;
 };
 
-type MetaInsightsResponse = {
-  data?: Array<{
-    ad_id?: string;
-    ad_name?: string;
-    spend?: string;
-    impressions?: string;
-    clicks?: string;
-    ctr?: string;
-    frequency?: string;
-    reach?: string;
-    actions?: Array<{
-      action_type?: string;
-      value?: string;
-    }>;
-    conversions?: Array<{
-      action_type?: string;
-      value?: string;
-    }>;
+type MetaInsightRow = {
+  ad_id?: string;
+  ad_name?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  ctr?: string;
+  frequency?: string;
+  reach?: string;
+  date_start?: string;
+  date_stop?: string;
+  actions?: Array<{
+    action_type?: string;
+    value?: string;
   }>;
+  conversions?: Array<{
+    action_type?: string;
+    value?: string;
+  }>;
+};
+
+type MetaInsightsResponse = {
+  data?: MetaInsightRow[];
+  paging?: {
+    cursors?: { after?: string };
+    next?: string;
+  };
   error?: { message?: string; code?: number; error_subcode?: number };
 };
+
+export type MetaDeliveryMetricsResult = {
+  metrics: MetaDeliveryMetrics;
+  reportingTruth: MetaReportingTruth;
+};
+
+export type MetaAdInsightsResult = {
+  insights: MetaAdInsight[];
+  reportingTruth: MetaReportingTruth;
+};
+
+const META_INSIGHTS_PAGE_SIZE = 100;
+const META_INSIGHTS_MAX_PAGES = 20;
+const META_INSIGHTS_MAX_ROWS = META_INSIGHTS_PAGE_SIZE * META_INSIGHTS_MAX_PAGES;
 
 const AUTHORITATIVE_LEAD_ACTION_TYPES = [
   "lead",
@@ -132,6 +156,96 @@ function requireMetaAccessToken(accessToken: string | null) {
   }
 
   return accessToken;
+}
+
+async function fetchMetaInsightPages(params: {
+  path: string;
+  accessToken: string;
+  query: Record<string, string | number | boolean | null | undefined>;
+  fallbackError: string;
+}) {
+  const rows: MetaInsightRow[] = [];
+  const seenCursors = new Set<string>();
+  let after: string | null = null;
+
+  for (let pageNumber = 1; pageNumber <= META_INSIGHTS_MAX_PAGES; pageNumber += 1) {
+    const url = buildMetaGraphUrl(params.path, {
+      ...params.query,
+      limit: META_INSIGHTS_PAGE_SIZE,
+      after,
+    });
+    const response = await fetchMetaResponse(url, {
+      purpose: "sync",
+      cache: "no-store",
+      ...withMetaBearerToken(params.accessToken),
+    });
+    const data = (await response.json().catch(() => null)) as MetaInsightsResponse | null;
+
+    if (!response.ok) {
+      parseMetaError(data, params.fallbackError);
+    }
+    if (!data || !Array.isArray(data.data)) {
+      throw new ApiError(
+        502,
+        "Meta insights returned an invalid page.",
+        "meta_insights_page_invalid",
+      );
+    }
+    if (rows.length + data.data.length > META_INSIGHTS_MAX_ROWS) {
+      throw new ApiError(
+        502,
+        "Meta insights exceeded the bounded row limit.",
+        "meta_insights_row_limit_reached",
+      );
+    }
+    rows.push(...data.data);
+
+    const hasNextPage = typeof data.paging?.next === "string" && data.paging.next.length > 0;
+    if (!hasNextPage) {
+      return {
+        rows,
+        pageCount: pageNumber,
+        receivedAt: new Date().toISOString(),
+      };
+    }
+
+    const nextCursor = data.paging?.cursors?.after?.trim() ?? "";
+    if (
+      data.data.length === 0 ||
+      !nextCursor ||
+      nextCursor.length > 1_024 ||
+      /\s/.test(nextCursor) ||
+      nextCursor === after
+    ) {
+      throw new ApiError(
+        502,
+        "Meta insights pagination did not make progress.",
+        "meta_insights_pagination_nonprogress",
+      );
+    }
+    if (seenCursors.has(nextCursor)) {
+      throw new ApiError(
+        502,
+        "Meta insights repeated a pagination cursor.",
+        "meta_insights_pagination_duplicate_cursor",
+      );
+    }
+    if (pageNumber === META_INSIGHTS_MAX_PAGES) {
+      throw new ApiError(
+        502,
+        "Meta insights exceeded the bounded page limit.",
+        "meta_insights_page_limit_reached",
+      );
+    }
+    seenCursors.add(nextCursor);
+    after = nextCursor;
+  }
+
+  throw new ApiError(
+    502,
+    "Meta insights pagination ended unexpectedly.",
+    "meta_insights_pagination_unexpected",
+  );
 }
 
 async function fetchMetaObject(params: {
@@ -236,45 +350,104 @@ export async function fetchDeliveryMetrics(params: {
   mode: MetaSyncMode;
   campaignStatus: string | null;
   reportingWindow?: MetaReportingWindow;
-}) {
+}): Promise<MetaDeliveryMetricsResult> {
   const accessToken = requireMetaAccessToken(params.accessToken);
   const reportingWindow = params.reportingWindow ?? buildMetaReportingWindow();
-  const url = buildMetaGraphUrl(`${params.campaignId}/insights`, {
-    fields: "spend,impressions,clicks,ctr,frequency,reach,actions,conversions",
-    time_range: metaReportingTimeRange(reportingWindow),
-    limit: 1,
+  const pageResult = await fetchMetaInsightPages({
+    path: `${params.campaignId}/insights`,
+    accessToken,
+    query: {
+      fields: "spend,impressions,clicks,ctr,frequency,reach,actions,conversions,date_start,date_stop",
+      time_range: metaReportingTimeRange(reportingWindow),
+    },
+    fallbackError: "Meta delivery metrics could not be loaded.",
   });
-
-  const response = await fetchMetaResponse(url, {
-    purpose: "sync",
-    cache: "no-store",
-    ...withMetaBearerToken(accessToken),
-  });
-  const data = (await response.json().catch(() => null)) as MetaInsightsResponse | null;
-
-  if (!response.ok) {
-    parseMetaError(data, "Meta delivery metrics could not be loaded.");
+  if (pageResult.rows.length > 1) {
+    throw new ApiError(
+      502,
+      "Meta returned more than one campaign-level aggregate insight row.",
+      "meta_delivery_insights_ambiguous",
+    );
   }
 
-  const insight = data?.data?.[0];
+  const insight = pageResult.rows[0];
+  const reportingTruth = buildMetaReportingTruth({
+    insight,
+    reportingWindow,
+    receivedAt: pageResult.receivedAt,
+    pageCount: pageResult.pageCount,
+    rowCount: pageResult.rows.length,
+  });
   const normalized = normalizeMetaDeliveryInsight(insight);
+  const spend = Number(insight?.spend ?? 0);
+  const leads = extractLeadsFromActions(insight?.actions);
 
   return {
-    spend: Number(insight?.spend ?? 0),
-    impressions: normalized.impressions,
-    clicks: normalized.clicks,
-    ctr: normalized.ctr,
-    leads: extractLeadsFromActions(insight?.actions),
-    appointments: 0,
-    cpl: 0,
-    cpa: 0,
-    cpc: 0,
-    frequency: normalized.frequency,
-    reach: normalized.reach,
-    attribution_window: reportingWindow,
-    raw_actions: insight?.actions ?? [],
-    raw_conversions: insight?.conversions ?? [],
-  } satisfies MetaDeliveryMetrics;
+    metrics: {
+      spend,
+      impressions: normalized.impressions,
+      clicks: normalized.clicks,
+      ctr: normalized.ctr,
+      leads,
+      appointments: 0,
+      cpl: leads > 0 ? spend / leads : 0,
+      cpa: 0,
+      cpc: normalized.clicks > 0 ? spend / normalized.clicks : 0,
+      frequency: normalized.frequency,
+      reach: normalized.reach,
+      attribution_window: reportingWindow,
+      raw_actions: insight?.actions ?? [],
+      raw_conversions: insight?.conversions ?? [],
+    },
+    reportingTruth,
+  };
+}
+
+function buildAdInsightsTruth(params: {
+  rows: MetaInsightRow[];
+  requestedAdCount: number;
+  reportingWindow: MetaReportingWindow;
+  receivedAt: string;
+  pageCount: number;
+}) {
+  if (params.rows.length === 0) {
+    return buildMetaReportingTruth({
+      insight: null,
+      reportingWindow: params.reportingWindow,
+      receivedAt: params.receivedAt,
+      pageCount: params.pageCount,
+      rowCount: 0,
+    });
+  }
+  const rowTruth = params.rows.map((row) => buildMetaReportingTruth({
+    insight: row,
+    reportingWindow: params.reportingWindow,
+    receivedAt: params.receivedAt,
+    pageCount: params.pageCount,
+    rowCount: params.rows.length,
+  }));
+  const missingFields = new Set(rowTruth.flatMap((truth) => truth.missingFields));
+  if (params.rows.length !== params.requestedAdCount) {
+    missingFields.add("requested_ad_rows");
+  }
+  const missing = [...missingFields].sort();
+  return {
+    schemaVersion: 1 as const,
+    completeness: missing.length === 0 ? "complete" as const : "partial" as const,
+    missingFields: missing,
+    providerSourceStartedAt:
+      rowTruth.every((truth) => truth.providerSourceStartedAt === rowTruth[0]?.providerSourceStartedAt)
+        ? rowTruth[0]?.providerSourceStartedAt ?? null
+        : null,
+    providerSourceEndedAt:
+      rowTruth.every((truth) => truth.providerSourceEndedAt === rowTruth[0]?.providerSourceEndedAt)
+        ? rowTruth[0]?.providerSourceEndedAt ?? null
+        : null,
+    providerSourceGranularity: "date" as const,
+    receivedAt: params.receivedAt,
+    pageCount: params.pageCount,
+    rowCount: params.rows.length,
+  } satisfies MetaReportingTruth;
 }
 
 export async function fetchAdInsights(params: {
@@ -283,44 +456,62 @@ export async function fetchAdInsights(params: {
   mode: MetaSyncMode;
   adIds: string[];
   reportingWindow?: MetaReportingWindow;
-}) {
+}): Promise<MetaAdInsightsResult> {
   const accessToken = requireMetaAccessToken(params.accessToken);
   const reportingWindow = params.reportingWindow ?? buildMetaReportingWindow();
-  const url = buildMetaGraphUrl(`${params.campaignId}/insights`, {
-    fields: "ad_id,ad_name,spend,impressions,clicks,ctr,actions",
-    level: "ad",
-    time_range: metaReportingTimeRange(reportingWindow),
-    limit: Math.max(params.adIds.length, 25),
+  const pageResult = await fetchMetaInsightPages({
+    path: `${params.campaignId}/insights`,
+    accessToken,
+    query: {
+      fields: "ad_id,ad_name,spend,impressions,clicks,ctr,frequency,reach,actions,date_start,date_stop",
+      level: "ad",
+      time_range: metaReportingTimeRange(reportingWindow),
+    },
+    fallbackError: "Meta ad insights could not be loaded.",
   });
-
-  const response = await fetchMetaResponse(url, {
-    purpose: "sync",
-    cache: "no-store",
-    ...withMetaBearerToken(accessToken),
-  });
-  const data = (await response.json().catch(() => null)) as MetaInsightsResponse | null;
-
-  if (!response.ok) {
-    parseMetaError(data, "Meta ad insights could not be loaded.");
-  }
-
   const allowedIds = new Set(params.adIds);
+  const allowedRows = pageResult.rows.filter((row) => row.ad_id && allowedIds.has(row.ad_id));
+  const seenIds = new Set<string>();
+  for (const row of allowedRows) {
+    if (!row.ad_id || seenIds.has(row.ad_id)) {
+      throw new ApiError(
+        502,
+        "Meta repeated an ad insight row across pages.",
+        "meta_ad_insights_duplicate_row",
+      );
+    }
+    seenIds.add(row.ad_id);
+  }
+  const reportingTruth = buildAdInsightsTruth({
+    rows: allowedRows,
+    requestedAdCount: allowedIds.size,
+    reportingWindow,
+    receivedAt: pageResult.receivedAt,
+    pageCount: pageResult.pageCount,
+  });
+  const completeRows = allowedRows.filter((row) => buildMetaReportingTruth({
+    insight: row,
+    reportingWindow,
+    receivedAt: pageResult.receivedAt,
+    pageCount: pageResult.pageCount,
+    rowCount: allowedRows.length,
+  }).completeness === "complete");
 
-  return (data?.data ?? [])
-    .filter((row) => row.ad_id && allowedIds.has(row.ad_id))
-    .map((row, index) => {
+  return {
+    insights: completeRows.map((row, index) => {
       const normalized = normalizeMetaDeliveryInsight(row);
-
       return {
         adId: String(row.ad_id),
         adName: String(row.ad_name ?? `Ad ${index + 1}`),
-        spend: Number(row.spend ?? 0),
+        spend: Number(row.spend),
         impressions: normalized.impressions,
         clicks: normalized.clicks,
         ctr: normalized.ctr,
         leads: extractLeadsFromActions(row.actions),
       } satisfies MetaAdInsight;
-    });
+    }),
+    reportingTruth,
+  };
 }
 
 export function getMetaSyncStatus(

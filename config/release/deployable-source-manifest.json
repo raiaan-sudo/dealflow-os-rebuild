@@ -1,20 +1,38 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1019,
-  "deployableSourceSha256": "a6194b49be6132c188a9e02f737ea29fe9a3a74edbd5f86be525d08a2f94c806",
+  "entryCount": 1082,
+  "deployableSourceSha256": "f36d652d06d4c152896d8d847e47f38851a9f202107337f0cdf86081d405c53f",
   "entries": [
     {
-      "path": ".github/workflows/ci.yml",
-      "size": 1093,
+      "path": ".github/dependabot.yml",
+      "size": 544,
       "mode": 33188,
-      "sha256": "d7fcd1596d7172f7e71378f9c8b4316092955c211cfb19f38083a9c94cf8c41c"
+      "sha256": "16e9b9f2e518286aab6fb3f82c0a30d9b15c19a496d30e6b942ab90997adcfda"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "size": 1491,
+      "mode": 33188,
+      "sha256": "65c51e6d63a54c2bd1651506aec8015fd11d7a0185cfeddc7b7cc6e23e26f806"
     },
     {
       "path": ".github/workflows/security-audit.yml",
-      "size": 1608,
+      "size": 2821,
       "mode": 33188,
-      "sha256": "4c462caa60038387926fd6344d67ba95d0b3ddcc6487e3dfd70c04e94dd38cbf"
+      "sha256": "dbce49b199441f2ea8803b9f8765c2c087eb0fb30333f37d4fe0ed2669a11736"
+    },
+    {
+      "path": ".npmrc",
+      "size": 64,
+      "mode": 33188,
+      "sha256": "3bb96a1a78db16d68bba21839331014b71697da669718bde6644bf736fdf5068"
+    },
+    {
+      "path": ".nvmrc",
+      "size": 8,
+      "mode": 33188,
+      "sha256": "51849cee918b92b09b95121b54380f6124c0f578d8c2323221c0d75bbbadb08d"
     },
     {
       "path": ".vercelignore",
@@ -29,10 +47,46 @@
       "sha256": "0a847f6906d61e5c015bab72426ad2b3d584b94b1c04e0886440728daeb7b834"
     },
     {
-      "path": "README.md",
-      "size": 1383,
+      "path": "LICENSE.md",
+      "size": 439,
       "mode": 33188,
-      "sha256": "11994b30b08107f737b64953aa4b479368ec65db88adb6688708fcaa44bd3fdc"
+      "sha256": "9ebc21055ee78c30ecf026a2a94b12a65995fcc3755eeec93dbf0604160fedb9"
+    },
+    {
+      "path": "README.md",
+      "size": 1899,
+      "mode": 33188,
+      "sha256": "2c01a4825d5acbb210fce9081bab833515e1085f81950a0ccce03e5cd6026101"
+    },
+    {
+      "path": "SECURITY.md",
+      "size": 1077,
+      "mode": 33188,
+      "sha256": "1f7ce2193f657cfee8f4eb6c1017eee2fac1434e89751f5c8552de3bc307e5e0"
+    },
+    {
+      "path": "config/authority/dealflow-owner-decision-authority-envelope.schema.json",
+      "size": 6174,
+      "mode": 33188,
+      "sha256": "9b550bcb44d705685661abb59585d2d5b628710372cf9b30c780fbd468ab3d9f"
+    },
+    {
+      "path": "config/authority/dealflow-owner-decisions.schema.json",
+      "size": 8535,
+      "mode": 33188,
+      "sha256": "6598143f3796a71097cfdb99c9f6fefd078c7a10d1662c7a7bc55d3983a07764"
+    },
+    {
+      "path": "config/authority/dealflow-owner-decisions.v1.json",
+      "size": 50963,
+      "mode": 33188,
+      "sha256": "725885405e03ddb97dca11f908799315aefa9b5eb8cdedb1c1a73bdc37b9aed9"
+    },
+    {
+      "path": "config/security/privileged-tenancy-matrix.v1.json",
+      "size": 9772,
+      "mode": 33188,
+      "sha256": "832ef2c6500a0b6cdf5fd76778de08eed7944a4b6453d779d8aeb605817dc23e"
     },
     {
       "path": "config/security/supabase-prod-ca-2021.crt",
@@ -86,25 +140,31 @@
       "path": "docs/dealflow-completion/CURRENT_RELEASE_ISSUE_LEDGER.md",
       "size": 6536,
       "mode": 33188,
-      "sha256": "7a4ad4da187e5c23880301a98410c42cc167730bb110f8e22467881c550aa5f0"
+      "sha256": "f6447dac71de5814b26b2c5deb06a7d465c3cd693fe4eb70af281f81212507d9"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
       "size": 12689,
       "mode": 33188,
-      "sha256": "237a2ac4a5b1dc54ab87e38475920fae5554d6728b31d4866e56ac29c6bbe178"
+      "sha256": "9273b0a73f3f48891c77cf21896362a09b3265d906e022a269e9c8b44d75e4d6"
+    },
+    {
+      "path": "docs/dealflow-completion/FINAL_FULL_STACK_EXECUTION_PLAN.md",
+      "size": 16258,
+      "mode": 33188,
+      "sha256": "71766978b1ea2747c6a81d4b33c46279144b0488b60809759d7299f2df351541"
     },
     {
       "path": "docs/dealflow-completion/FINAL_HANDOFF.md",
       "size": 4224,
       "mode": 33188,
-      "sha256": "1dbf2b8c962e2e909a51bac177652253430e99e63bf8332f36c3552489c8c264"
+      "sha256": "4befd7b2af60a1a22d598ea56880e97d9358d05af4fe792bf193e2a443432e9d"
     },
     {
       "path": "docs/dealflow-completion/FINAL_MASTER_SUCCESSOR_STATUS_20260716.md",
-      "size": 7126,
+      "size": 7933,
       "mode": 33188,
-      "sha256": "34c6b452668efff1f3f3ce9f20d91c0357d4720a51eacd32c016afd4fa55f2b4"
+      "sha256": "ef568420a6df2988a407cce3eed646d16cdf6b34860d43c1373d5627c5c67fd8"
     },
     {
       "path": "docs/dealflow-completion/FINAL_RELEASE_DOCUMENTATION_CHECKLIST.md",
@@ -120,21 +180,21 @@
     },
     {
       "path": "docs/dealflow-completion/GHL_PRODUCTION_OPERATING_CONTRACT.md",
-      "size": 19564,
+      "size": 20252,
       "mode": 33188,
-      "sha256": "72b7e2688daa7d7f6decf1567f106bb6463f32aca81fe6f9d6451f0f4925c6e1"
+      "sha256": "5b193ad26ea1cd01a08a35193b08753e5b443ce85feb35024dd6f883e9335c53"
     },
     {
       "path": "docs/dealflow-completion/GHL_STAGING_SANDBOX_CONTRACT.md",
-      "size": 7025,
+      "size": 7655,
       "mode": 33188,
-      "sha256": "4b21245a6eb9978c30c812da8c733acc89a23bca4751b095b2c406ad6f5dc5c5"
+      "sha256": "06c691e468d41009b7141c0fb04802afba46286d87af4d9e1481f5409db935ed"
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 18381,
+      "size": 19258,
       "mode": 33188,
-      "sha256": "cac2956c4c30d1f1e9694ceb9ffdedcee1425e1ef5224fad02de64ee642334ad"
+      "sha256": "f384ad6849162e2ce4adc6e4df91fe14f5c4fbab0c247f57cd4d56418a611bbd"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -150,9 +210,9 @@
     },
     {
       "path": "docs/dealflow-completion/MIGRATION_AND_ROLLBACK.md",
-      "size": 12995,
+      "size": 13003,
       "mode": 33188,
-      "sha256": "39a55ff59b6e5ca5bae79e70346149c04e631197116ea7ef1dd32f3643763af0"
+      "sha256": "8907dc19b6e4af2ef4bdc12d91345d59804d0fda3130c2706268b8844ce35fb5"
     },
     {
       "path": "docs/dealflow-completion/MULTILINGUAL_DYNAMIC_CONTENT_EXEMPTIONS.md",
@@ -182,7 +242,7 @@
       "path": "docs/dealflow-completion/OVERNIGHT_INTEGRATION_20260713.md",
       "size": 9932,
       "mode": 33188,
-      "sha256": "9177ff18651ce8f71736c34a4722907d1457c6c6107fbb007f065a5281a57e7e"
+      "sha256": "d03a0544f9bb340a4c52381a169faf32bd1f7ea2176852c5801934016f6f9206"
     },
     {
       "path": "docs/dealflow-completion/PROVIDER_ACCEPTANCE_BOUNDARIES.md",
@@ -194,7 +254,7 @@
       "path": "docs/dealflow-completion/RELEASE_CANDIDATE_MANIFEST.md",
       "size": 3814,
       "mode": 33188,
-      "sha256": "86c2fa5f8f2afd1b3f1c871a3f1a2c7ca79b7d928d00ca329fda4a0c50f39edd"
+      "sha256": "0a530ca207fa78b952088d3f28a76b2e06f63196304af02f68cbe6bcfe201d4a"
     },
     {
       "path": "docs/dealflow-completion/RELEASE_EVIDENCE_TRUST_POLICY.md",
@@ -230,7 +290,7 @@
       "path": "docs/dealflow-completion/TEST_AND_PROOF_MATRIX.md",
       "size": 10689,
       "mode": 33188,
-      "sha256": "3d056591589bc481b4f9989c8b4e25b9a2c65820ea63c97b0c5aeafdc2aedd65"
+      "sha256": "51baac775aa38001e07500981e3b0d80540d98493116bba6850b6d799709e5ac"
     },
     {
       "path": "docs/dealflow-completion/WHITE_LABEL_AND_HIGGSFIELD_AUTHORITY_20260713.md",
@@ -570,15 +630,15 @@
     },
     {
       "path": "package-lock.json",
-      "size": 268820,
+      "size": 268851,
       "mode": 33188,
-      "sha256": "d71d082392454964c2122884ac9a4e7c585fddebf646534ee0cfcf737a70ea52"
+      "sha256": "c95f4be2a2fb44f87a401138ba6b2ec4085b6994a96d76ad2b0928945bee1d9b"
     },
     {
       "path": "package.json",
-      "size": 14294,
+      "size": 17545,
       "mode": 33188,
-      "sha256": "4b5903d68bcb773b8140ecce5b0cc7bec169b4b78e6906ab19175601c4c0ced1"
+      "sha256": "aad0e9490ae2cca6bbf81615e549112ff5ef49f3b1e6f17ebd507bd2fce97dde"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -696,9 +756,9 @@
     },
     {
       "path": "scripts/check-route-security.mjs",
-      "size": 16571,
+      "size": 18528,
       "mode": 33188,
-      "sha256": "db186087663b660da2a6fa91b8646772fd37134f8affd1b55f57567f69ff7518"
+      "sha256": "7416237063d02d7ac8ac8c6ae930a35e7e9a28fcb76b91ca6e698e4181da040d"
     },
     {
       "path": "scripts/check-tenant-isolation.mjs",
@@ -738,9 +798,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 107803,
+      "size": 108237,
       "mode": 33188,
-      "sha256": "9479613f44ad8bbbb200a029191dfe2b4e697e67821746e4d983d6c590cd6a63"
+      "sha256": "494f0c70a6a3f995c788fb4cb45523a9d3be581da4e4012c92fb685cf6e18335"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -750,9 +810,15 @@
     },
     {
       "path": "scripts/generate-release-guard.mjs",
-      "size": 73073,
+      "size": 76672,
       "mode": 33261,
-      "sha256": "f324a5e10e5d50c1c50ade41ecd0a732f91e34d63caed3b3dfa0094efc1b9506"
+      "sha256": "79f6090f7d606d40665a1a2e84980e4c618c4b6e79d15064c4104971093d5e5c"
+    },
+    {
+      "path": "scripts/generate-supply-chain-evidence.mjs",
+      "size": 8086,
+      "mode": 33188,
+      "sha256": "78e24c8c97fa733f078bde775e1b9713cb844512b30bf0a1f88bcfde8d7a6677"
     },
     {
       "path": "scripts/job-observability.md",
@@ -840,9 +906,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 25016,
+      "size": 25024,
       "mode": 33188,
-      "sha256": "e7f3ab2879d9256081267c62883bb051dbb0e29b9fe02747d1bbc96be39e884f"
+      "sha256": "aafcda60cb7046cdd45ce70114df98f83fa1ed24b1f50044c723b32fe2d89e2f"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -882,15 +948,15 @@
     },
     {
       "path": "scripts/schema/check-forward-reconstruction.mjs",
-      "size": 20334,
+      "size": 20972,
       "mode": 33188,
-      "sha256": "c51a17a30e5dd9217fffa394da33b6b08c365154c89c00d6082aaca442340011"
+      "sha256": "f1f48dfea0ef7232d2043937e1c026b150ae3bc3897bcc5d3ad6a25f82baa4c6"
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 113301,
+      "size": 113309,
       "mode": 33188,
-      "sha256": "fa35d1591ae9f9025339d78ef3f9d5f4d1392190222ebc4dba1b511f7428b08c"
+      "sha256": "61b251fab0a751d365144ad2f5a5ae4aa0d5eb353913b72063463b65344e7dd6"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -912,9 +978,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 119046,
+      "size": 174712,
       "mode": 33188,
-      "sha256": "13bebb5a262d78c3959f141033fc7d31aaa8d921e417dac756261b8f7d6e3cdb"
+      "sha256": "dc3e983a0a72b3c0dd1452ac0e59a98c9e9725007c80200cec21822815c19bf1"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -947,6 +1013,12 @@
       "sha256": "9ff4bed509b4381ffd71819aeb2ea65db53ec52d7e1444c4686f36510366318d"
     },
     {
+      "path": "scripts/staging/forward-104-to-115-contract.mjs",
+      "size": 22996,
+      "mode": 33188,
+      "sha256": "5e41b7d8c63c216187e9e7dea3d259ce68da9fd65f7c1766e76d8389dc77c0d0"
+    },
+    {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
       "size": 3627,
       "mode": 33188,
@@ -954,9 +1026,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 44622,
+      "size": 73634,
       "mode": 33188,
-      "sha256": "472b6fa4bbcb2e759d4619e64d95244934c3e76a83dfc1c5fabd2966e9cf1545"
+      "sha256": "8bfa1a37aa5fd74d6e7d257ed6473001b8e92258238e41b45a1f051cb83c5715"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -978,9 +1050,9 @@
     },
     {
       "path": "scripts/staging/prior-migration-proof-contract.mjs",
-      "size": 19647,
+      "size": 19697,
       "mode": 33188,
-      "sha256": "51e56c40f93d7df6e1de18d46a5d50d660d8daf840ede82051c34fde53d9095f"
+      "sha256": "841e5c7fe42514d8b9b796e01e8186276ff60296f869649e7d985aa105ebb840"
     },
     {
       "path": "scripts/staging/provider-session-bundle-contract.mjs",
@@ -996,9 +1068,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 272908,
+      "size": 276441,
       "mode": 33188,
-      "sha256": "24c9057551f6c893c924d3fa8a87d0531ce05c2c185c1506936d6427a56d326f"
+      "sha256": "88bb1830d1153b0452b9929fa929c62647d88bcb4201d8ec8388e0de35a103a8"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1050,9 +1122,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 52774,
+      "size": 53425,
       "mode": 33188,
-      "sha256": "c681bed23542fecf9ee566d6561d01001999b52b23348f8e31287f4c20414f3a"
+      "sha256": "b454ef51fe46c81dd6c214f5435109521501115097f6882e10f561bc6201ca39"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1085,6 +1157,12 @@
       "sha256": "26b64f7df0bdf7559e7e1f2f06be36617349b80e4cfe1a65b582b5663d762763"
     },
     {
+      "path": "scripts/staging/test-forward-104-to-115-contract.mjs",
+      "size": 23562,
+      "mode": 33188,
+      "sha256": "500581878bb3fd098980a6489eb6a18ce97c38981b4f990ac8d2813cda583529"
+    },
+    {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
       "size": 15565,
       "mode": 33188,
@@ -1092,9 +1170,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 7604,
+      "size": 9329,
       "mode": 33188,
-      "sha256": "efc0ec388353253531336d9e79466dbb28961bfcd6cf1f358f3014d33824d378"
+      "sha256": "0b1185a03884ae3bcf0693c0ec64609e7187ddc6db74fb2593b644658f6447af"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1104,9 +1182,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 121881,
+      "size": 126811,
       "mode": 33188,
-      "sha256": "baf864107ae294f137261e924b5fd5962750322de67b7e1276b487536c77092a"
+      "sha256": "9927d298b9f93b924b67e0a16bdee8616b6900fd95dfa181c82e2ec8a8904f85"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1187,6 +1265,12 @@
       "sha256": "2f18280b038801d2bdfc7972a25fd191d0745dfb1a6611412ecbac0f27ca73c0"
     },
     {
+      "path": "scripts/staging/test-vercel-environment-sync-contract.mjs",
+      "size": 16386,
+      "mode": 33188,
+      "sha256": "1b07ef10aac5d1c5c686419e71fe748077d5569f6a28f5b7b878c7b93471f944"
+    },
+    {
       "path": "scripts/staging/test-vercel-staging-protection-contract.mjs",
       "size": 5322,
       "mode": 33188,
@@ -1223,6 +1307,12 @@
       "sha256": "b7bfe8ef810adbd5b0bff829dbef3275c8bc1ef52854d3b9af88db0d43cb9d69"
     },
     {
+      "path": "scripts/staging/vercel-environment-sync-contract.mjs",
+      "size": 23443,
+      "mode": 33188,
+      "sha256": "75081f2c4b2160f77de30c48c5a9f0158120a1b2ee8a97d3bf6efa06d82cd36b"
+    },
+    {
       "path": "scripts/staging/vercel-staging-protection-contract.mjs",
       "size": 4929,
       "mode": 33188,
@@ -1242,9 +1332,9 @@
     },
     {
       "path": "scripts/test-access-key-checkout-signup.mjs",
-      "size": 9796,
+      "size": 10244,
       "mode": 33188,
-      "sha256": "107f430d7a737ca6cc419c81cbb1fa1c10467ff7131f188e0a7a7ed3dc2a6c38"
+      "sha256": "0cd7718870ffb5ddf051406dcfe99dffda23ca3967ad79a4c662357e266486f7"
     },
     {
       "path": "scripts/test-access-key-commercial-activation.mjs",
@@ -1272,15 +1362,21 @@
     },
     {
       "path": "scripts/test-account-deletion-offboarding-contract.mjs",
-      "size": 14475,
+      "size": 16485,
       "mode": 33188,
-      "sha256": "a86e0aba13b8328c5a598df45101e8dca1b2b8448a4a904162a2f98647b7ea71"
+      "sha256": "d94e12b6dcfaf8931780f2704a918ece54924ba37bb605c89c55a2b0c86fa983"
     },
     {
       "path": "scripts/test-account-deletion-offboarding-disposable-db.mjs",
-      "size": 39003,
+      "size": 40036,
       "mode": 33188,
-      "sha256": "3ed5f21dcdf35c43ecc93be4cbfc76ffcc091e9cf9aedaaf40dd8fefcab0428c"
+      "sha256": "58874df7bfc94942b13702edb5c12e7a5ba735126137ee4fdd0af4d1af718260"
+    },
+    {
+      "path": "scripts/test-admin-page-authorization-contract.mjs",
+      "size": 2018,
+      "mode": 33188,
+      "sha256": "33e627996f4bffb9fc7ffc56664c130806c2a6979c5e28aeb93557c6fe7bec28"
     },
     {
       "path": "scripts/test-admin-security-truth.mjs",
@@ -1325,6 +1421,12 @@
       "sha256": "1a6fec81506f3cfa106e5a0baab592e46863ff9d6fc68b1c4698546ef7d2561d"
     },
     {
+      "path": "scripts/test-campaign-lifecycle-truth.ts",
+      "size": 7522,
+      "mode": 33188,
+      "sha256": "43e897c04ea3c0364a5259861aa6f962c86697e93a114d3403b6ce0ef170e9e5"
+    },
+    {
       "path": "scripts/test-client-ip-contract.mjs",
       "size": 2164,
       "mode": 33188,
@@ -1344,9 +1446,9 @@
     },
     {
       "path": "scripts/test-continuous-reporting-optimizer.mjs",
-      "size": 17458,
+      "size": 24848,
       "mode": 33188,
-      "sha256": "36df6463fee87af1562a5f0580f3e7993ebfcfdda484616aa3f2866081fff198"
+      "sha256": "56166ef16aba8636c03bcaf0a9b9bca88a8f8d261534d7ea4ecb7789f66663c2"
     },
     {
       "path": "scripts/test-creative-content-integrity.mjs",
@@ -1368,9 +1470,9 @@
     },
     {
       "path": "scripts/test-credit-top-up-contract.mjs",
-      "size": 5761,
+      "size": 6530,
       "mode": 33188,
-      "sha256": "3028419d00c72e71e60e1077b49546df8ea94ccd5ed30ca35483ea755a549759"
+      "sha256": "6de3ac9ea82010e432d1796f1a43f5de865c16f53372da15930a4f611bc26109"
     },
     {
       "path": "scripts/test-credit-top-up-idempotency-disposable-db.mjs",
@@ -1382,7 +1484,7 @@
       "path": "scripts/test-current-release-evidence-builder-contract.mjs",
       "size": 50547,
       "mode": 33188,
-      "sha256": "6e69527236838344c41dd986cd8489c0e2950ebbc34e56cbdb87f73b22c83f93"
+      "sha256": "919f918f30fde560300e87a5de064ac8cb8b8523df664995228d66dabe15824c"
     },
     {
       "path": "scripts/test-custom-lead-question-contract.mjs",
@@ -1398,9 +1500,9 @@
     },
     {
       "path": "scripts/test-dealflow-completion.mjs",
-      "size": 4357,
+      "size": 4412,
       "mode": 33188,
-      "sha256": "f1c54b4a7336c7a6bdf8019ff886993211774b778efe483cae6e9433192445d1"
+      "sha256": "edaecd8db2a1a13541da366e1eada7cf7a2d72c0139d931ce8f9554ead89528f"
     },
     {
       "path": "scripts/test-deployment-target-authority.mjs",
@@ -1422,9 +1524,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 29619,
+      "size": 30549,
       "mode": 33188,
-      "sha256": "5890db774c1072f47ea57b1804e018807bb76539ab6ca76a6d1a3ce4e4b767b4"
+      "sha256": "4a9765fc13eec51801766cb7afbfcbd7bfa3dab9b6aafa3f3eb440aa6b242044"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",
@@ -1445,16 +1547,22 @@
       "sha256": "2a74a38827cbdec02ac644804eee4b8ff9befe8df98ee5fd2e304e67163a3a56"
     },
     {
-      "path": "scripts/test-generated-video-storage-disposable-db.mjs",
-      "size": 14746,
+      "path": "scripts/test-generated-static-deletion-disposable-db.mjs",
+      "size": 15475,
       "mode": 33188,
-      "sha256": "8aceb16647835909ac576bc4399784c967c931f0edaa611e8d6fd48a6331a9bb"
+      "sha256": "6dd5ae7a4d1eff878e1067d506ee71f5546b081dc586b8dbfe6e958b9e703222"
+    },
+    {
+      "path": "scripts/test-generated-video-storage-disposable-db.mjs",
+      "size": 14250,
+      "mode": 33188,
+      "sha256": "fad897a50e7152462e1581775e392ac94115a3a0851ee1b6be85c3a98fbe5aa7"
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
-      "size": 11321,
+      "size": 14687,
       "mode": 33188,
-      "sha256": "be75f2ea3a35f9797f8be60f7fdbf91f4101d409d8cb66b1dc5ae46107454208"
+      "sha256": "4b74cd4907fa533a9a0aa284d1c1c6bc254cc8ca2dc22434fed57c27c4fb5a4d"
     },
     {
       "path": "scripts/test-ghl-booking-handoff-contract.mjs",
@@ -1482,9 +1590,9 @@
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
-      "size": 84632,
+      "size": 84640,
       "mode": 33188,
-      "sha256": "ed6ecb66da39e1ce96d6674cd45a51aabe37701d9f9fa1f5cea7555ae7885cd9"
+      "sha256": "b9416406aa3e5304e41d48edc1e1e057430ee3e7a45b630b4b78c6e744d403bd"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation.ts",
@@ -1506,27 +1614,39 @@
     },
     {
       "path": "scripts/test-ghl-lifecycle-contract.mjs",
-      "size": 10281,
+      "size": 11544,
       "mode": 33188,
-      "sha256": "cdcbe022b74eda09ffeb2e82ac8d332ffe89f04a658fc251080107bd3993be1c"
+      "sha256": "0cac1ef266385f1d4c5a50baa7478e1bd87cfa7a6703b69c1ea74db76e151234"
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-contract.mjs",
-      "size": 6374,
+      "size": 7220,
       "mode": 33188,
-      "sha256": "6c11c765efaac4c4eb9c2075fb6621beb8ee00da42e2bf70519d546ba80ba18f"
+      "sha256": "6c3f4164b099ff7ef295aa35c8b7072b43f137d1f9c7f26473212875fbcdfc8a"
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-disposable-db.mjs",
-      "size": 24951,
+      "size": 36801,
       "mode": 33188,
-      "sha256": "abcf157b909bc9c2142a3d7755eb0f158493743854a02c20b0663a05c3ea823c"
+      "sha256": "d5cf23a926bfa5d24b59d36f16076f5f116c7c1c905bb01571861eceaedae8e2"
+    },
+    {
+      "path": "scripts/test-ghl-marketplace-refresh-fencing.ts",
+      "size": 7528,
+      "mode": 33188,
+      "sha256": "72efcea1140670106c0257fb3e87ea45bfd4174d31e1ef9b29d63f01800d8f14"
+    },
+    {
+      "path": "scripts/test-ghl-marketplace-runtime-contract.mjs",
+      "size": 11181,
+      "mode": 33188,
+      "sha256": "45ace7455ae7b26bed940f0a2a07faae436617f722f309a861eb0990cf1b4172"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
-      "size": 53640,
+      "size": 53648,
       "mode": 33188,
-      "sha256": "57ea54896f84928d681e0858a4b71e25bd3d8f649d21d1e25286cff2a1ba4415"
+      "sha256": "454c4bb4b14c1639b40ac720a9089f734f323beaf6cf0694a9226e87da840b20"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-route.mjs",
@@ -1602,9 +1722,9 @@
     },
     {
       "path": "scripts/test-integrated-migration-chain-disposable-db.mjs",
-      "size": 31134,
+      "size": 33176,
       "mode": 33188,
-      "sha256": "a8a47731feb80b66d9ed5fd3965f14edc6f152253dbdd0e143e96f1b9e7d450e"
+      "sha256": "b3b8472efbb6defe00e824146fe6b9c7b834aa720ba7571504f73c6ceb713a3a"
     },
     {
       "path": "scripts/test-internal-sms-notifications.mjs",
@@ -1614,9 +1734,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 33025,
+      "size": 33033,
       "mode": 33188,
-      "sha256": "70fe8e7c901db86bf05dc31ff38d4aca98ff0087a11f67b8e251b8f79729db10"
+      "sha256": "df0907ca52dcf1429134f67fe67a6948ffe5f4067778399286637437424d7add"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
@@ -1626,9 +1746,9 @@
     },
     {
       "path": "scripts/test-launch-truth-and-schedule.mjs",
-      "size": 42772,
+      "size": 43542,
       "mode": 33188,
-      "sha256": "620f7e49337ece3398888d2960681ad3517ab44d49338b6094af998eca5f9b60"
+      "sha256": "bc762cf7595d8ec4ce7a5dcbac2c238a7687126123a5d7d6e5b605ee81cedff6"
     },
     {
       "path": "scripts/test-lead-effect-fencing-disposable-db.mjs",
@@ -1740,9 +1860,15 @@
     },
     {
       "path": "scripts/test-meta-optimization-executor.ts",
-      "size": 8207,
+      "size": 8366,
       "mode": 33188,
-      "sha256": "5f15c8e01bb98e3f674b112a3f0e2556122ce8331d2bb31daa3114b2e5ff6cb4"
+      "sha256": "fe3ea43131940328a05a023909e2c8c98a0087639b332e154b0ade1dd9a18a21"
+    },
+    {
+      "path": "scripts/test-meta-optimization-owner-authority.mjs",
+      "size": 4022,
+      "mode": 33188,
+      "sha256": "05424bbc23a27602be91dee8b8490d36bea6967aa28b0ec1ec45b30325f473c6"
     },
     {
       "path": "scripts/test-meta-tenant-fencing.mjs",
@@ -1752,9 +1878,9 @@
     },
     {
       "path": "scripts/test-migration-read-only-contract.mjs",
-      "size": 6454,
+      "size": 7155,
       "mode": 33188,
-      "sha256": "c90057709b5d2131b4e6ee7118355ae883c837c2f2ca6c2f5198e6fa180a119c"
+      "sha256": "6092e00f17fbfa659a9be2dbdd9c749e81a626c60644853b3344c77ffd9d7ce5"
     },
     {
       "path": "scripts/test-native-postgres-test-adapter.mjs",
@@ -1764,15 +1890,39 @@
     },
     {
       "path": "scripts/test-onboarding-activation-billing-contract.mjs",
-      "size": 18950,
+      "size": 19417,
       "mode": 33188,
-      "sha256": "e149cd0a7977b1d50973253dcd05e053018d34d349a54017c2fc95659744ef86"
+      "sha256": "37dc15e94812662500149139ba264a9f0fed2b5659719ed97fd9a8ae81d1c731"
+    },
+    {
+      "path": "scripts/test-onboarding-draft-integrity-contract.mjs",
+      "size": 5415,
+      "mode": 33188,
+      "sha256": "daeffb6526972cf9c193bd3c8426554bb6c57f64e8b625231c9ba7cb6f6ac29b"
+    },
+    {
+      "path": "scripts/test-onboarding-draft-integrity-disposable-db.mjs",
+      "size": 12171,
+      "mode": 33188,
+      "sha256": "30c25de1e546408c85058e6ceb4475395801f4244a705be030adc1b2a7a41528"
     },
     {
       "path": "scripts/test-optimization-evidence-safety.mjs",
       "size": 6412,
       "mode": 33188,
       "sha256": "bad77019575db2aec36dc0aa155f354775943ee670815caca13cf64c67a95674"
+    },
+    {
+      "path": "scripts/test-owner-decision-authority-grants-disposable-db.mjs",
+      "size": 9888,
+      "mode": 33188,
+      "sha256": "65b6722f502ce605731f7b2c86f1ce679e48849d9726af37309f3d1b74ca9064"
+    },
+    {
+      "path": "scripts/test-owner-decision-authority.mjs",
+      "size": 5083,
+      "mode": 33188,
+      "sha256": "71311ec68bdb9120ee208e9f62efd92b84cd71e165d126c54a579a5d217e2a4f"
     },
     {
       "path": "scripts/test-paid-creative-dispatch-disposable-db.mjs",
@@ -1787,10 +1937,46 @@
       "sha256": "c9997ab115147d2d94dd972e883a2d47e470b25f02467c98a6b01bd2b6550b96"
     },
     {
-      "path": "scripts/test-product-localization.ts",
-      "size": 11819,
+      "path": "scripts/test-platform-operator-authority-contract.ts",
+      "size": 3328,
       "mode": 33188,
-      "sha256": "f7692e1696ffabe029cb8a53110315a58f5a75ea21e0e2f52aeefd4c034e2777"
+      "sha256": "f176729b83c74fd49b371110c095c4dae924d5d41402d8984d582c601dde32a6"
+    },
+    {
+      "path": "scripts/test-platform-operator-authority-disposable-db.mjs",
+      "size": 13385,
+      "mode": 33188,
+      "sha256": "ef2dd2e9d9aba537f1e2ba949bf508569b22016a0f343567a761c92395f28f6e"
+    },
+    {
+      "path": "scripts/test-privacy-consent-dsar-contract.mjs",
+      "size": 6594,
+      "mode": 33188,
+      "sha256": "391c0c15ceee0dfc7d218dac0dcef24d0db7b905be75aa1622b46c3839fff481"
+    },
+    {
+      "path": "scripts/test-privacy-consent-dsar-disposable-db.mjs",
+      "size": 28317,
+      "mode": 33188,
+      "sha256": "64b91d6aba4b84c4e3277b2d71aa774e8c1f7bb1e5471f803341b7898a5c2cdd"
+    },
+    {
+      "path": "scripts/test-privileged-tenancy-disposable-db.mjs",
+      "size": 21043,
+      "mode": 33188,
+      "sha256": "8944d019c609c775627592b073ab10e9798dd692560897fae1d37960f18a9aa6"
+    },
+    {
+      "path": "scripts/test-privileged-tenancy-matrix.mjs",
+      "size": 15866,
+      "mode": 33188,
+      "sha256": "48a8d6a7ff554529356d2824fc8b665d3547347d74d5acac0374f864e2ed8542"
+    },
+    {
+      "path": "scripts/test-product-localization.ts",
+      "size": 12479,
+      "mode": 33188,
+      "sha256": "839607c9b82c57bcaa5fd8f0626a895a3fbf72439951401bd714eb39b8c0fed7"
     },
     {
       "path": "scripts/test-production-route-contract.mjs",
@@ -1806,9 +1992,9 @@
     },
     {
       "path": "scripts/test-provider-safety-boundaries.mjs",
-      "size": 12974,
+      "size": 13478,
       "mode": 33188,
-      "sha256": "0e1b9caf47e7947c6976cc3427f2cb825e4f83ef52d67f14382bec80e1e80df8"
+      "sha256": "dd1ccb24c0233edfb29523b4b1b13e258409d615db728afea557b54d7e3f81a0"
     },
     {
       "path": "scripts/test-public-funnel-language.ts",
@@ -1845,6 +2031,12 @@
       "size": 3305,
       "mode": 33188,
       "sha256": "42a3a826e70e8d0d4586c1e53113702073a8c721c1e6059adda618a487257ae9"
+    },
+    {
+      "path": "scripts/test-runtime-owner-decision-authority.ts",
+      "size": 14730,
+      "mode": 33188,
+      "sha256": "d2ea9af9558d8022f9729fe349779c9c8058a0bbdbc7a686f41367579484dc78"
     },
     {
       "path": "scripts/test-safe-local-load-proof-contract.mjs",
@@ -1889,6 +2081,12 @@
       "sha256": "69da00b771e369d46b33c064fd6353438b916f11e71a36ef30da01fa7eb23bbb"
     },
     {
+      "path": "scripts/test-static-creative-asset-integrity.ts",
+      "size": 10014,
+      "mode": 33188,
+      "sha256": "1d1221c2265a53ece3518f646978c71b63affea4dc2d125578e95412ad6662ab"
+    },
+    {
       "path": "scripts/test-stripe-lifecycle-contract.ts",
       "size": 8801,
       "mode": 33188,
@@ -1913,6 +2111,18 @@
       "sha256": "ca64c3c5673c9c2e204e201f7bb618c061694565eb1221046b324c607e64a874"
     },
     {
+      "path": "scripts/test-supabase-auth-pkce-contract.ts",
+      "size": 3109,
+      "mode": 33188,
+      "sha256": "0abd48889fabf213590a270be025af65479fea25385df93c477680614e82caf0"
+    },
+    {
+      "path": "scripts/test-supply-chain-contract.mjs",
+      "size": 2458,
+      "mode": 33188,
+      "sha256": "ad5440d77222d97bbd3d22cf3a081983998d78bcc61cff884c17fbbd12ef7c4b"
+    },
+    {
       "path": "scripts/test-support-external-delivery.mjs",
       "size": 7832,
       "mode": 33188,
@@ -1926,9 +2136,9 @@
     },
     {
       "path": "scripts/test-support-ticket-contract.mjs",
-      "size": 7960,
+      "size": 8571,
       "mode": 33188,
-      "sha256": "5fd53a6436b6c14da95003136338c806833d7c1ff593447f485b532721e015a7"
+      "sha256": "24eae5f750ad3eb0bd8278ec0883850a8538f6bfa1ad0b52895c0a0882398dbe"
     },
     {
       "path": "scripts/test-synthetic-qa-authority-reset.mjs",
@@ -1967,6 +2177,12 @@
       "sha256": "7b1d919d4b4998d4e66ee01abaa385e4a6731342653ea3b3b5e4452b3b03f06d"
     },
     {
+      "path": "scripts/test-vercel-analytics-authority.mjs",
+      "size": 2953,
+      "mode": 33188,
+      "sha256": "b8e0216ed65bda64895cc1cd3ac12a63f527f42f2356fb6ae18707438e9cec94"
+    },
+    {
       "path": "scripts/test-verified-partner-attribution-disposable-db.mjs",
       "size": 11083,
       "mode": 33188,
@@ -1986,15 +2202,21 @@
     },
     {
       "path": "scripts/test-zero-external-effects.ts",
-      "size": 5568,
+      "size": 5621,
       "mode": 33188,
-      "sha256": "f85848fc3f8f3d15981240f0b548db0effd883fc21d56e112e6b52e1fece2ccf"
+      "sha256": "6b6aa2d4c2bde99b584112c2902041f0c4bdde3d3e4bc03ef4571477b2526442"
     },
     {
       "path": "scripts/validate-campaign-plan-document.mjs",
       "size": 4552,
       "mode": 33188,
       "sha256": "0fe772e3dcbdf363905b9bdfdf97e40884e210a1b1a1bc926358a5a2b0d023e1"
+    },
+    {
+      "path": "scripts/validate-owner-decision-authority.mjs",
+      "size": 16789,
+      "mode": 33188,
+      "sha256": "142d5d7ca7fe21e52d675c586643bb5d52b93eed32a27b6283a0e62bf1f8d49c"
     },
     {
       "path": "src/Icon.ts",
@@ -2004,9 +2226,9 @@
     },
     {
       "path": "src/app/(app)/admin/access-keys/page.tsx",
-      "size": 6705,
+      "size": 7058,
       "mode": 33188,
-      "sha256": "6bc9a785eab4d6be777de3ca43ccf154416178a0bafc8158026dde341cdbb0fa"
+      "sha256": "2e97508ca72e411048da083ab71169daffd82e9264b897b6aabeb4c2698060c9"
     },
     {
       "path": "src/app/(app)/admin/command-center/brief-me-button.tsx",
@@ -2106,9 +2328,9 @@
     },
     {
       "path": "src/app/(app)/layout.tsx",
-      "size": 7470,
+      "size": 7534,
       "mode": 33188,
-      "sha256": "97f66c26a6ca713a2d277f71f296c6053fa0a520496e5f37854fa9c538c1eebd"
+      "sha256": "a629288bb52f42ec3deedfc950b0b626b168282e6e3308e0391eb8f5780f41ea"
     },
     {
       "path": "src/app/(app)/loading.tsx",
@@ -2118,9 +2340,9 @@
     },
     {
       "path": "src/app/(app)/onboarding/page.tsx",
-      "size": 70690,
+      "size": 73794,
       "mode": 33188,
-      "sha256": "917470f569d89748d0d58183f437d2ad86a251de5438824b658926ec85f461da"
+      "sha256": "1510beae382c76dd108df2cbfda284201d5f6afd09fe8dd6f406a4d8e57302a4"
     },
     {
       "path": "src/app/(app)/paywall/page.tsx",
@@ -2136,15 +2358,15 @@
     },
     {
       "path": "src/app/(app)/settings/page.tsx",
-      "size": 4032,
+      "size": 5893,
       "mode": 33188,
-      "sha256": "7120aecd8146e8cf982b20b647fb67b17bf533048dc0f5ee0c506022143ff7d8"
+      "sha256": "8fbc9869ebda67b1004b3f442dcd4caadf9bc31d9a2383ae53edc970ec37cf3b"
     },
     {
       "path": "src/app/(app)/support/page.tsx",
-      "size": 721,
+      "size": 3600,
       "mode": 33188,
-      "sha256": "fb6e212e626ae99e702731113dd93a5536ed0135aef8357aa30a97dd19e893e7"
+      "sha256": "07d7b834610861a04df331e9f33046369b0cc100c12cfca01fc400beee338813"
     },
     {
       "path": "src/app/(app)/unlock/page.tsx",
@@ -2160,9 +2382,9 @@
     },
     {
       "path": "src/app/(auth)/login/page.tsx",
-      "size": 3408,
+      "size": 3607,
       "mode": 33188,
-      "sha256": "b79c4308e1079bea1512a8f2d3d90c278731140bbea6d053cc8e430bbbd33463"
+      "sha256": "d82af9a819bb820002185efc9d5a69bc0a233097f3fc67f9444693b2190c4ea9"
     },
     {
       "path": "src/app/(auth)/workspace/select/page.tsx",
@@ -2364,9 +2586,9 @@
     },
     {
       "path": "src/app/api/account-deletion/route.ts",
-      "size": 2074,
+      "size": 1680,
       "mode": 33188,
-      "sha256": "5a45df70c86b6019aee6bdfeaed407900cbda1093ac529f31baa22df553543a0"
+      "sha256": "0986d31afae564051c057a912a215545585480c641757e86123d5885108deb22"
     },
     {
       "path": "src/app/api/activation/events/route.ts",
@@ -2376,9 +2598,9 @@
     },
     {
       "path": "src/app/api/admin/access-keys/[id]/revoke/route.ts",
-      "size": 1269,
+      "size": 1320,
       "mode": 33188,
-      "sha256": "764bb70852261335d205e72d8fbae3fa8b97112479346c8623608b8371aac843"
+      "sha256": "0ac57765ff7803dfffe21e20fa70be46a40b931f8257d9168c523f46bf6258f5"
     },
     {
       "path": "src/app/api/assets/[id]/route.ts",
@@ -2591,10 +2813,22 @@
       "sha256": "c87a23957c83c4f2fae3f3a8cd326229174f4fbbd095fd2bc0e48e79035cb57b"
     },
     {
-      "path": "src/app/api/integrations/ghl/webhook/route.ts",
-      "size": 1713,
+      "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
+      "size": 1784,
       "mode": 33188,
-      "sha256": "cdcf59381c8805ee5a8010cc29abfd7e889c8ea2c3885a070c14921aa828d85b"
+      "sha256": "cfe470c24202e4373ed6a4806eb1117602aaa464100fc53f267ecaaa31fac262"
+    },
+    {
+      "path": "src/app/api/integrations/ghl/marketplace/connect/route.ts",
+      "size": 1609,
+      "mode": 33188,
+      "sha256": "54be056535ab57582f44e2baa5037b33088cb09f0142c4cab2c6304b778a7950"
+    },
+    {
+      "path": "src/app/api/integrations/ghl/webhook/route.ts",
+      "size": 2875,
+      "mode": 33188,
+      "sha256": "f9cd82094f581486e6522757174a1051a554ff7bc1843ff6ba76b5998206f1bf"
     },
     {
       "path": "src/app/api/integrations/meta/callback/route.ts",
@@ -2706,9 +2940,15 @@
     },
     {
       "path": "src/app/api/onboarding/plan/route.ts",
-      "size": 16295,
+      "size": 17957,
       "mode": 33188,
-      "sha256": "0d2c6820036678548ddd54fa202786be2cb765e137fbcf84e2a83213a48f55bd"
+      "sha256": "da5075074f81e904e4bc9cf4902e505b1fc8a64e809831c8721b5dd3c91bbd44"
+    },
+    {
+      "path": "src/app/api/privacy/requests/route.ts",
+      "size": 1191,
+      "mode": 33188,
+      "sha256": "0a14c84de06d196122a5ab26c490d9c45b4e72333021a705c051e351107a0020"
     },
     {
       "path": "src/app/api/provider-media/higgsfield-source/[assetId]/route.ts",
@@ -2751,6 +2991,12 @@
       "size": 2342,
       "mode": 33188,
       "sha256": "7bb829f83860d450dbaa567d132042297e166745a5877269e8e1cf7509f302ef"
+    },
+    {
+      "path": "src/app/auth/callback/route.ts",
+      "size": 2842,
+      "mode": 33188,
+      "sha256": "3ce954a4705ef85a767398d90e01825636193ca1168d7551314acfd3dac76665"
     },
     {
       "path": "src/app/data-deletion/page.tsx",
@@ -2808,9 +3054,9 @@
     },
     {
       "path": "src/app/layout.tsx",
-      "size": 1492,
+      "size": 1514,
       "mode": 33188,
-      "sha256": "1c243e4eb24695df816eded86ea2bd591f0d21de953f045f866164333fded4ab"
+      "sha256": "a61b3b092ac9d8b97acf2d3b73cd51f339ad00db2763578f81ab410fcd193587"
     },
     {
       "path": "src/app/opengraph-image.tsx",
@@ -2826,15 +3072,15 @@
     },
     {
       "path": "src/app/page.tsx",
-      "size": 1365,
+      "size": 1576,
       "mode": 33188,
-      "sha256": "f1379ebd2a3a736fb570ccc79685c2b00e0738e80c060b474ee9f227286b23bb"
+      "sha256": "89157fc83c3170a9c28057d96847e7d60be8a570fe7fd28ca98e833b1def6eca"
     },
     {
       "path": "src/app/privacy/page.tsx",
-      "size": 7046,
+      "size": 406,
       "mode": 33188,
-      "sha256": "4e8daa35d2fe1c0b0cfd65f4f1cdea825a691962a3c4ba0aec7e8574d6b8249b"
+      "sha256": "294c5fbaba4279456e318818533996d29de40692d00853dc38c387d8a6ab3c76"
     },
     {
       "path": "src/app/results/page.tsx",
@@ -2862,9 +3108,9 @@
     },
     {
       "path": "src/app/terms/page.tsx",
-      "size": 5676,
+      "size": 390,
       "mode": 33188,
-      "sha256": "dcdcd24cd13f881029f3e4c8311eca95232dbcc1ca3be837c42ac934dec6fae9"
+      "sha256": "42f53a32002a21d7a0031d52f73328e1420158f360f20942c64c5c2c1a36f566"
     },
     {
       "path": "src/app/ui-direction/page.tsx",
@@ -2940,9 +3186,9 @@
     },
     {
       "path": "src/components/auth/login-form.tsx",
-      "size": 23799,
+      "size": 21948,
       "mode": 33188,
-      "sha256": "578d01647a2b0e40bb5deb494d8dbc93faa1e274bd60331fcdad744b85736411"
+      "sha256": "7100a4a504737597c587a1eee936b294bf5a1722dc771763d335b65e08474da1"
     },
     {
       "path": "src/components/billing/checkout-button.tsx",
@@ -2952,9 +3198,9 @@
     },
     {
       "path": "src/components/billing/credit-top-up-button.tsx",
-      "size": 1736,
+      "size": 4571,
       "mode": 33188,
-      "sha256": "e2d75e611be4ee06abcad7f0ee945d00c92a1ecc3cabb000c72858e195ca844f"
+      "sha256": "60a0eeef861307f4feabd559d15bb96ea6781f08bff9b84fa4dc899a32ab4aee"
     },
     {
       "path": "src/components/billing/portal-button.tsx",
@@ -3186,15 +3432,15 @@
     },
     {
       "path": "src/components/marketing/home-command-center.tsx",
-      "size": 92094,
+      "size": 92622,
       "mode": 33188,
-      "sha256": "a30efbc143d8590bb257d5db867f76acb5deab8836712abb2cb18420630a0843"
+      "sha256": "fbac50e16c3c35e1f38b369dcfc917267f734c2923f81630cd4bd68979ddf9a8"
     },
     {
       "path": "src/components/onboarding/prepaywall-campaign-preview.tsx",
-      "size": 27502,
+      "size": 26737,
       "mode": 33188,
-      "sha256": "f9be3bb0cb08ab1049b5c96dbf42f78b614eb35be6024313b7182a8d7e6fe2ed"
+      "sha256": "cb3eead6e1494814dcd07adcf89e7afa95cbf24aef7606294b5774757991ec0d"
     },
     {
       "path": "src/components/privacy/meta-pixel-consent-control.tsx",
@@ -3210,9 +3456,15 @@
     },
     {
       "path": "src/components/settings/account-deletion-card.tsx",
-      "size": 7425,
+      "size": 7058,
       "mode": 33188,
-      "sha256": "dce87ac3e864788be4c0030136a8d20875ceb3b40908bf3f981ba5e5dfa2f5bf"
+      "sha256": "73e4c0aa764e05a45957724a4aea15bfd3d2dc920fa08bd53aa93de2f54e22fa"
+    },
+    {
+      "path": "src/components/settings/privacy-request-card.tsx",
+      "size": 5484,
+      "mode": 33188,
+      "sha256": "db6cf2a9217c0ce378da562e8cf87cccb0687219e64187bbdc2f5f449d38ba42"
     },
     {
       "path": "src/components/support/support-ticket-form.tsx",
@@ -3545,6 +3797,30 @@
       "sha256": "d3b957f2bb8d7174708dea9ce7f63f9ca942096c402d74d3b941d17579191f45"
     },
     {
+      "path": "src/lib/auth/safe-redirect.ts",
+      "size": 947,
+      "mode": 33188,
+      "sha256": "0e04de5ab724d866207b0c2d255454fad568dedee7c8f7c588593434f15adba4"
+    },
+    {
+      "path": "src/lib/authority/owner-decision-authority-contract.ts",
+      "size": 36794,
+      "mode": 33188,
+      "sha256": "2010e5398d75753953d9bfa5339072da4f0a689bc618c08e2bc46f0dcba78807"
+    },
+    {
+      "path": "src/lib/authority/owner-decision-authority-policies.ts",
+      "size": 6032,
+      "mode": 33188,
+      "sha256": "cda67f02bb9bb5b8f004eb7cfde019492ab912aafa86599e68a944c05ca01a1e"
+    },
+    {
+      "path": "src/lib/authority/owner-decision-authority.ts",
+      "size": 14816,
+      "mode": 33188,
+      "sha256": "b4a4ed835a5b8418bd30b794c0347e7ba60230816362115515809ed7c8a184c9"
+    },
+    {
       "path": "src/lib/billing/access-key-checkout-binding.ts",
       "size": 9928,
       "mode": 33188,
@@ -3756,9 +4032,9 @@
     },
     {
       "path": "src/lib/i18n/account-deletion-copy.ts",
-      "size": 6633,
+      "size": 7034,
       "mode": 33188,
-      "sha256": "3e044fb26206d0b8caab3ad340d1c3304b61a40df4813972d0bda8a6a77f7351"
+      "sha256": "0b6d6fe90cfce81b0eabae15166489ca696471b09ab20843f86dab620ab4be73"
     },
     {
       "path": "src/lib/i18n/config.ts",
@@ -3780,9 +4056,9 @@
     },
     {
       "path": "src/lib/i18n/messages.ts",
-      "size": 166890,
+      "size": 170641,
       "mode": 33188,
-      "sha256": "b2b412b70a77238fc952b6ff1f2498232a1c53bc09c2d8e7cdd411a39c6c7a4a"
+      "sha256": "3199099156039f0ec8adda3b5d755bf1e9d265f2de145d688bfc15569590d305"
     },
     {
       "path": "src/lib/i18n/onboarding-options.ts",
@@ -3795,6 +4071,12 @@
       "size": 15225,
       "mode": 33188,
       "sha256": "b884e1bf1778be2922a9451d76953b3ceb0bc564f10e391aeeda233179948b6c"
+    },
+    {
+      "path": "src/lib/i18n/privacy-request-copy.ts",
+      "size": 4197,
+      "mode": 33188,
+      "sha256": "6d336f9c1f970545a51349852ece9394adf68793bfcec16a2d88a65b38b17ca3"
     },
     {
       "path": "src/lib/i18n/routing.ts",
@@ -3876,9 +4158,15 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/marketplace-oauth-contract.ts",
-      "size": 9938,
+      "size": 11093,
       "mode": 33188,
-      "sha256": "7167aab0713ca64946a07c09dc94e8829f6ef5afdf705c1988c3b2fc3ff641c7"
+      "sha256": "12cc67c11fa15f3dbbac9cf61fd549c217ffce509005dba03f8cdb9d8a6cdc3d"
+    },
+    {
+      "path": "src/lib/integrations/gohighlevel/marketplace-runtime-contract.ts",
+      "size": 17950,
+      "mode": 33188,
+      "sha256": "d18fd51f98854db596be50ffc6e8f29ba12d71f69d4081810a091d2f7b5be9d9"
     },
     {
       "path": "src/lib/integrations/gohighlevel/memory-repository.ts",
@@ -3936,9 +4224,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/webhook-contract.ts",
-      "size": 5004,
+      "size": 6933,
       "mode": 33188,
-      "sha256": "f5c1d8b43984008644ae2362211381316d53f7c3c42c259db691a3829a1d8038"
+      "sha256": "20002fe59f972d5ed03302293ddea41a4751197f12032358ef6c3e9f3b061f99"
     },
     {
       "path": "src/lib/integrations/gohighlevel/write-gate.ts",
@@ -4002,15 +4290,15 @@
     },
     {
       "path": "src/lib/integrations/meta/provider.ts",
-      "size": 9946,
+      "size": 9997,
       "mode": 33188,
-      "sha256": "58ccd4a9a2d18069cf8dc58723cf2dfa6bc07591a781efcaa46e0994f5f4734e"
+      "sha256": "b2d911bb90e20184173eed2575afac7d5eb8f2c9038700c73bce1db9002117d7"
     },
     {
       "path": "src/lib/integrations/meta/reporting-contract.ts",
-      "size": 3505,
+      "size": 10611,
       "mode": 33188,
-      "sha256": "2c0a208aaeedcc0b9118af619d71fedd15687fe392045dfbcce0666b76474b95"
+      "sha256": "d6eb824a375233010bd1a0d858c772a60c07a1fa182243a3ed09386a6decd34c"
     },
     {
       "path": "src/lib/integrations/meta/request.ts",
@@ -4026,9 +4314,9 @@
     },
     {
       "path": "src/lib/integrations/meta/status-sync.ts",
-      "size": 9552,
+      "size": 15328,
       "mode": 33188,
-      "sha256": "23777ecf6d6fdc580b5de5c31070c805790b0ed1feeb2b4ba71e6995ad87e300"
+      "sha256": "f39d9c39b945be2d6baa489c845586636398ce8056d5a0da952b8242704589f5"
     },
     {
       "path": "src/lib/integrations/meta/tracking-attribution.ts",
@@ -4038,9 +4326,9 @@
     },
     {
       "path": "src/lib/integrations/meta/types.ts",
-      "size": 5576,
+      "size": 5649,
       "mode": 33188,
-      "sha256": "e3a04cd6eff44e6d092d7ba3c3a39c5f6b95ab2c83806513157f5f7e09497196"
+      "sha256": "eb7dd79969345cee7f0a24a4640d719d018953301c432d3ee21935efc1fe3a34"
     },
     {
       "path": "src/lib/integrations/provider-endpoint-policy.ts",
@@ -4146,9 +4434,9 @@
     },
     {
       "path": "src/lib/meta-optimization-execution-gate.ts",
-      "size": 2760,
+      "size": 3740,
       "mode": 33188,
-      "sha256": "5f443a25f54b7bfbdae2ebb5c57025024b141a1bc2e055ae05d02e40f42c5265"
+      "sha256": "dd885dfa8f137a01f42200531dba40a037b7c40955b1a4b48d6329527e62b855"
     },
     {
       "path": "src/lib/meta-pixel-consent.ts",
@@ -4164,9 +4452,15 @@
     },
     {
       "path": "src/lib/onboarding-contract.ts",
-      "size": 8174,
+      "size": 8865,
       "mode": 33188,
-      "sha256": "90c5f8c1ca223310d3f99ad14f1115df268cbcb4fa21f27a715548c1fdf88582"
+      "sha256": "acc35e1058ba6c64cced2037d67f5ac6e1b7b4b0d00318b7050ac36efdb244db"
+    },
+    {
+      "path": "src/lib/onboarding-provenance.ts",
+      "size": 2752,
+      "mode": 33188,
+      "sha256": "89f9c251298c04bccc0e1e5eef4c4165f9e9c82fce6f13170e51d4ba29dd0a5e"
     },
     {
       "path": "src/lib/operator-mode.ts",
@@ -4266,9 +4560,9 @@
     },
     {
       "path": "src/lib/safety/zero-external-effects.ts",
-      "size": 4156,
+      "size": 4202,
       "mode": 33188,
-      "sha256": "aa000e55d33820a6fb328fe28e7a556f12f5fef32331afe5af8c67da5f4dc0f2"
+      "sha256": "af9ce2a06e647736d953fbd1a40c1e63772552f77232f05a547ec14fbfd9c89c"
     },
     {
       "path": "src/lib/scheduled-launch-gate.ts",
@@ -4320,9 +4614,9 @@
     },
     {
       "path": "src/lib/services/account-deletion-service.ts",
-      "size": 38561,
+      "size": 44651,
       "mode": 33188,
-      "sha256": "4d3f1ccb9af7a98a22b897f94a1f934e194583e20566c41777f5b36e52ee06ad"
+      "sha256": "628443e0a3fa78288bd49096f2f966a21abbcbb7308da66df6abcffbd246d5ab"
     },
     {
       "path": "src/lib/services/ai-optimizer.ts",
@@ -4427,6 +4721,12 @@
       "sha256": "c45c82744885a6f90e0dfa154b7007909d3085e82741859e7aa661852188913b"
     },
     {
+      "path": "src/lib/services/campaign-lifecycle-state-machine.ts",
+      "size": 13269,
+      "mode": 33188,
+      "sha256": "a613652e3ae10e259f4ccfd77302d2afc4287452ac70dee5ce41aca5806314ba"
+    },
+    {
       "path": "src/lib/services/campaign-orchestrator.ts",
       "size": 3564,
       "mode": 33188,
@@ -4440,27 +4740,27 @@
     },
     {
       "path": "src/lib/services/campaign-plan-document.ts",
-      "size": 12897,
+      "size": 13294,
       "mode": 33188,
-      "sha256": "44e4c52595cb5c419e7b0efc7c2d841c8a5be333175a856e9113dd7fa915f328"
+      "sha256": "d5bcd961fc12b23ece4ae0f44ade20e7f0381e4252d0f071cdccd2bc935441a2"
     },
     {
       "path": "src/lib/services/campaign-plan-persistence-service.ts",
-      "size": 25403,
+      "size": 28087,
       "mode": 33188,
-      "sha256": "e0fee8123b9dbc3ac7eaf24e1da92f1df5a74c00b91ba100be8d4621009faba4"
+      "sha256": "3b6f199ba5af9aee7e98bc76938335d1a246ccb0e855019e71b1fdc469ee6a7a"
     },
     {
       "path": "src/lib/services/campaign-plan-service.ts",
-      "size": 50980,
+      "size": 51959,
       "mode": 33188,
-      "sha256": "91894f8649e0f43a105b9ed4294cffe68f9940b1666cb1cc6a7a1cf3c0c6c984"
+      "sha256": "663f558e74d621a842f413e4acb1b902603e23145c46bded9e27b2dec799af6a"
     },
     {
       "path": "src/lib/services/campaign-runtime-service.ts",
-      "size": 11954,
+      "size": 12200,
       "mode": 33188,
-      "sha256": "d1be99f1d390a494dfcfb72118914f8e23ec42d46540486ed6712fd814321975"
+      "sha256": "a13aca3cd0bb2cfab1d4b81567dd67849e280c000b7521d5f3382e3f55b6dcd4"
     },
     {
       "path": "src/lib/services/campaign-validation.ts",
@@ -4493,6 +4793,12 @@
       "sha256": "87837fc89554f495c8a5d6135b32a9f6a9df3b497a67ae1bf53a55c6a0d103f6"
     },
     {
+      "path": "src/lib/services/creative-asset-content-validation.ts",
+      "size": 7382,
+      "mode": 33188,
+      "sha256": "0a24a27e904f25e5a5e8fb5c4e4260fc413a3888275313d430f314082864c8f6"
+    },
+    {
       "path": "src/lib/services/creative-asset-log-service.ts",
       "size": 2650,
       "mode": 33188,
@@ -4500,15 +4806,15 @@
     },
     {
       "path": "src/lib/services/creative-asset-storage-identity.ts",
-      "size": 3369,
+      "size": 4124,
       "mode": 33188,
-      "sha256": "ae82e1ba52c0e747f8c8c9e00d4008d50bf36ab9ea8d65737ca0afbb866969f7"
+      "sha256": "989952b5216a707258684bd4c5057e116b563f3bd1b63d7e873d2abacfa772f2"
     },
     {
       "path": "src/lib/services/creative-builder-service.ts",
-      "size": 39352,
+      "size": 39546,
       "mode": 33188,
-      "sha256": "da47d46234872e3536b8f059889bb6190cf50a2bbf904c9011c39ec2ab47de25"
+      "sha256": "ee8069648835da64183096be31bdb8c0f7de5844a23851711dd0d44c974d2940"
     },
     {
       "path": "src/lib/services/creative-engine.ts",
@@ -4548,9 +4854,9 @@
     },
     {
       "path": "src/lib/services/credit-service.ts",
-      "size": 10437,
+      "size": 13990,
       "mode": 33188,
-      "sha256": "ac085ed39cdf50081a02e77acc38dd2585eeabc2a3fbaca6e1c7f879cc91f57d"
+      "sha256": "63f6b2a175fdcbe6df330a76b9a8925e888d648dc65b183f8cb6e78ac7bf1864"
     },
     {
       "path": "src/lib/services/dashboard-service.ts",
@@ -4577,10 +4883,16 @@
       "sha256": "b503662b371de72f3c46fdd80d422a75d09456c14c54ae89f647ccff8283a2be"
     },
     {
-      "path": "src/lib/services/generated-video-storage-service.ts",
-      "size": 28685,
+      "path": "src/lib/services/generated-static-storage-service.ts",
+      "size": 20272,
       "mode": 33188,
-      "sha256": "7384bae49df0cbe81b699f9244fe1199e9d2084858cea5f0ce78525f2d848543"
+      "sha256": "1da842d8ed08959d848404acd983d89f3ac2497838a8f7c620155dc90c6150c9"
+    },
+    {
+      "path": "src/lib/services/generated-video-storage-service.ts",
+      "size": 28870,
+      "mode": 33188,
+      "sha256": "1420a37fb63030c75069e58edadf8467cdcdc317fcf0808701ea87d130c68a93"
     },
     {
       "path": "src/lib/services/ghl-fake-lead-outbox-service.ts",
@@ -4611,6 +4923,12 @@
       "size": 2004,
       "mode": 33188,
       "sha256": "8f13b192e49e33066e56b0ad4ddf9639898c42a6d642211e18027c9714883c79"
+    },
+    {
+      "path": "src/lib/services/ghl-marketplace-runtime-service.ts",
+      "size": 33791,
+      "mode": 33188,
+      "sha256": "169ced9a57d3f43b0587844abc3c67ae4c0856da4d02c363bec6105272a5f6c1"
     },
     {
       "path": "src/lib/services/ghl-periodic-form-sweep-service.ts",
@@ -4680,9 +4998,9 @@
     },
     {
       "path": "src/lib/services/internal-launch-monitor.ts",
-      "size": 22121,
+      "size": 22417,
       "mode": 33188,
-      "sha256": "4c174444deddb8bf65de4e018beba74caff1384ed2f8e42c362df6c26ea7376e"
+      "sha256": "befa3d5304a739ebcebc737b42bddb5089a06b1ae059d868e31ea5713208b4ba"
     },
     {
       "path": "src/lib/services/internal-lead-notification-service.ts",
@@ -4740,15 +5058,15 @@
     },
     {
       "path": "src/lib/services/meta-campaign-execution-service.ts",
-      "size": 12085,
+      "size": 12091,
       "mode": 33188,
-      "sha256": "f0d967adfa55abf610d1d5d3b1b24c622d722dcf1410dd723e2e979b57d7b634"
+      "sha256": "77c2f4a7639da2ac320f4684b12f5acc2d94e91d90739e8ef1ff2bea20c942b0"
     },
     {
       "path": "src/lib/services/meta-campaign-sync-service.ts",
-      "size": 24310,
+      "size": 30734,
       "mode": 33188,
-      "sha256": "1356f91441546330bd91043ec2a123a6beb3169f77bb1aa97bcff9aa273e0aa1"
+      "sha256": "06b898567df49c4112c8540d7baa92eec14589d0361e9173009cdb0e766895f4"
     },
     {
       "path": "src/lib/services/meta-deletion-service.ts",
@@ -4788,15 +5106,15 @@
     },
     {
       "path": "src/lib/services/meta-optimization-execution-service.ts",
-      "size": 23674,
+      "size": 23880,
       "mode": 33188,
-      "sha256": "54916be7a1b781ef97985892ee9fd149e7d604b28084e7c898c2b2615d19d7e2"
+      "sha256": "e3e0dfd94f51f16394605e6c3805eba7c81cb21b01dc238693c18af819e73e67"
     },
     {
       "path": "src/lib/services/meta-optimization-policy-service.ts",
-      "size": 11781,
+      "size": 11934,
       "mode": 33188,
-      "sha256": "05c7a121e9eaa3d64fc5f35e6ddf1fe076579024b52255929191634b826590c6"
+      "sha256": "a525fbca0b6b2fc5f1027198a50f8518a538f3d2899eaafefebfca3beb492cf9"
     },
     {
       "path": "src/lib/services/meta-optimization-receipt-service.ts",
@@ -4806,9 +5124,9 @@
     },
     {
       "path": "src/lib/services/meta-reporting-worker-service.ts",
-      "size": 10675,
+      "size": 10904,
       "mode": 33188,
-      "sha256": "8ba6a6b0cdeeaaaf87b012ee71d10f0a749d03c30ca1ebf43f3f97ade41c8a34"
+      "sha256": "4fa1364b11bc385f963c52f38ef22d1e0fc846ed3672e0eefa6a90d44ae0fc73"
     },
     {
       "path": "src/lib/services/offer-normalization-service.ts",
@@ -4827,6 +5145,24 @@
       "size": 10122,
       "mode": 33188,
       "sha256": "70747370f8b5fe929cab6ea8dd45af7fcdce86dea7f2fd1ce3a1b00727867f88"
+    },
+    {
+      "path": "src/lib/services/platform-operator-authority-service.ts",
+      "size": 5760,
+      "mode": 33188,
+      "sha256": "fbfbe31b5bc0a48e0c3911e342d0f64fb83e73b3cd5332420dae29a358491866"
+    },
+    {
+      "path": "src/lib/services/privacy-authority-service.ts",
+      "size": 5782,
+      "mode": 33188,
+      "sha256": "451c04000bebac2d3b3c603e620a87d1fbdde0cf5694dd53fead0ed6f3ea1775"
+    },
+    {
+      "path": "src/lib/services/privacy-request-service.ts",
+      "size": 5196,
+      "mode": 33188,
+      "sha256": "dcceebbe1687e8541cc7308ce1b109247bd3a78b71ac7ff216d9eb9d5e02b965"
     },
     {
       "path": "src/lib/services/scheduled-campaign-launch-service.ts",
@@ -4860,15 +5196,15 @@
     },
     {
       "path": "src/lib/services/static-creative-asset-service.ts",
-      "size": 7247,
+      "size": 13244,
       "mode": 33188,
-      "sha256": "316273b3f6e8fc63144df84d079b856ae1d61502b73c402004ba54ef13620447"
+      "sha256": "913d7548c52f225b464393a7a1ebf65382b59df9e7890b23944ab0e4390f1b30"
     },
     {
       "path": "src/lib/services/support-ticket-service.ts",
-      "size": 6691,
+      "size": 9469,
       "mode": 33188,
-      "sha256": "f673307167f5dedb7f17e8d226a12568661091c023edb00203af6e3453d611fd"
+      "sha256": "5fa93a7dc41a1010b1b2e15059254873b0693b46649bf90bd82c0005c6ec697b"
     },
     {
       "path": "src/lib/services/system-job-lease-service.ts",
@@ -4956,9 +5292,9 @@
     },
     {
       "path": "src/lib/telemetry/vercel-analytics-gate.ts",
-      "size": 549,
+      "size": 1040,
       "mode": 33188,
-      "sha256": "ef9b8e072623bb3cbbfcb99e4ca18373d0be0bf97d798ecb768d6c4ea8140981"
+      "sha256": "22e54e831fbaa6bbd8729d9ecf7bebda70beae9034f7a26526a2693bc407b901"
     },
     {
       "path": "src/lib/types/campaign-execution.ts",
@@ -5022,9 +5358,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 27575,
+      "size": 27595,
       "mode": 33188,
-      "sha256": "7026d9f1066b2648c1b3f868513c7b5c977406154a360f635d8e66d18dbd67ec"
+      "sha256": "9ee2a0cdcfd4e9a2b8ab7fdaef9e246a2284a425fc5d6b600e02f8cd66128ff7"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",
@@ -5903,6 +6239,48 @@
       "sha256": "e29627bf1db3419a07b5a9c6acfd8ad059cda9d186bb4a19bae5d62fbf706fae"
     },
     {
+      "path": "supabase/migrations/20260717010000_harden_onboarding_draft_integrity.sql",
+      "size": 25866,
+      "mode": 33188,
+      "sha256": "e238144605a6397dca6b5f83a672be165327be80eab750c34c71b65bb5cbb301"
+    },
+    {
+      "path": "supabase/migrations/20260717013000_complete_ghl_marketplace_runtime_lifecycle.sql",
+      "size": 58814,
+      "mode": 33188,
+      "sha256": "aae90729f392e05747a547179d18ae3227186cd6cf502801774467544cba6bd5"
+    },
+    {
+      "path": "supabase/migrations/20260717020000_canonicalize_campaign_lifecycle_truth.sql",
+      "size": 16580,
+      "mode": 33188,
+      "sha256": "9968f7d299dd5a2f0de8e455c358391432b5020f150eb577c1cc56039a8d59dd"
+    },
+    {
+      "path": "supabase/migrations/20260717030000_harden_platform_operator_authority.sql",
+      "size": 19343,
+      "mode": 33188,
+      "sha256": "4699891dcba38bd21efd874eda79120d597e07b3d43d2c829745b09c9cdfadd4"
+    },
+    {
+      "path": "supabase/migrations/20260717040000_bind_generated_static_storage_tenancy.sql",
+      "size": 60690,
+      "mode": 33188,
+      "sha256": "3e9132b066789836be26fe1a64a2ae2ecac73f72717fa0fd05ceb7d19a27c706"
+    },
+    {
+      "path": "supabase/migrations/20260717050000_create_privacy_consent_dsar_authority.sql",
+      "size": 83774,
+      "mode": 33188,
+      "sha256": "34ddaa16f92cc770f92d8ae77fedc9ce3cb0bd23111c291d5f38818738b796d8"
+    },
+    {
+      "path": "supabase/migrations/20260717060000_install_owner_decision_authority_grants.sql",
+      "size": 15181,
+      "mode": 33188,
+      "sha256": "e7447581bf01e34f7e1751de46ff1827b064c171e1ceec0f5b16b344d9d06ab8"
+    },
+    {
       "path": "supabase/reconciliation/README.md",
       "size": 3525,
       "mode": 33188,
@@ -5942,7 +6320,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "84a1f07e83966b3d8adc607d415022a56d9ba826e32f2c500e61739879020fc0"
+      "sha256": "54e2123599005ea42671d57df7d8f40f2c830df13c2ad9d922bdbc825c6b3c82"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
@@ -5984,7 +6362,7 @@
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
       "size": 56296,
       "mode": 33188,
-      "sha256": "1797e9a9e1bd6c6dd218a9b4b859cc2d25debb2d00dca60414ecf6c8a990d282"
+      "sha256": "f3ba1c5bec79368e45caa363c6136c820fa680159c556cacc59d386d47eb6887"
     },
     {
       "path": "tests/e2e/expected-navigation-abort.mjs",
@@ -6002,7 +6380,7 @@
       "path": "tests/e2e/global-safety-preflight.ts",
       "size": 7133,
       "mode": 33188,
-      "sha256": "06c2b83a0e30a7e11bbe0b784708da7af76ff20a10b8d961962f3c2c94a0a0c2"
+      "sha256": "573e0a8e608540845f6ca88ebdba3bb6aa846d16701b39e10f000801b6cdbc0c"
     },
     {
       "path": "tests/e2e/safe-acceptance-reporter.mjs",

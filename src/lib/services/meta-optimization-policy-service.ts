@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/api/route";
+import { readMetaOptimizationAuthority } from "@/lib/authority/owner-decision-authority";
 import { evaluateMetaOptimizationExecutionGate } from "@/lib/meta-optimization-execution-gate";
 import type { ApprovedOptimizationPolicy } from "@/lib/optimization-engine/safety-policy";
 import { getAppContext } from "@/lib/services/app-context";
@@ -130,7 +131,10 @@ export async function getMetaOptimizationPolicyStatus(campaignId: string) {
     p_campaign_id: campaignId,
   });
   if (error) throw new ApiError(500, error.message ?? "Optimization status is unavailable.", "meta_optimization_status_unavailable");
-  const gate = evaluateMetaOptimizationExecutionGate();
+  const gate = evaluateMetaOptimizationExecutionGate(
+    process.env,
+    await readMetaOptimizationAuthority(),
+  );
   let runtimeExecutionEnabled = false;
   if (gate.enabled) {
     const admin = createAdminClient();

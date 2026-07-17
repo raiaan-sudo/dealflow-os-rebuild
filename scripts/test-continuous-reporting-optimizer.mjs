@@ -33,11 +33,22 @@ const executor = loadTs("src/lib/optimization-engine/meta-sandbox-executor.ts");
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const statusSyncSource = fs.readFileSync("src/lib/integrations/meta/status-sync.ts", "utf8");
+const campaignSyncSource = fs.readFileSync("src/lib/services/meta-campaign-sync-service.ts", "utf8");
 const reportingWorkerSource = fs.readFileSync("src/lib/services/meta-reporting-worker-service.ts", "utf8");
 const dashboardSource = fs.readFileSync("src/components/dashboard/campaign-dashboard-view.tsx", "utf8");
-assert.match(statusSyncSource, /fields: "spend,impressions,clicks,ctr,frequency,reach,actions,conversions"/);
+assert.match(statusSyncSource, /fields: "spend,impressions,clicks,ctr,frequency,reach,actions,conversions,date_start,date_stop"/);
 assert.match(statusSyncSource, /time_range: metaReportingTimeRange\(reportingWindow\)/);
 assert.doesNotMatch(statusSyncSource, /date_preset:\s*"maximum"/);
+assert.match(statusSyncSource, /META_INSIGHTS_MAX_PAGES = 20/);
+assert.match(statusSyncSource, /meta_insights_pagination_nonprogress/);
+assert.match(statusSyncSource, /meta_insights_pagination_duplicate_cursor/);
+assert.match(statusSyncSource, /meta_insights_page_limit_reached/);
+assert.match(campaignSyncSource, /deliveryMetricsConfirmed = deliveryReportingTruth\.completeness === "complete"/);
+assert.match(campaignSyncSource, /reporting_truth: deliveryReportingTruth/);
+assert.match(campaignSyncSource, /ad_insights_truth: adInsightsReportingTruth/);
+assert.match(reportingWorkerSource, /readMetaReportingTruth/);
+assert.match(reportingWorkerSource, /snapshot\.syncResult !== "success"/);
+assert.match(reportingWorkerSource, /reportingTruth\?\.completeness !== "complete"/);
 assert.match(reportingWorkerSource, /metaCtrRatioToPolicyPercent\(raw\.ctr \?\? 0\)/);
 assert.doesNotMatch(reportingWorkerSource, /raw\.ctr[^\n]*<=\s*1/);
 assert.match(dashboardSource, /rankedTopCreative\.ctr \* 100/);
@@ -104,6 +115,167 @@ assert.deepEqual(
 assert.equal(
   reportingContract.readMetaReportingWindow(exactWindow).since,
   "2026-07-07",
+);
+
+function response(payload, ok = true) {
+  return { ok, async json() { return payload; } };
+}
+
+function statusSyncHarness(pages) {
+  const queries = [];
+  const queue = [...pages];
+  const loaded = loadTs("src/lib/integrations/meta/status-sync.ts", {
+    "@/lib/api/route": { ApiError: TestApiError },
+    "@/lib/integrations/meta/contract": {
+      buildMetaGraphUrl(path, query) {
+        queries.push({ path, query: { ...query } });
+        return new URL(`https://graph.example.test/${path}`);
+      },
+      withMetaBearerToken: () => ({}),
+    },
+    "@/lib/integrations/meta/request": {
+      async fetchMetaResponse() {
+        assert.ok(queue.length > 0, "unexpected Meta page request");
+        return response(queue.shift());
+      },
+    },
+    "@/lib/integrations/meta/reporting-contract": reportingContract,
+  });
+  return { loaded, queries };
+}
+
+const completeDeliveryHarness = statusSyncHarness([{
+  data: [{
+    spend: "0", impressions: "0", clicks: "0", ctr: "0", frequency: "0",
+    reach: "0", actions: [], conversions: [], date_start: exactWindow.since,
+    date_stop: exactWindow.until,
+  }],
+}]);
+const completeDelivery = await completeDeliveryHarness.loaded.fetchDeliveryMetrics({
+  campaignId: "campaign-1",
+  accessToken: "token",
+  mode: "live",
+  campaignStatus: "ACTIVE",
+  reportingWindow: exactWindow,
+});
+assert.equal(completeDelivery.reportingTruth.completeness, "complete");
+assert.equal(completeDelivery.metrics.spend, 0, "an explicit provider zero remains a valid zero");
+assert.equal(completeDelivery.reportingTruth.providerSourceStartedAt, "2026-07-07T00:00:00.000Z");
+assert.equal(completeDelivery.reportingTruth.providerSourceEndedAt, "2026-07-13T23:59:59.999Z");
+assert.ok(Number.isFinite(Date.parse(completeDelivery.reportingTruth.receivedAt)));
+
+const partialDeliveryHarness = statusSyncHarness([{
+  data: [{ impressions: "0", clicks: "0", reach: "0", date_start: exactWindow.since }],
+}]);
+const partialDelivery = await partialDeliveryHarness.loaded.fetchDeliveryMetrics({
+  campaignId: "campaign-2",
+  accessToken: "token",
+  mode: "live",
+  campaignStatus: "ACTIVE",
+  reportingWindow: exactWindow,
+});
+assert.equal(partialDelivery.reportingTruth.completeness, "partial");
+assert.ok(partialDelivery.reportingTruth.missingFields.includes("spend"));
+assert.ok(partialDelivery.reportingTruth.missingFields.includes("lead_actions"));
+assert.ok(partialDelivery.reportingTruth.missingFields.includes("date_stop"));
+assert.equal(partialDelivery.metrics.spend, 0, "a partial numeric projection is never self-authorizing");
+
+const nullDeliveryHarness = statusSyncHarness([{
+  data: [{
+    spend: null, impressions: "", clicks: "0", actions: null, reach: "0",
+    date_start: exactWindow.since, date_stop: exactWindow.until,
+  }],
+}]);
+const nullDelivery = await nullDeliveryHarness.loaded.fetchDeliveryMetrics({
+  campaignId: "campaign-null",
+  accessToken: "token",
+  mode: "live",
+  campaignStatus: "ACTIVE",
+  reportingWindow: exactWindow,
+});
+assert.equal(nullDelivery.reportingTruth.completeness, "partial");
+assert.ok(nullDelivery.reportingTruth.missingFields.includes("spend"));
+assert.ok(nullDelivery.reportingTruth.missingFields.includes("impressions"));
+assert.ok(nullDelivery.reportingTruth.missingFields.includes("lead_actions"));
+assert.equal(nullDelivery.metrics.spend, 0, "null provider data may project to zero but never authorizes it");
+
+const malformedDeliveryHarness = statusSyncHarness([{
+  data: [{
+    spend: false, impressions: "0", clicks: "0", actions: [], reach: "0",
+    date_start: exactWindow.since, date_stop: exactWindow.until,
+  }],
+}]);
+await assert.rejects(
+  () => malformedDeliveryHarness.loaded.fetchDeliveryMetrics({
+    campaignId: "campaign-malformed", accessToken: "token", mode: "live",
+    campaignStatus: "ACTIVE", reportingWindow: exactWindow,
+  }),
+  (error) => error?.name === "RangeError" && /Meta spend/.test(error.message),
+);
+
+const missingDeliveryHarness = statusSyncHarness([{ data: [] }]);
+const missingDelivery = await missingDeliveryHarness.loaded.fetchDeliveryMetrics({
+  campaignId: "campaign-3",
+  accessToken: "token",
+  mode: "live",
+  campaignStatus: "ACTIVE",
+  reportingWindow: exactWindow,
+});
+assert.equal(missingDelivery.reportingTruth.completeness, "missing");
+assert.deepEqual(plain(missingDelivery.reportingTruth.missingFields), ["insight_row"]);
+
+const pagedAdHarness = statusSyncHarness([
+  {
+    data: [{
+      ad_id: "ad-1", ad_name: "One", spend: "10", impressions: "1000", clicks: "20",
+      ctr: "2", frequency: "1", reach: "1000", actions: [],
+      date_start: exactWindow.since, date_stop: exactWindow.until,
+    }],
+    paging: { cursors: { after: "cursor-a" }, next: "https://graph.example.test/next" },
+  },
+  {
+    data: [{
+      ad_id: "ad-2", ad_name: "Two", spend: "20", impressions: "2000", clicks: "40",
+      ctr: "2", frequency: "1", reach: "2000", actions: [],
+      date_start: exactWindow.since, date_stop: exactWindow.until,
+    }],
+  },
+]);
+const pagedAds = await pagedAdHarness.loaded.fetchAdInsights({
+  campaignId: "campaign-4",
+  accessToken: "token",
+  mode: "live",
+  adIds: ["ad-1", "ad-2"],
+  reportingWindow: exactWindow,
+});
+assert.equal(pagedAds.reportingTruth.completeness, "complete");
+assert.equal(pagedAds.reportingTruth.pageCount, 2);
+assert.equal(pagedAds.insights.length, 2);
+assert.equal(pagedAdHarness.queries[0].query.after, null);
+assert.equal(pagedAdHarness.queries[1].query.after, "cursor-a");
+
+const duplicateCursorHarness = statusSyncHarness([
+  { data: [{ ad_id: "ad-1" }], paging: { cursors: { after: "cursor-a" }, next: "next-1" } },
+  { data: [{ ad_id: "ad-2" }], paging: { cursors: { after: "cursor-b" }, next: "next-2" } },
+  { data: [{ ad_id: "ad-3" }], paging: { cursors: { after: "cursor-a" }, next: "next-3" } },
+]);
+await assert.rejects(
+  () => duplicateCursorHarness.loaded.fetchAdInsights({
+    campaignId: "campaign-5", accessToken: "token", mode: "live",
+    adIds: ["ad-1", "ad-2", "ad-3"], reportingWindow: exactWindow,
+  }),
+  (error) => error?.code === "meta_insights_pagination_duplicate_cursor",
+);
+
+const nonprogressHarness = statusSyncHarness([{
+  data: [], paging: { cursors: { after: "cursor-a" }, next: "next" },
+}]);
+await assert.rejects(
+  () => nonprogressHarness.loaded.fetchDeliveryMetrics({
+    campaignId: "campaign-6", accessToken: "token", mode: "live",
+    campaignStatus: "ACTIVE", reportingWindow: exactWindow,
+  }),
+  (error) => error?.code === "meta_insights_pagination_nonprogress",
 );
 
 const providerCtrCases = [0.2, 0.5, 0.8, 1.0, 1.2, 2];

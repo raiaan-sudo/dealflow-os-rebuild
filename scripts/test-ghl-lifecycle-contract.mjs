@@ -36,7 +36,12 @@ new Function("require", "module", "exports", output)(
   loadedModule.exports,
 );
 
-const { parseGhlLifecycleWebhook, verifyGhlWebhookSignature } = loadedModule.exports;
+const {
+  GHL_LEGACY_SIGNATURE_CUTOFF_MS,
+  parseGhlLifecycleWebhook,
+  verifyGhlWebhookSignature,
+  verifyGhlWebhookSignatures,
+} = loadedModule.exports;
 
 function parse(fixture) {
   return parseGhlLifecycleWebhook(JSON.stringify(fixture));
@@ -194,6 +199,25 @@ const signature = nodeCrypto.sign(null, Buffer.from(signedBody), privateKey).toS
 assert.equal(verifyGhlWebhookSignature(signedBody, signature, publicKey), true);
 assert.equal(verifyGhlWebhookSignature(`${signedBody} `, signature, publicKey), false);
 assert.equal(verifyGhlWebhookSignature(signedBody, "not-base64", publicKey), false);
+assert.equal(verifyGhlWebhookSignatures(signedBody, { ghl: signature, legacy: null }, {
+  ed25519PublicKey: publicKey,
+}), true);
+
+const legacyKeys = nodeCrypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+const legacySignature = nodeCrypto.sign("sha256", Buffer.from(signedBody), legacyKeys.privateKey).toString("base64");
+assert.equal(verifyGhlWebhookSignatures(signedBody, { ghl: null, legacy: legacySignature }, {
+  now: new Date(GHL_LEGACY_SIGNATURE_CUTOFF_MS - 1),
+  legacyPublicKey: legacyKeys.publicKey,
+}), true, "legacy RSA remains accepted only during the documented transition window");
+assert.equal(verifyGhlWebhookSignatures(signedBody, { ghl: null, legacy: legacySignature }, {
+  now: new Date(GHL_LEGACY_SIGNATURE_CUTOFF_MS),
+  legacyPublicKey: legacyKeys.publicKey,
+}), false, "legacy RSA must fail closed at the documented cutoff");
+assert.equal(verifyGhlWebhookSignatures(signedBody, { ghl: "invalid-current-signature", legacy: legacySignature }, {
+  now: new Date(GHL_LEGACY_SIGNATURE_CUTOFF_MS - 1),
+  ed25519PublicKey: publicKey,
+  legacyPublicKey: legacyKeys.publicKey,
+}), false, "an invalid current signature must never downgrade to a valid legacy signature");
 
 const serviceSource = fs.readFileSync("src/lib/services/ghl-lifecycle-service.ts", "utf8");
 const serviceOutput = ts.transpileModule(serviceSource, {

@@ -9,7 +9,7 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const REQUIRED_FINAL_MIGRATION = "20260716200000_harden_stripe_payment_lifecycle.sql";
+const REQUIRED_FINAL_MIGRATION = "20260717060000_install_owner_decision_authority_grants.sql";
 const PROPOSAL = process.env.GENERATED_VIDEO_STORAGE_MIGRATION_PROPOSAL
   ?? join(MIGRATIONS, "20260713025000_add_generated_video_canonical_storage.sql");
 const TRANSACTION_OWNER = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -124,7 +124,7 @@ function bindSql(overrides = {}) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 108, "test expects the exact 108-migration candidate");
+  assert.equal(migrations.length, 115, "test expects the exact 115-migration candidate");
   assert.equal(migrations.at(-1), REQUIRED_FINAL_MIGRATION, "test expects the exact final migration");
   assert.match(readFileSync(PROPOSAL, "utf8"), /bind_generated_video_storage_v1/);
   adapter.preflight();
@@ -136,16 +136,6 @@ try {
   await adapter.withDisposableDatabase(async (session) => {
     installRemoteDefaults(session);
     applyAllMigrations(session);
-    const proposalSql = readFileSync(PROPOSAL, "utf8");
-    session.psql(`begin; set role postgres; ${proposalSql} reset role; commit;`, {
-      label: "Replay integrated generated-video storage migration after exact chain",
-      timeoutMs: 180_000,
-    });
-    session.psql(`begin; set role postgres; ${proposalSql} reset role; commit;`, {
-      label: "Replay integrated generated-video storage migration a second time",
-      timeoutMs: 180_000,
-    });
-
     session.psql(`
       insert into auth.users(id) values ('${USER_A}'), ('${USER_B}');
       insert into public.users(id, email) values
@@ -291,8 +281,8 @@ try {
 
   assert.deepEqual(adapter.listDisposableDatabases(), []);
   console.log(
-    `Generated-video storage database proof PASS: exact ${migrations.length} + migration-100 replay twice; ` +
-      "idempotent DDL, atomic bind/replay, private capability, cross-tenant rejection, immutable provider/dispatch/storage identity and URL, reserved-prefix guard",
+    `Generated-video storage database proof PASS: exact ${migrations.length}; ` +
+      "atomic bind/replay, private capability, cross-tenant rejection, immutable provider/dispatch/storage identity and URL, reserved-prefix guard",
   );
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");

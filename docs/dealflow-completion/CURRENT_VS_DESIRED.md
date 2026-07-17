@@ -3,7 +3,7 @@
 > **Superseded current-status snapshot.** The 104-migration comparison below is
 > preserved as predecessor context. See
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)
-> for the unsealed 108-migration / 91-command successor and its explicit
+> for the unsealed 115-migration / 91-command successor and its explicit
 > `NOT_YET_RUN` staging and production gates.
 
 Overall verdict: `NO_GO`

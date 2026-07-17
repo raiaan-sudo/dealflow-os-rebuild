@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentdealflow.io/schemas/dealflow-owner-decision-authority-envelope.v1.schema.json",
+  "title": "Detached DealFlow owner-decision authority envelope",
+  "description": "Detached canonical authority signed with an Ed25519 key pinned by the protected external release trust. This file is never a tracked production authority artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "envelopeId", "mode", "generation",
+    "previousEnvelopeSha256", "revocationGeneration", "authority", "candidate",
+    "template", "timing", "decisions", "capabilitySelections",
+    "productionReleaseAuthorized", "attestation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "dealflow.owner-decision-authority-envelope.v1" },
+    "envelopeId": { "$ref": "#/$defs/identifier" },
+    "mode": { "enum": ["production", "synthetic_staging"] },
+    "generation": { "type": "integer", "minimum": 1 },
+    "previousEnvelopeSha256": { "$ref": "#/$defs/nullableSha256" },
+    "revocationGeneration": { "type": "integer", "minimum": 0 },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorityId", "keyId", "source", "publicKeySha256",
+        "releaseTrustPolicyId", "releaseTrustGeneration"
+      ],
+      "properties": {
+        "authorityId": { "$ref": "#/$defs/identifier" },
+        "keyId": { "$ref": "#/$defs/identifier" },
+        "source": { "$ref": "#/$defs/identifier" },
+        "publicKeySha256": { "$ref": "#/$defs/sha256" },
+        "releaseTrustPolicyId": { "$ref": "#/$defs/identifier" },
+        "releaseTrustGeneration": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit", "tree", "trackedWorktreeSha256", "trackedFileCount",
+        "dependencyLock", "migrationPortfolio"
+      ],
+      "properties": {
+        "commit": { "$ref": "#/$defs/gitObject" },
+        "tree": { "$ref": "#/$defs/gitObject" },
+        "trackedWorktreeSha256": { "$ref": "#/$defs/sha256" },
+        "trackedFileCount": { "type": "integer", "minimum": 1 },
+        "dependencyLock": {
+          "type": "object", "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": { "const": "package-lock.json" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "migrationPortfolio": {
+          "type": "object", "additionalProperties": false,
+          "required": ["directory", "count", "sha256"],
+          "properties": {
+            "directory": { "const": "supabase/migrations" },
+            "count": { "type": "integer", "minimum": 1 },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "template": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "decisionInventorySha256", "requirementInventorySha256"],
+      "properties": {
+        "path": { "const": "config/authority/dealflow-owner-decisions.v1.json" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "decisionInventorySha256": { "$ref": "#/$defs/sha256" },
+        "requirementInventorySha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "timing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuedAt", "effectiveAt", "expiresAt"],
+      "properties": {
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "effectiveAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "decisions": {
+      "type": "array", "minItems": 1, "maxItems": 43, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/decision" }
+    },
+    "capabilitySelections": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "productionReleaseAuthorized": { "const": false },
+    "attestation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["algorithm", "payloadSha256", "signature"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "payloadSha256": { "$ref": "#/$defs/sha256" },
+        "signature": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullableSha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
+    "gitObject": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "selectedValue", "effectiveAt", "reviewAt", "approver"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "selectedValue": {},
+        "effectiveAt": { "type": "string", "format": "date-time" },
+        "reviewAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+        "approver": {
+          "type": "object", "additionalProperties": false,
+          "required": ["role", "identityRef", "approvedAt"],
+          "properties": {
+            "role": { "$ref": "#/$defs/identifier" },
+            "identityRef": { "$ref": "#/$defs/identifier" },
+            "approvedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    },
+    "capability": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capability", "decisionIds", "selection", "selectedValuesSha256", "policySha256"],
+      "properties": {
+        "capability": { "$ref": "#/$defs/identifier" },
+        "decisionIds": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "selection": { "const": "APPROVED_ENABLED" },
+        "selectedValuesSha256": { "$ref": "#/$defs/sha256" },
+        "policySha256": { "$ref": "#/$defs/nullableSha256" }
+      }
+    }
+  }
+}

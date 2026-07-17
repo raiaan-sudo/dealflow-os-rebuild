@@ -15,14 +15,15 @@ export const metadata: Metadata = {
   },
 };
 
-const renderVercelAnalytics = shouldRenderVercelAnalytics();
-
 export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const requestHeaders = await headers();
+  const [requestHeaders, renderVercelAnalytics] = await Promise.all([
+    headers(),
+    shouldRenderVercelAnalytics(),
+  ]);
   const locale = parseProductLocalePathname(
     requestHeaders.get("x-pathname") ?? "/",
   ).locale;

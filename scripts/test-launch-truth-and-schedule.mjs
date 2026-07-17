@@ -721,30 +721,54 @@ const providerPausedRuntime = {
   safetyState: "paused",
   metaPushStatus: "provider_paused",
   launchedAt: null,
+  campaignId: "provider-campaign",
+  adSetId: "provider-adset",
+  adId: "provider-ad",
+  metaAdSetIds: ["provider-adset"],
+  metaAdIds: ["provider-ad"],
+  statusUpdatedAt: "2026-07-12T13:00:00.000Z",
 };
+const lifecycleStateMachine = loadTsModule(
+  "src/lib/services/campaign-lifecycle-state-machine.ts",
+  [
+    "CampaignLifecycleTransitionError",
+    "setExperienceRuntime",
+  ],
+);
 const { setCampaignExperienceStatus } = loadTsModuleWithMocks(
   "src/lib/services/campaign-runtime-service.ts",
   {
+    "@/lib/api/route": { ApiError: FakeApiError },
     "@/lib/formatters": { formatCurrency: (value) => String(value) },
+    "@/lib/services/campaign-lifecycle-state-machine": lifecycleStateMachine,
+    "@/lib/services/campaign-plan-persistence-service": {
+      persistCampaignRuntimeTransition: async () => {
+        terminalRuntimePersistCount += 1;
+      },
+    },
+    "@/lib/services/app-context": {
+      getAppContext: async () => ({
+        organization: { id: "workspace-a" },
+        user: { id: "user-a" },
+      }),
+    },
+    "@/lib/services/canonical-campaign": { canonicalCampaignToPlan: () => null },
+    "@/lib/services/campaign-persistence": { getCampaignByIdForInternalActor: async () => null },
     "@/lib/services/campaign-plan-service": {
       getCampaignPlanById: async (campaignId) => {
         requestedRuntimeCampaignId = campaignId;
         return { id: campaignId, runtime: providerPausedRuntime };
       },
       getLatestCampaignPlan: async () => ({ id: "campaign-b", runtime: { ...providerPausedRuntime, status: "built", metaPushStatus: "not_pushed" } }),
-      persistCampaignPlan: async (plan) => {
-        terminalRuntimePersistCount += 1;
-        return plan;
-      },
     },
   },
 );
-const preservedTerminalRuntime = await setCampaignExperienceStatus("launch_ready", { campaignId: "campaign-a" });
+await assert.rejects(
+  setCampaignExperienceStatus("launch_ready", { campaignId: "campaign-a" }),
+  (error) => error?.code === "campaign_lifecycle_provider_truth_locked" && error?.status === 409,
+);
 assert.equal(requestedRuntimeCampaignId, "campaign-a", "Runtime mutation loaded the latest campaign instead of the requested campaign");
 assert.equal(terminalRuntimePersistCount, 0, "Experience promotion rewrote durable provider-paused truth");
-assert.equal(preservedTerminalRuntime.runtime.status, "provider_paused");
-assert.equal(preservedTerminalRuntime.runtime.metaPushStatus, "provider_paused");
-assert.equal(preservedTerminalRuntime.runtime.safetyState, "paused");
 
 const schedulerMocks = {
   "server-only": {},

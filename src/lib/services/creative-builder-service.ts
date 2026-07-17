@@ -41,6 +41,7 @@ import {
   isCanonicalManualCreativeStorageIdentity,
   MANUAL_CREATIVE_STORAGE_BUCKET,
 } from "@/lib/services/creative-asset-storage-identity";
+import { validateManualCreativeAssetFile } from "@/lib/services/creative-asset-content-validation";
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
@@ -1123,29 +1124,24 @@ export async function uploadManualCreativeAsset(params: {
     );
   }
 
-  const extension = params.file.name.includes(".")
-    ? params.file.name.split(".").pop()?.toLowerCase() || "bin"
-    : params.file.type.includes("png")
-      ? "png"
-      : params.file.type.includes("jpeg") || params.file.type.includes("jpg")
-        ? "jpg"
-        : params.file.type.includes("webp")
-          ? "webp"
-          : params.file.type.includes("mp4")
-            ? "mp4"
-            : "bin";
-  const safeExtension = /^[a-z0-9]{1,8}$/.test(extension) ? extension : "bin";
+  // MIME and filename are untrusted declarations. Validate the exact bytes
+  // before any object or database persistence and derive storage identity from
+  // the verified signature.
+  const verifiedContent = await validateManualCreativeAssetFile({
+    file: params.file,
+    kind: params.kind,
+  });
   const storagePath = buildManualCreativeStoragePath({
     userId,
     campaignId: params.campaignId,
-    fileName: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${safeExtension}`,
+    fileName: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${verifiedContent.extension}`,
   });
 
   const { error: uploadError } = await supabase.storage
     .from(MANUAL_CREATIVE_STORAGE_BUCKET)
-    .upload(storagePath, params.file, {
+    .upload(storagePath, verifiedContent.bytes, {
       cacheControl: "3600",
-      contentType: params.file.type || undefined,
+      contentType: verifiedContent.mimeType,
       upsert: false,
     });
 
@@ -1184,7 +1180,12 @@ export async function uploadManualCreativeAsset(params: {
         label: params.label ?? null,
         caption: params.caption ?? null,
         originalFileName: params.file.name,
-        mimeType: params.file.type || null,
+        mimeType: verifiedContent.mimeType,
+        declaredMimeType: params.file.type || null,
+        verifiedMimeType: verifiedContent.mimeType,
+        contentSha256: verifiedContent.contentSha256,
+        contentLength: verifiedContent.contentLength,
+        provenance: "manual_upload_verified_bytes",
       } as Json,
     } as never)
     .select("*")

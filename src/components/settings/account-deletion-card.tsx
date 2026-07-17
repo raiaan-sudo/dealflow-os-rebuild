@@ -22,7 +22,6 @@ export function AccountDeletionCard() {
   const { href, locale } = useProductI18n();
   const copy = ACCOUNT_DELETION_COPY[locale];
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [phrase, setPhrase] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -69,9 +68,8 @@ export function AccountDeletionCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          password,
           confirmationPhrase: phrase,
-          identityMethod: "password",
+          identityMethod: "aal2",
           idempotencyKey: idempotencyKeyRef.current,
         }),
       });
@@ -84,7 +82,6 @@ export function AccountDeletionCard() {
       }
       setRequest(payload.request);
       idempotencyKeyRef.current = null;
-      setPassword("");
     } catch (submitError) {
       setError(
         submitError instanceof Error && submitError.message === copy.scheduleError
@@ -153,16 +150,9 @@ export function AccountDeletionCard() {
             onChange={(event) => setEmail(event.target.value)}
           />
         </label>
-        <label className="grid gap-2 text-sm font-medium">
-          {copy.password}
-          <input
-            className="h-11 rounded-xl border border-border bg-background px-3 text-foreground"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
+        <p className="rounded-xl border border-border bg-background/50 p-3 text-sm leading-6 text-muted-foreground">
+          {copy.recentAal2}
+        </p>
         <label className="grid gap-2 text-sm font-medium">
           {copy.typePhrase} <span className="font-mono text-xs">{ACCOUNT_DELETION_CONFIRMATION_PHRASE}</span>
           <input
@@ -190,7 +180,6 @@ export function AccountDeletionCard() {
             executionAvailable !== true ||
             !accepted ||
             phrase !== ACCOUNT_DELETION_CONFIRMATION_PHRASE ||
-            password.length < 8 ||
             !email.includes("@")
           }
           onClick={() => void submit()}

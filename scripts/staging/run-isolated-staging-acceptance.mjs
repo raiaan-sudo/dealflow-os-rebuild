@@ -94,11 +94,13 @@ import {
   disposePinnedVercelCli,
   resolvePinnedVercelCli,
 } from "./vercel-cli-selection-contract.mjs";
+import { synchronizeExactVercelEnvironment } from "./vercel-environment-sync-contract.mjs";
+import { FORWARD_104_TO_115_AUTHORITY } from "./forward-104-to-115-contract.mjs";
 
 const EXPECTED_REPO = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
 );
-const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
+const EXPECTED_BRANCH = "codex/dealflow-final-master-20260716";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_STAGING_BASE_URL = `https://${EXPECTED_STAGING_HOST}`;
 const EXPECTED_PARTNER_ONE_HOST =
@@ -115,14 +117,6 @@ const EXPECTED_APP_ALIASES = Object.freeze([
 const EXPECTED_SUPABASE_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh";
-const EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT =
-  "5978cfc9a80f511cfed02d1d1f810a4720db7cc1";
-const EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE =
-  "7ea61c55363d40d1e23fb35e45029e653e6682a7";
-const EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 =
-  "f4a7209d74fdc1dad3f82290c837d2a8c289546eca7f8b7373efe9e0e6aa3f63";
-const EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256 =
-  "066dacae58f0987a281bff1f8b21cfaaa2a1cebe49e797a0f764f88d21be74ca";
 const EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
 const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
@@ -130,9 +124,11 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 108;
+const EXPECTED_MIGRATION_COUNT = 115;
 const EXPECTED_FINAL_MIGRATION =
-  "20260716200000_harden_stripe_payment_lifecycle.sql";
+  "20260717060000_install_owner_decision_authority_grants.sql";
+const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
+  "14f8d5a4ab0ad9f2b4063a398157df8445b7f3ac495a5c8f0b0297233a061db3";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -220,7 +216,7 @@ const DEPLOYABLE_SOURCE_MANIFEST_PATH = join(
 );
 const EXPECTED_DATABASE_TRUST_BUNDLE_SHA256 =
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7";
-const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
+const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 61;
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
 const PAID_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000001";
 const PAID_BILLING_ID = "d6000000-0000-4000-8000-000000000001";
@@ -403,6 +399,7 @@ const REQUIRED_FALSE_CONTROLS = [
   "ALLOW_BILLING_ADMIN_OVERRIDE",
   "ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE",
   "GHL_SANDBOX_WRITES_ENABLED",
+  "GHL_MARKETPLACE_PROVIDER_EFFECTS_ENABLED",
   "GHL_SANDBOX_INBOUND_FORM_RECONCILIATION_ENABLED",
   "GHL_SANDBOX_INBOUND_FORM_SWEEP_ENABLED",
   "GHL_PRODUCTION_WRITES_ENABLED",
@@ -482,11 +479,11 @@ Safe resume after a previously sealed atomic application:
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
-Disabled legacy reference; this invocation now fails closed:
-Exact forward-only migration 104 on the pinned read-only-proven 103-migration staging seal:
+Exact bounded forward transition from the pinned read-only-proven 104-migration
+staging seal to the current 115-migration portfolio:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-forward-migration --deploy \\
-    --prior-migration-proof-dir /absolute/path/pinned-103/migration-proof \\
+    --prior-migration-proof-dir /absolute/path/pinned-104/migration-proof \\
     --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
@@ -500,8 +497,8 @@ Required execution environment:
   DEALFLOW_STAGING_PROJECT_RECORD=/absolute/external/owner-only-qibh-project-record.json
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
-Exactly one migration mode is required. Resume mode is read-only. The legacy
-single-migration 103-to-104 forward mode is disabled for this successor.`;
+Exactly one migration mode is required. Resume mode is read-only. Forward mode
+is restricted to the exact pinned 104-to-115 transition authority.`;
 }
 
 function parseArguments(argv) {
@@ -1063,6 +1060,7 @@ function captureVercelProjectIdentity() {
       organizationIdFingerprint: sha256(String(project.orgId)),
     }),
     projectId: String(project.projectId),
+    organizationId: String(project.orgId),
   });
 }
 
@@ -1194,6 +1192,7 @@ function hostedStagingEnvironment(
   projectRef,
   vercelProjectId,
   identity,
+  migrationIdentity,
   vercelDryRunSourceProof,
   stagingAccessGateSecret,
 ) {
@@ -1201,6 +1200,9 @@ function hostedStagingEnvironment(
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     DEALFLOW_STAGING_VERCEL_PROJECT_ID: vercelProjectId,
     DEALFLOW_STAGING_HOST_ATTESTATION: "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
+    DEALFLOW_RUNTIME_MIGRATION_PORTFOLIO_SHA256:
+      migrationIdentity.migrationPortfolioSha256,
+    DEALFLOW_RUNTIME_MIGRATION_COUNT: String(migrationIdentity.migrationCount),
     NEXT_PUBLIC_APP_URL: EXPECTED_STAGING_BASE_URL,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -1570,9 +1572,9 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 108 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 115 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260716200000_harden_stripe_payment_lifecycle.sql" ||
+      "20260717060000_install_owner_decision_authority_grants.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
@@ -1848,27 +1850,6 @@ function vercelEnvironment() {
   return env;
 }
 
-async function listHostedEnvironmentNames(vercel) {
-  const listed = await runPinnedVercel(
-    vercel,
-    ["env", "list", "production", "--format=json", "--no-color"],
-    {
-      label: "list isolated Vercel staging environment names",
-      env: vercelEnvironment(),
-      timeoutMs: 3 * 60_000,
-      secrets: protectedRuntimeValues(),
-    },
-  );
-  const parsed = parseSingleJsonOutput(listed.stdout, "Vercel environment list");
-  const records = Array.isArray(parsed)
-    ? parsed
-    : parsed?.envs ?? parsed?.environmentVariables ?? parsed?.variables;
-  if (!Array.isArray(records)) {
-    throw new Error("Vercel did not return a structured production environment inventory");
-  }
-  return [...new Set(records.map((record) => record.key ?? record.name).filter(Boolean))].sort();
-}
-
 async function configureHostedStagingProtection(vercel, projectId) {
   return await configureExactStagingVercelProtection({
     projectId,
@@ -1925,62 +1906,78 @@ async function verifyHostedStagingProtection(vercel, projectId) {
   });
 }
 
-async function configureHostedStagingEnvironment(vercel, environment) {
-  const expectedNames = Object.keys(environment).sort();
-  const existingNames = await listHostedEnvironmentNames(vercel);
-  const unexpectedNames = existingNames.filter((name) => !expectedNames.includes(name));
-  if (unexpectedNames.length > 0) {
-    throw new Error(
-      `The isolated staging project contains unapproved environment names: ${unexpectedNames.join(", ")}`,
-    );
+async function configureHostedStagingEnvironment(
+  environment,
+  projectId,
+  organizationId,
+) {
+  return await synchronizeExactVercelEnvironment({
+    projectId,
+    organizationId,
+    token: requiredEnvironment("VERCEL_TOKEN", 20),
+    expectedProjectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+    expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
+    environment,
+    sensitiveKeys: HOSTED_SECRET_ENV_NAMES,
+    expectedCount: 91,
+    providerSensitiveNames: PROVIDER_SENSITIVE_ENV_NAMES,
+    fetchImpl: fetch,
+    delayImpl: abortableDelay,
+    batchSize: 20,
+    maxAttempts: 4,
+    requestTimeoutMs: 30_000,
+    maxRetryAfterMs: 60_000,
+  });
+}
+
+function assertExactHostedEnvironmentProof(proof) {
+  const expectedSensitiveCount = HOSTED_SECRET_ENV_NAMES.size;
+  const expectedReadableCount = 91 - expectedSensitiveCount;
+  if (
+    proof?.status !== "PASS" ||
+    proof.synchronizationMode !== "bounded_idempotent_missing_or_drifted_only" ||
+    proof.environmentVariableCount !== 91 ||
+    proof.environmentNameSetSha256 !== EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 ||
+    proof.finalExactStructureCount !== 91 ||
+    proof.finalReadableValueDigestMatchCount !== expectedReadableCount ||
+    proof.finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount ||
+    proof.finalExpectedValueDispositionCount !== 91 ||
+    proof.finalUnexpectedEnvironmentCount !== 0 ||
+    proof.exactTarget !== "production" ||
+    proof.exactTypePortfolioProven !== true ||
+    proof.exactBranchScope !== null ||
+    proof.exactCustomEnvironmentScopeCount !== 0 ||
+    proof.secretValuesPersistedToEvidence !== false ||
+    proof.valueDigestsPersistedToEvidence !== false ||
+    proof.providerCredentialNamesPresent !== false ||
+    !Array.isArray(proof.variables) ||
+    proof.variables.length !== 91
+  ) {
+    throw new Error("The exact 91-variable isolated staging environment proof is incomplete");
   }
-  const protectedEnvironmentNames = new Set([
-    ...HOSTED_SECRET_ENV_NAMES,
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "QA_ISOLATED_SUPABASE_PROJECT_REF",
-    "DEALFLOW_STAGING_VERCEL_PROJECT_ID",
-  ]);
-  const secrets = [
-    ...protectedRuntimeValues(),
-    ...Object.entries(environment)
-      .filter(([name]) => protectedEnvironmentNames.has(name))
-      .map(([, value]) => value),
-  ];
-  for (const name of expectedNames) {
-    const value = environment[name];
-    if (typeof value !== "string" || value.length === 0) {
-      throw new Error(`Hosted staging environment input ${name} is missing`);
+  const seen = new Set();
+  for (const variable of proof.variables) {
+    const expectedType = HOSTED_SECRET_ENV_NAMES.has(variable?.key)
+      ? "sensitive"
+      : "encrypted";
+    const expectedFinalStatus = expectedType === "sensitive"
+      ? "present_exact_metadata_value_write_acknowledged"
+      : "present_exact";
+    if (
+      typeof variable?.key !== "string" ||
+      seen.has(variable.key) ||
+      variable.target !== "production" ||
+      variable.type !== expectedType ||
+      variable.branchScope !== null ||
+      variable.finalStatus !== expectedFinalStatus
+    ) {
+      throw new Error("The isolated staging environment variable portfolio is not exact");
     }
-    const args = [
-      "env",
-      "add",
-      name,
-      "production",
-      "--force",
-      "--yes",
-      "--no-color",
-    ];
-    if (HOSTED_SECRET_ENV_NAMES.has(name)) args.push("--sensitive");
-    await runPinnedVercel(vercel, args, {
-      label: `configure isolated staging environment ${name}`,
-      env: vercelEnvironment(),
-      input: `${value}\n`,
-      timeoutMs: 3 * 60_000,
-      secrets,
-    });
+    seen.add(variable.key);
   }
-  const configuredNames = await listHostedEnvironmentNames(vercel);
-  if (JSON.stringify(configuredNames) !== JSON.stringify(expectedNames)) {
-    throw new Error("The isolated Vercel staging environment inventory is not exact after provisioning");
+  if (sha256([...seen].sort().join("\n")) !== EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256) {
+    throw new Error("The isolated staging environment variable name set drifted");
   }
-  return {
-    target: "production_slot_of_isolated_staging_project",
-    environmentVariableCount: configuredNames.length,
-    environmentNameSetSha256: sha256(configuredNames.join("\n")),
-    secretValuesPersistedToEvidence: false,
-    providerCredentialNamesPresent: configuredNames.some((name) =>
-      PROVIDER_SENSITIVE_ENV_NAMES.includes(name)),
-  };
 }
 
 async function fetchAuthoritativeVercelDeployment(
@@ -5374,11 +5371,6 @@ async function main() {
       "No remote work was authorized: --execute, --deploy, and exactly one migration mode are required",
     );
   }
-  if (options.applyForwardMigration) {
-    throw new Error(
-      "Legacy single-migration forward mode is disabled for the 108-migration successor; use fresh isolated staging or separately reviewed exact multi-migration authority",
-    );
-  }
   if (!options.evidenceDir || !options.roundOne || !options.roundTwo) {
     throw new Error("Evidence directory and both exact final-verification summaries are required");
   }
@@ -5415,10 +5407,14 @@ async function main() {
     execution.projectRef,
     vercelAuthority.projectId,
     identity,
+    migrations,
     vercelDryRunSourceProof,
     stagingAccessGateSecret,
   );
   const hostedEnvironmentNames = Object.keys(hostedEnvironment).sort();
+  if (hostedEnvironmentNames.length !== 91) {
+    throw new Error("The exact 91-variable isolated staging environment portfolio is required");
+  }
   const roundOne = readValidatedRound(
     options.roundOne,
     identity,
@@ -5499,12 +5495,11 @@ async function main() {
 
   failureContext.stage = "hosted_environment_configuration";
   const hostedEnvironmentProof = await configureHostedStagingEnvironment(
-    vercel,
     hostedEnvironment,
+    vercelAuthority.projectId,
+    vercelAuthority.organizationId,
   );
-  if (hostedEnvironmentProof.providerCredentialNamesPresent) {
-    throw new Error("Provider credentials are forbidden from isolated staging acceptance");
-  }
+  assertExactHostedEnvironmentProof(hostedEnvironmentProof);
   writeJson(join(options.evidenceDir, "staging-environment.json"), {
     status: "PASS",
     ...hostedEnvironmentProof,
@@ -5603,32 +5598,48 @@ async function main() {
   const exactForwardApplication =
     options.applyForwardMigration &&
     migrationSummary.migrationMode === "APPLY_FORWARD_EXACT" &&
+    migrationSummary.transition === "EXACT_104_TO_115" &&
     migrationSummary.forwardOnly === true &&
-    migrationSummary.priorMigrationCount === 103 &&
-    migrationSummary.forwardMigrationCount === 1 &&
-    migrationSummary.forwardMigration?.file === EXPECTED_FINAL_MIGRATION &&
-    migrationSummary.forwardMigration?.version === EXPECTED_FINAL_MIGRATION.slice(0, 14) &&
-    /^[a-f0-9]{64}$/.test(migrationSummary.forwardMigration?.sha256 ?? "") &&
+    migrationSummary.priorMigrationCount ===
+      FORWARD_104_TO_115_AUTHORITY.prior.migrationCount &&
+    migrationSummary.forwardMigrationCount ===
+      FORWARD_104_TO_115_AUTHORITY.forwardMigrations.length &&
+    JSON.stringify(migrationSummary.forwardMigrations) ===
+      JSON.stringify(FORWARD_104_TO_115_AUTHORITY.forwardMigrations) &&
+    migrationSummary.terminalVersion === EXPECTED_FINAL_MIGRATION.slice(0, 14) &&
+    migrationSummary.migrationPortfolioSha256 ===
+      FORWARD_104_TO_115_AUTHORITY.current.migrationPortfolioSha256 &&
     migrationSummary.remoteMutationStarted === true &&
     migrationSummary.remoteMutationCompleted === true &&
     migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
     migrationSummary.serviceRoleRetentionConfigurationSelectOnly === true &&
     migrationSummary.remoteStateVerificationStatus ===
-      "EXACT_FORWARD_COMMITTED_PORTFOLIO" &&
+      "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO" &&
     priorApplicationRetainedHistory &&
-    migrationSummary.priorApplication?.remoteMutationCompleted === true &&
     migrationSummary.priorApplication?.applicationCommit ===
-      EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT &&
+      FORWARD_104_TO_115_AUTHORITY.prior.proofCommit &&
     migrationSummary.priorApplication?.applicationTree ===
-      EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE &&
+      FORWARD_104_TO_115_AUTHORITY.prior.proofTree &&
     migrationSummary.priorApplication?.manifestSha256 ===
-      EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256 &&
-    migrationSummary.priorApplication?.migrationCount === 103 &&
-    migrationSummary.priorApplication?.lastCommittedVersion === "20260713028000" &&
+      FORWARD_104_TO_115_AUTHORITY.priorEvidence.artifactSha256[
+        "evidence-manifest.json"
+      ] &&
+    migrationSummary.priorApplication?.migrationCount ===
+      FORWARD_104_TO_115_AUTHORITY.prior.migrationCount &&
+    migrationSummary.priorApplication?.lastCommittedVersion ===
+      FORWARD_104_TO_115_AUTHORITY.prior.finalMigration.slice(0, 14) &&
     migrationSummary.priorApplication?.migrationPortfolioSha256 ===
-      EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256 &&
-    Array.isArray(migrationSummary.priorApplication?.migrationFiles) &&
-    migrationSummary.priorApplication.migrationFiles.length === 103;
+      FORWARD_104_TO_115_AUTHORITY.prior.migrationPortfolioSha256 &&
+    migrationSummary.priorApplication?.normalizedSchemaSha256 ===
+      FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256 &&
+    migrationSummary.priorApplication?.structuralCatalogSha256 ===
+      FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256 &&
+    migrationSummary.priorApplication?.evidenceKind ===
+      "read_only_exact_verification" &&
+    migrationSummary.priorApplication?.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.priorApplication?.rawValuesPersisted === false &&
+    JSON.stringify(migrationSummary.priorApplication?.authSurface) ===
+      JSON.stringify(FORWARD_104_TO_115_AUTHORITY.prior.authSurface);
   if (
     migrationSummary.status !== "PASS" ||
     (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication) ||
@@ -5637,7 +5648,7 @@ async function main() {
     ![
       "EXACT_COMMITTED_PORTFOLIO",
       "EXACT_EXISTING_COMMITTED_PORTFOLIO",
-      "EXACT_FORWARD_COMMITTED_PORTFOLIO",
+      "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
     ].includes(migrationSummary.remoteStateVerificationStatus) ||
     migrationSummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.migrationHistoryCount !== EXPECTED_MIGRATION_COUNT ||
@@ -5761,10 +5772,47 @@ async function main() {
       retentionAuthoritySummary.remoteMutationOutcome ===
         "exact_approved_policy_recovery_committed") ||
     (retentionAuthorityMode === "exact_existing_reused" &&
-      retentionAuthoritySummary.remoteMutationStarted === false &&
-      retentionAuthoritySummary.remoteMutationCompleted === false &&
+      retentionAuthoritySummary.remoteMutationStarted === true &&
+      retentionAuthoritySummary.remoteMutationCompleted === true &&
       retentionAuthoritySummary.remoteMutationOutcome ===
-        "exact_existing_reused_without_mutation");
+        "exact_authority_projection_refresh_committed");
+  const ownerDecisionAuthority = retentionAuthoritySummary.ownerDecisionAuthority;
+  const exactOwnerDecisionAuthority =
+    [
+      "exact_synthetic_owner_grants_installed",
+      "exact_synthetic_owner_grants_rotated",
+      "exact_synthetic_owner_grants_reused",
+    ].includes(ownerDecisionAuthority?.installationMode) &&
+    ownerDecisionAuthority.currentGrantCount === 4 &&
+    ownerDecisionAuthority.currentCapabilityCount === 4 &&
+    Number.isSafeInteger(ownerDecisionAuthority.historicalGrantCount) &&
+    ownerDecisionAuthority.historicalGrantCount >= 4 &&
+    ownerDecisionAuthority.hostProjectMatches === true &&
+    ownerDecisionAuthority.productionGrantCount === 0;
+  const privacyAuthority = retentionAuthoritySummary.privacyAuthority;
+  const exactPrivacyAuthority =
+    [
+      "exact_synthetic_privacy_grant_installed",
+      "exact_synthetic_privacy_grant_rotated",
+      "exact_synthetic_privacy_grant_reused",
+    ].includes(privacyAuthority?.installationMode) &&
+    privacyAuthority.activeGrantCount === 1 &&
+    Number.isSafeInteger(privacyAuthority.historicalGrantCount) &&
+    privacyAuthority.historicalGrantCount >= 1 &&
+    privacyAuthority.productionGrantCount === 0 &&
+    Number.isSafeInteger(privacyAuthority.inventoryRelationCount) &&
+    privacyAuthority.inventoryRelationCount > 0 &&
+    /^[a-f0-9]{64}$/.test(privacyAuthority.inventoryGenerationDigest ?? "") &&
+    /^[a-f0-9]{64}$/.test(privacyAuthority.inventoryClassificationDigest ?? "") &&
+    privacyAuthority.unresolvedCount === 0 &&
+    privacyAuthority.syntheticClassificationCount ===
+      privacyAuthority.inventoryRelationCount &&
+    privacyAuthority.nullExecutorCount === 0 &&
+    privacyAuthority.wrongGrantCount === 0 &&
+    privacyAuthority.wrongSnapshotCount === 0 &&
+    privacyAuthority.terminalAuthorityTableCount === 2 &&
+    privacyAuthority.legalRetentionAuthorized === false &&
+    privacyAuthority.workerAndLegalHoldExecutionAuthorized === false;
   const verificationRoundEvidence = retentionAuthoritySummary.verificationRoundEvidence;
   const exactVerificationRoundEvidence =
     Array.isArray(verificationRoundEvidence) &&
@@ -5819,6 +5867,10 @@ async function main() {
     retentionAuthoritySummary.relationOwner !== "postgres" ||
     retentionAuthoritySummary.ownerUpdatePrivilege !== true ||
     retentionAuthoritySummary.exactSyntheticMarker !== true ||
+    retentionAuthoritySummary.replaySemantics !==
+      "bounded_generation_rotation_or_unexpired_exact_replay_with_catalog_rebind" ||
+    !exactOwnerDecisionAuthority ||
+    !exactPrivacyAuthority ||
     !exactVerificationRoundEvidence ||
     !truthfulRetentionMutationState ||
     retentionAuthoritySummary.productionMutationPerformed !== false ||
@@ -6421,10 +6473,15 @@ async function main() {
     .map(([item, status]) => ({ item, status }));
   const hostedDeferralsClosed =
     rlsDeferralsClosed && operatorDebtProof.status === "PASS";
+  const stagingVerdict = hostedDeferralsClosed ? "STAGING_GO" : "STAGING_NO_GO";
+  const productionReadinessVerdict =
+    productionGateBlockers.length === 0 ? "GO" : "NO_GO";
   failureContext.stage = "final_evidence_seal";
   assertPinnedVercelCliUnchanged(vercel);
   writeJson(join(options.evidenceDir, "production-gate-matrix.json"), {
     status: "NO_GO",
+    stagingVerdict,
+    productionReadinessVerdict,
     productionGate: "CLOSED",
     safeAcceptanceHarnessStatus: hostedDeferralsClosed ? "PASS" : "INCOMPLETE",
     productionGateMatrix,
@@ -6437,6 +6494,8 @@ async function main() {
     status: "NO_GO",
     safeAcceptanceHarnessStatus: hostedDeferralsClosed ? "PASS" : "INCOMPLETE",
     verdict: "NO_GO_PRODUCTION_ACCEPTANCE_NOT_PROVEN",
+    stagingVerdict,
+    productionReadinessVerdict,
     identity,
     migrations,
     deployment,
@@ -6477,6 +6536,8 @@ async function main() {
   process.stdout.write(`${JSON.stringify({
     status: summary.status,
     verdict: summary.verdict,
+    stagingVerdict: summary.stagingVerdict,
+    productionReadinessVerdict: summary.productionReadinessVerdict,
     evidenceDirectory: options.evidenceDir,
     commit: identity.commit,
     tree: identity.tree,
@@ -7043,6 +7104,8 @@ async function finalizeFailure(error, { terminationKind = "main_rejection" } = {
       const failureSummary = {
         schemaVersion: "dealflow.isolated-staging-acceptance-failure-summary.v1",
         status: "FAILED",
+        stagingVerdict: "STAGING_NO_GO",
+        productionReadinessVerdict: "NO_GO",
         stage: failureContext.stage || null,
         terminationKind,
         evidenceSafety,

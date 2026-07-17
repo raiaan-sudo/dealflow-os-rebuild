@@ -205,6 +205,10 @@ const priorProofContract = readFileSync(
   join(root, "scripts", "staging", "prior-migration-proof-contract.mjs"),
   "utf8",
 );
+const forward104To115Contract = readFileSync(
+  join(root, "scripts", "staging", "forward-104-to-115-contract.mjs"),
+  "utf8",
+);
 const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
 const seedContract = readFileSync(join(root, "scripts", "test-isolated-staging-seed-contract.mjs"), "utf8");
 const providerIndependentProof = readFileSync(
@@ -221,6 +225,14 @@ const vercelProtectionContract = readFileSync(
 );
 const vercelProtectionTest = readFileSync(
   join(root, "scripts", "staging", "test-vercel-staging-protection-contract.mjs"),
+  "utf8",
+);
+const vercelEnvironmentSyncContract = readFileSync(
+  join(root, "scripts", "staging", "vercel-environment-sync-contract.mjs"),
+  "utf8",
+);
+const vercelEnvironmentSyncContractTest = readFileSync(
+  join(root, "scripts", "staging", "test-vercel-environment-sync-contract.mjs"),
   "utf8",
 );
 const vercelAliasPropagationContract = readFileSync(
@@ -410,7 +422,7 @@ assert.doesNotMatch(
   /EXPECTED_REPO = "\/private\/tmp\//,
   "The staging runner must not bind execution to a disposable repository path",
 );
-assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-overnight-release-20260712"/);
+assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-final-master-20260716"/);
 assert.match(runner, /EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean\.vercel\.app"/);
 assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
 assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);
@@ -538,6 +550,19 @@ const hostedEnvironmentSource = runner.slice(
   runner.indexOf("function hostedStagingEnvironment("),
   runner.indexOf("function prepareEvidenceDirectory("),
 );
+assert.match(hostedEnvironmentSource, /DEALFLOW_RUNTIME_MIGRATION_PORTFOLIO_SHA256/);
+assert.match(hostedEnvironmentSource, /migrationIdentity\.migrationPortfolioSha256/);
+assert.match(hostedEnvironmentSource, /DEALFLOW_RUNTIME_MIGRATION_COUNT/);
+assert.match(hostedEnvironmentSource, /String\(migrationIdentity\.migrationCount\)/);
+assert.match(runner, /hostedEnvironmentNames\.length !== 91/);
+assert.match(runner, /exact 91-variable isolated staging environment portfolio/);
+assert.match(runner, /EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256/);
+assert.match(runner, /finalExactStructureCount !== 91/);
+assert.match(runner, /finalReadableValueDigestMatchCount !== expectedReadableCount/);
+assert.match(runner, /finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount/);
+assert.match(runner, /finalExpectedValueDispositionCount !== 91/);
+assert.match(runner, /finalUnexpectedEnvironmentCount !== 0/);
+assert.match(runner, /assertExactHostedEnvironmentProof\(hostedEnvironmentProof\)/);
 const hostedSecretNameSource = runner.slice(
   runner.indexOf("const HOSTED_SECRET_ENV_NAMES"),
   runner.indexOf("const PRODUCTION_OR_SHARED_HOSTS"),
@@ -700,8 +725,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 108/);
-assert.match(runner, /20260716200000_harden_stripe_payment_lifecycle\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 115/);
+assert.match(runner, /20260717060000_install_owner_decision_authority_grants\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -739,13 +764,13 @@ const authoritativeZeroEffectControlCount =
   authoritativeFalseControls.length +
   Object.keys(authoritativeEqualControls).length +
   authoritativeDisabledControls.length;
-assert.equal(authoritativeZeroEffectControlCount, 60);
-assert.match(runner, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60/);
+assert.equal(authoritativeZeroEffectControlCount, 61);
+assert.match(runner, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 61/);
 assert.match(
   runner,
   /Number\(payload\.checkedControlCount\) !== EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT/,
 );
-assert.match(browserSpec, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60/);
+assert.match(browserSpec, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 61/);
 assert.match(
   browserSpec,
   /Number\(body\?\.checkedControlCount\)\)\.toBe\(EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT\)/,
@@ -781,8 +806,8 @@ assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
 assert.match(
   runner,
-  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*"EXACT_FORWARD_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
-  "the common final gate must accept exact fresh, read-only resume, or one-migration forward status",
+  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*"EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
+  "the common final gate must accept exact fresh, read-only resume, or exact 104-to-115 forward status",
 );
 assert.match(runner, /verify retained prior migration application tree/);
 assert.match(runner, /verify prior migration application ancestry/);
@@ -796,10 +821,6 @@ assert.match(priorProofContract, /portfolioApplicationRemoteMutationCompleted ==
 assert.match(priorProofContract, /committed_forward_recovery/);
 assert.match(priorProofContract, /EXACT_SYNTHETIC_FIXTURE_SET/);
 assert.match(priorProofContract, /rawIdentityValuesPersisted: false/);
-assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
-assert.match(runner, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
-assert.match(runner, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);
-assert.match(runner, /EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256/);
 const currentResumeGate = runner.slice(
   runner.indexOf("const verifiedExistingExact ="),
   runner.indexOf("const exactForwardApplication ="),
@@ -807,17 +828,23 @@ const currentResumeGate = runner.slice(
 assert.match(currentResumeGate, /exactCurrentResumePriorIdentity/);
 assert.doesNotMatch(
   currentResumeGate,
-  /EXPECTED_PRIOR_MIGRATION_(?:APPLICATION|MANIFEST|PORTFOLIO)/,
-  "current-104 resume must not require the pinned migration-103 identity",
+  /FORWARD_104_TO_115_AUTHORITY\.prior/,
+  "current-115 resume must validate its own retained prior application instead of the historical 104 transition authority",
 );
 const pinnedForwardGate = runner.slice(
   runner.indexOf("const exactForwardApplication ="),
   runner.indexOf("if (\n    migrationSummary.status"),
 );
-assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_APPLICATION_COMMIT/);
-assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_APPLICATION_TREE/);
-assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_MANIFEST_SHA256/);
-assert.match(pinnedForwardGate, /EXPECTED_PRIOR_MIGRATION_PORTFOLIO_SHA256/);
+assert.match(pinnedForwardGate, /migrationSummary\.transition === "EXACT_104_TO_115"/);
+assert.match(pinnedForwardGate, /FORWARD_104_TO_115_AUTHORITY\.forwardMigrations\.length/);
+assert.match(pinnedForwardGate, /JSON\.stringify\(migrationSummary\.forwardMigrations\)/);
+assert.match(pinnedForwardGate, /EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO/);
+assert.match(pinnedForwardGate, /FORWARD_104_TO_115_AUTHORITY\.prior\.proofCommit/);
+assert.match(pinnedForwardGate, /FORWARD_104_TO_115_AUTHORITY\.prior\.proofTree/);
+assert.match(pinnedForwardGate, /rawValuesPersisted === false/);
+assert.match(forward104To115Contract, /forwardMigrations: Object\.freeze\(\[/);
+assert.match(forward104To115Contract, /migrationCount: 104/);
+assert.match(forward104To115Contract, /migrationCount: 115/);
 assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
 assert.match(runner, /Staging acceptance requires Node 24/);
 assert.match(runner, /!\/\^v24\\\.\/.+parsed\.runtime/s);
@@ -1253,7 +1280,18 @@ assert.match(runner, /communicationSent !== false/);
 assert.match(runner, /spendIncurred !== false/);
 assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_pending_only_install_committed/);
 assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_approved_policy_recovery_committed/);
-assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_existing_reused_without_mutation/);
+assert.match(runner, /remoteMutationOutcome ===[\s\S]+exact_authority_projection_refresh_committed/);
+assert.match(runner, /const exactOwnerDecisionAuthority/);
+assert.match(runner, /ownerDecisionAuthority\.currentGrantCount === 4/);
+assert.match(runner, /ownerDecisionAuthority\.currentCapabilityCount === 4/);
+assert.match(runner, /ownerDecisionAuthority\.productionGrantCount === 0/);
+assert.match(runner, /const exactPrivacyAuthority/);
+assert.match(runner, /privacyAuthority\.activeGrantCount === 1/);
+assert.match(runner, /privacyAuthority\.productionGrantCount === 0/);
+assert.match(runner, /privacyAuthority\.unresolvedCount === 0/);
+assert.match(runner, /privacyAuthority\.terminalAuthorityTableCount === 2/);
+assert.match(runner, /privacyAuthority\.workerAndLegalHoldExecutionAuthorized === false/);
+assert.match(runner, /bounded_generation_rotation_or_unexpired_exact_replay_with_catalog_rebind/);
 assert.match(runner, /serviceRoleColumnWritePrivilegesPresent !== false/);
 assert.match(runner, /publicColumnAclPresent !== false/);
 assert.match(runner, /verificationRoundEvidence\.length === 2/);
@@ -1261,11 +1299,34 @@ assert.match(runner, /Number\.isSafeInteger\(record\?\.fileCount\)/);
 assert.match(runner, /record\.fileCount > 0/);
 assert.match(runner, /record\.evidenceSha256/);
 assert.match(runner, /record\.summarySha256/);
-assert.match(runner, /"env", "list", "production", "--format=json"/);
-assert.match(runner, /"env",\s*"add"/);
-assert.match(runner, /input: `\$\{value\}\\n`/);
-assert.match(runner, /HOSTED_SECRET_ENV_NAMES\.has\(name\).*--sensitive/s);
-assert.match(runner, /isolated Vercel staging environment inventory is not exact after provisioning/);
+assert.match(runner, /synchronizeExactVercelEnvironment/);
+assert.match(runner, /expectedCount: 91/);
+assert.match(runner, /batchSize: 20/);
+const hostedEnvironmentConfigurationSource = runner.slice(
+  runner.indexOf("async function configureHostedStagingEnvironment("),
+  runner.indexOf("async function fetchAuthoritativeVercelDeployment("),
+);
+assert.doesNotMatch(hostedEnvironmentConfigurationSource, /"env",\s*"add"/);
+assert.doesNotMatch(hostedEnvironmentConfigurationSource, /--force/);
+assert.match(vercelEnvironmentSyncContract, /bounded_idempotent_missing_or_drifted_only/);
+assert.match(vercelEnvironmentSyncContract, /query: \{ upsert: "true" \}/);
+assert.match(vercelEnvironmentSyncContract, /`\/v9\/projects\/\{projectId\}\/env\/\$\{encodeURIComponent\(state\.record\.id\)\}`/);
+assert.match(vercelEnvironmentSyncContract, /`\/v1\/projects\/\{projectId\}\/env\/\$\{encodeURIComponent\(record\.id\)\}`/);
+assert.match(vercelEnvironmentSyncContract, /response\.status === 429/);
+assert.match(vercelEnvironmentSyncContract, /parseRetryAfterMs/);
+assert.match(vercelEnvironmentSyncContract, /deterministic_write_4xx/);
+assert.match(vercelEnvironmentSyncContract, /ambiguousWriteReadbackCommitCount/);
+assert.match(vercelEnvironmentSyncContract, /await readExactInventory\(context, counters, sensitiveKeys\)/);
+assert.match(vercelEnvironmentSyncContract, /finalExactStructureCount/);
+assert.match(vercelEnvironmentSyncContract, /finalReadableValueDigestMatchCount/);
+assert.match(vercelEnvironmentSyncContract, /finalSensitiveValueWriteAcknowledgementCount/);
+assert.match(vercelEnvironmentSyncContract, /finalExpectedValueDispositionCount/);
+assert.match(vercelEnvironmentSyncContract, /exactBranchScope: null/);
+assert.match(vercelEnvironmentSyncContract, /valueDigestsPersistedToEvidence: false/);
+assert.match(vercelEnvironmentSyncContractTest, /rateLimitRetryCount/);
+assert.match(vercelEnvironmentSyncContractTest, /deterministic_write_4xx/);
+assert.match(vercelEnvironmentSyncContractTest, /ambiguousWriteReadbackRetryCount/);
+assert.match(vercelEnvironmentSyncContractTest, /sha256\(environment\.SECRET_VALUE\)/);
 assert.match(runner, /"deploy",\s*"--prod"/);
 assert.match(runner, /"--prod",\s*"--skip-domain"/);
 assert.match(runner, /dealflowEnvironment=isolated-staging-qibh/);
@@ -1992,6 +2053,11 @@ for (const providerName of ["meta", "ghl", "higgsfield", "twilio"]) {
 
 assert.match(runner, /status: "NO_GO"/);
 assert.match(runner, /verdict: "NO_GO_PRODUCTION_ACCEPTANCE_NOT_PROVEN"/);
+assert.match(runner, /const stagingVerdict = hostedDeferralsClosed \? "STAGING_GO" : "STAGING_NO_GO"/);
+assert.match(runner, /const productionReadinessVerdict =/);
+assert.match(runner, /productionGateBlockers\.length === 0 \? "GO" : "NO_GO"/);
+assert.match(runner, /stagingVerdict: "STAGING_NO_GO"/);
+assert.match(runner, /productionReadinessVerdict: "NO_GO"/);
 assert.match(runner, /providerAbsenceTreatedAsSuccess: false/);
 assert.match(runner, /seededEndStatesTreatedAsJourneyProof: false/);
 assert.match(runner, /workerExecutionRetryReplayDeadLetterAndCrashRecovery: "PASS"/);
@@ -2275,7 +2341,7 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts["test:staging-acceptance-contract"],
-  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-vercel-cli-selection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-playwright-failure-diagnostic-contract.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
+  "node ./scripts/staging/test-install-synthetic-retention-authority-contract.mjs && node ./scripts/staging/test-vercel-staging-protection-contract.mjs && node ./scripts/staging/test-vercel-environment-sync-contract.mjs && node ./scripts/staging/test-vercel-alias-propagation-contract.mjs && node ./scripts/staging/test-vercel-cli-selection-contract.mjs && node ./scripts/staging/test-provider-session-bundle-contract.mjs && node ./scripts/staging/test-browser-session-bundle-contract.mjs && node ./scripts/staging/test-browser-context-network-boundary.mjs && node ./scripts/staging/test-safe-browser-host-contract.mjs && node ./scripts/staging/test-staging-evidence-root-contract.mjs && node ./scripts/staging/test-interruptible-command.mjs && node ./scripts/staging/test-unsealed-playwright-artifact-cleanup.mjs && node ./scripts/staging/test-playwright-failure-diagnostic-contract.mjs && node ./scripts/staging/test-deployable-source-path-set-contract.mjs && node ./scripts/staging/test-vercel-dry-run-source-contract.mjs && node ./scripts/staging/test-exact-supabase-project-url.mjs && node ./scripts/staging/test-next-static-chunk-path.mjs && node ./scripts/staging/test-vercel-deployed-image-config-contract.mjs && node ./scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs && node ./scripts/staging/test-staging-image-optimizer-response-contract.mjs && node ./scripts/staging/test-isolated-staging-access-gate.mjs && node ./scripts/staging/test-hosted-build-identity-generator.mjs && node ./scripts/staging/test-release-identity-route-contract.mjs && node ./scripts/staging/test-isolated-staging-acceptance-contract.mjs",
 );
 assert.match(completionSuite, /"staging\/test-safe-browser-host-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-provider-session-bundle-contract\.mjs"/);
@@ -2287,6 +2353,7 @@ assert.match(completionSuite, /"staging\/test-unsealed-playwright-artifact-clean
 assert.match(completionSuite, /"staging\/test-playwright-failure-diagnostic-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-deployable-source-path-set-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-dry-run-source-contract\.mjs"/);
+assert.match(completionSuite, /"staging\/test-vercel-environment-sync-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-alias-propagation-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-vercel-cli-selection-contract\.mjs"/);
 assert.match(completionSuite, /"staging\/test-exact-supabase-project-url\.mjs"/);
@@ -2314,7 +2381,7 @@ assert.match(help.stdout, /--verify-existing-migrations --deploy/);
 assert.match(help.stdout, /--apply-forward-migration --deploy/);
 assert.match(
   help.stdout,
-  /Exact forward-only migration 104[^\n]*:\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir/s,
+  /Exact bounded forward transition from the pinned read-only-proven 104-migration[\s\S]*\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-104\/migration-proof/s,
   "forward-mode help must preserve executable multiline shell continuations",
 );
 
@@ -2328,5 +2395,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 108-migration atomic broker with legacy single-migration forward mode disabled and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 104-to-115 forward, or read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 115-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

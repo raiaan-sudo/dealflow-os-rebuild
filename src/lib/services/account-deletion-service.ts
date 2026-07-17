@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/route";
 import {
   ACCOUNT_DELETION_CONFIRMATION_PHRASE,
@@ -13,7 +12,7 @@ import {
   ACCOUNT_DELETION_SUPPORT_EMAIL,
   isAccountDeletionExecutionEnabled,
 } from "@/lib/account-deletion/account-deletion-access";
-import { getMetaEnv, getSupabaseEnv } from "@/lib/env";
+import { getMetaEnv } from "@/lib/env";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import { getStripeClient } from "@/lib/integrations/stripe/service";
 import {
@@ -33,6 +32,11 @@ import {
 import { getAppContext } from "@/lib/services/app-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import {
+  authorizePrivacySubjectAction,
+  privacyDigest,
+  readPrivacySystemAuthority,
+} from "@/lib/services/privacy-authority-service";
 
 type UntypedClient = {
   from: (relation: string) => any;
@@ -83,9 +87,7 @@ class AccountDeletionUncertainError extends Error {
   }
 }
 
-export type AccountDeletionIdentityInput =
-  | { method: "password"; password: string }
-  | { method: "aal2" };
+export type AccountDeletionIdentityInput = { method: "aal2" };
 
 export type CreateAccountDeletionRequestInput = {
   email: string;
@@ -128,27 +130,9 @@ async function verifyDeletionIdentity(params: {
   email: string;
   identity: AccountDeletionIdentityInput;
 }) {
-  if (params.identity.method === "password") {
-    if (params.identity.password.length < 8 || params.identity.password.length > 1_024) {
-      throw new ApiError(403, "Identity confirmation failed.", "deletion_identity_confirmation_failed");
-    }
-    const supabaseEnv = getSupabaseEnv();
-    if (!supabaseEnv) {
-      throw new ApiError(503, "Identity confirmation is unavailable.", "deletion_identity_unavailable");
-    }
-    const verifier = createSupabaseClient(supabaseEnv.url, supabaseEnv.anonKey, {
-      auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-    });
-    const { data, error } = await verifier.auth.signInWithPassword({
-      email: params.email,
-      password: params.identity.password,
-    });
-    if (error || data.user?.id !== params.userId) {
-      throw new ApiError(403, "Identity confirmation failed.", "deletion_identity_confirmation_failed");
-    }
-    return "password" as const;
+  if (params.identity.method !== "aal2") {
+    throw new ApiError(403, "A recently verified two-factor session is required.", "deletion_recent_aal2_required");
   }
-
   const client = await createRouteHandlerClient();
   if (!client) {
     throw new ApiError(503, "Identity confirmation is unavailable.", "deletion_identity_unavailable");
@@ -166,6 +150,17 @@ async function verifyDeletionIdentity(params: {
     );
   }
   return "aal2" as const;
+}
+
+export async function isAccountDeletionRequestAvailable() {
+  if (!accountDeletionWritesEnabled()) return false;
+  const context = await getAppContext();
+  if (!context || context.organization.owner_user_id !== context.user.id) return false;
+  return Boolean(await authorizePrivacySubjectAction({
+    organizationId: context.organization.id,
+    userId: context.user.id,
+    action: "delete",
+  }));
 }
 
 function mapRequest(value: unknown): AccountDeletionRequestRow {
@@ -223,6 +218,19 @@ export async function createAccountDeletionRequest(input: CreateAccountDeletionR
     );
   }
 
+  const privacyAuthority = await authorizePrivacySubjectAction({
+    organizationId: context.organization.id,
+    userId: context.user.id,
+    action: "delete",
+  });
+  if (!privacyAuthority) {
+    throw new ApiError(
+      503,
+      `Verified privacy authority and a recent two-factor session are required. Contact ${ACCOUNT_DELETION_SUPPORT_EMAIL}.`,
+      "account_deletion_privacy_authority_unavailable",
+    );
+  }
+
   const expectedEmail = context.user.email?.trim().toLowerCase() ?? "";
   const suppliedEmail = input.email.trim().toLowerCase();
   if (!expectedEmail || suppliedEmail !== expectedEmail) {
@@ -243,19 +251,43 @@ export async function createAccountDeletionRequest(input: CreateAccountDeletionR
   const admin = createAdminClient();
   if (!admin) throw new ApiError(503, "Account deletion is unavailable.", "deletion_store_unavailable");
   const { data, error } = await (admin as unknown as UntypedClient).rpc(
-    "create_account_deletion_request_v1",
+    "create_privacy_delete_request_v1",
     {
       p_organization_id: context.organization.id,
       p_actor_user_id: context.user.id,
       p_idempotency_key: input.idempotencyKey,
-      p_identity_method: identityMethod,
       p_identity_email_hash: subjectFingerprint(expectedEmail),
+      p_request_payload_digest: privacyDigest(JSON.stringify({
+        requestType: "delete",
+        identityMethod,
+        confirmationPhrase: input.confirmationPhrase,
+      })),
+      p_evidence_digest: privacyDigest(JSON.stringify({
+        organizationId: context.organization.id,
+        userId: context.user.id,
+        idempotencyKey: input.idempotencyKey,
+        identityMethod,
+      })),
+      ...privacyAuthority.rpc,
     },
   );
   if (error) {
     throw new ApiError(503, error.message ?? "Account deletion could not be scheduled.", "deletion_request_failed");
   }
-  const request = mapRequest(data);
+  const wrapper = row(firstRow(data));
+  const deletionRequestId = requiredString(
+    wrapper.account_deletion_request_id,
+    "deletion_request_invalid",
+  );
+  const { data: storedRequest, error: storedRequestError } = await (admin as unknown as UntypedClient)
+    .from("account_deletion_requests")
+    .select("id,organization_id,requested_by_user_id,confirmation_code,state,requested_at,scheduled_deletion_at,legal_hold_active,completed_at,updated_at")
+    .eq("id", deletionRequestId)
+    .maybeSingle();
+  if (storedRequestError || !storedRequest) {
+    throw new ApiError(503, "Account deletion scope could not be verified.", "deletion_scope_invalid");
+  }
+  const request = mapRequest(storedRequest);
   if (
     request.organization_id !== context.organization.id ||
     request.requested_by_user_id !== context.user.id
@@ -741,7 +773,7 @@ async function executeCreativeStorageTask(
   task: ClaimedAccountDeletionTask,
 ): Promise<TaskExecutionReceipt> {
   const { data, error } = await (admin as unknown as UntypedClient).rpc(
-    "get_account_deletion_creative_storage_inventory_v1",
+    "get_account_deletion_creative_storage_inventory_v2",
     {
       p_task_id: task.id,
       p_claim_token: task.claim_token,
@@ -755,7 +787,20 @@ async function executeCreativeStorageTask(
   )) {
     return { outcome: "operator_required", code: "creative_storage_identity_ambiguous" };
   }
-  const pathsByBucket = new Map<string, string[]>();
+  type StaticCleanupCandidate = {
+    organizationId: string;
+    userId: string;
+    campaignId: string;
+    dispatchId: string;
+    imageAssetId: string;
+    thumbnailAssetId: string;
+    bucket: string;
+    path: string;
+    contentSha256: string;
+    cleanupState: string;
+  };
+  const pathsByBucket = new Map<string, Set<string>>();
+  const staticCandidates = new Map<string, StaticCleanupCandidate>();
   const assetIds: string[] = [];
   for (const asset of assets) {
     const assetId = typeof asset.asset_id === "string" ? asset.asset_id : "";
@@ -766,16 +811,110 @@ async function executeCreativeStorageTask(
     if (!assetId || !bucket || !path || path.startsWith("/") || path.includes("..")) {
       return { outcome: "operator_required", code: "creative_storage_identity_ambiguous" };
     }
-    pathsByBucket.set(bucket, [...(pathsByBucket.get(bucket) ?? []), path]);
+    if (asset.provider_name === "openai") {
+      const candidate: StaticCleanupCandidate = {
+        organizationId: typeof asset.organization_id === "string" ? asset.organization_id : "",
+        userId: typeof asset.user_id === "string" ? asset.user_id : "",
+        campaignId: typeof asset.campaign_id === "string" ? asset.campaign_id : "",
+        dispatchId: typeof asset.dispatch_id === "string" ? asset.dispatch_id : "",
+        imageAssetId: typeof asset.image_asset_id === "string" ? asset.image_asset_id : "",
+        thumbnailAssetId:
+          typeof asset.thumbnail_asset_id === "string" ? asset.thumbnail_asset_id : "",
+        bucket,
+        path,
+        contentSha256: typeof asset.content_sha256 === "string" ? asset.content_sha256 : "",
+        cleanupState: typeof asset.cleanup_state === "string" ? asset.cleanup_state : "",
+      };
+      if (
+        candidate.organizationId !== task.organization_id || !candidate.userId ||
+        !candidate.campaignId || !candidate.dispatchId || !candidate.imageAssetId ||
+        !candidate.thumbnailAssetId || candidate.imageAssetId === candidate.thumbnailAssetId ||
+        !/^[0-9a-f]{64}$/.test(candidate.contentSha256)
+      ) {
+        return { outcome: "operator_required", code: "creative_storage_identity_ambiguous" };
+      }
+      const existing = staticCandidates.get(candidate.dispatchId);
+      if (existing && JSON.stringify(existing) !== JSON.stringify(candidate)) {
+        return { outcome: "operator_required", code: "creative_storage_identity_ambiguous" };
+      }
+      staticCandidates.set(candidate.dispatchId, candidate);
+      continue;
+    }
+    const bucketPaths = pathsByBucket.get(bucket) ?? new Set<string>();
+    bucketPaths.add(path);
+    pathsByBucket.set(bucket, bucketPaths);
   }
+
+  for (const [dispatchId, candidate] of staticCandidates) {
+    const { data: authorityData, error: authorityError } = await (
+      admin as unknown as UntypedClient
+    ).rpc("authorize_generated_static_storage_cleanup_v1", {
+      p_task_id: task.id,
+      p_claim_token: task.claim_token,
+      p_claim_generation: task.claim_generation,
+      p_organization_id: candidate.organizationId,
+      p_user_id: candidate.userId,
+      p_campaign_id: candidate.campaignId,
+      p_dispatch_id: dispatchId,
+      p_image_asset_id: candidate.imageAssetId,
+      p_thumbnail_asset_id: candidate.thumbnailAssetId,
+      p_storage_bucket: candidate.bucket,
+      p_storage_path: candidate.path,
+      p_content_sha256: candidate.contentSha256,
+    });
+    if (authorityError) {
+      throw new Error(authorityError.message ?? "Generated static cleanup authority failed.");
+    }
+    const authority = row(firstRow(authorityData));
+    const cleanupState = typeof authority.cleanup_state === "string"
+      ? authority.cleanup_state
+      : "";
+    if (cleanupState !== "authorized" && cleanupState !== "object_deleted") {
+      return { outcome: "operator_required", code: "generated_static_cleanup_state_invalid" };
+    }
+    candidate.cleanupState = cleanupState;
+  }
+
   let removedCount = 0;
   for (const [bucket, paths] of pathsByBucket) {
-    const { error: removeError } = await admin.storage.from(bucket).remove(paths);
+    const exactPaths = [...paths];
+    const { error: removeError } = await admin.storage.from(bucket).remove(exactPaths);
     if (removeError) throw removeError;
-    removedCount += paths.length;
+    removedCount += exactPaths.length;
+  }
+  for (const candidate of staticCandidates.values()) {
+    if (candidate.cleanupState === "authorized") {
+      const { error: removeError } = await admin.storage
+        .from(candidate.bucket)
+        .remove([candidate.path]);
+      if (removeError) throw removeError;
+      removedCount += 1;
+    }
+    const { data: authorityData, error: authorityError } = await (
+      admin as unknown as UntypedClient
+    ).rpc("authorize_generated_static_storage_cleanup_v1", {
+      p_task_id: task.id,
+      p_claim_token: task.claim_token,
+      p_claim_generation: task.claim_generation,
+      p_organization_id: candidate.organizationId,
+      p_user_id: candidate.userId,
+      p_campaign_id: candidate.campaignId,
+      p_dispatch_id: candidate.dispatchId,
+      p_image_asset_id: candidate.imageAssetId,
+      p_thumbnail_asset_id: candidate.thumbnailAssetId,
+      p_storage_bucket: candidate.bucket,
+      p_storage_path: candidate.path,
+      p_content_sha256: candidate.contentSha256,
+    });
+    const confirmed = row(firstRow(authorityData));
+    if (authorityError || confirmed.cleanup_state !== "object_deleted") {
+      throw new AccountDeletionUncertainError(
+        authorityError?.message ?? "Generated static object deletion was not durably observed.",
+      );
+    }
   }
   const { data: finalized, error: finalizeError } = await (admin as unknown as UntypedClient).rpc(
-    "finalize_account_deletion_creative_storage_v1",
+    "finalize_account_deletion_creative_storage_v2",
     {
       p_task_id: task.id,
       p_claim_token: task.claim_token,
@@ -832,13 +971,26 @@ export async function processAccountDeletionWork(params?: { maxTasks?: number; w
       "account_deletion_execution_disabled",
     );
   }
+  const privacyAuthority = await readPrivacySystemAuthority();
+  if (!privacyAuthority) {
+    throw new ApiError(
+      503,
+      "Signed privacy worker authority is unavailable. No lifecycle task was claimed.",
+      "account_deletion_privacy_worker_authority_unavailable",
+    );
+  }
   const admin = createAdminClient();
   if (!admin) throw new ApiError(503, "Account deletion worker is unavailable.", "deletion_worker_unavailable");
   const workerId = params?.workerId ?? `account-deletion-${randomUUID()}`;
   const maxTasks = Math.min(Math.max(params?.maxTasks ?? 10, 1), 25);
   const { data, error } = await (admin as unknown as UntypedClient).rpc(
-    "claim_account_deletion_tasks_v1",
-    { p_worker_id: workerId, p_limit: maxTasks, p_lease_seconds: 120 },
+    "claim_account_deletion_tasks_v2",
+    {
+      p_worker_id: workerId,
+      p_limit: maxTasks,
+      p_lease_seconds: 120,
+      ...privacyAuthority.rpc,
+    },
   );
   if (error) throw new ApiError(503, error.message ?? "Deletion tasks could not be claimed.", "deletion_claim_failed");
   const claims = (Array.isArray(data) ? data : []).map(mapClaim).filter(Boolean) as ClaimedAccountDeletionTask[];

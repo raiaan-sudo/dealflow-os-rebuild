@@ -7,7 +7,6 @@ import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
 import { GhlEmbedCapabilityRefresher } from "@/components/ghl/ghl-embed-capability-refresher";
 import { LocaleLink } from "@/components/i18n/locale-link";
-import { isInternalAdminEmail } from "@/lib/env";
 import { translateProductMessage } from "@/lib/i18n/messages";
 import {
   localizeProductHref,
@@ -19,6 +18,7 @@ import {
   WorkspaceSelectionRequiredError,
 } from "@/lib/services/app-context";
 import { listCurrentUserWorkspaceOptions } from "@/lib/services/workspace-selection-service";
+import { canExposePlatformOperatorNavigation } from "@/lib/services/platform-operator-authority-service";
 import {
   DEFAULT_WORKSPACE_BRANDING,
   loadWorkspaceBranding,
@@ -67,7 +67,9 @@ export default async function AppLayout({
         () => DEFAULT_WORKSPACE_BRANDING,
       )
     : DEFAULT_WORKSPACE_BRANDING;
-  const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
+  const isAdmin = appContext
+    ? await canExposePlatformOperatorNavigation(appContext.user.id)
+    : false;
   const organizationName =
     appContext?.organization.name?.trim() ||
     appContext?.businessProfile?.business_name?.trim() ||

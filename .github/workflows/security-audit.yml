@@ -10,8 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 concurrency:
   group: dealflow-security-audit-${{ github.workflow }}-${{ github.ref }}
@@ -22,33 +20,54 @@ jobs:
     name: CodeQL
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           languages: javascript-typescript
           queries: security-extended,security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
 
   zap-baseline:
-    name: OWASP ZAP Baseline
+    name: OWASP ZAP isolated-staging baseline
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && vars.DEALFLOW_SECURITY_STAGING_URL != '' && vars.DEALFLOW_ZAP_IMAGE_BY_DIGEST != ''
+    environment: isolated-staging-security
+    permissions:
+      contents: read
     steps:
-      - name: ZAP baseline against app
-        uses: zaproxy/action-baseline@v0.14.0
+      - name: Verify immutable ZAP image reference
+        env:
+          ZAP_IMAGE: "${{ vars.DEALFLOW_ZAP_IMAGE_BY_DIGEST }}"
+        run: |
+          if ! printf '%s' "$ZAP_IMAGE" | grep -Eq '^ghcr\.io/zaproxy/zaproxy@sha256:[a-f0-9]{64}$'; then
+            echo "ZAP image must be the official GHCR image pinned by SHA-256 digest." >&2
+            exit 1
+          fi
+
+      - name: ZAP baseline against isolated staging
+        uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
         with:
-          target: "https://app.agentdealflow.io"
+          target: "${{ vars.DEALFLOW_SECURITY_STAGING_URL }}"
+          docker_name: "${{ vars.DEALFLOW_ZAP_IMAGE_BY_DIGEST }}"
           cmd_options: "-I"
+          allow_issue_writing: false
+          fail_action: true
 
   lighthouse:
     name: Lighthouse CI
@@ -56,16 +75,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 24
+          node-version: 24.14.1
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build
         run: npm run build

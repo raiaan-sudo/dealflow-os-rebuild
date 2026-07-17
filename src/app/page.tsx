@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { HomeCommandCenter } from "@/components/marketing/home-command-center";
+import { shouldRenderVercelAnalytics } from "@/lib/telemetry/vercel-analytics-gate";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.agentdealflow.io"),
@@ -34,6 +35,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function HomePage() {
-  return <HomeCommandCenter />;
+export default async function HomePage() {
+  const analyticsEnabled = await shouldRenderVercelAnalytics();
+  return (
+    <HomeCommandCenter
+      analyticsEnabled={analyticsEnabled}
+    />
+  );
 }

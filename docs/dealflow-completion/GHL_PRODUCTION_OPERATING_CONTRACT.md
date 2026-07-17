@@ -91,6 +91,13 @@ Production provider effects require all of the following at the moment of use:
 
 Every flag and database switch defaults to false. Credential values remain in
 secret storage and are consumed only inside the bounded request callback.
+Marketplace OAuth additionally requires
+`GHL_MARKETPLACE_PROVIDER_EFFECTS_ENABLED=true` and
+`GHL_MARKETPLACE_PROVIDER_ATTESTATION=DEALFLOW_GHL_MARKETPLACE_EXACT_V1`.
+Production must not set the synthetic-account attestation. The exact app,
+client, redirect, install URL, scope set, and AES-256-GCM key/version are the
+secret-managed `GHL_MARKETPLACE_*` values listed in `.env.example`; changing
+any binding requires an explicit reconnect and a new one-time callback state.
 The protected one-minute `/api/internal/system-jobs` runner is the authoritative
 runtime entrypoint. It evaluates application gates before a claim; claim RPCs
 check database controls atomically; workers re-read those controls immediately
@@ -178,12 +185,15 @@ acceptance path, not the final seamless production onboarding model. HighLevel
 access tokens expire and its supported scalable model is a Marketplace OAuth
 installation/App Install flow (or the documented agency-OAuth to location-token
 exchange), followed by encrypted per-location access/refresh-token storage and
-rotation. DealFlow does not yet have approved GHL Marketplace client authority,
-an accepted encrypted location-token store, or live refresh-rotation evidence.
+rotation. DealFlow now has a fail-closed local encrypted token store, rotating
+refresh runtime, company-to-location exchange, and disposable-database proof.
+It does not yet have approved GHL Marketplace client authority or live
+synthetic staging install, callback, refresh-rotation, and uninstall evidence.
 Therefore production native-form reconciliation remains `NO_GO` and its runtime
 gate must stay false until that owner/provider dependency is supplied,
-implemented, and canary-proven. The manual registry may not be represented as
-seamless production onboarding.
+configured, and canary-proven. The manual registry may not be represented as
+seamless production onboarding, and local proof may not be represented as live
+provider acceptance.
 
 At the 300-user design point and roughly two forms per location, a 15-minute
 sweep can create about 57,600 immutable run rows per day, while an 8-10 minute

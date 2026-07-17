@@ -126,7 +126,7 @@ function writeExactLocalBrowserProof(roundDirectory) {
     zeroExternalEffects: {
       ok: true,
       attestation: "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1",
-      checkedControlCount: 60,
+      checkedControlCount: 61,
       failedControls: [],
     },
     authenticatedStatus: "authenticated_deferred",

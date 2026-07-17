@@ -109,6 +109,8 @@ export type CampaignLifecycleStatus =
   | "launch_ready"
   | "launching"
   | "provider_paused"
+  | "provider_processing"
+  | "operator_action_required"
   | "live"
   | "active"
   | "learning"
@@ -152,6 +154,8 @@ export type CampaignRuntime = {
     | "not_pushed"
     | "publishing"
     | "provider_paused"
+    | "provider_processing"
+    | "operator_action_required"
     | "published"
     | "partial"
     | "failed";
@@ -368,7 +372,11 @@ export function getCampaignExperienceStage(params: {
 
   if (
     params.plan.runtime.status === "provider_paused" ||
-    params.plan.runtime.metaPushStatus === "provider_paused"
+    params.plan.runtime.status === "provider_processing" ||
+    params.plan.runtime.status === "operator_action_required" ||
+    params.plan.runtime.metaPushStatus === "provider_paused" ||
+    params.plan.runtime.metaPushStatus === "provider_processing" ||
+    params.plan.runtime.metaPushStatus === "operator_action_required"
   ) {
     return "launch_ready";
   }
@@ -398,6 +406,7 @@ function normalizeCampaignRuntime(value: unknown): CampaignRuntime {
 
   return {
     status:
+      runtime.status === "draft" ||
       runtime.status === "built" ||
       runtime.status === "paywall" ||
       runtime.status === "preview" ||
@@ -405,6 +414,8 @@ function normalizeCampaignRuntime(value: unknown): CampaignRuntime {
       runtime.status === "launch_ready" ||
       runtime.status === "launching" ||
       runtime.status === "provider_paused" ||
+      runtime.status === "provider_processing" ||
+      runtime.status === "operator_action_required" ||
       runtime.status === "live" ||
       runtime.status === "active" ||
       runtime.status === "learning" ||
@@ -449,6 +460,8 @@ function normalizeCampaignRuntime(value: unknown): CampaignRuntime {
     metaPushStatus:
       runtime.metaPushStatus === "publishing" ||
       runtime.metaPushStatus === "provider_paused" ||
+      runtime.metaPushStatus === "provider_processing" ||
+      runtime.metaPushStatus === "operator_action_required" ||
       runtime.metaPushStatus === "published" ||
       runtime.metaPushStatus === "partial" ||
       runtime.metaPushStatus === "failed"
@@ -1251,6 +1264,38 @@ export async function saveGeneratedCampaignPlan(params: {
   });
 }
 
+export async function prepareCampaignPlanPayload(
+  input: OnboardingInput,
+  initialPlanPatch?: Record<string, unknown>,
+) {
+  const [intelligenceProfile, targetingProfile] = await Promise.all([
+    getCreativeIntelligenceProfile(input).catch(() => null),
+    getTargetingIntelligenceProfile().catch(() => null),
+  ]);
+  const existingPlan = await getLatestCampaignPlan().catch(() => null);
+  const reusableAssets = canReuseCampaignAssets(input, existingPlan) && existingPlan
+    ? {
+        creativeBrief: existingPlan.creativeBrief,
+        creatives: existingPlan.creatives,
+      }
+    : undefined;
+  const generatedPlan = await generateCampaignPlan(
+    input,
+    intelligenceProfile,
+    targetingProfile,
+    reusableAssets,
+    { deferAssetGeneration: true },
+  );
+
+  return {
+    ...buildPersistedCampaignPlanPayload({
+      generatedPlan,
+      runtime: getDefaultCampaignRuntime(),
+    }),
+    ...(initialPlanPatch ?? {}),
+  } as PersistedCampaignPlanPayload;
+}
+
 function mapRow(row: CampaignPlanRow | null): CampaignPlan | null {
   if (!row) {
     return null;
@@ -1300,33 +1345,13 @@ export async function saveCampaignPlan(
     throw new Error("Authentication is required before saving a campaign plan.");
   }
 
-  const [intelligenceProfile, targetingProfile] = await Promise.all([
-    getCreativeIntelligenceProfile(input).catch(() => null),
-    getTargetingIntelligenceProfile().catch(() => null),
-  ]);
-  const existingPlan = await getLatestCampaignPlan().catch(() => null);
-  const reusableAssets = canReuseCampaignAssets(input, existingPlan) && existingPlan
-    ? {
-        creativeBrief: existingPlan.creativeBrief,
-        creatives: existingPlan.creatives,
-      }
-    : undefined;
-  const generated = await generateCampaignPlan(
-    input,
-    intelligenceProfile,
-    targetingProfile,
-    reusableAssets,
-    {
-      deferAssetGeneration: true,
-    },
-  );
-  return saveGeneratedCampaignPlan({
+  const payload = await prepareCampaignPlanPayload(input, options?.initialPlanPatch);
+  return insertCampaignPlan({
     campaignId: options?.campaignId,
     createOnly: options?.createOnly,
-    initialPlanPatch: options?.initialPlanPatch,
     userId,
     ownerId: organizationId,
-    generatedPlan: generated,
+    payload,
   });
 }
 

@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 108;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 115;
 const REQUIRED_FINAL_MIGRATION =
-  "20260716200000_harden_stripe_payment_lifecycle.sql";
+  "20260717060000_install_owner_decision_authority_grants.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",

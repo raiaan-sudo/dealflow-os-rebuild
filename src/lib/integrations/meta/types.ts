@@ -190,6 +190,7 @@ export type MetaCampaignSyncSnapshot = {
   adStatuses?: MetaEntityStatus[];
   syncErrors?: string[];
   deliveryMetricsConfirmed?: boolean;
+  reportingCompleteness?: "complete" | "partial" | "missing" | "failed";
   latestAttemptAt?: string | null;
   latestAttemptResult?: "success" | "partial_success" | "failed" | null;
   latestAttemptDeliveryMetricsConfirmed?: boolean | null;

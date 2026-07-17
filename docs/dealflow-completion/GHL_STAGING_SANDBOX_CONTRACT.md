@@ -105,6 +105,16 @@ GHL_SANDBOX_INBOUND_FORM_SWEEP_ENABLED=true
 GHL_SANDBOX_LOCATION_ACCOUNT_1_TOKEN=<location-scoped forms.readonly token in secret storage>
 ```
 
+Marketplace connect/callback, rotating refresh, and company-to-location token
+exchange add a second exact gate. Staging must use only a labeled synthetic
+HighLevel account and set
+`GHL_MARKETPLACE_PROVIDER_EFFECTS_ENABLED=true`,
+`GHL_MARKETPLACE_PROVIDER_ATTESTATION=DEALFLOW_GHL_MARKETPLACE_EXACT_V1`, and
+`GHL_MARKETPLACE_SYNTHETIC_ACCOUNT_ATTESTATION=DEALFLOW_GHL_MARKETPLACE_SYNTHETIC_ACCOUNT_V1`.
+The app/client configuration, exact callback/install URLs, scope set, and
+AES-256-GCM key/version come from secret-managed `GHL_MARKETPLACE_*` values in
+`.env.example`; credential plaintext must never be persisted or captured.
+
 The installation row must reference the secret as
 `env:GHL_SANDBOX_AGENCY_TOKEN`. Never put the token in SQL, source, logs,
 receipts, screenshots, or evidence artifacts.

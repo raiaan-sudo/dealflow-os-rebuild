@@ -1,7 +1,10 @@
+import { notFound } from "next/navigation";
+import { ApiError } from "@/lib/api/route";
 import {
   listAccessKeyEventsForAdmin,
   listAccessKeysForAdmin,
 } from "@/lib/services/access-key-service";
+import { assertInternalOperatorAccess } from "@/lib/services/internal-launch-monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +31,16 @@ export default async function AdminAccessKeysPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  try {
+    await assertInternalOperatorAccess();
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      notFound();
+    }
+
+    throw error;
+  }
+
   const params = searchParams ? await searchParams : {};
   const search = getParam(params, "q");
   const status = getParam(params, "status");

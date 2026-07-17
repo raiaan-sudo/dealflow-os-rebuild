@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentdealflow.io/schemas/dealflow-owner-decisions.v1.schema.json",
+  "title": "DealFlow owner and legal decision authority packet",
+  "description": "Unsigned, fail-closed owner-decision template. It cannot grant authority; exact candidate identity and approvals exist only in a detached Ed25519-signed envelope verified through the protected external release trust.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "packetStatus",
+    "signatureStatus",
+    "packetDigest",
+    "decisionInventorySha256",
+    "generatedFrom",
+    "candidateBinding",
+    "planBinding",
+    "globalPolicy",
+    "counts",
+    "decisions"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "./dealflow-owner-decisions.schema.json"
+    },
+    "schemaVersion": {
+      "const": "dealflow.owner-decisions.v1"
+    },
+    "packetStatus": {
+      "const": "UNRESOLVED_FAIL_CLOSED"
+    },
+    "signatureStatus": {
+      "const": "NOT_SIGNED"
+    },
+    "packetDigest": {
+      "type": "null"
+    },
+    "decisionInventorySha256": { "$ref": "#/$defs/sha256" },
+    "generatedFrom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceRegister",
+        "sourceRegisterSha256",
+        "controllingPlan",
+        "controllingPlanSha256"
+      ],
+      "properties": {
+        "sourceRegister": { "type": "string", "minLength": 1 },
+        "sourceRegisterSha256": { "$ref": "#/$defs/sha256" },
+        "controllingPlan": { "type": "string", "minLength": 1 },
+        "controllingPlanSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "candidateBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bindingType",
+        "envelopeSchemaVersion",
+        "templatePath",
+        "exactCandidateIdentityLocation",
+        "trackedTemplateCannotGrantAuthority",
+        "trackedSuccessorRequiresNewDetachedAuthority"
+      ],
+      "properties": {
+        "bindingType": { "const": "DETACHED_SIGNED_AUTHORITY_REQUIRED" },
+        "envelopeSchemaVersion": { "const": "dealflow.owner-decision-authority-envelope.v1" },
+        "templatePath": { "const": "config/authority/dealflow-owner-decisions.v1.json" },
+        "exactCandidateIdentityLocation": { "const": "DETACHED_AUTHORITY_ENVELOPE" },
+        "trackedTemplateCannotGrantAuthority": { "const": true },
+        "trackedSuccessorRequiresNewDetachedAuthority": { "const": true }
+      }
+    },
+    "planBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirementCount", "requirementIds", "sortedRequirementIdsSha256"],
+      "properties": {
+        "requirementCount": { "const": 53 },
+        "requirementIds": {
+          "type": "array",
+          "minItems": 53,
+          "maxItems": 53,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "sortedRequirementIdsSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "globalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unresolvedBehavior",
+        "environmentVariablesCannotGrantAuthority",
+        "unsignedValuesCannotGrantAuthority",
+        "providerCredentialsCannotGrantAuthority",
+        "productionReleaseAuthorized"
+      ],
+      "properties": {
+        "unresolvedBehavior": {
+          "const": "APPLY_SAFE_DEFAULT_AND_BLOCK_EFFECT_OR_RELEASE"
+        },
+        "environmentVariablesCannotGrantAuthority": { "const": true },
+        "unsignedValuesCannotGrantAuthority": { "const": true },
+        "providerCredentialsCannotGrantAuthority": { "const": true },
+        "productionReleaseAuthorized": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "unresolved",
+        "approved",
+        "primary",
+        "privacy",
+        "importedDebt",
+        "experimentalScope",
+        "adminSecurity"
+      ],
+      "properties": {
+        "total": { "const": 43 },
+        "unresolved": { "const": 43 },
+        "approved": { "const": 0 },
+        "primary": { "const": 19 },
+        "privacy": { "const": 9 },
+        "importedDebt": { "const": 12 },
+        "experimentalScope": { "const": 2 },
+        "adminSecurity": { "const": 1 }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "minItems": 43,
+      "maxItems": 43,
+      "items": { "$ref": "#/$defs/decision" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "gitObject": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9:-]*(?:-[A-Z0-9]+)*$"
+    },
+    "nullableTimestamp": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "identityRef", "approvedAt", "signatureRef"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "identityRef": { "type": ["string", "null"] },
+        "approvedAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "signatureRef": { "type": ["string", "null"] }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "question",
+        "source",
+        "releaseBlocking",
+        "status",
+        "safeDefault",
+        "selectedValue",
+        "effectiveAt",
+        "reviewAt",
+        "approver",
+        "affectedRequirementIds",
+        "directlyAffectedLegacyKeys",
+        "activationGates"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "category": {
+          "enum": ["PRIMARY", "PRIVACY", "IMPORTED_DEBT", "EXPERIMENTAL_SCOPE", "ADMIN_SECURITY"]
+        },
+        "question": { "type": "string", "minLength": 8 },
+        "source": { "type": "string", "minLength": 1 },
+        "releaseBlocking": { "const": true },
+        "status": { "const": "UNRESOLVED_SIGNED_DECISION_REQUIRED" },
+        "safeDefault": { "type": "string", "minLength": 1 },
+        "selectedValue": { "type": "null" },
+        "effectiveAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "reviewAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "approver": { "$ref": "#/$defs/approval" },
+        "affectedRequirementIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "directlyAffectedLegacyKeys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "activationGates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "UNRESOLVED_SIGNED_DECISION_REQUIRED" }
+            }
+          },
+          "then": {
+            "properties": {
+              "selectedValue": { "const": null },
+              "effectiveAt": { "const": null },
+              "reviewAt": { "const": null },
+              "approver": {
+                "properties": {
+                  "role": { "const": "UNASSIGNED" },
+                  "identityRef": { "const": null },
+                  "approvedAt": { "const": null },
+                  "signatureRef": { "const": null }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "APPROVED" } }
+          },
+          "then": {
+            "properties": {
+              "selectedValue": { "not": { "const": null } },
+              "effectiveAt": { "type": "string", "format": "date-time" },
+              "approver": {
+                "properties": {
+                  "role": { "not": { "const": "UNASSIGNED" } },
+                  "identityRef": { "type": "string", "minLength": 1 },
+                  "approvedAt": { "type": "string", "format": "date-time" },
+                  "signatureRef": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

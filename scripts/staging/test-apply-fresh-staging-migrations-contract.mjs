@@ -40,10 +40,11 @@ function requireMarker(pattern, label) {
   assert.match(source, pattern, `Tracked staging broker is missing ${label}`);
 }
 
-requireMarker(/const exactMigrationCount = 108/, "the exact 108-migration gate");
+requireMarker(/const exactMigrationCount = 115/, "the exact 115-migration gate");
+requireMarker(/codex\/dealflow-final-master-20260716/, "the exact isolated release branch gate");
 requireMarker(
-  /Legacy single-migration forward mode is disabled for the 108-migration successor/,
-  "the fail-closed successor forward-mode gate",
+  /assertExactForward104To115Portfolio/,
+  "the exact bounded successor forward authority gate",
 );
 requireMarker(/const expectedPriorMigrationCount = 103/, "the pinned prior 103-migration gate");
 requireMarker(
@@ -184,7 +185,7 @@ requireMarker(/retentionConfigurationRowSecurityForced: true/, "retention forced
 requireMarker(/serviceRoleColumnWritePrivilegesPresent: false/, "sealed service_role column-write result");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
 requireMarker(/expectedPriorFinalMigration[\s\S]+20260713028000_harden_account_deletion_retention_authority\.sql/, "the prior final migration pin");
-requireMarker(/requiredFinalMigration[\s\S]+20260716200000_harden_stripe_payment_lifecycle\.sql/, "the final migration 108 pin");
+requireMarker(/requiredFinalMigration[\s\S]+20260717060000_install_owner_decision_authority_grants\.sql/, "the final migration 115 pin");
 requireMarker(/Two distinct final-verification summaries are required/, "two distinct verification rounds");
 requireMarker(
   /verificationRounds\[0\]\.resolvedCommandPortfolioSha256 !==\s*verificationRounds\[1\]\.resolvedCommandPortfolioSha256/,
@@ -258,8 +259,8 @@ requireMarker(
 );
 requireMarker(/atomicMigrationTransaction = buildAtomicMigrationTransaction\(migrationSources\)/, "sealed atomic transaction construction");
 requireMarker(
-  /forwardMigrationSources = migrationSources\.slice\([\s\S]+expectedPriorMigrationCount,[\s\S]+expectedPriorMigrationCount \+ 1/,
-  "unreachable historical forward tranche remains bounded to one migration",
+  /forwardMigrationSources = migrationSources\.slice\([\s\S]+FORWARD_104_TO_115_AUTHORITY\.prior\.migrationCount/,
+  "successor forward tranche remains bounded to migrations 105 through 115",
 );
 requireMarker(
   /forwardAtomicMigrationTransaction = buildAtomicMigrationTransaction\([\s\S]+forwardMigrationSources/,
@@ -616,75 +617,66 @@ assert.doesNotMatch(
 );
 assert.match(resumeBranch, /process\.exit\(0\)/, "Successful resume verification must not fall through into fresh apply");
 
-const forwardBranch = source.slice(forwardStart, freshStart);
-assert.match(
-  forwardBranch,
-  /loadAndValidatePriorMigrationProof\(\{[\s\S]+requirePinnedPrior103: true/,
-  "Forward mode must load only the pinned prior 103 proof",
+const legacyForwardStart = source.indexOf(
+  'if (migrationMode === "APPLY_LEGACY_FORWARD_EXACT_DISABLED") {',
 );
-assert.match(
-  forwardBranch,
-  /first 103 migration filenames and SQL hashes are not the pinned prior portfolio/,
-  "Forward mode must reject any drift in the first 103 migration files",
+assert.ok(legacyForwardStart > forwardStart && freshStart > legacyForwardStart);
+const successorPortfolioBindingStart = source.indexOf(
+  "const successorForwardPortfolio = assertExactForward104To115Portfolio(",
 );
-assert.match(
-  forwardBranch,
-  /preForwardState\.structuralCatalogSha256 !== priorApplication\.structuralCatalogSha256/,
-  "Forward mode must bind the remote pre-schema catalog to the pinned proof",
+assert.ok(
+  successorPortfolioBindingStart >= 0 && successorPortfolioBindingStart < forwardStart,
+  "Exact successor portfolio authority must be bound before the active branch",
 );
-assert.match(
+const forwardBranch = source.slice(forwardStart, legacyForwardStart);
+for (const marker of [
+  "loadExactPrior104StagingSeal(priorMigrationProofDir)",
+  "loadExactPrior104SyntheticSurfaceSeal(",
+  "captureAndAssertSyntheticRelationalSurface(",
+  "captureManagedNormalizedSchemaDump()",
+  "captureManagedCatalogIdentity(",
+  "captureManagedSecurityOracle(",
+  "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
+  "ROLLED_BACK_EXACT_PRIOR_104",
+  "FAILED_FORWARD_115_STATE_DETECTED_REQUIRES_READ_ONLY_REPROOF",
+  "forward_115_managed_schema_not_exact_or_stable",
+  "forward_115_managed_catalog_not_exact_or_stable",
+  "forward_115_managed_security_not_exact",
+]) {
+  assert.ok(forwardBranch.includes(marker), `Active successor branch is missing ${marker}`);
+}
+assert.doesNotMatch(
   forwardBranch,
-  /preForwardSchemaSha256 !== priorApplication\.normalizedSchemaSha256/,
-  "Forward mode must bind the normalized remote pre-schema to the pinned proof",
+  /requirePinnedPrior103|ROLLED_BACK_EXACT_PRIOR_103|EXACT_FORWARD_COMMITTED_PORTFOLIO/,
+  "The active successor branch must not inherit unreachable legacy 103-to-104 authority",
 );
-assert.match(
-  forwardBranch,
-  /transactionExecution = executeForwardMigrationTransaction\(\)/,
-  "Forward mode must invoke only its one-migration transaction",
+assert.equal(
+  (forwardBranch.match(/executeForwardMigrationTransaction\(\)/g) ?? []).length,
+  1,
+  "Active successor mode must contain exactly one bounded remote mutation call",
 );
 assert.doesNotMatch(
   forwardBranch,
   /executeAtomicMigrationTransaction\s*\(/,
-  "Forward mode must never invoke the fresh 104-migration transaction",
-);
-assert.match(
-  forwardBranch,
-  /retentionAuthorityAcl = captureAndAssertRetentionAuthorityAcl/,
-  "Forward mode must preserve table and column ACL hardening after migration 104",
-);
-assert.match(
-  forwardBranch,
-  /EXACT_FORWARD_COMMITTED_PORTFOLIO/,
-  "Forward mode must emit an exact post-104 state",
-);
-assert.match(
-  forwardBranch,
-  /ROLLED_BACK_EXACT_PRIOR_103/,
-  "Forward failures must distinguish exact rollback to the prior 103 state",
-);
-assert.match(
-  forwardBranch,
-  /FAILED_FORWARD_104_STATE_DETECTED_WITHOUT_COMMIT_PROOF/,
-  "Forward failures must not attribute a raced exact-104 state to an unproven commit",
+  "Active successor mode must never invoke the fresh portfolio transaction",
 );
 assert.match(
   forwardBranch,
   /process\.exit\(0\)/,
-  "Successful forward application must not fall through into fresh apply",
+  "Successful successor application must not fall through into legacy or fresh apply",
 );
-
 const forwardMutationMarker = forwardBranch.indexOf('"staging-mutation-started.json"');
 const forwardRemoteWrite = forwardBranch.indexOf(
   "transactionExecution = executeForwardMigrationTransaction();",
 );
 assert.ok(
   forwardMutationMarker >= 0 && forwardRemoteWrite > forwardMutationMarker,
-  "Forward mutation-start evidence must precede migration 104",
+  "Successor mutation-start evidence must precede migrations 105-115",
 );
 assert.doesNotMatch(
   forwardBranch.slice(forwardMutationMarker, forwardRemoteWrite),
   /\bsql\s*\(|runPostgresCommand\s*\(/,
-  "No remote operation may occur between the forward mutation marker and migration 104",
+  "No remote operation may occur between the successor mutation marker and migrations 105-115",
 );
 
 const freshBranch = source.slice(freshStart);
@@ -907,6 +899,19 @@ assert.equal(
   "application",
   "An exact migration-104 forward application proof must be accepted for current resume",
 );
+const forward115Fixture = exactEvidenceFixture({ count: 115, kind: "application" });
+forward115Fixture.proof.remoteStateVerification.status =
+  "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO";
+forward115Fixture.summary.remoteStateVerificationStatus =
+  "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO";
+assert.equal(
+  classifyPriorMigrationEvidence({
+    ...forward115Fixture,
+    expectedMigrationCount: 115,
+  }).evidenceKind,
+  "application",
+  "The exact 104-to-115 forward application proof must be accepted for read-only resume",
+);
 assert.throws(
   () => classifyPriorMigrationEvidence({
     ...exactEvidenceFixture({ count: 103, kind: "application" }),
@@ -937,20 +942,20 @@ for (const chained of [false, true]) {
   assert.equal(
     classifyPriorMigrationEvidence({
       ...exactEvidenceFixture({
-        count: 108,
+        count: 115,
         kind: "read_only_exact_verification",
         chained,
       }),
-      expectedMigrationCount: 108,
+      expectedMigrationCount: 115,
     }).evidenceKind,
     "read_only_exact_verification",
     chained
       ? "A second exact read-only resume must accept the prior sealed read-only resume proof"
-      : "The first exact read-only resume must accept the sealed migration-108 proof",
+      : "The first exact read-only resume must accept the sealed migration-115 proof",
   );
 }
 
-const migrationFiles108 = Array.from({ length: 108 }, (_, index) => ({
+const migrationFiles115 = Array.from({ length: 115 }, (_, index) => ({
   version: String(index + 1).padStart(14, "0"),
   file: `${String(index + 1).padStart(14, "0")}_migration.sql`,
   sha256: "a".repeat(64),
@@ -963,9 +968,9 @@ const exactResumeIdentity = {
   proofSha256: "e".repeat(64),
   summarySha256: "f".repeat(64),
   structuralCatalogSha256: "1".repeat(64),
-  migrationCount: 108,
-  lastCommittedVersion: migrationFiles108.at(-1).version,
-  migrationFiles: migrationFiles108,
+  migrationCount: 115,
+  lastCommittedVersion: migrationFiles115.at(-1).version,
+  migrationFiles: migrationFiles115,
   migrationPortfolioSha256: "2".repeat(64),
   normalizedSchemaSha256: "3".repeat(64),
   singleOuterTransaction: true,
@@ -974,16 +979,16 @@ const exactResumeIdentity = {
 };
 const currentResumeArguments = {
   priorApplication: exactResumeIdentity,
-  expectedMigrationCount: 108,
-  expectedFinalVersion: migrationFiles108.at(-1).version,
+  expectedMigrationCount: 115,
+  expectedFinalVersion: migrationFiles115.at(-1).version,
   expectedMigrationPortfolioSha256: "2".repeat(64),
-  expectedMigrationFiles: migrationFiles108,
+  expectedMigrationFiles: migrationFiles115,
   expectedNormalizedSchemaSha256: "3".repeat(64),
 };
 assert.equal(
   isExactCurrentResumeIdentity(currentResumeArguments),
   true,
-  "Runner must accept a fully bound exact current-108 read-only resume identity",
+  "Runner must accept a fully bound exact current-115 read-only resume identity",
 );
 assert.equal(
   isExactCurrentResumeIdentity({
@@ -1010,14 +1015,14 @@ assert.equal(
     priorApplication: { ...exactResumeIdentity, migrationCount: 103 },
   }),
   false,
-  "Runner must reject a 103-migration identity for current-108 resume",
+  "Runner must reject a 103-migration identity for current-115 resume",
 );
 assert.equal(
   isExactCurrentResumeIdentity({
     ...currentResumeArguments,
     priorApplication: {
       ...exactResumeIdentity,
-      migrationFiles: migrationFiles108.slice(0, -1),
+      migrationFiles: migrationFiles115.slice(0, -1),
     },
   }),
   false,
@@ -1120,5 +1125,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer fresh 108-migration transaction, fail-closed read-only exact-existing resume, legacy 103-to-104 forward mode disabled for the successor, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 108 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer fresh 115-migration transaction, fail-closed read-only exact-existing resume, exact 104-to-115 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 115 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
 );

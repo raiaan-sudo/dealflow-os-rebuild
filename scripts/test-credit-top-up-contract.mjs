@@ -22,6 +22,10 @@ const buttonSource = fs.readFileSync(
   path.join(root, "src/components/billing/credit-top-up-button.tsx"),
   "utf8",
 );
+const settingsSource = fs.readFileSync(
+  path.join(root, "src/app/(app)/settings/page.tsx"),
+  "utf8",
+);
 const migrationSource = fs.readFileSync(
   path.join(
     root,
@@ -174,7 +178,18 @@ assert.match(routeSource, /client_request_id:\s*z\.string\(\)\.uuid\(\)/);
 assert.match(routeSource, /CREDIT_TOP_UP_MAXIMUM_CENTS/);
 assert.match(buttonSource, /useRef<string \| null>\(null\)/);
 assert.match(buttonSource, /crypto\.randomUUID\(\)/);
-assert.match(buttonSource, /JSON\.stringify\(\{ amountCents, client_request_id: clientRequestId \}\)/);
+assert.match(buttonSource, /amountCents:\s*selectedAmountCents/);
+assert.match(buttonSource, /client_request_id:\s*clientRequestId/);
+assert.match(buttonSource, /clientRequestIdRef\.current\s*=\s*null/);
+assert.match(buttonSource, /selectedAmountCents\s*>=\s*minimumAmountCents/);
+assert.match(buttonSource, /selectedAmountCents\s*<=\s*maximumAmountCents/);
+assert.match(creditSource, /\.from\("user_credit_ledger"\)/);
+assert.match(creditSource, /\.from\("provider_usage_events"\)/);
+assert.match(creditSource, /\.eq\("status",\s*"reserved"\)/);
+assert.match(creditSource, /reservationStatus:/);
+assert.match(settingsSource, /allowAmountSelection/);
+assert.match(settingsSource, /credits\.activity\.map/);
+assert.match(settingsSource, /settings\.reservedBalance/);
 assert.match(migrationSource, /credit_top_up_intents_actor_request_unique/);
 assert.match(migrationSource, /on conflict \(organization_id, user_id, client_request_id\)/);
 assert.match(migrationSource, /credit_top_up_request_identity_collision/);

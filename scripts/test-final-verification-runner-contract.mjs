@@ -211,7 +211,7 @@ try {
       zeroExternalEffects: {
         ok: true,
         attestation: "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1",
-        checkedControlCount: 60,
+        checkedControlCount: 61,
         failedControls: [],
       },
       authenticatedStatus: "authenticated_deferred",
@@ -326,6 +326,34 @@ assert.throws(
 assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 91);
 assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 91);
 assert.equal(new Set(FINAL_VERIFICATION_COMMAND_PORTFOLIO).size, 91);
+assert.match(
+  packageJson.scripts["test:dealflow-completion"],
+  /npm run test:final-critical/,
+  "The single completion command must include the grouped final-critical portfolio",
+);
+for (const requiredCriticalCommand of [
+  "test:auth-pkce",
+  "test:onboarding-draft-integrity-db",
+  "test:campaign-lifecycle",
+  "test:ghl-marketplace-oauth",
+  "test:admin-page-authorization",
+  "test:platform-operator-authority-db",
+  "test:privacy-authority-db",
+  "authority:validate",
+  "test:authority:runtime",
+  "test:authority:grants-db",
+  "test:meta-optimization-authority",
+  "test:privileged-tenancy-db",
+  "test:supply-chain",
+  "supply-chain:check",
+  "test:analytics:authority",
+]) {
+  assert.match(
+    packageJson.scripts["test:final-critical"],
+    new RegExp(`npm run ${requiredCriticalCommand.replaceAll(":", "\\:")}(?:\\s|$)`),
+    `The grouped final-critical portfolio is missing ${requiredCriticalCommand}`,
+  );
+}
 assert.equal(
   FINAL_VERIFICATION_COMMAND_PORTFOLIO.at(-2),
   "npm run test:final-master-delta",
@@ -496,7 +524,7 @@ const exactSummaryIdentity = Object.freeze({
   trackedWorktreeSha256: "c".repeat(64),
   trackedFileCount: 900,
   dependencyLockSha256: "d".repeat(64),
-  migrationCount: 108,
+  migrationCount: 115,
   migrationPortfolioSha256: "e".repeat(64),
 });
 const exactRecords = exactCommandPortfolio.map((command, index) => ({
@@ -510,7 +538,7 @@ const exactRecords = exactCommandPortfolio.map((command, index) => ({
   postCommandDiskHeadroom: "passed",
   postCommandRepositoryInvariant: "passed",
   safeEnvironmentProfile: "provider_credentials_and_application_secrets_omitted",
-  workingDirectory: "/private/tmp/dealflow-overnight-release-20260712",
+  workingDirectory: "/private/tmp/dealflow-final-master-20260716",
   ...exactSummaryIdentity,
   log: `${String(index + 1).padStart(2, "0")}-exact-command.log`,
 }));
@@ -712,8 +740,8 @@ assert.throws(
 );
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 108",
-  "20260716200000_harden_stripe_payment_lifecycle.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 115",
+  "20260717060000_install_owner_decision_authority_grants.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["git", ["diff", "--check"]]',
@@ -808,5 +836,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (exclusive worktree lock, migration 108, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 115, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

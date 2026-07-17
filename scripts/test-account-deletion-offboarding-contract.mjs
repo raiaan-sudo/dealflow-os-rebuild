@@ -15,6 +15,14 @@ const retentionAuthorityMigrationPath = path.join(
   root,
   "supabase/migrations/20260713028000_harden_account_deletion_retention_authority.sql",
 );
+const privacyAuthorityMigrationPath = path.join(
+  root,
+  "supabase/migrations/20260717050000_create_privacy_consent_dsar_authority.sql",
+);
+const generatedStaticStorageMigrationPath = path.join(
+  root,
+  "supabase/migrations/20260717040000_bind_generated_static_storage_tenancy.sql",
+);
 const vercelPath = path.join(root, "vercel.json");
 const componentPath = path.join(root, "src/components/settings/account-deletion-card.tsx");
 const publicPagePath = path.join(root, "src/components/legal/localized-data-deletion-page.tsx");
@@ -147,8 +155,11 @@ assert.equal(contract.getCustomerVisibleAccountDeletionState({
 
 const service = fs.readFileSync(servicePath, "utf8");
 assert.match(service, /context\.organization\.owner_user_id !== context\.user\.id/);
-assert.match(service, /signInWithPassword/);
+assert.doesNotMatch(service, /signInWithPassword/);
 assert.match(service, /currentLevel !== "aal2"/);
+assert.match(service, /authorizePrivacySubjectAction/);
+assert.match(service, /create_privacy_delete_request_v1/);
+assert.match(service, /claim_account_deletion_tasks_v2/);
 assert.match(service, /isAccountDeletionExecutionEnabled/);
 assert.match(service, /ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED/);
 assert.match(service, /account_deletion_execution_unavailable/);
@@ -178,12 +189,37 @@ assert.match(service, /method: "DELETE"/);
 assert.match(service, /AccountDeletionUncertainError/);
 assert.match(service, /GHL_ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED/);
 assert.match(service, /executeGhlAccountDeletionProviderOffboarding/);
-assert.match(service, /get_account_deletion_creative_storage_inventory_v1/);
-assert.match(service, /finalize_account_deletion_creative_storage_v1/);
+assert.match(service, /get_account_deletion_creative_storage_inventory_v2/);
+assert.match(service, /authorize_generated_static_storage_cleanup_v1/);
+assert.match(service, /finalize_account_deletion_creative_storage_v2/);
 assert.doesNotMatch(service, /from\("creative_assets"\)[\s\S]{0,300}eq\("organization_id"/);
 assert.match(service, /outcome: taskError instanceof AccountDeletionUncertainError \? "reconcile" : "retry"/);
 assert.doesNotMatch(service, /console\.(?:log|error|warn).*password/i);
 assert.doesNotMatch(service, /access_token.*(?:metadata|receipt)/i);
+
+const generatedStaticStorageMigration = fs.readFileSync(
+  generatedStaticStorageMigrationPath,
+  "utf8",
+);
+for (const marker of [
+  "generated_static_storage_cleanup_authorities",
+  "generated_static_cleanup_candidate_sha256_v1",
+  "get_account_deletion_creative_storage_inventory_v2",
+  "authorize_generated_static_storage_cleanup_v1",
+  "finalize_account_deletion_creative_storage_v2",
+  "generated_static_storage_cleanup_authority_required",
+  "account_deletion_creative_storage_object_still_present",
+]) {
+  assert.match(generatedStaticStorageMigration, new RegExp(marker));
+}
+assert.match(
+  generatedStaticStorageMigration,
+  /state in \('authorized', 'object_deleted', 'finalizing', 'finalized'\)/,
+);
+assert.match(
+  generatedStaticStorageMigration,
+  /cleanup\.candidate_sha256 is distinct from expected_candidate/,
+);
 
 const api = fs.readFileSync(apiPath, "utf8");
 assert.match(api, /assertSameOriginRequest\(request\)/);
@@ -191,6 +227,8 @@ assert.match(api, /maxBytes: 8 \* 1024/);
 assert.match(api, /status: 202/);
 assert.match(api, /executionAvailable/);
 assert.match(api, /ACCOUNT_DELETION_SUPPORT_EMAIL/);
+assert.match(api, /identityMethod: z\.literal\("aal2"\)/);
+assert.doesNotMatch(api, /z\.literal\("password"\)/);
 const worker = fs.readFileSync(workerPath, "utf8");
 assert.match(worker, /assertInternalSystemRequest\(request\)/);
 assert.match(worker, /maxTasks: 25/);
@@ -239,8 +277,14 @@ assert.doesNotMatch(
   retentionAuthorityMigration,
   /grant\s+(?:[^;]*\b(?:insert|update|delete|truncate|references|trigger)\b[^;]*)\s+on\s+(?:table\s+)?public\.account_deletion_retention_configuration\s+to\s+service_role/i,
 );
+const privacyAuthorityMigration = fs.readFileSync(privacyAuthorityMigrationPath, "utf8");
+assert.match(privacyAuthorityMigration, /create_privacy_delete_request_v1/);
+assert.match(privacyAuthorityMigration, /revoke execute on function public\.create_account_deletion_request_v1[\s\S]+from public, anon, authenticated, service_role/);
+assert.match(privacyAuthorityMigration, /privacy_legal_retention_authority_pending/);
 const component = fs.readFileSync(componentPath, "utf8");
-assert.match(component, /copy\.password/);
+assert.match(component, /copy\.recentAal2/);
+assert.match(component, /identityMethod: "aal2"/);
+assert.doesNotMatch(component, /type="password"/);
 assert.match(component, /ACCOUNT_DELETION_CONFIRMATION_PHRASE/);
 assert.match(component, /copy\.acknowledgement/);
 assert.match(component, /idempotencyKeyRef\.current \?\?=/);

@@ -1,58 +1,33 @@
+import { ApiError } from "@/lib/api/route";
 import { formatCurrency } from "@/lib/formatters";
 import {
   getCampaignPlanById,
   getLatestCampaignPlan,
-  persistCampaignPlan,
   type CampaignPlan,
   type CampaignRuntime,
 } from "@/lib/services/campaign-plan-service";
+import {
+  applyOptimizationRuntime,
+  applyProviderDispatchResultRuntime,
+  applyProviderReadbackRuntime,
+  archiveLocalRuntime,
+  CampaignLifecycleTransitionError,
+  markLaunchIntentRuntime,
+  pauseLocalRuntime,
+  resumeLocalRuntime,
+  setExperienceRuntime,
+  type CampaignExperienceStatus,
+} from "@/lib/services/campaign-lifecycle-state-machine";
+import { persistCampaignRuntimeTransition } from "@/lib/services/campaign-plan-persistence-service";
+import { getAppContext } from "@/lib/services/app-context";
+import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { getCampaignByIdForInternalActor } from "@/lib/services/campaign-persistence";
 import type { ExecutableCampaign } from "@/lib/services/campaign-execution-service";
 
 export type CampaignRuntimeSnapshot = {
   plan: CampaignPlan;
   runtime: CampaignRuntime;
 };
-
-const STATUS_TIMINGS_MS = {
-  activeToLearning: 12_000,
-  learningToOptimizing: 24_000,
-} as const;
-
-type CampaignExperienceStatus =
-  | "draft"
-  | "built"
-  | "paywall"
-  | "preview"
-  | "connected"
-  | "launch_ready";
-
-function hasDurableProviderTerminalTruth(runtime: CampaignRuntime) {
-  return (
-    runtime.status === "provider_paused" ||
-    runtime.status === "live" ||
-    runtime.metaPushStatus === "provider_paused" ||
-    runtime.metaPushStatus === "published"
-  );
-}
-
-function withRuntime(plan: CampaignPlan, runtime: CampaignRuntime): CampaignPlan {
-  return {
-    ...plan,
-    runtime,
-  };
-}
-
-function buildLaunchIds(campaign: ExecutableCampaign) {
-  const numericSeed = campaign.name
-    .split("")
-    .reduce((total, char) => total + char.charCodeAt(0), 0);
-
-  return {
-    campaignId: `CAM-${String(40000 + (numericSeed % 50000)).padStart(5, "0")}`,
-    adSetId: `ADSET-${String(90000 + (numericSeed % 8000)).padStart(5, "0")}`,
-    adId: `AD-${String(30000 + (numericSeed % 60000)).padStart(5, "0")}`,
-  };
-}
 
 function getDailyBudget(campaign: ExecutableCampaign) {
   const monthlyBudgetText = campaign.adSets[0]?.budget ?? "$50/month";
@@ -61,54 +36,82 @@ function getDailyBudget(campaign: ExecutableCampaign) {
   return `${formatCurrency(dailyBudget)}/day`;
 }
 
-function transitionRuntime(
-  runtime: CampaignRuntime,
-  updates: Partial<CampaignRuntime>,
-): CampaignRuntime {
-  return {
-    ...runtime,
-    ...updates,
-    statusUpdatedAt: updates.statusUpdatedAt ?? new Date().toISOString(),
-  };
+function mapLifecycleError(error: unknown): never {
+  if (error instanceof CampaignLifecycleTransitionError) {
+    throw new ApiError(409, error.message, error.code);
+  }
+  throw error;
 }
 
-export function deriveCampaignRuntime(plan: CampaignPlan) {
-  const runtime = plan.runtime;
+function applyLifecycleTransition(
+  transition: () => CampaignRuntime,
+): CampaignRuntime {
+  try {
+    return transition();
+  } catch (error) {
+    return mapLifecycleError(error);
+  }
+}
 
+async function persistRuntime(params: {
+  snapshot: CampaignRuntimeSnapshot;
+  runtime: CampaignRuntime;
+  source: string;
+  internalActor?: { organizationId: string; userId: string };
+}) {
+  if (params.runtime === params.snapshot.runtime) {
+    return params.snapshot;
+  }
+
+  const context = params.internalActor
+    ? {
+        organization: { id: params.internalActor.organizationId },
+        user: { id: params.internalActor.userId },
+      }
+    : await getAppContext();
+  if (!context) {
+    throw new ApiError(401, "Authentication is required.", "unauthorized");
+  }
   if (
-    !runtime.launchedAt ||
-    runtime.status === "draft" ||
-    runtime.status === "built" ||
-    runtime.status === "paywall" ||
-    runtime.status === "preview" ||
-    runtime.status === "connected" ||
-    runtime.status === "launch_ready" ||
-    runtime.status === "launching" ||
-    runtime.status === "live"
+    params.snapshot.plan.organizationId &&
+    params.snapshot.plan.organizationId !== context.organization.id
   ) {
-    return runtime;
+    throw new ApiError(403, "Campaign workspace access was denied.", "forbidden");
   }
 
-  const elapsedMs = Date.now() - new Date(runtime.launchedAt).getTime();
+  await persistCampaignRuntimeTransition({
+    campaignId: params.snapshot.plan.id,
+    organizationId: context.organization.id,
+    userId: context.user.id,
+    expectedStatusUpdatedAt: params.snapshot.runtime.statusUpdatedAt,
+    runtime: params.runtime,
+    source: params.source,
+  });
 
-  if (elapsedMs >= STATUS_TIMINGS_MS.learningToOptimizing && runtime.status !== "optimizing") {
-    return transitionRuntime(runtime, {
-      status: "optimizing",
-      lastAction:
-        runtime.lastOptimizationAction ??
-        "AI updated campaign: optimizing targeting around the strongest response pattern.",
-      lastOptimizationAt: runtime.lastOptimizationAt ?? new Date().toISOString(),
-    });
+  const plan = params.internalActor
+    ? await getCampaignByIdForInternalActor({
+        campaignId: params.snapshot.plan.id,
+        organizationId: params.internalActor.organizationId,
+        userId: params.internalActor.userId,
+      }).then((record) => (record ? canonicalCampaignToPlan(record) : null))
+    : await getCampaignPlanById(params.snapshot.plan.id);
+  if (!plan) {
+    throw new ApiError(
+      409,
+      "Campaign runtime was updated but could not be reloaded.",
+      "campaign_runtime_reload_failed",
+    );
   }
+  return { plan, runtime: plan.runtime } satisfies CampaignRuntimeSnapshot;
+}
 
-  if (elapsedMs >= STATUS_TIMINGS_MS.activeToLearning && runtime.status === "active") {
-    return transitionRuntime(runtime, {
-      status: "learning",
-      lastAction: "Campaign entered learning mode while delivery stabilizes.",
-    });
-  }
-
-  return runtime;
+/**
+ * Runtime reads are deliberately side-effect free. Provider delivery, learning,
+ * and optimization states may advance only from durable receipts/readback or
+ * an actual optimization settlement, never from elapsed wall-clock time.
+ */
+export function deriveCampaignRuntime(plan: CampaignPlan) {
+  return plan.runtime;
 }
 
 export async function getCampaignRuntimeSnapshot(campaignId?: string | null) {
@@ -120,37 +123,24 @@ export async function getCampaignRuntimeSnapshot(campaignId?: string | null) {
     return null;
   }
 
-  const derivedRuntime = deriveCampaignRuntime(plan);
-
-  if (JSON.stringify(derivedRuntime) !== JSON.stringify(plan.runtime)) {
-    const persistedPlan = await persistCampaignPlan(withRuntime(plan, derivedRuntime));
-    return {
-      plan: persistedPlan,
-      runtime: persistedPlan.runtime,
-    } satisfies CampaignRuntimeSnapshot;
-  }
-
   return {
     plan,
-    runtime: plan.runtime,
+    runtime: deriveCampaignRuntime(plan),
   } satisfies CampaignRuntimeSnapshot;
 }
 
-export async function startCampaignLaunch() {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function startCampaignLaunch(campaignId?: string | null) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  const runtime = transitionRuntime(snapshot.runtime, {
-    status: "launching",
-    safetyState: "ready",
-    lastAction: "Launch sequence started. Validating campaign deployment.",
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+  const runtime = applyLifecycleTransition(() =>
+    markLaunchIntentRuntime({
+      runtime: snapshot.runtime,
+      at: new Date().toISOString(),
+      message: "Launch intent recorded. Waiting for the fenced provider dispatch worker.",
+    }),
+  );
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:start_launch" });
 }
 
 export async function setCampaignExperienceStatus(
@@ -161,143 +151,155 @@ export async function setCampaignExperienceStatus(
   },
 ) {
   const snapshot = await getCampaignRuntimeSnapshot(options?.campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  if (hasDurableProviderTerminalTruth(snapshot.runtime)) {
-    return snapshot;
-  }
-
-  const nextRuntime = transitionRuntime(snapshot.runtime, {
-    status,
-    safetyState: "ready",
-    metaPushStatus: "not_pushed",
-    launchedAt: null,
-    lastAction:
-      options?.lastAction ??
-      (status === "built"
-        ? "Campaign created."
-        : status === "paywall"
-          ? "Choose a plan before opening review."
+  const lastAction =
+    options?.lastAction ??
+    (status === "built"
+      ? "Campaign created."
+      : status === "paywall"
+        ? "Choose a plan before opening review."
         : status === "preview"
-            ? "Campaign is ready to review."
-            : status === "connected"
-              ? "Ad account connected. Finish domain and tracking setup next."
-              : status === "launch_ready"
-                ? "Connection checks are complete. Launch setup is ready next."
-                : "Campaign draft updated."),
+          ? "Campaign is ready to review."
+          : status === "connected"
+            ? "Ad account connected. Finish domain and tracking setup next."
+            : status === "launch_ready"
+              ? "Connection checks are complete. Launch setup is ready next."
+              : "Campaign draft updated.");
+  const runtime = applyLifecycleTransition(() =>
+    setExperienceRuntime({
+      runtime: snapshot.runtime,
+      status,
+      at: new Date().toISOString(),
+      lastAction,
+    }),
+  );
+  return persistRuntime({
+    snapshot,
+    runtime,
+    source: "campaign_runtime:set_experience_status",
   });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, nextRuntime));
-  return { plan, runtime: plan.runtime };
 }
 
-export async function completeCampaignLaunch(campaign: ExecutableCampaign) {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function completeCampaignLaunch(
+  campaign: ExecutableCampaign,
+  campaignId?: string | null,
+) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  const ids = buildLaunchIds(campaign);
-  const runtime = transitionRuntime(snapshot.runtime, {
-    status: "launching",
-    safetyState: "ready",
-    campaignId: ids.campaignId,
-    adSetId: ids.adSetId,
-    adId: ids.adId,
+  const at = new Date().toISOString();
+  const launching = applyLifecycleTransition(() =>
+    markLaunchIntentRuntime({
+      runtime: snapshot.runtime,
+      at,
+      message:
+        "Campaign structure is prepared. No provider object ID or live state is inferred before durable provider receipts.",
+    }),
+  );
+  const runtime: CampaignRuntime = {
+    ...launching,
     budgetDaily: getDailyBudget(campaign),
-    lastAction: "Campaign structure prepared. Waiting for Meta to confirm publish.",
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+    statusUpdatedAt: at,
+  };
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:prepare_launch" });
 }
 
-export async function applyCampaignOptimization(actionTitle: string) {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function applyCampaignOptimization(
+  actionTitle: string,
+  campaignId?: string | null,
+) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  const runtime = transitionRuntime(snapshot.runtime, {
-    status: "live",
-    safetyState: "live",
-    lastAction: `AI updated campaign: ${actionTitle}`,
-    lastOptimizationAction: actionTitle,
-    lastOptimizationAt: new Date().toISOString(),
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+  const runtime = applyLifecycleTransition(() =>
+    applyOptimizationRuntime({
+      runtime: snapshot.runtime,
+      at: new Date().toISOString(),
+      actionTitle,
+    }),
+  );
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:optimization" });
 }
 
-export async function markMetaPublishing() {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function markMetaPublishing(campaignId?: string | null) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  const runtime = transitionRuntime(snapshot.runtime, {
-    metaPushStatus: "publishing",
-    status: "launching",
-    safetyState: "ready",
-    metaLastMessage: "Preparing campaign objects for Meta Ads deployment.",
-    lastAction: "Preparing Meta Ads deployment for approval.",
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+  const runtime = applyLifecycleTransition(() =>
+    markLaunchIntentRuntime({
+      runtime: snapshot.runtime,
+      at: new Date().toISOString(),
+      message: "Provider dispatch intent recorded. Awaiting durable PAUSED-object receipts.",
+    }),
+  );
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:meta_dispatch_intent" });
 }
 
 export async function updateMetaPublishResult(params: {
-  status: "published" | "partial" | "failed";
+  status: "provider_paused" | "partial" | "failed" | "operator_action_required";
   campaignId: string | null;
   adSetIds: string[];
   adIds: string[];
   message: string;
+  internalCampaignId?: string | null;
 }) {
-  const snapshot = await getCampaignRuntimeSnapshot();
+  const snapshot = await getCampaignRuntimeSnapshot(params.internalCampaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
+  const runtime = applyLifecycleTransition(() =>
+    applyProviderDispatchResultRuntime({
+      runtime: snapshot.runtime,
+      result: params.status,
+      identity: {
+        campaignId: params.campaignId,
+        adSetIds: params.adSetIds,
+        adIds: params.adIds,
+      },
+      at: new Date().toISOString(),
+      message: params.message,
+    }),
+  );
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:meta_dispatch_result" });
+}
 
-  const runtime = transitionRuntime(snapshot.runtime, {
-    metaPushStatus: params.status,
-    safetyState:
-      params.status === "published"
-        ? "live"
-        : params.status === "partial"
-          ? "failed"
-          : "failed",
-    metaLastMessage: params.message,
-    campaignId: params.campaignId ?? snapshot.runtime.campaignId,
-    adSetId: params.adSetIds[0] ?? snapshot.runtime.adSetId,
-    adId: params.adIds[0] ?? snapshot.runtime.adId,
-    metaAdSetIds: params.adSetIds,
-    metaAdIds: params.adIds,
-    lastAction:
-      params.status === "published"
-        ? "Campaign pushed to Meta Ads and confirmed live."
-        : params.status === "partial"
-          ? "Campaign push reached Meta Ads with partial completion."
-          : "Campaign push to Meta Ads failed.",
-    status:
-      params.status === "published"
-        ? "live"
-        : params.status === "partial"
-          ? "launching"
-          : "launch_ready",
-    launchedAt: params.status === "published" ? new Date().toISOString() : snapshot.runtime.launchedAt,
+export async function reconcileCampaignProviderReadback(params: {
+  internalCampaignId: string;
+  metaCampaignId: string;
+  providerState: "active" | "processing" | "paused" | "operator_action_required";
+  activationAuthorized: boolean;
+  readAt: string;
+  message: string;
+  internalActor?: { organizationId: string; userId: string };
+}) {
+  const snapshot = params.internalActor
+    ? await getCampaignByIdForInternalActor({
+        campaignId: params.internalCampaignId,
+        organizationId: params.internalActor.organizationId,
+        userId: params.internalActor.userId,
+      }).then((record) => {
+        const plan = record ? canonicalCampaignToPlan(record) : null;
+        return plan ? ({ plan, runtime: plan.runtime } satisfies CampaignRuntimeSnapshot) : null;
+      })
+    : await getCampaignRuntimeSnapshot(params.internalCampaignId);
+  if (!snapshot) return null;
+
+  const runtime = applyLifecycleTransition(() =>
+    applyProviderReadbackRuntime({
+      runtime: snapshot.runtime,
+      providerState: params.providerState,
+      campaignId: params.metaCampaignId,
+      activationAuthorized: params.activationAuthorized,
+      at: params.readAt,
+      message: params.message,
+    }),
+  );
+  return persistRuntime({
+    snapshot,
+    runtime,
+    source: "campaign_runtime:provider_readback",
+    internalActor: params.internalActor,
   });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
 }
 
 export async function updateCampaignExecutionGuardrails(params: {
@@ -307,98 +309,60 @@ export async function updateCampaignExecutionGuardrails(params: {
   safetyState: "ready" | "blocked";
   message: string;
 }) {
-  const snapshot = await getCampaignRuntimeSnapshot(params.campaignId);
-
-  if (!snapshot) {
-    return null;
+  if (!Number.isFinite(params.budgetDailyInput) || params.budgetDailyInput <= 0) {
+    throw new ApiError(
+      400,
+      "Daily budget must be a positive finite amount.",
+      "campaign_budget_invalid",
+    );
   }
+  const snapshot = await getCampaignRuntimeSnapshot(params.campaignId);
+  if (!snapshot) return null;
 
-  const runtime = transitionRuntime(snapshot.runtime, {
+  const providerSafetyState =
+    snapshot.runtime.metaPushStatus === "published"
+      ? snapshot.runtime.safetyState
+      : snapshot.runtime.metaPushStatus === "provider_paused"
+        ? "paused"
+        : snapshot.runtime.metaPushStatus === "provider_processing"
+          ? snapshot.runtime.safetyState
+        : snapshot.runtime.metaPushStatus === "operator_action_required"
+          ? "failed"
+          : params.safetyState;
+  const runtime: CampaignRuntime = {
+    ...snapshot.runtime,
     budgetDailyInput: params.budgetDailyInput,
     budgetDaily: `${formatCurrency(params.budgetDailyInput)}/day`,
     launchMode: params.launchMode,
-    safetyState:
-      snapshot.runtime.metaPushStatus === "provider_paused"
-        ? "paused"
-        : params.safetyState,
+    safetyState: providerSafetyState,
     lastAction: params.message,
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+    statusUpdatedAt: new Date().toISOString(),
+  };
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:set_guardrails" });
 }
 
 export async function pauseCampaignExecution(campaignId?: string | null) {
   const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  const runtime = transitionRuntime(snapshot.runtime, {
-    status:
-      snapshot.runtime.metaPushStatus === "provider_paused"
-        ? "provider_paused"
-        : snapshot.runtime.metaPushStatus === "published"
-          ? "live"
-          : "launch_ready",
-    safetyState: "paused",
-    lastAction: "Campaign paused locally. No new launch or publish actions will run until resumed.",
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+  const runtime = pauseLocalRuntime(snapshot.runtime, new Date().toISOString());
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:pause_local" });
 }
 
 export async function resumeCampaignExecution(campaignId?: string | null) {
   const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  if (
-    snapshot.runtime.metaPushStatus === "provider_paused" ||
-    snapshot.runtime.metaPushStatus === "published"
-  ) {
-    const runtime = transitionRuntime(snapshot.runtime, {
-      status:
-        snapshot.runtime.metaPushStatus === "provider_paused"
-          ? "provider_paused"
-          : "live",
-      safetyState: "paused",
-      lastAction:
-        "Provider delivery state was not changed. A separately authorized provider action and fresh sync are required before delivery can be described as active.",
-    });
-
-    const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-    return { plan, runtime: plan.runtime };
-  }
-
-  const runtime = transitionRuntime(snapshot.runtime, {
-    status: "launch_ready",
-    safetyState: "ready",
-    lastAction: "Campaign resumed locally and is ready for launch actions again.",
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+  const runtime = resumeLocalRuntime(snapshot.runtime, new Date().toISOString());
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:resume_local" });
 }
 
 export async function archiveCampaignExecution(campaignId?: string | null) {
   const snapshot = await getCampaignRuntimeSnapshot(campaignId);
+  if (!snapshot) return null;
 
-  if (!snapshot) {
-    return null;
-  }
-
-  const runtime = transitionRuntime(snapshot.runtime, {
-    status: "draft",
-    safetyState: "paused",
-    metaPushStatus: "failed",
-    lastAction: "Campaign archived locally and marked inactive.",
-  });
-
-  const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
-  return { plan, runtime: plan.runtime };
+  const runtime = applyLifecycleTransition(() =>
+    archiveLocalRuntime(snapshot.runtime, new Date().toISOString()),
+  );
+  return persistRuntime({ snapshot, runtime, source: "campaign_runtime:archive_local" });
 }
