@@ -568,7 +568,14 @@ if (!invariantFailure) {
 // verification directory, not only the command logs. Refuse a round here if a
 // browser or test runner left behind an empty, symlinked, special, missing, or
 // incomplete cross-browser artifact portfolio.
-const sealableEvidence = assertFinalVerificationEvidenceIsSealable(outputDirectory);
+let sealableEvidence = null;
+let sealableEvidenceFailure = null;
+try {
+  sealableEvidence = assertFinalVerificationEvidenceIsSealable(outputDirectory);
+} catch (error) {
+  sealableEvidenceFailure = error;
+  failed = true;
+}
 
 const authenticatedProofBlocked = environmentOnlyDeferrals.length > 0;
 const localGateStatus =
@@ -611,14 +618,20 @@ const summary = {
   fatalResourceDiagnosticCount: records.filter(
     (record) => record.fatalResourceDiagnostic !== null,
   ).length,
-  evidenceTreeStatus: sealableEvidence.status,
-  evidenceTreeFileCountBeforeSummary: sealableEvidence.fileCountBeforeSummary,
+  evidenceTreeStatus: sealableEvidence?.status ?? "FAILED",
+  evidenceTreeFailure: sealableEvidenceFailure
+    ? sanitize(sealableEvidenceFailure.message)
+    : null,
+  evidenceTreeFileCountBeforeSummary:
+    sealableEvidence?.fileCountBeforeSummary ?? 0,
   evidenceTreeSha256BeforeSummary:
-    sealableEvidence.evidenceTreeSha256BeforeSummary,
-  localBrowserEvidenceStatus: sealableEvidence.browser.status,
-  localBrowserScreenshotCount: sealableEvidence.browser.screenshotCount,
+    sealableEvidence?.evidenceTreeSha256BeforeSummary ?? null,
+  localBrowserEvidenceStatus:
+    sealableEvidence?.browser.status ?? "INCOMPLETE",
+  localBrowserScreenshotCount:
+    sealableEvidence?.browser.screenshotCount ?? 0,
   localBrowserProjectScreenshotCounts:
-    sealableEvidence.browser.projectScreenshotCounts,
+    sealableEvidence?.browser.projectScreenshotCounts ?? {},
   startedAt: records[0]?.startedAt ?? new Date().toISOString(),
   completedAt: records.at(-1)?.completedAt ?? new Date().toISOString(),
   commandCount: records.length,

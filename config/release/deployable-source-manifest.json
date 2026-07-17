@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1103,
-  "deployableSourceSha256": "2f00fdd8b89e88d2d2f9964a302ec85b897732c24245731eca0afaf093e355c4",
+  "deployableSourceSha256": "20bd87f2f60a958b19060807ed75136e18c5a0f878f184a9a337c758a3b54c06",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -912,9 +912,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 25025,
+      "size": 25341,
       "mode": 33188,
-      "sha256": "1e4ced4d10a6b3497b180df99e4e1537f8e2cb7b3f1be262bfa998b918927cdd"
+      "sha256": "9c6223b5404d7065a4ebf302035d2d5a776516e73b642e5e487f87d524dbaebf"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -1530,9 +1530,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 30879,
+      "size": 31065,
       "mode": 33188,
-      "sha256": "fd5d4d5d156a15c8c364aa18627638af8988538a3ead8b0e6421df79f8ad1414"
+      "sha256": "f1b2177d3bc912a06380320f70c7702de1f92efb0754c1e4d8ab4ace070954ce"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",
