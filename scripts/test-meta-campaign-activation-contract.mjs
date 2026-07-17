@@ -897,8 +897,13 @@ assert.equal(instantFormWriteCount, 3);
 const instantFormFinal = await instantFormProvider.verifyFinalContract({ activationInputDigest: digest, approvedDailyBudgetMinor: 5000, approvedCurrency: "USD" });
 assert.equal(instantFormFinal.deliveryState, "delivery_active");
 
+const claimSafety = loadTs("src/lib/copy/claim-safety.ts");
+const advertisingClaimBoundaries = loadTs("src/lib/advertising-claim-boundaries.ts", {
+  "@/lib/copy/claim-safety": claimSafety,
+});
 const launchSnapshot = loadTs("src/lib/meta-launch-input-snapshot.ts", {
   "server-only": {},
+  "@/lib/advertising-claim-boundaries": advertisingClaimBoundaries,
 });
 const snapshotInput = {
   organizationId: "10000000-0000-4000-8000-000000000002",

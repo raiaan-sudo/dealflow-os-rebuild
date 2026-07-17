@@ -115,11 +115,11 @@ export function buildWinningSubheadline(input: WinningFunnelInput) {
   const audience = input.audience || "qualified local prospects";
 
   if (input.language === "fr") {
-    return `Nous préparons une prochaine étape personnalisée pour ${audience} afin que vous puissiez avancer avec clarté et confiance.`;
+    return "Nous préparons une prochaine étape personnalisée selon vos besoins afin que vous puissiez avancer avec clarté et confiance.";
   }
 
   if (input.language === "es") {
-    return `Preparamos un siguiente paso personalizado para ${audience} para que pueda avanzar con claridad y confianza.`;
+    return "Preparamos un siguiente paso personalizado según sus necesidades para que pueda avanzar con claridad y confianza.";
   }
 
   if (input.campaignAngle === "downsizer") {

@@ -40,6 +40,7 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 const require = createRequire(import.meta.url);
 const { buildCreativeSystem } = require("../src/lib/services/creative-engine.ts");
 const { generateFunnel } = require("../src/lib/services/funnel-engine.ts");
+const { detectUnsupportedAdClaims } = require("../src/lib/copy/claim-safety.ts");
 const {
   evaluateOfferQuality,
   evaluateCreativeQuality,
@@ -110,7 +111,7 @@ const cases = [
     mechanism: "private access network",
     pain_points: ["seeing rare inventory too late"],
     market_type: "buyer",
-    expectedCta: "Request Private Access",
+    expectedCta: "See Matching Homes",
   },
 ];
 
@@ -207,6 +208,11 @@ for (const scenario of cases) {
   assert.ok(/casual|ugc|expert|customer/i.test(primaryVideo.creatorStyle), `${scenario.category} UGC style`);
   assert.ok(primaryVideo.qualityGate?.score >= 7, `${scenario.category} UGC score`);
   assert.equal(primaryVideo.qualityGate?.accepted, true, `${scenario.category} UGC accepted`);
+  assert.deepEqual(
+    detectUnsupportedAdClaims(combinedConsumerCopy),
+    [],
+    `${scenario.category} unsupported advertising claims blocked`,
+  );
   assert.ok(!GENERIC_HOOK_PATTERN.test(combinedConsumerCopy), `${scenario.category} generic hook blocked`);
   assert.ok(!B2B_LEAK_PATTERN.test(combinedConsumerCopy), `${scenario.category} no B2B offer leak`);
 

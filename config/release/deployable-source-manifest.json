@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1019,
-  "deployableSourceSha256": "557e36a33b7912f6d9636ef5db26394ce177794b01aabad6aa80ca183fd4f23a",
+  "deployableSourceSha256": "bfc52c795cbb926c5ae8788e92f68b3da53b1adb40e32307aa6b975569b22009",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -828,9 +828,9 @@
     },
     {
       "path": "scripts/regress-media-buyer-integration.mjs",
-      "size": 11570,
+      "size": 11801,
       "mode": 33188,
-      "sha256": "3083d4ddb38c5e13a3c55a2bbf1d8c212bae5aab96e295c130f7d00af7e3dbb4"
+      "sha256": "24b4fda6f2cef51dc562ee474a2cc7d840105fffb947066e1f275d96a5acfacf"
     },
     {
       "path": "scripts/resolve-known-operator-debt.mjs",
@@ -1668,9 +1668,9 @@
     },
     {
       "path": "scripts/test-media-buying-upgrades.mjs",
-      "size": 5617,
+      "size": 5779,
       "mode": 33188,
-      "sha256": "2cfb71f4625f75d346a90ab5267e3932f949be82d406e6e3f14092b2e440805a"
+      "sha256": "425d8736e6c22e318a1cef8babdaa4c39c8b79c106824dc4e6098b2dc9cb7536"
     },
     {
       "path": "scripts/test-meta-budget-safety.mjs",
@@ -1680,9 +1680,9 @@
     },
     {
       "path": "scripts/test-meta-campaign-activation-contract.mjs",
-      "size": 52628,
+      "size": 52889,
       "mode": 33188,
-      "sha256": "e2a174f4a08658dea928be2d78399f32a16576a318bdca5a9863edb242ecbb78"
+      "sha256": "2951e4c132f5da9638d55efdb0341b805eb623192545db97b0cb98f3a3da5263"
     },
     {
       "path": "scripts/test-meta-campaign-activation-disposable-db.mjs",
@@ -1806,15 +1806,15 @@
     },
     {
       "path": "scripts/test-provider-safety-boundaries.mjs",
-      "size": 12262,
+      "size": 12974,
       "mode": 33188,
-      "sha256": "2902e9d986775b5b364d86ad07f298151694fa6c95393df8061ab3f8c3b53538"
+      "sha256": "0e1b9caf47e7947c6976cc3427f2cb825e4f83ef52d67f14382bec80e1e80df8"
     },
     {
       "path": "scripts/test-public-funnel-language.ts",
-      "size": 6362,
+      "size": 6543,
       "mode": 33188,
-      "sha256": "e0553665eb8077986083ea841505fabf758f13fc76214e5dede2255870aaffa4"
+      "sha256": "932b75f74c946ffdc7fe5b75655141bc66ac6271a7ca47bfb1dc872f2c0c39c3"
     },
     {
       "path": "scripts/test-public-funnel-thank-you.mjs",
@@ -3606,9 +3606,9 @@
     },
     {
       "path": "src/lib/copy/claim-safety.ts",
-      "size": 7132,
+      "size": 7291,
       "mode": 33188,
-      "sha256": "93a4625c460de729f0f78861ca7eb3b9f00397e341cf3be9ef4a55c89980cc3a"
+      "sha256": "bcd595ec1a776c4f54316f19ec69a118c84acf0e861577fcfbf6e923e4ccf4bb"
     },
     {
       "path": "src/lib/copy/input-normalization.ts",
@@ -3732,9 +3732,9 @@
     },
     {
       "path": "src/lib/funnels/winning-template/variants.ts",
-      "size": 10840,
+      "size": 10847,
       "mode": 33188,
-      "sha256": "e9a54aeef772901b8f2dca867975c7fc26d23644de4eaaad15beccde7a1312e6"
+      "sha256": "a578bccdcb1280087b0e35199e0a035f507ea77ef83f0148a53eb08c7cc9a2cc"
     },
     {
       "path": "src/lib/ghl-destination-polling.ts",
@@ -4572,9 +4572,9 @@
     },
     {
       "path": "src/lib/services/funnel-engine.ts",
-      "size": 34105,
+      "size": 34274,
       "mode": 33188,
-      "sha256": "d3fce581f340eb9322e3e8db61c6435098fe2a545ebe251d3cbea5d76dd86a6b"
+      "sha256": "b503662b371de72f3c46fdd80d422a75d09456c14c54ae89f647ccff8283a2be"
     },
     {
       "path": "src/lib/services/generated-video-storage-service.ts",

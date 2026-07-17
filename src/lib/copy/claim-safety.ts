@@ -158,16 +158,16 @@ export function buildClaimSafeFallback(params?: {
 
   switch (params?.intent) {
     case "seller":
-      return `Review a market-based home value and sale plan${suffix}`;
+      return `Review multiple market factors and a home sale plan before listing${suffix}`;
     case "investor":
-      return `Review available investment opportunities with cash-flow and risk analysis${suffix}`;
+      return `Review multiple investment opportunities with cash-flow and risk analysis before choosing your next step${suffix}`;
     case "approval":
     case "refinance":
-      return `Review homes and financing options you may qualify for${suffix}`;
+      return `Review multiple home and financing options you may qualify for before choosing your next step${suffix}`;
     case "buyer":
-      return `Review homes that may fit your goals and budget${suffix}`;
+      return `Review multiple homes that may fit your goals and budget before choosing your next step${suffix}`;
     default:
-      return `Review available real estate opportunities${suffix}`;
+      return `Review multiple real estate opportunities before choosing your next step${suffix}`;
   }
 }
 

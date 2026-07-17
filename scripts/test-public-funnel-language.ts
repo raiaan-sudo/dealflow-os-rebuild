@@ -122,6 +122,7 @@ const frenchWinningInput = buildWinningInput("fr");
 const frenchQuiz = buildWinningQuizSteps(frenchWinningInput);
 assert.match(buildWinningHeadline(frenchWinningInput), /propriété/);
 assert.match(buildWinningSubheadline(frenchWinningInput), /personnalisée/);
+assert.doesNotMatch(buildWinningSubheadline(frenchWinningInput), /local families/i);
 assert.ok(frenchQuiz[0]?.options?.includes("Vendre bientôt"));
 assert.ok(frenchQuiz[2]?.options?.includes("Dans les 3 mois"));
 assert.ok(buildWinningTrustBullets(frenchWinningInput).includes("Conseils locaux"));
@@ -129,7 +130,8 @@ assert.ok(buildWinningTrustBullets(frenchWinningInput).includes("Conseils locaux
 const spanishWinningInput = buildWinningInput("es");
 const spanishQuiz = buildWinningQuizSteps(spanishWinningInput);
 assert.match(buildWinningHeadline(spanishWinningInput), /cuánto podría/);
-assert.match(buildWinningSubheadline(spanishWinningInput), /sin presión/);
+assert.match(buildWinningSubheadline(spanishWinningInput), /según sus necesidades/);
+assert.doesNotMatch(buildWinningSubheadline(spanishWinningInput), /local families/i);
 assert.ok(spanishQuiz[0]?.options?.includes("Vender pronto"));
 assert.ok(spanishQuiz[2]?.options?.includes("Dentro de 3 meses"));
 assert.ok(buildWinningTrustBullets(spanishWinningInput).includes("Guía local"));

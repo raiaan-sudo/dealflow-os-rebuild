@@ -172,11 +172,26 @@ const loopbackTwilio = twilioTransport.getTwilioTransportConfig({
   TWILIO_EXECUTION_MODE: "loopback",
   TWILIO_TEST_ACCOUNT_SID: "AC_test_fixture",
   TWILIO_TEST_AUTH_TOKEN: "test_fixture",
-  TWILIO_TEST_MESSAGING_SERVICE_SID: "MG_test_fixture",
   TWILIO_TEST_BASE_URL: "http://localhost:43210",
   TWILIO_TEST_TO_NUMBER: "+15005550006",
 });
 assert.equal(loopbackTwilio.endpointMode, "loopback_test");
+assert.equal(loopbackTwilio.messagingServiceSid, null);
+assert.equal(loopbackTwilio.fromNumber, twilioTransport.TWILIO_TEST_MAGIC_FROM_NUMBER);
+assert.throws(
+  () => twilioTransport.getTwilioTransportConfig({
+    DEALFLOW_DEPLOYMENT_TARGET: "test",
+    ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT: "true",
+    TWILIO_EXECUTION_MODE: "loopback",
+    TWILIO_TEST_ACCOUNT_SID: "AC_test_fixture",
+    TWILIO_TEST_AUTH_TOKEN: "test_fixture",
+    TWILIO_TEST_MESSAGING_SERVICE_SID: "MG_test_fixture",
+    TWILIO_TEST_BASE_URL: "http://localhost:43210",
+    TWILIO_TEST_TO_NUMBER: "+15005550006",
+  }),
+  (error) => error.code === "twilio_test_messaging_service_forbidden",
+  "Twilio loopback fixtures must not bypass the magic-From-number boundary with a Messaging Service",
+);
 assert.doesNotThrow(() => twilioTransport.assertTwilioRecipientAllowed({
   mode: "loopback",
   to: "+15005550006",

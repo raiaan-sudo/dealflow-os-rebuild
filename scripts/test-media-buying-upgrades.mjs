@@ -39,6 +39,7 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 const require = createRequire(import.meta.url);
 const { generateFunnel } = require("../src/lib/services/funnel-engine.ts");
 const { buildCreativeSystem } = require("../src/lib/services/creative-engine.ts");
+const { detectUnsupportedAdClaims } = require("../src/lib/copy/claim-safety.ts");
 const {
   buildMediaBuyingCampaignStructure,
   evaluateMediaBuyingDecision,
@@ -160,7 +161,8 @@ for (const video of creativePackage.videoAds) {
   assert.deepEqual(video.shotList, ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"]);
   assert.equal(video.script.length, 6);
   assert.ok(!/^hi,?\s+my name is/i.test(video.script[0]));
-  assert.ok(/get early access/i.test(video.script.join(" ")));
+  assert.ok(/review multiple homes/i.test(video.script.join(" ")));
+  assert.deepEqual(detectUnsupportedAdClaims(video.script.join(" ")), []);
   assert.ok(/system|process|structure|filters|screens/i.test(video.script[2]));
   assert.ok(video.qualityGate?.score >= 7, `${video.id} score ${video.qualityGate?.score}`);
   assert.equal(video.qualityGate?.accepted, true);

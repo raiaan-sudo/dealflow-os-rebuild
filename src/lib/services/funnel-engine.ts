@@ -944,10 +944,15 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
   let mechanism = safeText(raw.mechanism) || normalized.mechanism;
   const audience = safeText(raw.audience) || normalized.audience;
   const parsed = parseOffer(normalized);
-  const cta =
+  const selectedCta =
     normalized.marketType === "approval" || parsed.offerClass === "approval"
       ? "See If You Qualify"
       : selectMediaBuyerCta(normalized.campaignCategory);
+  const cta = sanitizeAdClaimText(selectedCta, {
+    intent: normalized.marketType,
+    location: normalized.location,
+    fallback: "See Matching Homes",
+  });
 
   if (!headline) {
     headline = safeText(parseOffer(normalized).promise) || "Your campaign is ready";
