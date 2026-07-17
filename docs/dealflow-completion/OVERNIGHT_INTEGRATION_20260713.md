@@ -1,5 +1,11 @@
 # DealFlow integrated completion candidate — 2026-07-13
 
+> **Dated predecessor handoff.** This 104-migration integration record is
+> immutable historical context, not current release truth. See
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)
+> for the unsealed 108-migration / 91-command successor and remaining staging
+> and production gates.
+
 Status: `INTEGRATED WORKING CANDIDATE / PENDING_FINAL_SEAL / LOCAL EXACT-SEAL NOT_YET_RUN / HOSTED STAGING NOT_YET_RUN / PRODUCTION NO_GO`
 
 This document is the current pre-release integration handoff for the candidate assembled from

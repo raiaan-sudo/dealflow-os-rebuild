@@ -1,5 +1,7 @@
 export const OPTIMIZATION_HOLD_STATE = "HOLD_NO_ACTION" as const;
 export const OPTIMIZATION_REVIEW_STATE = "READY_FOR_SHADOW_REVIEW" as const;
+export const OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER =
+  "below_minimum_leads_for_cpl" as const;
 export const OPTIMIZATION_POLICY_CONTRACT_VERSION =
   "dealflow-realtor-optimization-v2" as const;
 
@@ -50,7 +52,7 @@ export type OptimizationEvidenceBlocker =
   | "below_minimum_impressions"
   | "below_minimum_clicks"
   | "below_minimum_spend"
-  | "below_minimum_leads_for_cpl"
+  | typeof OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER
   | "customer_budget_ceiling_missing"
   | "cooldown_active";
 

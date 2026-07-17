@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/campaign-creative-strategy";
 import { getCategoryRulePack } from "@/lib/services/campaign-category-rule-packs";
 import { fillPattern } from "@/lib/knowledge/real-estate";
+import { sanitizeAdClaimText } from "@/lib/copy/claim-safety";
 
 export type MarketingContext = {
   intent: CampaignIntent;
@@ -410,18 +411,24 @@ export function buildMarketingContext(input: OnboardingInput | {
   painPoints: string[];
   mechanism: string;
 }) {
+  const market = normalizeWhitespace(input.market) || "Toronto";
   const audience = normalizeAudienceLabel(input.audience, input.intent);
   const propertyType = normalizePropertyLabel(input.propertyType, input.intent);
-  const keyOffer = normalizeOfferLabel(input.keyOffer, propertyType, input.intent);
-  const mechanism = normalizeMechanismLabel(input.mechanism, input.intent);
-  const painPoints = normalizePainPoints(input.painPoints, input.intent);
-  const primaryGoal = normalizeGoal(input.primaryGoal, input.intent);
-  const outcome = inferOutcome(input.intent, keyOffer, propertyType);
+  const sanitize = (value: unknown, fallback?: string) => sanitizeAdClaimText(value, {
+    intent: input.intent,
+    location: market,
+    fallback,
+  });
+  const keyOffer = sanitize(normalizeOfferLabel(input.keyOffer, propertyType, input.intent));
+  const mechanism = sanitize(normalizeMechanismLabel(input.mechanism, input.intent));
+  const painPoints = normalizePainPoints(input.painPoints, input.intent).map((value) => sanitize(value));
+  const primaryGoal = sanitize(normalizeGoal(input.primaryGoal, input.intent));
+  const outcome = sanitize(inferOutcome(input.intent, keyOffer, propertyType));
 
   return {
     intent: input.intent,
-    market: normalizeWhitespace(input.market) || "Toronto",
-    audience,
+    market,
+    audience: sanitize(audience),
     propertyType,
     keyOffer,
     mechanism,
@@ -567,17 +574,21 @@ export function buildMediaBuyingCopy(
   );
   const outcome = cleanSentenceCopy(context.outcome);
   const cta = buildLowFrictionCta(normalizedStrategy.campaignCategory, context);
+  const sanitize = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: context.intent,
+    location: context.market,
+  });
 
   return {
-    hook,
-    problem,
-    mechanism,
-    proof,
-    outcome,
-    cta,
-    headline: ensureCopyContext(hook, context),
-    subheadline: cleanSentenceCopy(`${problem} ${mechanism} ${proof}`),
-    body: [problem, mechanism, proof, outcome, cta].map((line) => ensureSentenceEnding(line)).join(" "),
+    hook: sanitize(hook),
+    problem: sanitize(problem),
+    mechanism: sanitize(mechanism),
+    proof: sanitize(proof),
+    outcome: sanitize(outcome),
+    cta: sanitize(cta),
+    headline: sanitize(ensureCopyContext(hook, context)),
+    subheadline: sanitize(cleanSentenceCopy(`${problem} ${mechanism} ${proof}`)),
+    body: sanitize([problem, mechanism, proof, outcome, cta].map((line) => ensureSentenceEnding(line)).join(" ")),
   };
 }
 
@@ -590,12 +601,16 @@ export function buildCreativeMessages(
   const structured = buildMediaBuyingCopy(context, rawHook);
   const supportingLine = cleanSentenceCopy(`${structured.mechanism} ${structured.proof}`);
   const offerLine = cleanSentenceCopy(`${context.keyOffer}. ${structured.outcome}`);
+  const sanitize = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: context.intent,
+    location: context.market,
+  });
 
   return {
-    hook: cleanGeneratedCopy(structured.hook),
-    headline: structured.headline,
-    body: structured.body,
-    supportingLine: cleanSentenceCopy(supportingLine),
-    offer: cleanSentenceCopy(offerLine),
+    hook: sanitize(cleanGeneratedCopy(structured.hook)),
+    headline: sanitize(structured.headline),
+    body: sanitize(structured.body),
+    supportingLine: sanitize(cleanSentenceCopy(supportingLine)),
+    offer: sanitize(cleanSentenceCopy(offerLine)),
   };
 }

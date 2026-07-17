@@ -108,12 +108,13 @@ export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
   "npm run test:campaign-entitlement-disposable-db",
   "npm run test:support-outbox-disposable-db",
   "npm run test:sms-receipts",
+  "npm run test:final-master-delta",
   "node scripts/test-lead-tracking-health.mjs",
 ]);
 
-export const FINAL_VERIFICATION_COMMAND_COUNT = 90;
+export const FINAL_VERIFICATION_COMMAND_COUNT = 91;
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256 =
-  "2fb17463fa839abac369c1dddd4614cae7c2e1b3520a67e06addacd8a7637a5d";
+  "52299caf080e75208de7e60c35b484cb83f9074e8ece57f8ad8067ef0b16c999";
 export const FINAL_VERIFICATION_HOSTED_DEFERRALS = Object.freeze([
   "npm run rls:cross-tenant",
   "npm run rls:fixture-smoke",

@@ -38,6 +38,7 @@ import {
 import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
 
 const source = readFileSync("scripts/run-dealflow-final-verification.mjs", "utf8");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 
 assert.match(source, /Final verification requires Node 24/);
 assert.match(source, /acquireFinalVerificationLock/);
@@ -322,9 +323,31 @@ assert.throws(
   /requires at least/,
 );
 
-assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 90);
-assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 90);
-assert.equal(new Set(FINAL_VERIFICATION_COMMAND_PORTFOLIO).size, 90);
+assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 91);
+assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 91);
+assert.equal(new Set(FINAL_VERIFICATION_COMMAND_PORTFOLIO).size, 91);
+assert.equal(
+  FINAL_VERIFICATION_COMMAND_PORTFOLIO.at(-2),
+  "npm run test:final-master-delta",
+);
+for (const requiredSuccessorScript of [
+  "test:twilio-transport",
+  "test:workspace-selection",
+  "test:fixed-realtor-qualification",
+  "test:unsupported-ad-claims",
+  "test:advertising-claim-boundaries",
+  "test:kpi-semantic-truth",
+  "test:support-external-delivery",
+  "test:credit-top-up",
+  "test:ghl-marketplace-oauth",
+  "test:stripe-lifecycle",
+]) {
+  assert.match(
+    packageJson.scripts["test:final-master-delta"] ?? "",
+    new RegExp(`npm run ${requiredSuccessorScript.replaceAll(":", "\\:")}`),
+    `final-master delta must include ${requiredSuccessorScript}`,
+  );
+}
 assert.equal(
   createHash("sha256")
     .update(JSON.stringify(FINAL_VERIFICATION_COMMAND_PORTFOLIO))
@@ -333,7 +356,7 @@ assert.equal(
 );
 assert.equal(
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
-  "2fb17463fa839abac369c1dddd4614cae7c2e1b3520a67e06addacd8a7637a5d",
+  "52299caf080e75208de7e60c35b484cb83f9074e8ece57f8ad8067ef0b16c999",
 );
 const exactNativePostgresRuntime = Object.freeze({
   pgbin: "/fixture/postgresql/17.6/bin",
@@ -473,7 +496,7 @@ const exactSummaryIdentity = Object.freeze({
   trackedWorktreeSha256: "c".repeat(64),
   trackedFileCount: 900,
   dependencyLockSha256: "d".repeat(64),
-  migrationCount: 104,
+  migrationCount: 108,
   migrationPortfolioSha256: "e".repeat(64),
 });
 const exactRecords = exactCommandPortfolio.map((command, index) => ({
@@ -493,9 +516,9 @@ const exactRecords = exactCommandPortfolio.map((command, index) => ({
 }));
 const exactSummary = {
   ...exactSummaryIdentity,
-  plannedCommandCount: 90,
-  commandCount: 90,
-  passedCount: 90,
+  plannedCommandCount: 91,
+  commandCount: 91,
+  passedCount: 91,
   commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
   resolvedCommandPortfolioSha256: createHash("sha256")
     .update(JSON.stringify(exactCommandPortfolio))
@@ -532,7 +555,7 @@ const recordProof = assertExactFinalVerificationRecordPortfolio(exactRecords);
 const summaryProof = assertExactFinalVerificationSummaryPortfolio(exactSummary);
 for (const proof of [commandProof, recordProof, summaryProof]) {
   assert.deepEqual(proof, {
-    commandCount: 90,
+    commandCount: 91,
     commandPortfolioSha256: FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
     resolvedCommandPortfolioSha256:
       exactSummary.resolvedCommandPortfolioSha256,
@@ -544,7 +567,7 @@ assert.equal(
   exactRecords.filter(
     (record) => record.evidenceQualification === "exact_local_command",
   ).length,
-  88,
+  89,
 );
 assert.equal(
   exactRecords[15].evidenceQualification,
@@ -689,8 +712,8 @@ assert.throws(
 );
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 104",
-  "20260715010000_move_legacy_org_member_policies_private.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 108",
+  "20260716200000_harden_stripe_payment_lifecycle.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["git", ["diff", "--check"]]',
@@ -785,5 +808,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (exclusive worktree lock, migration 104, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 108, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

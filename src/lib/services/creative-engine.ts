@@ -36,6 +36,7 @@ import {
   type OfferQualityEvaluation,
 } from "@/lib/services/media-buyer-framework";
 import { selectMediaBuyerCta } from "@/lib/optimization-engine/media-buying-rules";
+import { sanitizeAdClaimText } from "@/lib/copy/claim-safety";
 
 export type CreativeEngineInput = {
   location: string;
@@ -184,18 +185,24 @@ function toTitleCase(value: string) {
 function normalizeInput(input?: CreativeEngineInput | null): RequiredCreativeInput {
   const raw: Partial<CreativeEngineInput> = input ?? {};
   const marketType = raw.market_type ?? "buyer";
+  const location = safeText(raw.location) || "your market";
   const audience = safeText(raw.audience) || "motivated local buyers";
   const propertyType = safeText(raw.property_type) || "homes";
-  const offer = safeText(raw.offer) || "a stronger buying opportunity";
-  const mechanism = safeText(raw.mechanism) || "a simpler path to move faster";
-  const desiredResult = safeText(raw.desired_result) || "more qualified leads";
-  const painPoints = safeArray(raw.pain_points);
+  const rawOffer = safeText(raw.offer) || "a stronger buying opportunity";
+  const sanitize = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: marketType,
+    location,
+  });
+  const offer = sanitize(rawOffer);
+  const mechanism = sanitize(safeText(raw.mechanism) || "a simpler path to move faster");
+  const desiredResult = sanitize(safeText(raw.desired_result) || "more lead conversations");
+  const painPoints = safeArray(raw.pain_points).map((value) => sanitize(value));
 
   return {
-    location: safeText(raw.location) || "your market",
-    audience,
+    location,
+    audience: sanitize(audience),
     offer,
-    rawOffer: offer,
+    rawOffer,
     pricePoint: safeText(raw.price_point) || null,
     propertyType,
     mechanism,
@@ -213,6 +220,53 @@ function normalizeInput(input?: CreativeEngineInput | null): RequiredCreativeInp
         primaryGoal: desiredResult,
         painPoints,
       }),
+  };
+}
+
+function sanitizeStaticCreativeAsset(
+  asset: StaticCreativeAsset,
+  input: RequiredCreativeInput,
+): StaticCreativeAsset {
+  const sanitize = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: input.marketType,
+    location: input.location,
+  });
+
+  return {
+    ...asset,
+    visualConcept: sanitize(asset.visualConcept),
+    imagePrompt: sanitize(asset.imagePrompt),
+    imagePromptConfig: asset.imagePromptConfig
+      ? {
+          ...asset.imagePromptConfig,
+          prompt: asset.imagePromptConfig.prompt ? sanitize(asset.imagePromptConfig.prompt) : asset.imagePromptConfig.prompt,
+        }
+      : asset.imagePromptConfig,
+    hook: sanitize(asset.hook),
+    overlayText: sanitize(asset.overlayText),
+    primaryText: sanitize(asset.primaryText),
+    headline: sanitize(asset.headline),
+    cta: sanitize(asset.cta),
+  };
+}
+
+function sanitizeVideoCreativeAsset(
+  asset: VideoCreativeAsset,
+  input: RequiredCreativeInput,
+): VideoCreativeAsset {
+  const sanitize = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: input.marketType,
+    location: input.location,
+  });
+
+  return {
+    ...asset,
+    title: sanitize(asset.title),
+    hook: sanitize(asset.hook),
+    script: asset.script.map((value) => sanitize(value)),
+    shotList: asset.shotList.map((value) => sanitize(value)),
+    onScreenText: asset.onScreenText.map((value) => sanitize(value)),
+    cta: sanitize(asset.cta),
   };
 }
 
@@ -1535,8 +1589,10 @@ export function buildCreativeSystem(input?: CreativeEngineInput | null): Creativ
     pain_points: normalized.painPoints.length > 0 ? normalized.painPoints : [shortPain(normalized)],
     market_type: normalized.marketType,
   });
-  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy, normalized.rawOffer);
-  const videoAds = buildVideoCreativeDrafts(brief, normalized.rawOffer || normalized.offer);
+  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy, normalized.offer)
+    .map((asset) => sanitizeStaticCreativeAsset(asset, normalized));
+  const videoAds = buildVideoCreativeDrafts(brief, normalized.offer)
+    .map((asset) => sanitizeVideoCreativeAsset(asset, normalized));
 
   return {
     brief,
@@ -1580,16 +1636,22 @@ export async function generateStaticCreativeAds(
   );
   const normalized = normalizeInput(input);
 
-  return rankStaticCreativeAssets(generatedStaticAds, normalized.creativeStrategy, {
+  return rankStaticCreativeAssets(
+    generatedStaticAds.map((asset) => sanitizeStaticCreativeAsset(asset, normalized)),
+    normalized.creativeStrategy,
+    {
     market: normalized.location,
-  });
+    },
+  );
 }
 
 export async function generateCreativePackage(input?: CreativeEngineInput | null): Promise<CreativePackage> {
   const baseSystem = buildCreativeSystem(input);
   const brief = baseSystem.brief;
   const staticAds = await generateStaticCreativeAds(input);
-  const videoAds = await buildVideoCreatives(brief);
+  const normalized = normalizeInput(input);
+  const videoAds = (await buildVideoCreatives(brief))
+    .map((asset) => sanitizeVideoCreativeAsset(asset, normalized));
 
   return {
     brief,

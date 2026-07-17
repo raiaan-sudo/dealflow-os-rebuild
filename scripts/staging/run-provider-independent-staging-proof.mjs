@@ -8,6 +8,10 @@ import {
   parseSyntheticProviderSessionBundle,
 } from "./provider-session-bundle-contract.mjs";
 import { parseExactHostedSupabaseProjectUrl } from "./exact-supabase-project-url.mjs";
+import {
+  SUCCESSOR_HOSTED_GATES,
+  assertSuccessorServiceOnlySchemaReadback,
+} from "./successor-provider-independent-contract.mjs";
 
 const FIXTURE = "DF-STAGING-20260712";
 const EXPECTED_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
@@ -31,7 +35,10 @@ const IDS = Object.freeze({
   deadLetterJob: "d8000000-0000-4000-8000-000000000002",
   workerPendingJob: "d8000000-0000-4000-8000-000000000003",
   workerCrashJob: "d8000000-0000-4000-8000-000000000004",
+  successorCreditIntent: "e3000000-0000-4000-8000-000000000001",
 });
+const SUCCESSOR_CREDIT_CHECKOUT_SESSION =
+  "cs_test_df_successor_credit_pending_20260716";
 const EMAILS = Object.freeze({
   paid: "dealflow-staging-20260712@example.com",
   partnerOneChild: "dealflow-staging-partner-child-20260712@example.com",
@@ -223,6 +230,42 @@ async function main() {
     sessionPortfolio,
     "paidDirect",
     EMAILS.paid,
+  );
+
+  const successorServiceOnlyBefore = await assertSuccessorServiceOnlySchemaReadback({
+    serviceClient: admin,
+    authenticatedClient: paid,
+  });
+  const successorPendingPayment = await noError(
+    await admin
+      .from("stripe_checkout_payment_lifecycle")
+      .select("stripe_checkout_session_id,checkout_flow,payment_state,organization_id,user_id,credit_top_up_intent_id,amount_total,currency,latest_event_id,latest_event_type")
+      .eq("stripe_checkout_session_id", SUCCESSOR_CREDIT_CHECKOUT_SESSION)
+      .single(),
+    "read deterministic successor pending-payment fixture",
+  );
+  if (
+    successorPendingPayment.checkout_flow !== "credit_top_up" ||
+    successorPendingPayment.payment_state !== "pending" ||
+    successorPendingPayment.organization_id !== IDS.organization ||
+    successorPendingPayment.user_id !== sessionPortfolio.roles.paidDirect.userId ||
+    successorPendingPayment.credit_top_up_intent_id !== IDS.successorCreditIntent ||
+    successorPendingPayment.amount_total !== 2_500 ||
+    successorPendingPayment.currency !== "usd" ||
+    successorPendingPayment.latest_event_id !==
+      "evt_test_df_successor_credit_pending_20260716" ||
+    successorPendingPayment.latest_event_type !== "checkout.session.completed"
+  ) {
+    throw new Error("Deterministic successor pending-payment fixture drifted");
+  }
+  await exactCount(
+    admin
+      .from("user_credit_ledger")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", IDS.organization)
+      .eq("idempotency_key", `stripe_credit_top_up:${IDS.successorCreditIntent}`),
+    0,
+    "verify pending successor Checkout event granted no credit",
   );
 
   const subscriptionBefore = await noError(
@@ -465,6 +508,13 @@ async function main() {
   if (JSON.stringify(providerTableStateBefore) !== JSON.stringify(providerTableStateAfter)) {
     throw new Error("Provider-independent worker proof changed an external-provider action table");
   }
+  const successorServiceOnlyAfter = await assertSuccessorServiceOnlySchemaReadback({
+    serviceClient: admin,
+    authenticatedClient: paid,
+  });
+  if (JSON.stringify(successorServiceOnlyBefore) !== JSON.stringify(successorServiceOnlyAfter)) {
+    throw new Error("Provider-independent journey changed the successor service-only schema state");
+  }
 
   const reportingRows = await noError(
     await admin
@@ -639,6 +689,14 @@ async function main() {
     "verify synthetic deletion access suspension",
   );
 
+  const successorServiceOnlyFinal = await assertSuccessorServiceOnlySchemaReadback({
+    serviceClient: admin,
+    authenticatedClient: paid,
+  });
+  if (JSON.stringify(successorServiceOnlyBefore) !== JSON.stringify(successorServiceOnlyFinal)) {
+    throw new Error("Provider-independent portfolio changed the successor service-only schema state");
+  }
+
   process.stdout.write(`${JSON.stringify({
     status: "PASS",
     fixture: FIXTURE,
@@ -712,6 +770,20 @@ async function main() {
       providerReceiptCount: 0,
       hostedWorkerFailClosed: true,
       fullProviderOffboardingPerformed: false,
+    },
+    successorProviderIndependent: {
+      schemaVersion: successorServiceOnlyFinal.schemaVersion,
+      serviceOnlyTableCount: successorServiceOnlyFinal.serviceOnlyTableCount,
+      authenticatedDenialCount: successorServiceOnlyFinal.authenticatedDenialCount,
+      exactSyntheticCountsVerified: true,
+      serviceOnlyStateUnchanged: true,
+      pendingCreditTopUpIntentId: IDS.successorCreditIntent,
+      pendingCheckoutSessionId: SUCCESSOR_CREDIT_CHECKOUT_SESSION,
+      pendingPaymentState: successorPendingPayment.payment_state,
+      pendingPaymentCreditLedgerRows: 0,
+      hostedGates: SUCCESSOR_HOSTED_GATES,
+      providerMutationPerformed: false,
+      financialEffectPerformed: false,
     },
     externalProviderAcceptance: {
       meta: "BLOCKED_CREDENTIAL_AND_PROVIDER_AUTHORITY",

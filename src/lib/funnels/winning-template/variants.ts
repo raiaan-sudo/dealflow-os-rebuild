@@ -106,7 +106,7 @@ export function buildWinningHeadline(input: WinningFunnelInput) {
   if (input.leadType === "commercial") return `Find commercial options that fit your next move in ${market}`;
   if (input.campaignAngle === "first_time_buyer") return `Get your first-home plan for ${market}.`;
   if (input.campaignAngle === "off_market") return `Get a custom home list for ${market}.`;
-  if (/custom home list|home list|curated home/i.test(offer)) return `Get your free custom home list in ${market}.`;
+  if (/custom home list|home list|curated home/i.test(offer)) return `Get your custom home list in ${market}.`;
 
   return `${offer} in ${market}`;
 }
@@ -115,26 +115,26 @@ export function buildWinningSubheadline(input: WinningFunnelInput) {
   const audience = input.audience || "qualified local prospects";
 
   if (input.language === "fr") {
-    return `Nous préparons une prochaine étape personnalisée pour ${audience} afin que vous puissiez avancer avec clarté, confiance et sans pression.`;
+    return `Nous préparons une prochaine étape personnalisée pour ${audience} afin que vous puissiez avancer avec clarté et confiance.`;
   }
 
   if (input.language === "es") {
-    return `Preparamos un siguiente paso personalizado para ${audience} para que pueda avanzar con claridad, confianza y sin presión.`;
+    return `Preparamos un siguiente paso personalizado para ${audience} para que pueda avanzar con claridad y confianza.`;
   }
 
   if (input.campaignAngle === "downsizer") {
-    return `Get a clear, personalized plan for selling your current home and finding the right next place in ${input.market} without pressure or guesswork.`;
+    return `Get a clear, personalized plan for selling your current home and reviewing the right next-place options in ${input.market}.`;
   }
 
   if (input.campaignAngle === "upsizer") {
-    return `Get a custom list of homes matched to your next chapter in ${input.market} so you can upsize with confidence, clarity, and zero pressure.`;
+    return `Get a custom list of homes matched to your next chapter in ${input.market} so you can upsize with confidence and clarity.`;
   }
 
   if (input.campaignAngle === "home_value" || input.leadType === "seller") {
     return `Get a personalized home value review and selling plan based on your property, timeline, and local market.`;
   }
 
-  return `We'll put together a personalized list matched to your budget, location, and timeline for ${audience} so you can move forward with clarity and zero pressure.`;
+  return `We'll put together a personalized list matched to your budget, location, and timeline for ${audience} so you can review the next step with clarity.`;
 }
 
 export function buildWinningCta(input: WinningFunnelInput) {
@@ -153,22 +153,22 @@ export function buildWinningMicroLabel(input: WinningFunnelInput) {
 
   if (input.language === "fr") return `${market} · options personnalisées`;
   if (input.language === "es") return `${market} · opciones personalizadas`;
-  if (input.leadType === "seller") return `${market} · free home value review`;
+  if (input.leadType === "seller") return `${market} · personalized home value review`;
   if (input.campaignAngle === "downsizer") return `${market} · downsizing guidance`;
   if (input.campaignAngle === "upsizer") return `${market} · custom home options`;
   if (input.leadType === "investor") return `${market} · curated property options`;
   if (input.leadType === "commercial") return `${market} · commercial property guidance`;
 
-  return `${market} · free · no obligation`;
+  return `${market} · personalized options · local guidance`;
 }
 
 export function buildWinningTrustBullets(input: WinningFunnelInput) {
   const defaults =
     input.language === "fr"
-      ? ["100% gratuit", "Sans obligation", "Options personnalisées", "Conseils locaux"]
+      ? ["Options personnalisées", "Conseils locaux", "Étapes claires", "Adapté à votre marché"]
       : input.language === "es"
-        ? ["100% gratis", "Sin obligación", "Opciones personalizadas", "Guía local"]
-        : ["100% Free", "No Obligation", "Personalized Options", "Local Guidance"];
+        ? ["Opciones personalizadas", "Guía local", "Próximos pasos claros", "Adaptado a su mercado"]
+        : ["Personalized Options", "Local Guidance", "Clear Next Steps", "Market-Based Review"];
 
   return [...input.proofBadges, ...defaults].slice(0, 4);
 }

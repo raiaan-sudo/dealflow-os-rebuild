@@ -2,10 +2,18 @@ import { z } from "zod";
 import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createCreditTopUpCheckoutSession } from "@/lib/services/billing-service";
-import { CREDIT_TOP_UP_MINIMUM_CENTS } from "@/lib/services/credit-service";
+import {
+  CREDIT_TOP_UP_MAXIMUM_CENTS,
+  CREDIT_TOP_UP_MINIMUM_CENTS,
+} from "@/lib/services/credit-service";
 
 const checkoutSchema = z.object({
-  amountCents: z.number().int().min(CREDIT_TOP_UP_MINIMUM_CENTS).max(100_000),
+  amountCents: z
+    .number()
+    .int()
+    .min(CREDIT_TOP_UP_MINIMUM_CENTS)
+    .max(CREDIT_TOP_UP_MAXIMUM_CENTS),
+  client_request_id: z.string().uuid(),
 });
 
 export async function POST(request: Request) {
@@ -24,6 +32,7 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, checkoutSchema);
     const session = await createCreditTopUpCheckoutSession({
       amountCents: body.amountCents,
+      clientRequestId: body.client_request_id,
     });
 
     return Response.json(session);

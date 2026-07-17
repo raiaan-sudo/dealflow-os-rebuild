@@ -130,9 +130,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 104;
+const EXPECTED_MIGRATION_COUNT = 108;
 const EXPECTED_FINAL_MIGRATION =
-  "20260715010000_move_legacy_org_member_policies_private.sql";
+  "20260716200000_harden_stripe_payment_lifecycle.sql";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -482,6 +482,7 @@ Safe resume after a previously sealed atomic application:
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
+Disabled legacy reference; this invocation now fails closed:
 Exact forward-only migration 104 on the pinned read-only-proven 103-migration staging seal:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-forward-migration --deploy \\
@@ -499,8 +500,8 @@ Required execution environment:
   DEALFLOW_STAGING_PROJECT_RECORD=/absolute/external/owner-only-qibh-project-record.json
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
-Exactly one migration mode is required. Resume mode is read-only. Forward mode
-proves the pinned 103 state and applies only migration 104 plus its receipt.`;
+Exactly one migration mode is required. Resume mode is read-only. The legacy
+single-migration 103-to-104 forward mode is disabled for this successor.`;
 }
 
 function parseArguments(argv) {
@@ -1569,6 +1570,29 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 108 ||
+    parsed.successorProviderIndependent?.finalMigration !==
+      "20260716200000_harden_stripe_payment_lifecycle.sql" ||
+    parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
+      "e3000000-0000-4000-8000-000000000001" ||
+    parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
+    parsed.successorProviderIndependent?.financialFixture?.pendingProjectionReplayIdempotent !== true ||
+    parsed.successorProviderIndependent?.financialFixture?.pendingPaymentCreditLedgerRows !== 0 ||
+    parsed.successorProviderIndependent?.financialFixture?.providerMutationPerformed !== false ||
+    parsed.successorProviderIndependent?.financialFixture?.financialEffectPerformed !== false ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.schemaVersion !== "20260716200000" ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.serviceOnlyTableCount !== 11 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.ghlMarketplaceTableCount !== 7 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.stripeLifecycleTableCount !== 4 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.authenticatedDenialCount !== 11 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.exactSyntheticCountsVerified !== true ||
+    parsed.successorProviderIndependent?.hostedGates?.optimizerMinimumSampleActiveReceiptProof !==
+      "BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED" ||
+    parsed.successorProviderIndependent?.hostedGates?.ghlMarketplaceInstallLifecycle !==
+      "BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY" ||
+    parsed.successorProviderIndependent?.hostedGates?.stripeSignedWebhookLifecycle !==
+      "BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY" ||
+    parsed.successorProviderIndependent?.providerMutationPerformed !== false ||
     parsed.deletionRetentionAuthority?.marker !== SYNTHETIC_RETENTION_AUTHORITY_MARKER ||
     parsed.deletionRetentionAuthority?.authorityHashFingerprint !==
       sha256(`sha256:${sha256(SYNTHETIC_RETENTION_AUTHORITY_MARKER)}`) ||
@@ -1633,6 +1657,8 @@ function assertSeedReplayIsIdempotent(first, second) {
     JSON.stringify(first.partnerTwo) !== JSON.stringify(second.partnerTwo) ||
     JSON.stringify(first.reportingFixtures) !== JSON.stringify(second.reportingFixtures) ||
     JSON.stringify(first.rlsCreditFixtures) !== JSON.stringify(second.rlsCreditFixtures) ||
+    JSON.stringify(first.successorProviderIndependent) !==
+      JSON.stringify(second.successorProviderIndependent) ||
     JSON.stringify(first.failureFixtures) !== JSON.stringify(second.failureFixtures) ||
     second.activationReplayIdempotent !== true ||
     second.metaActivationReplayIdempotent !== true
@@ -1719,6 +1745,23 @@ async function runProviderIndependentStagingProof(
     parsed.accountDeletion?.providerReceiptCount !== 0 ||
     parsed.accountDeletion?.hostedWorkerFailClosed !== true ||
     parsed.accountDeletion?.fullProviderOffboardingPerformed !== false ||
+    parsed.successorProviderIndependent?.schemaVersion !== "20260716200000" ||
+    parsed.successorProviderIndependent?.serviceOnlyTableCount !== 11 ||
+    parsed.successorProviderIndependent?.authenticatedDenialCount !== 11 ||
+    parsed.successorProviderIndependent?.exactSyntheticCountsVerified !== true ||
+    parsed.successorProviderIndependent?.serviceOnlyStateUnchanged !== true ||
+    parsed.successorProviderIndependent?.pendingCreditTopUpIntentId !==
+      "e3000000-0000-4000-8000-000000000001" ||
+    parsed.successorProviderIndependent?.pendingPaymentState !== "pending" ||
+    parsed.successorProviderIndependent?.pendingPaymentCreditLedgerRows !== 0 ||
+    parsed.successorProviderIndependent?.hostedGates?.optimizerMinimumSampleActiveReceiptProof !==
+      "BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED" ||
+    parsed.successorProviderIndependent?.hostedGates?.ghlMarketplaceInstallLifecycle !==
+      "BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY" ||
+    parsed.successorProviderIndependent?.hostedGates?.stripeSignedWebhookLifecycle !==
+      "BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY" ||
+    parsed.successorProviderIndependent?.providerMutationPerformed !== false ||
+    parsed.successorProviderIndependent?.financialEffectPerformed !== false ||
     parsed.externalProviderAcceptance?.meta !== "BLOCKED_CREDENTIAL_AND_PROVIDER_AUTHORITY" ||
     parsed.externalProviderAcceptance?.ghl !== "BLOCKED_CREDENTIAL_AND_PROVIDER_AUTHORITY" ||
     parsed.externalProviderAcceptance?.higgsfield !==
@@ -5331,6 +5374,11 @@ async function main() {
       "No remote work was authorized: --execute, --deploy, and exactly one migration mode are required",
     );
   }
+  if (options.applyForwardMigration) {
+    throw new Error(
+      "Legacy single-migration forward mode is disabled for the 108-migration successor; use fresh isolated staging or separately reviewed exact multi-migration authority",
+    );
+  }
   if (!options.evidenceDir || !options.roundOne || !options.roundTwo) {
     throw new Error("Evidence directory and both exact final-verification summaries are required");
   }
@@ -6348,6 +6396,12 @@ async function main() {
     reportingFreshStaleAndFailedRefreshStateHandling: "PASS",
     billingCancellationStaleEventReactivationAndReplayProjection: "PASS",
     accountDeletionRequestSuspensionAndDisabledWorkerBoundary: "PASS",
+    successorServiceOnlySchemaRlsAndNoEffectReadback: "PASS",
+    successorCreditTopUpV2AndPendingStripeProjectionIdempotency: "PASS",
+    optimizerMinimumSampleAgainstActiveMetaReceipt:
+      "BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED",
+    ghlMarketplaceInstallLifecycleAndTokenRotation:
+      "BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY",
     ghlSandboxProvisioningFunnelsAndLeadDelivery:
       "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
     metaSandboxLaunchLeadgenReportingAndOptimization:

@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 104;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 108;
 const REQUIRED_FINAL_MIGRATION =
-  "20260715010000_move_legacy_org_member_policies_private.sql";
+  "20260716200000_harden_stripe_payment_lifecycle.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",
@@ -170,6 +170,7 @@ const commands = [
   ["npm", ["run", "test:campaign-entitlement-disposable-db"]],
   ["npm", ["run", "test:support-outbox-disposable-db"]],
   ["npm", ["run", "test:sms-receipts"]],
+  ["npm", ["run", "test:final-master-delta"]],
   ["node", ["scripts/test-lead-tracking-health.mjs"]],
 ];
 

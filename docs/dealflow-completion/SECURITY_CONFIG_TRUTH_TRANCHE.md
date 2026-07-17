@@ -1,5 +1,11 @@
 # Security and configuration truth tranche
 
+> **Candidate security context; release status superseded.** Preserve the
+> controls below as predecessor evidence, but use
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)
+> for current successor status. Deployed configuration, live provider behavior
+> and production remain unproven.
+
 Status: `CANDIDATE LOCALLY VERIFIED / DEPLOYED CONFIGURATION NOT ATTESTED / NO_GO`
 
 Scope is the isolated canonical candidate only. No production/provider/customer

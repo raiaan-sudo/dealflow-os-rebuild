@@ -19,7 +19,10 @@ import {
 } from "@/lib/onboarding-contract";
 import { normalizePhone } from "@/lib/phone";
 import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
-import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
+import {
+  hasOnlyApprovedRealtorQualificationQuestions,
+  resolveMetaInstantFormQualificationQuestions,
+} from "@/lib/meta-instant-form-qualification";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   mergeCampaignPlanDocument,
@@ -166,14 +169,11 @@ async function persistCompleteOnboardingContract(params: {
 }) {
   const submission = params.submission;
   const agentName = `${submission.agentFirstName} ${submission.agentLastName}`.trim();
-  const effectiveLeadFormQuestions =
-    submission.adDestination === "meta_instant_form"
-      ? resolveMetaInstantFormQualificationQuestions({
-          leadCaptureMode: submission.leadCaptureMode,
-          language: submission.funnelLanguage,
-          customQuestions: submission.leadFormQuestions,
-        })
-      : submission.leadFormQuestions;
+  const effectiveLeadFormQuestions = resolveMetaInstantFormQualificationQuestions({
+    leadCaptureMode: submission.leadCaptureMode,
+    language: submission.funnelLanguage,
+    customQuestions: submission.leadFormQuestions,
+  });
   const funnel = {
     ...buildWinningFunnel({
       market: submission.market,
@@ -356,6 +356,18 @@ export async function POST(request: Request) {
       maxBytes: 64 * 1024,
       code: "onboarding_body_too_large",
     });
+    if (
+      !hasOnlyApprovedRealtorQualificationQuestions({
+        language: submission.funnelLanguage,
+        questions: submission.leadFormQuestions,
+      })
+    ) {
+      throw new ApiError(
+        400,
+        "Choose qualification questions from the approved realtor catalog.",
+        "qualification_question_unsupported",
+      );
+    }
     const normalizedAgentPhone = normalizePhone(submission.agentPhone);
 
     if (!normalizedAgentPhone) {

@@ -9,6 +9,7 @@ import {
   getDurableVideoProvider,
   getDurableVideoProviderUnavailableReason,
 } from "@/lib/ai/video-provider";
+import { assertVideoGenerationClaims } from "@/lib/advertising-claim-boundaries";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -172,6 +173,7 @@ export async function POST(
       providerName: videoProvider,
       force: body.force === true,
     };
+    assertVideoGenerationClaims(payload);
 
     const job = await createSystemJob({
       organizationId: auth.organizationId,

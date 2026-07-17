@@ -1,5 +1,11 @@
 # DealFlow GoHighLevel architecture
 
+> **Architecture retained; release status superseded.** The body describes the
+> predecessor GHL architecture. Current successor status, including the new
+> unproven Marketplace OAuth/install foundation, is in
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md).
+> No live GHL acceptance or production release is claimed.
+
 Status: `INTEGRATED 104-MIGRATION CANDIDATE / FINAL-SEAL PROOF NOT_YET_RUN / LIVE PROVIDER ACCEPTANCE BLOCKED`
 Overall release verdict: `NO_GO`
 

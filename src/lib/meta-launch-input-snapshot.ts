@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
 
 export type MetaLaunchInputSnapshot = {
   schema_version: 1;
@@ -117,6 +118,10 @@ export function buildMetaLaunchInputBinding(params: {
   providerFormId?: string | null;
   formDefinitionDigest?: string | null;
 }): MetaLaunchInputBinding {
+  assertMetaCreativeClaims({
+    primaryText: params.primaryText,
+    headline: params.headline,
+  });
   const accountCurrency = params.accountCurrency.trim().toUpperCase();
   if (accountCurrency !== "USD" && accountCurrency !== "CAD") {
     throw new Error("Meta account currency must be USD or CAD for an immutable launch binding.");

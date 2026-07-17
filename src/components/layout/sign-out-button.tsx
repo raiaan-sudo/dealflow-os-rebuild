@@ -24,6 +24,10 @@ export function SignOutButton() {
     setIsPending(true);
 
     try {
+      await fetch("/api/workspaces/active", {
+        method: "DELETE",
+        credentials: "same-origin",
+      }).catch(() => null);
       await supabase.auth.signOut();
     } finally {
       window.localStorage.removeItem("dealflow-onboarding-progress-v2");

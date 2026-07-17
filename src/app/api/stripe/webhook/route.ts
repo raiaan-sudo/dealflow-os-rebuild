@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     }
 
     const result =
-      event.type === "checkout.session.completed" && isAccessKeyCheckoutSessionObject(event.data.object)
+      event.data.object.object === "checkout.session" && isAccessKeyCheckoutSessionObject(event.data.object)
         ? await handleAccessKeyStripeEvent(event)
         : await handleStripeBillingEvent(event);
 

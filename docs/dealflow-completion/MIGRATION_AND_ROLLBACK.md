@@ -1,5 +1,11 @@
 # DealFlow migration, drain, and forward-recovery contract
 
+> **Historical predecessor contract.** The 104-migration and 103-to-104 details
+> below remain evidence for that exact predecessor only. Current successor truth
+> is [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
+> 108 migrations ending at `20260716200000_harden_stripe_payment_lifecycle.sql`,
+> with clean-seal, staging, drain and production proof all `NOT_YET_RUN`.
+
 Overall verdict: `NO_GO`
 Frozen foundation: `80 MIGRATIONS / HISTORICAL_PASS`
 Integrated candidate: `104 MIGRATIONS / PENDING_FINAL_SEAL`

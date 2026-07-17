@@ -30,6 +30,7 @@ const policy = loadTs("src/lib/optimization-engine/realtor-policy.ts", {
   "@/lib/optimization-engine/kpi": kpi,
 });
 const executor = loadTs("src/lib/optimization-engine/meta-sandbox-executor.ts");
+const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const statusSyncSource = fs.readFileSync("src/lib/integrations/meta/status-sync.ts", "utf8");
 const reportingWorkerSource = fs.readFileSync("src/lib/services/meta-reporting-worker-service.ts", "utf8");
@@ -217,6 +218,87 @@ const base = {
   switches: { global: false, account: false, campaign: false, emergencyStop: false },
   now,
 };
+
+const twoLeadCplPolicy = {
+  ...policy.REALTOR_OPTIMIZATION_POLICY_V1,
+  minimumLeadsForCplDecision: 2,
+};
+const belowMinimumCplCutMetrics = {
+  ...baseMetrics,
+  leads: 1,
+  ctr: 1,
+  cpc: 2,
+  cpl: 60,
+  frequency: 2,
+  lp_cvr: 1,
+};
+const cplCutBelowMinimum = policy.evaluateRealtorOptimizationPolicy({
+  ...base,
+  approvedPolicy: twoLeadCplPolicy,
+  metrics: belowMinimumCplCutMetrics,
+});
+assert.deepEqual(plain(cplCutBelowMinimum.action), {
+  type: "hold",
+  reason: "below_minimum_leads_for_cpl",
+  changePercent: 0,
+});
+assert.deepEqual(plain(cplCutBelowMinimum.blockers), ["below_minimum_leads_for_cpl"]);
+assert.deepEqual(
+  plain(policy.evaluateRealtorOptimizationPolicy({
+    ...base,
+    approvedPolicy: twoLeadCplPolicy,
+    metrics: { ...belowMinimumCplCutMetrics, leads: 2 },
+  }).action),
+  { type: "pause", reason: "cpl_above_maximum", changePercent: -100 },
+);
+
+const belowMinimumCplScaleMetrics = {
+  ...baseMetrics,
+  leads: 1,
+  ctr: 2.5,
+  cpc: 2,
+  cpl: 20,
+  frequency: 2,
+  lp_cvr: 1,
+};
+const cplScaleBelowMinimum = policy.evaluateRealtorOptimizationPolicy({
+  ...base,
+  approvedPolicy: twoLeadCplPolicy,
+  metrics: belowMinimumCplScaleMetrics,
+});
+assert.deepEqual(plain(cplScaleBelowMinimum.action), {
+  type: "hold",
+  reason: "below_minimum_leads_for_cpl",
+  changePercent: 0,
+});
+assert.deepEqual(plain(cplScaleBelowMinimum.blockers), ["below_minimum_leads_for_cpl"]);
+assert.deepEqual(
+  plain(policy.evaluateRealtorOptimizationPolicy({
+    ...base,
+    approvedPolicy: twoLeadCplPolicy,
+    metrics: { ...belowMinimumCplScaleMetrics, leads: 2 },
+  }).action),
+  { type: "budget", reason: "two_or_more_strong_metrics", changePercent: 20 },
+);
+
+assert.deepEqual(
+  plain(policy.evaluateRealtorOptimizationPolicy({
+    ...base,
+    approvedPolicy: twoLeadCplPolicy,
+    metrics: { ...belowMinimumCplCutMetrics, ctr: 0.4 },
+  }).action),
+  { type: "pause", reason: "ctr_below_kill_threshold", changePercent: -100 },
+  "an independent CTR cut must not be blocked by an immature CPL sample",
+);
+assert.deepEqual(
+  plain(policy.evaluateRealtorOptimizationPolicy({
+    ...base,
+    approvedPolicy: twoLeadCplPolicy,
+    metrics: { ...belowMinimumCplScaleMetrics, cpc: 0.8 },
+  }).action),
+  { type: "budget", reason: "two_or_more_strong_metrics", changePercent: 20 },
+  "two independent non-CPL signals may scale without using immature CPL evidence",
+);
 
 assert.equal(policy.evaluateRealtorOptimizationPolicy({ ...base, sourceStatus: "partial" }).state, "HOLD");
 assert.equal(policy.evaluateRealtorOptimizationPolicy({ ...base, syncedAt: "2026-07-12T14:00:00.000Z" }).state, "HOLD");

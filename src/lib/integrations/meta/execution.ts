@@ -14,6 +14,7 @@ import type {
   ExecutableCampaign,
 } from "@/lib/services/campaign-execution-service";
 import { assertCustomerApprovedMetaBudgetCents } from "@/lib/integrations/meta/budget-safety";
+import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
 
 export type MetaCampaignPayload = {
   name: string;
@@ -209,6 +210,11 @@ async function createAdCreative(params: {
   payload: MetaAdCreativePayload;
   mode: "sandbox" | "live";
 }) {
+  const linkData = params.payload.object_story_spec.link_data;
+  assertMetaCreativeClaims({
+    primaryText: linkData.message,
+    headline: linkData.name,
+  });
   if (params.mode === "sandbox") {
     return {
       id: `sandbox-creative-${crypto.randomUUID()}`,

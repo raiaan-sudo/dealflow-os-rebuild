@@ -49,6 +49,7 @@ import type {
   ValidatedLaunchConfig,
 } from "@/lib/types/campaign-execution";
 import { customerApprovedMetaBudgetCentsFromDollars } from "@/lib/integrations/meta/budget-safety";
+import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
 
 export type CampaignObjectStatus = "draft" | "ready" | "published" | "paused";
 
@@ -576,6 +577,18 @@ function buildLaunchAssets(record: FullCampaignRecord): CampaignLaunchAsset[] {
   });
 }
 
+function assertMetaLaunchAssetsClaimSafety(record: FullCampaignRecord) {
+  for (const asset of buildLaunchAssets(record)) {
+    assertMetaCreativeClaims({
+      primaryText: asset.primaryText,
+      headline: asset.headline,
+      cta: asset.cta,
+      overlayText: asset.hook,
+      body: asset.script,
+    });
+  }
+}
+
 function buildCampaignBlueprint(
   record: FullCampaignRecord,
   config: ValidatedLaunchConfig,
@@ -958,6 +971,7 @@ export function buildMetaAdPayloads(
   mediaAssets: LaunchReadyCreativeMedia[] = [],
   providerFormId: string | null = null,
 ): BuiltMetaAdPayload[] {
+  assertMetaLaunchAssetsClaimSafety(campaignRecord);
   if (config.formType === "instant_form" && !/^\d{5,40}$/.test(providerFormId ?? "")) {
     throw new ApiError(
       409,
@@ -1222,6 +1236,8 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
       "launch_validation_incomplete",
     );
   }
+
+  assertMetaLaunchAssetsClaimSafety(validatedCampaign);
 
   const blueprintName = blueprint?.name ?? validatedCampaign.campaign.name;
 

@@ -18,6 +18,10 @@ import {
   startAssetGenerationLifecycle,
 } from "@/lib/services/asset-generation-lifecycle";
 import { debugLog } from "@/lib/debug";
+import {
+  assertPaidCreativeCampaignClaims,
+  assertPublicFunnelClaims,
+} from "@/lib/advertising-claim-boundaries";
 import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import {
@@ -746,6 +750,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     savedDocument,
     publish: mapPublishRecord(row),
   });
+  assertPaidCreativeCampaignClaims(currentRecord);
   const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
 
   const resumesDurableInFlightAttempt =
@@ -917,9 +922,12 @@ export async function updateCampaignPublishState(params: {
     savedDocument: getSavedCampaignDocumentFromRow(row),
     publish: mapPublishRecord(row),
   });
+  const nextState = params.state;
+  if (nextState === "staged" || nextState === "published") {
+    assertPublicFunnelClaims(currentRecord);
+  }
   const slug = buildPublicSlug(currentRecord, params.slug);
   const snapshot = buildPersistedSavedDocument(currentRecord);
-  const nextState = params.state;
   const now = new Date().toISOString();
 
   const update: Database["public"]["Tables"]["campaign_plans"]["Update"] = {

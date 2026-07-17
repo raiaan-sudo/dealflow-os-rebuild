@@ -45,6 +45,8 @@ import {
   resolveExactCustomerApprovedMetaDailyBudgetCents,
 } from "@/lib/integrations/meta/budget-safety";
 import { resolveCreativeContentSha256 } from "@/lib/creative-content-integrity";
+import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
+import { AdvertisingClaimUnverifiedError } from "@/lib/copy/claim-safety";
 
 type LaunchResumePayload = {
   metaCampaignId?: string | null;
@@ -1171,6 +1173,13 @@ export async function launchCampaignToMeta(
       storedPayload?.offer?.key_offer ??
       record.plan.offer ??
       record.campaign.name;
+    assertMetaCreativeClaims({
+      primaryText,
+      headline,
+      overlayText: selectedStaticAd.overlayText,
+      body: selectedStaticAd.hook,
+      cta: selectedStaticAd.cta,
+    });
     const publicSlug = record.publish.slug?.trim() ?? "";
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
@@ -2468,6 +2477,7 @@ export async function launchCampaignToMeta(
     }
 
     const providerOutcomeAmbiguous = pendingProviderMutation !== null;
+    const advertisingClaimRejected = error instanceof AdvertisingClaimUnverifiedError;
     const originalErrorCode =
       error &&
       typeof error === "object" &&
@@ -2488,6 +2498,8 @@ export async function launchCampaignToMeta(
         : "meta_provider_create_outcome_ambiguous"
       : error instanceof ApiError
         ? error.code
+        : advertisingClaimRejected
+          ? error.code
         : "provider_launch_failed";
     const safeErrorMessage = providerOutcomeAmbiguous
       ? `The Meta ${currentStage} create outcome is ambiguous. Automatic recreation is stopped until operator reconciliation.`
@@ -2502,10 +2514,9 @@ export async function launchCampaignToMeta(
       message: safeErrorMessage,
       extra: { stage: currentStage, campaignId },
     });
-    const clientError = buildStageFailureMessage(
-      safeErrorMessage,
-      currentStage,
-    );
+    const clientError = advertisingClaimRejected
+      ? safeErrorMessage
+      : buildStageFailureMessage(safeErrorMessage, currentStage);
     const failureAttemptId = activeAttemptId ?? persistedLaunchStateForFailure?.attempt_id ?? null;
     const failureWorkspaceId = workspaceId ?? persistedLaunchStateForFailure?.workspace_id ?? null;
     const failureRequestedObjectType =
@@ -2526,7 +2537,7 @@ export async function launchCampaignToMeta(
         ? currentStage
         : persistedLaunchStateForFailure.current_stage;
 
-    if (ownershipVerified) {
+    if (ownershipVerified && !advertisingClaimRejected) {
       await persistLaunchState(
         campaignId,
         {
@@ -2562,7 +2573,9 @@ export async function launchCampaignToMeta(
           ? 409
           : error instanceof ApiError
             ? error.status
-            : 500,
+            : advertisingClaimRejected
+              ? error.statusCode
+              : 500,
       },
     );
   }

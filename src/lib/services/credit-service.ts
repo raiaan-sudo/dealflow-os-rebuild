@@ -12,6 +12,7 @@ type GenerationCreditBucket =
   | "higgsfield_video_generation";
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_500;
+export const CREDIT_TOP_UP_MAXIMUM_CENTS = 100_000;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
   openai_image_generation: 100,
@@ -202,7 +203,10 @@ export async function recordCommercialActivationWithInitialCredit(params: {
   organizationId: string;
   userId: string;
   sourceEventId: string;
-  sourceEventType: "checkout.session.completed" | "invoice.payment_succeeded";
+  sourceEventType:
+    | "checkout.session.completed"
+    | "checkout.session.async_payment_succeeded"
+    | "invoice.payment_succeeded";
   sourceEventCreated: number;
   sourcePaymentId?: string | null;
   sourceSubscriptionId?: string | null;

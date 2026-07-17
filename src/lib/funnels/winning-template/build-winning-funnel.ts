@@ -23,6 +23,8 @@ import {
   type WinningFunnelSourceInput,
 } from "@/lib/funnels/winning-template/variants";
 import type { FunnelGoal, FunnelMarketType } from "@/lib/services/funnel-engine";
+import type { CampaignIntent } from "@/lib/campaign-intent";
+import { sanitizeAdClaimText } from "@/lib/copy/claim-safety";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -57,13 +59,42 @@ function legalDisclosure(copy: ReturnType<typeof getWinningFunnelLanguageCopy>) 
   return copy.footerCompliance;
 }
 
+function winningClaimIntent(leadType: WinningFunnelInput["leadType"]): CampaignIntent {
+  if (leadType === "seller") return "seller";
+  if (leadType === "investor") return "investor";
+  return "buyer";
+}
+
+function localizedSafeOffer(params: Pick<WinningFunnelInput, "language" | "leadType" | "market">) {
+  if (params.language === "fr") {
+    return params.leadType === "seller"
+      ? `Examinez une estimation et un plan de vente fondés sur le marché à ${params.market}`
+      : `Examinez des options immobilières personnalisées à ${params.market}`;
+  }
+
+  if (params.language === "es") {
+    return params.leadType === "seller"
+      ? `Revise una valoración y un plan de venta basados en el mercado en ${params.market}`
+      : `Revise opciones inmobiliarias personalizadas en ${params.market}`;
+  }
+
+  return params.leadType === "seller"
+    ? `Review a market-based home value and sale plan in ${params.market}`
+    : `Review personalized real estate options in ${params.market}`;
+}
+
 export function normalizeWinningFunnelInput(input?: WinningFunnelSourceInput | null): WinningFunnelInput {
   const raw = input ?? {};
   const market = text(raw.market) || text(raw.location) || "your market";
   const audience = text(raw.audience) || "qualified local prospects";
-  const offer = text(raw.key_offer) || text(raw.offer) || "a clearer next step";
   const leadType = resolveWinningLeadType(raw);
   const language = normalizeWinningFunnelLanguage((raw as Record<string, unknown>).language);
+  const claimIntent = winningClaimIntent(leadType);
+  const offer = sanitizeAdClaimText(text(raw.key_offer) || text(raw.offer) || "a clearer next step", {
+    intent: claimIntent,
+    location: market,
+    fallback: localizedSafeOffer({ language, leadType, market }),
+  });
   const copy = getWinningFunnelLanguageCopy(language);
   const campaignAngle = resolveWinningAngle(raw, leadType);
   const leadCaptureMode = resolveWinningLeadCaptureMode(raw);
@@ -72,7 +103,11 @@ export function normalizeWinningFunnelInput(input?: WinningFunnelSourceInput | n
     market,
     audience,
     offer,
-    cta: text(raw.primaryCTA) || text(raw.primary_cta),
+    cta: sanitizeAdClaimText(text(raw.primaryCTA) || text(raw.primary_cta), {
+      intent: claimIntent,
+      location: market,
+      fallback: language === "fr" ? "Voir mes options" : language === "es" ? "Ver mis opciones" : "Review My Options",
+    }),
     leadType,
     campaignAngle,
     funnelGoal: funnelGoal(raw.funnel_goal),
@@ -100,12 +135,22 @@ export function normalizeWinningFunnelInput(input?: WinningFunnelSourceInput | n
 export function buildWinningFunnel(input?: WinningFunnelSourceInput | null): WinningFunnelBlueprint {
   const normalized = normalizeWinningFunnelInput(input);
   const copy = getWinningFunnelLanguageCopy(normalized.language);
-  const headline = text(input?.headline) || buildWinningHeadline(normalized);
-  const subheadline = text(input?.subheadline) || buildWinningSubheadline(normalized);
-  const cta = buildWinningCta({ ...normalized, cta: normalized.cta });
-  const microLabel = buildWinningMicroLabel(normalized);
+  const claimIntent = winningClaimIntent(normalized.leadType);
+  const safeFallback = localizedSafeOffer(normalized);
+  const sanitize = (value: unknown, fallback = safeFallback) => sanitizeAdClaimText(value, {
+    intent: claimIntent,
+    location: normalized.market,
+    fallback,
+  });
+  const headline = sanitize(text(input?.headline) || buildWinningHeadline(normalized));
+  const subheadline = sanitize(text(input?.subheadline) || buildWinningSubheadline(normalized));
+  const cta = sanitize(
+    buildWinningCta({ ...normalized, cta: normalized.cta }),
+    normalized.language === "fr" ? "Voir mes options" : normalized.language === "es" ? "Ver mis opciones" : "Review My Options",
+  );
+  const microLabel = sanitize(buildWinningMicroLabel(normalized));
   const quizSteps = buildWinningQuizSteps(normalized);
-  const proofBadges = unique(buildWinningTrustBullets(normalized));
+  const proofBadges = unique(buildWinningTrustBullets(normalized).map((value) => sanitize(value)));
   return {
     funnel_type: WINNING_FUNNEL_TYPE_BY_GOAL[normalized.funnelGoal],
     headline,

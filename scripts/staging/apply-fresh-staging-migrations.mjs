@@ -95,11 +95,11 @@ const expectedPriorMigrationPortfolioSha256 =
 const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
-const exactMigrationCount = 104;
+const exactMigrationCount = 108;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260715010000_move_legacy_org_member_policies_private.sql";
+  "20260716200000_harden_stripe_payment_lifecycle.sql";
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -530,6 +530,12 @@ if (roundSummaryPaths[0] === roundSummaryPaths[1]) {
 }
 const releaseIdentity = captureCleanReleaseIdentity();
 const migrationIdentity = migrationPortfolioIdentity();
+const disabledLegacySuccessorForwardMode = ["APPLY", "FORWARD", "EXACT"].join("_");
+if (migrationMode === disabledLegacySuccessorForwardMode) {
+  throw new Error(
+    "Legacy single-migration forward mode is disabled for the 108-migration successor; use a fresh isolated staging database or a separately reviewed exact multi-migration authority",
+  );
+}
 const migrationSources = migrations.map((file) => {
   const body = readFileSync(join(migrationDir, file), "utf8");
   return {
@@ -540,13 +546,12 @@ const migrationSources = migrations.map((file) => {
   };
 });
 const atomicMigrationTransaction = buildAtomicMigrationTransaction(migrationSources);
-const forwardMigrationSources = migrationSources.slice(expectedPriorMigrationCount);
-if (
-  forwardMigrationSources.length !== 1 ||
-  forwardMigrationSources[0]?.file !== requiredFinalMigration
-) {
-  throw new Error("The exact forward-only migration tranche must contain only migration 104");
-}
+// Retained solely for the unreachable historical 103-to-104 proof branch below.
+// The successor gate above prevents this transaction from being selected.
+const forwardMigrationSources = migrationSources.slice(
+  expectedPriorMigrationCount,
+  expectedPriorMigrationCount + 1,
+);
 const forwardAtomicMigrationTransaction = buildAtomicMigrationTransaction(
   forwardMigrationSources,
 );

@@ -51,12 +51,14 @@ assert.match(hardeningMigrationSource, /alter table public\.agent_profiles force
 assert.match(hardeningMigrationSource, /alter table public\.lead_assignments force row level security/);
 assert.match(hardeningMigrationSource, /alter table public\.lead_notifications force row level security/);
 assert.match(hardeningMigrationSource, /revoke all on public\.agent_profiles from anon, authenticated/);
-assert.match(smsSource, /MessagingServiceSid/);
-assert.doesNotMatch(smsSource, /\bFrom:/);
+assert.match(twilioTransportSource, /form\.set\("MessagingServiceSid"/);
+assert.match(twilioTransportSource, /form\.set\("From"/);
 assert.match(twilioTransportSource, /TWILIO_ACCOUNT_SID/);
 assert.match(twilioTransportSource, /TWILIO_AUTH_TOKEN/);
 assert.match(twilioTransportSource, /TWILIO_MESSAGING_SERVICE_SID/);
 assert.match(twilioTransportSource, /TWILIO_TEST_ACCOUNT_SID/);
+assert.match(twilioTransportSource, /TWILIO_TEST_MAGIC_FROM_NUMBER = "\+15005550006"/);
+assert.match(twilioTransportSource, /twilio_test_messaging_service_forbidden/);
 assert.match(twilioTransportSource, /TWILIO_TEST_TO_NUMBER/);
 assert.match(twilioTransportSource, /twilio_test_recipient_not_allowed/);
 assert.match(smsSource, /sms_mock_mode_production_blocked/);

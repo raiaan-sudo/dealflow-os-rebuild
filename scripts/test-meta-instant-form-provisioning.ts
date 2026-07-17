@@ -71,9 +71,9 @@ assert.deepEqual(
     customQuestions: ["My first question?", "My second question?", "My third question?"],
   }),
   [
-    "When are you hoping to make a move?",
-    "What type of property or opportunity are you considering?",
-    "Which city or neighbourhood are you focused on?",
+    "When are you hoping to move?",
+    "What is your ideal property type?",
+    "What city or neighbourhood are you focused on?",
   ],
 );
 assert.doesNotMatch(

@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/sidebar";
 import { GuidedFlowBanner } from "@/components/layout/guided-flow-banner";
 import { TopBar } from "@/components/layout/top-bar";
@@ -8,8 +9,16 @@ import { GhlEmbedCapabilityRefresher } from "@/components/ghl/ghl-embed-capabili
 import { LocaleLink } from "@/components/i18n/locale-link";
 import { isInternalAdminEmail } from "@/lib/env";
 import { translateProductMessage } from "@/lib/i18n/messages";
-import { parseProductLocalePathname } from "@/lib/i18n/routing";
-import { getAppContext } from "@/lib/services/app-context";
+import {
+  localizeProductHref,
+  parseProductLocalePathname,
+} from "@/lib/i18n/routing";
+import {
+  getAppContext,
+  WorkspaceSelectionDeniedError,
+  WorkspaceSelectionRequiredError,
+} from "@/lib/services/app-context";
+import { listCurrentUserWorkspaceOptions } from "@/lib/services/workspace-selection-service";
 import {
   DEFAULT_WORKSPACE_BRANDING,
   loadWorkspaceBranding,
@@ -38,7 +47,21 @@ export default async function AppLayout({
     pathname.startsWith("/builder") ||
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/campaign-built");
-  const appContext = await getAppContext().catch(() => null);
+  let appContext: Awaited<ReturnType<typeof getAppContext>> = null;
+  try {
+    appContext = await getAppContext();
+  } catch (error) {
+    if (
+      error instanceof WorkspaceSelectionRequiredError ||
+      error instanceof WorkspaceSelectionDeniedError
+    ) {
+      const selector = localizeProductHref("/workspace/select", locale);
+      redirect(`${selector}?returnTo=${encodeURIComponent(pathname || "/dashboard")}`);
+    }
+  }
+  const workspaceOptions = appContext
+    ? await listCurrentUserWorkspaceOptions().catch(() => [])
+    : [];
   const branding = appContext
     ? await loadWorkspaceBranding(appContext.organization.id).catch(
         () => DEFAULT_WORKSPACE_BRANDING,
@@ -149,6 +172,8 @@ export default async function AppLayout({
             userEmail={userEmail}
             organizationName={organizationName}
             productName={branding.productName}
+            currentOrganizationId={appContext?.organization.id ?? null}
+            workspaceOptions={workspaceOptions}
           />
           <main id="main-content" tabIndex={-1} className="flex-1 overflow-hidden">
             <div className="flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">

@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const FOUNDATION_LAST =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 104;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 108;
 const TRANSACTION_OWNING_MIGRATION =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const REQUIRED_EXTENSIONS = [
@@ -44,6 +44,10 @@ const REQUIRED_EXTENSIONS = [
   "20260713027000_add_ghl_location_display_name_finalization.sql",
   "20260713028000_harden_account_deletion_retention_authority.sql",
   "20260715010000_move_legacy_org_member_policies_private.sql",
+  "20260716010000_require_optimizer_cpl_minimum_lead_sample.sql",
+  "20260716180000_harden_credit_top_up_request_idempotency.sql",
+  "20260716190000_add_ghl_marketplace_oauth_install_foundation.sql",
+  "20260716200000_harden_stripe_payment_lifecycle.sql",
 ];
 const config = Object.freeze({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,

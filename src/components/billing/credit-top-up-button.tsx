@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
@@ -16,18 +16,21 @@ export function CreditTopUpButton({
   const { t } = useProductI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const clientRequestIdRef = useRef<string | null>(null);
 
   async function handleCheckout() {
     setLoading(true);
     setError(null);
 
     try {
+      const clientRequestId = clientRequestIdRef.current ?? crypto.randomUUID();
+      clientRequestIdRef.current = clientRequestId;
       const response = await fetch("/api/billing/credits/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ amountCents }),
+        body: JSON.stringify({ amountCents, client_request_id: clientRequestId }),
       });
 
       const data = (await response.json().catch(() => null)) as

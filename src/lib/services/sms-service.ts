@@ -4,8 +4,10 @@ import {
   isProductionDeployment,
 } from "@/lib/deployment-target";
 import {
-  assertTwilioRecipientAllowed,
+  buildTwilioMessageForm,
   getTwilioTransportConfig,
+  isTwilioTransportConfigured,
+  type TwilioTransportConfig,
   TwilioTransportPolicyError,
 } from "@/lib/integrations/twilio/transport";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -50,6 +52,34 @@ class SmsProviderAmbiguousError extends Error {
   readonly code = "sms_provider_outcome_ambiguous";
 }
 
+async function readBoundedTwilioResponseBody(response: Response, maxBytes = 64 * 1024) {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new SmsProviderAmbiguousError(
+      "Twilio returned an oversized response after dispatch; operator reconciliation is required.",
+    );
+  }
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new SmsProviderAmbiguousError(
+        "Twilio returned an oversized response after dispatch; operator reconciliation is required.",
+      );
+    }
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+
 export function normalizePhone(input: unknown, defaultCountry = "US") {
   return normalizePhoneNumber(input, defaultCountry);
 }
@@ -76,6 +106,7 @@ function getTwilioConfig() {
       accountSid: null,
       authToken: null,
       messagingServiceSid: null,
+      fromNumber: null,
       baseUrl: null,
       endpointMode: "disabled" as const,
       allowedTestRecipient: null,
@@ -106,7 +137,7 @@ function isSmsMockModeAllowed() {
 
 export function getSmsOutboundPolicyStatus() {
   const config = getTwilioConfig();
-  const hasTwilioConfig = Boolean(config.accountSid && config.authToken && config.messagingServiceSid);
+  const hasTwilioConfig = config.policyError === null && isTwilioTransportConfigured(config);
   const mockModeRequested = isSmsMockMode();
   const mockMode = isSmsMockModeAllowed();
 
@@ -254,50 +285,62 @@ async function settleNotificationDelivery(params: {
 }
 
 async function postTwilioMessage(params: {
-  accountSid: string;
-  authToken: string;
-  messagingServiceSid: string;
-  baseUrl: string;
-  mode: "disabled" | "live" | "test" | "loopback";
-  allowedTestRecipient: string | null;
+  config: Exclude<TwilioTransportConfig, { mode: "disabled" }>;
   to: string;
   body: string;
 }) {
-  assertTwilioRecipientAllowed({
-    mode: params.mode,
+  const body = buildTwilioMessageForm({
+    config: params.config,
     to: params.to,
-    allowedTestRecipient: params.allowedTestRecipient,
+    body: params.body,
   });
-  const body = new URLSearchParams({
-    To: params.to,
-    Body: params.body,
-    MessagingServiceSid: params.messagingServiceSid,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   let response: Response;
   try {
     response = await fetch(
-      `${params.baseUrl}/2010-04-01/Accounts/${encodeURIComponent(params.accountSid)}/Messages.json`,
+      `${params.config.baseUrl}/2010-04-01/Accounts/${encodeURIComponent(params.config.accountSid)}/Messages.json`,
       {
         method: "POST",
         headers: {
-          Authorization: `Basic ${Buffer.from(`${params.accountSid}:${params.authToken}`).toString("base64")}`,
+          Authorization: `Basic ${Buffer.from(`${params.config.accountSid}:${params.config.authToken}`).toString("base64")}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body,
+        cache: "no-store",
+        redirect: "error",
+        signal: controller.signal,
       },
     );
   } catch {
     throw new SmsProviderAmbiguousError(
       "Twilio transport ended without a provider receipt; operator reconciliation is required.",
     );
+  } finally {
+    clearTimeout(timeout);
   }
-  const data = (await response.json().catch(() => null)) as { sid?: string; message?: string } | null;
+  const rawBody = await readBoundedTwilioResponseBody(response);
+  let data: { sid?: string; code?: number | string } | null = null;
+  try {
+    data = rawBody ? JSON.parse(rawBody) as { sid?: string; code?: number | string } : null;
+  } catch {
+    data = null;
+  }
 
   if (!response.ok) {
-    throw new SmsProviderRejectedError(data?.message || `Twilio returned ${response.status}`);
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      throw new SmsProviderAmbiguousError(
+        `Twilio returned HTTP ${response.status} after dispatch; operator reconciliation is required.`,
+      );
+    }
+    const providerCode = String(data?.code ?? "");
+    const safeProviderCode = /^\d{1,6}$/.test(providerCode) ? providerCode : "unavailable";
+    throw new SmsProviderRejectedError(
+      `Twilio rejected the request (HTTP ${response.status}, code ${safeProviderCode}).`,
+    );
   }
 
-  if (!data?.sid) {
+  if (!data?.sid || !/^(SM|MM)[0-9a-fA-F]{32}$/.test(data.sid)) {
     throw new SmsProviderAmbiguousError(
       "Twilio accepted the request without a message receipt; operator reconciliation is required.",
     );
@@ -416,10 +459,7 @@ export async function sendSms(params: SendSmsParams) {
   if (
     config.policyError
     || config.mode === "disabled"
-    || !config.accountSid
-    || !config.authToken
-    || !config.messagingServiceSid
-    || !config.baseUrl
+    || !isTwilioTransportConfigured(config)
   ) {
     const settled = await settleNotificationDelivery({
       claim,
@@ -442,12 +482,7 @@ export async function sendSms(params: SendSmsParams) {
 
   try {
     const providerMessageId = await postTwilioMessage({
-      accountSid: config.accountSid,
-      authToken: config.authToken,
-      messagingServiceSid: config.messagingServiceSid,
-      baseUrl: config.baseUrl,
-      mode: config.mode,
-      allowedTestRecipient: config.allowedTestRecipient,
+      config,
       to,
       body: params.body,
     });

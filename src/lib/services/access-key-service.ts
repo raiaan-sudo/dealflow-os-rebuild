@@ -25,8 +25,10 @@ import {
   assertStripeObjectRuntimeMode,
   claimStripeWebhookEvent,
   markStripeWebhookEvent,
+  projectStripeCheckoutLifecycleEvent,
   syncBillingSubscriptionFromStripe,
 } from "@/lib/services/billing-service";
+import { getStripeCheckoutPromotionPolicy } from "@/lib/billing/stripe-promotion-policy";
 import { evaluateCommercialActivationCandidate } from "@/lib/commercial-activation-policy";
 import { recordCommercialActivationWithInitialCredit } from "@/lib/services/credit-service";
 import {
@@ -740,7 +742,10 @@ export async function createAccessKeyCheckoutSession(params: {
       ],
       success_url: urls.successUrl,
       cancel_url: urls.cancelUrl,
-      allow_promotion_codes: true,
+      ...getStripeCheckoutPromotionPolicy({
+        surface: "access_key",
+        partnerSlug: partnerBilling.partnerSlug,
+      }),
       payment_method_collection: "always",
       metadata,
       subscription_data: {
@@ -1003,7 +1008,11 @@ export async function activateAccessKeyFromCheckoutSession(
   ) {
     return existingRow;
   }
-  if (existingRow.status !== "created" && existingRow.status !== "pending_payment") {
+  if (
+    existingRow.status !== "created" &&
+    existingRow.status !== "pending_payment" &&
+    existingRow.status !== "payment_failed"
+  ) {
     throw new ApiError(
       409,
       "Access key is not eligible for Stripe activation.",
@@ -1044,7 +1053,7 @@ export async function activateAccessKeyFromCheckoutSession(
     .eq("stripe_customer_id", binding.customerId)
     .is("stripe_subscription_id", null)
     .is("stripe_price_id", null)
-    .in("status", ["created", "pending_payment"])
+    .in("status", ["created", "pending_payment", "payment_failed"])
     .select("*")
     .maybeSingle();
 
@@ -1127,11 +1136,14 @@ export async function handleAccessKeyStripeEvent(event: Stripe.Event) {
     });
 
   try {
-    if (event.type === "checkout.session.completed" && isAccessKeyCheckoutSessionObject(event.data.object)) {
-      await activateAccessKeyFromCheckoutSession(event.data.object, {
-        eventId: event.id,
-        eventCreated: event.created,
-      });
+    const lifecycle = await projectStripeCheckoutLifecycleEvent(event);
+    if (lifecycle?.normalized.flow === "access_key") {
+      if (lifecycle.normalized.paymentState === "succeeded") {
+        await activateAccessKeyFromCheckoutSession(event.data.object as Stripe.Checkout.Session, {
+          eventId: event.id,
+          eventCreated: event.created,
+        });
+      }
       await settleClaim({ status: "processed" });
       return {
         duplicate: false,

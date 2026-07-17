@@ -31,6 +31,7 @@ import {
 } from "@/lib/services/paid-creative-dispatch-service";
 import { importGeneratedVideoToCanonicalStorage } from "@/lib/services/generated-video-storage-service";
 import { createHiggsfieldSourceProxyUrl } from "@/lib/services/higgsfield-source-proxy";
+import { assertVideoGenerationClaims } from "@/lib/advertising-claim-boundaries";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -467,6 +468,7 @@ export async function runVideoGenerationJob(params: {
   payload: VideoGenerationJobPayload;
   providerUsageAttemptKey: string;
 }) {
+  assertVideoGenerationClaims(params.payload);
   const row = await loadCampaignPlanRow(
     params.supabase,
     params.organizationId,

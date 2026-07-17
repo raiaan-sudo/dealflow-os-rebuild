@@ -14,6 +14,10 @@ import {
   generateOfferVariations,
 } from "@/lib/copy/offer-enhancement";
 import {
+  detectUnsupportedAdClaims,
+  sanitizeAdClaimText,
+} from "@/lib/copy/claim-safety";
+import {
   formatAudience as normalizeAudienceInput,
   normalizeInput as normalizeLooseInput,
   normalizeMarket,
@@ -163,6 +167,81 @@ const CTA_BY_MARKET: Record<RequiredInput["marketType"], string> = {
 
 function safeString(value: unknown) {
   return (value ?? "").toString().trim();
+}
+
+function claimSafetyIntentFromOfferClass(offerClass: OfferClass): CampaignIntent {
+  if (offerClass === "seller") return "seller";
+  if (offerClass === "investor") return "investor";
+  if (offerClass === "approval" || offerClass === "first_time_buyer") return "approval";
+  return "buyer";
+}
+
+function sanitizeCopyText(
+  value: unknown,
+  input: Pick<RequiredInput, "marketType" | "location">,
+  fallback?: string,
+) {
+  return sanitizeAdClaimText(value, {
+    intent: input.marketType,
+    location: input.location,
+    fallback,
+  });
+}
+
+function sanitizeUgcScriptForOfferClass(script: UGCScriptOutput, offerClass: OfferClass) {
+  const intent = claimSafetyIntentFromOfferClass(offerClass);
+  return {
+    ...script,
+    hook: sanitizeAdClaimText(script.hook, { intent }),
+    body: sanitizeAdClaimText(script.body, { intent }),
+    cta: sanitizeAdClaimText(script.cta, { intent }),
+  };
+}
+
+function sanitizeScoredVariation(variation: ScoredVariation, input: RequiredInput): ScoredVariation {
+  const text = sanitizeCopyText(variation.text, input);
+  if (text === variation.text) {
+    return variation;
+  }
+
+  return {
+    ...variation,
+    text,
+    reason: "Claim-safety fallback applied because the source wording contained an unsupported outcome claim.",
+    score: Math.min(variation.score, 5),
+    breakdown: {
+      ...variation.breakdown,
+      offerStrength: 1,
+      directResponse: Math.min(variation.breakdown.directResponse, 5),
+    },
+  };
+}
+
+function sanitizeAssistantOutput(
+  output: CreativeCopyAssistantOutput,
+  input: RequiredInput,
+): CreativeCopyAssistantOutput {
+  const sanitizeVariations = (variations: ScoredVariation[]) =>
+    variations.map((variation) => sanitizeScoredVariation(variation, input));
+
+  return {
+    ...output,
+    hook: sanitizeCopyText(output.hook, input),
+    problem: sanitizeCopyText(output.problem, input),
+    mechanism: sanitizeCopyText(output.mechanism, input),
+    solution: sanitizeCopyText(output.solution, input),
+    offer: sanitizeCopyText(output.offer, input),
+    cta: sanitizeCopyText(output.cta, input),
+    headline: sanitizeCopyText(output.headline, input),
+    subheadline: sanitizeCopyText(output.subheadline, input),
+    alternatives: {
+      offer: sanitizeVariations(output.alternatives.offer),
+      headline: sanitizeVariations(output.alternatives.headline),
+      subheadline: sanitizeVariations(output.alternatives.subheadline),
+      hook: sanitizeVariations(output.alternatives.hook),
+      primaryText: sanitizeVariations(output.alternatives.primaryText),
+    },
+  };
 }
 
 function splitCopyLines(value: string) {
@@ -384,7 +463,8 @@ function scoreUgcText(text: string) {
   const normalized = safeString(text).toLowerCase();
   let score = 5;
 
-  if (/guarantee|cash[- ]flow|off-market|approved|credit|qualify|sell/.test(normalized)) score += 2;
+  if (/cash[- ]flow|off-market|credit|may qualify|sale plan/.test(normalized)) score += 2;
+  if (detectUnsupportedAdClaims(normalized).length > 0) score -= 10;
   if (/most|stop|before|wrong|faster|better/.test(normalized)) score += 1;
   if (!/quick one|nobody is talking about|claim your buyer list/.test(normalized)) score += 2;
 
@@ -528,7 +608,7 @@ function buildUgcVariations(lines: string[]) {
     },
   ];
 
-  return variations.sort((left, right) => {
+  return variations.map((variation) => sanitizeUgcScriptForOfferClass(variation, offerClass)).sort((left, right) => {
     const rightScore = scoreUgcText(`${right.hook} ${right.body} ${right.cta}`);
     const leftScore = scoreUgcText(`${left.hook} ${left.body} ${left.cta}`);
     return rightScore - leftScore;
@@ -544,12 +624,12 @@ export function generateUGCScript(primaryText: string): UGCScriptOutput {
   const fallbackCta = ensureSentence(fallback.cta);
 
   if (lines.length === 0) {
-    return {
+    return sanitizeUgcScriptForOfferClass({
       hook: fallbackHook,
       body: fallbackBody,
       cta: fallbackCta,
       style: "casual_ugc",
-    };
+    }, offerClass);
   }
 
   const ctaCandidate = lines.findLast((line) =>
@@ -562,18 +642,20 @@ export function generateUGCScript(primaryText: string): UGCScriptOutput {
     sanitizeScriptLine(ctaCandidate || lines[lines.length - 1] || fallbackCta, fallbackCta),
   ];
 
-  return buildUgcVariations(seededLines)[0] ?? {
+  return buildUgcVariations(seededLines)[0] ?? sanitizeUgcScriptForOfferClass({
     hook: fallbackHook,
     body: fallbackBody,
     cta: fallbackCta,
     style: "casual_ugc",
-  };
+  }, offerClass);
 }
 
 export function buildScenes(script: UGCScriptOutput): UGCScene[] {
-  const hook = sanitizeScriptLine(script.hook, "Most people miss the best opportunities because they move too late");
-  const body = sanitizeScriptLine(script.body, "We filter the market around the offer so the strongest options show up first");
-  const cta = sanitizeScriptLine(script.cta, "See what is available now");
+  const offerClass = inferLooseOfferClassFromText(`${script.hook} ${script.body} ${script.cta}`);
+  const safeScript = sanitizeUgcScriptForOfferClass(script, offerClass);
+  const hook = sanitizeScriptLine(safeScript.hook, "Most people miss the best opportunities because they move too late");
+  const body = sanitizeScriptLine(safeScript.body, "We filter the market around the offer so the strongest options show up first");
+  const cta = sanitizeScriptLine(safeScript.cta, "See what is available now");
 
   return [
     { type: "hook", text: hook },
@@ -665,17 +747,12 @@ function normalizeInput(input?: CopyEngineInput | null): RequiredInput {
 
 function buildRiskReversal(input: RequiredInput) {
   if (input.riskReversal) {
-    return ensureSentence(input.riskReversal);
-  }
-
-  const offer = toLower(input.offer);
-
-  if (input.marketType === "seller" && /guarantee|90 days|sold/.test(offer)) {
-    return "If it doesn't sell, you don't pay.";
-  }
-
-  if (input.marketType === "buyer" && /qualif|approval|credit/.test(offer)) {
-    return "No downside if your profile does not qualify.";
+    const safeRiskReversal = sanitizeAdClaimText(input.riskReversal, {
+      intent: input.marketType,
+      location: input.location,
+      fallback: "Review the plan before deciding whether the next step fits.",
+    });
+    return ensureSentence(safeRiskReversal);
   }
 
   return "";
@@ -690,7 +767,7 @@ function buildOfferLedPromise(input: RequiredInput) {
 
   if (offerClass === "investor") {
     if (/guarantee|guaranteed/.test(normalized) && /cash ?flow/.test(normalized)) {
-      return `We guarantee you a cash-flow positive property${timeline}`;
+      return `Review investment properties using cash-flow and risk analysis${timeline}`;
     }
 
     if (/off-market/.test(normalized)) {
@@ -704,10 +781,10 @@ function buildOfferLedPromise(input: RequiredInput) {
 
   if (offerClass === "approval") {
     if (extracted.creditScore) {
-      return `Get approved with just a ${extracted.creditScore}+ credit score`;
+      return `Review homes you may qualify for with ${extracted.creditScore}+ credit`;
     }
 
-    return enhanceOffer(offer, "buyer") || `Get approved faster in ${input.location}`;
+    return enhanceOffer(offer, "buyer") || `Review financing and home options in ${input.location}`;
   }
 
   if (offerClass === "seller") {
@@ -725,7 +802,7 @@ function buildDynamicApprovalHeadline(input: RequiredInput) {
   }
 
   const propertyLabel = input.pricePoint ? `a home ${input.pricePoint}` : "a condo";
-  return `Get Approved for ${propertyLabel} with Just a ${data.creditScore}+ Credit Score`;
+  return `Review ${propertyLabel} Options for Buyers with ${data.creditScore}+ Credit`;
 }
 
 function buildTimelineHeadline(input: RequiredInput) {
@@ -736,7 +813,7 @@ function buildTimelineHeadline(input: RequiredInput) {
   }
 
   if (input.marketType === "seller") {
-    return `Sell Your Home in ${data.timeline} or Less`;
+    return `Review a ${data.timeline} Home Sale Plan`;
   }
 
   return `Move Faster in ${input.location} with a ${data.timeline} Plan`;
@@ -750,7 +827,7 @@ function sharpenOffer(input: RequiredInput) {
 
   if (offerClass === "investor") {
     if (/guarantee|guaranteed/.test(normalized) && /cash ?flow/.test(normalized)) {
-      return `We guarantee you a cash-flow positive property${extracted.timeline ? ` in ${extracted.timeline}` : ""}.`;
+      return `Review investment properties using cash-flow and risk analysis${extracted.timeline ? ` with a ${extracted.timeline} review horizon` : ""}.`;
     }
 
     if (/off-market/.test(normalized)) {
@@ -764,7 +841,7 @@ function sharpenOffer(input: RequiredInput) {
 
   if (offerClass === "approval") {
     if (extracted.creditScore) {
-      return `Get approved for the right property with just a ${extracted.creditScore}+ credit score.`;
+      return `Review properties you may qualify for with ${extracted.creditScore}+ credit.`;
     }
 
     return ensureSentence(enhanceOffer(offer, "buyer") || offer);
@@ -865,8 +942,8 @@ function buildHeadlineVariations(input: RequiredInput, offerBlock: string): Scor
           reason: "Recommended because it is offer-first and direct-response ready.",
         },
         {
-          text: `Get your home sold with a stronger plan in ${input.location}.`,
-          reason: "Direct seller outcome with market specificity.",
+          text: `Build a stronger home sale plan in ${input.location}.`,
+          reason: "Direct seller planning benefit with market specificity.",
         },
         {
           text: `Reach qualified buyers faster in ${input.location}.`,
@@ -919,9 +996,7 @@ function buildOfferVariations(input: RequiredInput): ScoredVariation[] {
 
   return uniqueTexts.map((text) => ({
     text: ensureSentence(text),
-    reason: /guarantee|don’t pay|buy it/i.test(text)
-      ? "Includes a guarantee and risk reversal."
-      : "Enhances the actual offer without replacing the core promise.",
+    reason: "Enhances the actual offer without inventing an outcome claim.",
     ...scoreVariation(text, input),
   }));
 }
@@ -1075,8 +1150,9 @@ function scoreVariation(
     offerStrength += 3;
   }
 
-  if (/guarantee|guaranteed|or we.?ll buy it|don.?t pay|risk|qualifies/.test(normalized)) {
-    offerStrength += 3;
+  if (detectUnsupportedAdClaims(normalized).length > 0) {
+    offerStrength -= 8;
+    directResponse -= 4;
   }
 
   if (/access|buyers|homes|sale plan|cash-flow|cashflow|qualify|off-market|home value|investor deals/.test(normalized)) {
@@ -1297,6 +1373,12 @@ function validateGptCopyAssistantEnhancement(
   const failures: string[] = [];
   let score = 10;
 
+  const unsupportedClaims = detectUnsupportedAdClaims(Object.values(candidate).join("\n"));
+  if (unsupportedClaims.length > 0) {
+    failures.push(`Output contains unsupported outcome claims: ${Array.from(new Set(unsupportedClaims)).join(", ")}.`);
+    score -= 10;
+  }
+
   if (!hasOfferSignal(`${candidate.offer} ${candidate.headline} ${candidate.primaryText}`, input)) {
     failures.push("Output does not preserve the actual offer.");
     score -= 4;
@@ -1371,6 +1453,8 @@ Rules:
 - No generic phrases
 - No filler language
 - Do not drift into mortgage, credit, seller, or investor language unless the offer truly requires it
+- Never invent or repeat an unverified guarantee, guaranteed timeline, guaranteed approval, agent purchase promise, no-payment promise, risk-free claim, or cash-flow-positive claim
+- Use qualification, planning, review, and market-analysis language when the input contains an unsupported outcome claim
 - Keep the language specific, sales-ready, and realistic
 
 Structure:
@@ -1532,7 +1616,7 @@ export function generateCreativeCopyAssistant(
   const bestPrimaryText = pickBestVariation(rankedPrimaryTextVariations);
   const bestOffer = pickBestVariation(rankedOfferVariations);
 
-  return {
+  return sanitizeAssistantOutput({
     hook: bestHook.text,
     problem,
     mechanism,
@@ -1549,7 +1633,7 @@ export function generateCreativeCopyAssistant(
       hook: rankedHookVariations,
       primaryText: rankedPrimaryTextVariations,
     },
-  };
+  }, normalized);
 }
 
 export function improveCopyText(
@@ -1571,31 +1655,36 @@ export function improveCopyText(
   });
   const assistant = generateCreativeCopyAssistant(input);
   const currentText = safeString(text);
+  const sanitizeImprovement = (value: string) => sanitizeCopyText(value, normalized);
 
   if (type === "primary") {
-    return buildImprovedPrimaryText(normalized, currentText, assistant);
+    return sanitizeImprovement(buildImprovedPrimaryText(normalized, currentText, assistant));
   }
 
   if (type === "script") {
     const improvedPrimary = buildImprovedPrimaryText(normalized, currentText, assistant);
     const script = generateUGCScript(improvedPrimary);
-    return [script.hook, script.body, script.cta].filter(Boolean).join("\n");
+    return sanitizeImprovement([script.hook, script.body, script.cta].filter(Boolean).join("\n"));
   }
 
   if (type === "headline") {
-    return pickImprovedVariationWithGuardrails(assistant.alternatives.headline, currentText, normalized)?.text
-      || (preservesOfferSpecificity(assistant.headline, normalized, currentText) ? assistant.headline : currentText);
+    return sanitizeImprovement(
+      pickImprovedVariationWithGuardrails(assistant.alternatives.headline, currentText, normalized)?.text
+        || (preservesOfferSpecificity(assistant.headline, normalized, currentText) ? assistant.headline : currentText),
+    );
   }
 
   if (type === "overlay") {
     const improvedHook =
       pickImprovedVariationWithGuardrails(assistant.alternatives.hook, currentText, normalized)?.text
       || assistant.hook;
-    return toOverlayLine(improvedHook);
+    return sanitizeImprovement(toOverlayLine(improvedHook));
   }
 
-  return pickImprovedVariationWithGuardrails(assistant.alternatives.hook, currentText, normalized)?.text
-    || (preservesOfferSpecificity(assistant.hook, normalized, currentText) ? assistant.hook : currentText);
+  return sanitizeImprovement(
+    pickImprovedVariationWithGuardrails(assistant.alternatives.hook, currentText, normalized)?.text
+      || (preservesOfferSpecificity(assistant.hook, normalized, currentText) ? assistant.hook : currentText),
+  );
 }
 
 export function generateAdCopy(input?: CopyEngineInput | null): AdCopyOutput[] {
@@ -1623,11 +1712,14 @@ export function generateAdCopy(input?: CopyEngineInput | null): AdCopyOutput[] {
       ].join("\n\n");
 
     return {
-      hook,
-      primary_text: primaryText,
-      script: [ugcScript.hook, ugcScript.body, ugcScript.cta].filter(Boolean).join("\n"),
-      headline: assistant.headline,
-      cta,
+      hook: sanitizeCopyText(hook, normalized),
+      primary_text: sanitizeCopyText(primaryText, normalized),
+      script: sanitizeCopyText(
+        [ugcScript.hook, ugcScript.body, ugcScript.cta].filter(Boolean).join("\n"),
+        normalized,
+      ),
+      headline: sanitizeCopyText(assistant.headline, normalized),
+      cta: sanitizeCopyText(cta, normalized),
     };
   });
 }

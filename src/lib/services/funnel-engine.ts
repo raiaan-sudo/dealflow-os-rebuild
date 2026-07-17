@@ -1,4 +1,8 @@
 import type { CampaignIntent } from "@/lib/campaign-intent";
+import {
+  detectUnsupportedAdClaims,
+  sanitizeAdClaimText,
+} from "@/lib/copy/claim-safety";
 import { enhanceOffer, extractOfferData } from "@/lib/copy/offer-enhancement";
 import {
   buildOfferFirstHeadline as buildConsistentOfferHeadline,
@@ -277,7 +281,7 @@ function toConceptPhrase(value: string) {
   }
 
   if (/guaranteed cashflow/.test(normalized)) {
-    return "properties that deliver guaranteed cashflow";
+    return "investment properties reviewed for cash-flow potential and risk";
   }
 
   if (/off[- ]market/.test(normalized)) {
@@ -317,22 +321,19 @@ function parseOffer(input: NormalizedInput): ParsedOffer {
   const timeHorizon = safeText(extracted.timeline);
   const audience = safeText(extracted.audience) || safeText(input.audience);
   const market = safeText(input.location);
-  const riskReversal =
-    extracted.hasGuarantee && input.marketType === "seller"
-      ? "If it does not sell, you do not pay"
-      : extracted.hasGuarantee
-        ? "We do the filtering so you do not waste months on weak deals"
-        : "";
+  const riskReversal = extracted.hasGuarantee
+    ? "Review the plan and supporting market analysis before deciding on the next step"
+    : "";
   const assetType =
     /condo|property|properties|home|homes|rental|deal|deals/i.exec(normalized)?.[0] || "property";
 
   if (input.marketType === "investor" || /cash ?flow|off-market|investor/.test(normalized)) {
     return {
       promise: extracted.hasGuarantee
-        ? `We guarantee you a cash-flow positive ${assetType}`
+        ? `Review ${assetType} opportunities using cash-flow and risk analysis`
         : `Get access to ${assetType} opportunities built for cash flow`,
       timeHorizon,
-      outcome: /cash ?flow/.test(normalized) ? "cash-flow positive property" : "stronger investor-grade opportunities",
+      outcome: /cash ?flow/.test(normalized) ? "cash-flow and risk analysis" : "stronger investor-grade opportunities",
       audience,
       market,
       riskReversal,
@@ -343,12 +344,12 @@ function parseOffer(input: NormalizedInput): ParsedOffer {
 
   if (/approv|credit|mortgage/.test(normalized)) {
     return {
-      promise: enhanceOffer(offer, "buyer") || `Get approved faster in ${market}`,
+      promise: enhanceOffer(offer, "buyer") || `Review home and financing options in ${market}`,
       timeHorizon,
-      outcome: extracted.creditScore ? `approval with a ${extracted.creditScore}+ credit score` : "faster approval",
+      outcome: extracted.creditScore ? `options for buyers with ${extracted.creditScore}+ credit` : "qualification clarity",
       audience,
       market,
-      riskReversal: riskReversal || "No downside if your profile does not qualify",
+      riskReversal,
       assetType,
       offerClass: "approval",
     };
@@ -356,9 +357,9 @@ function parseOffer(input: NormalizedInput): ParsedOffer {
 
   if (input.marketType === "seller" || /sell|buyer network|home sold|homeowners?/.test(normalized)) {
     return {
-      promise: enhanceOffer(offer, "seller") || `Sell your home faster in ${market}`,
+      promise: enhanceOffer(offer, "seller") || `Review a home value and sale plan in ${market}`,
       timeHorizon,
-      outcome: timeHorizon ? `sell in ${timeHorizon}` : "sell faster",
+      outcome: timeHorizon ? `${timeHorizon} sale-plan review` : "a clearer sale plan",
       audience,
       market,
       riskReversal,
@@ -387,12 +388,12 @@ function buildHeadlineVariations(input: NormalizedInput, parsed: ParsedOffer) {
 
   if (parsed.offerClass === "investor") {
     return uniqueFragments([
-      time && /guarantee/i.test(promise)
-        ? `We Guarantee You a Cash-Flow Positive ${parsed.assetType} in the Next ${time}`
+      time && /review/i.test(promise)
+        ? `Review ${parsed.assetType} Opportunities with a ${time} Analysis Horizon`
         : "",
       `Get ${parsed.assetType} opportunities in ${market} built for cash flow`,
-      `${capitalize(audience || "Investors")}: lock in cash-flow positive deals in ${market}`,
-      `Secure a cash-flow positive ${parsed.assetType} before weaker deals waste your time`,
+      `${capitalize(audience || "Investors")}: review cash-flow and risk factors in ${market}`,
+      `Compare ${parsed.assetType} opportunities before weaker deals waste your time`,
     ]).map((text) => trimWords(text, 16));
   }
 
@@ -400,14 +401,14 @@ function buildHeadlineVariations(input: NormalizedInput, parsed: ParsedOffer) {
     return uniqueFragments([
       promise,
       `${capitalize(audience || "Buyers")} in ${market}: stop assuming you cannot qualify`,
-      `Get approved faster for the right ${parsed.assetType} in ${market}`,
+      `Review qualification-friendly ${parsed.assetType} options in ${market}`,
     ]).map((text) => trimWords(text, 16));
   }
 
   if (parsed.offerClass === "guarantee" || parsed.offerClass === "seller") {
     return uniqueFragments([
       promise,
-      time ? `Sell your home in ${time} or less in ${market}` : "",
+      time ? `Review a ${time} Home Sale Plan in ${market}` : "",
       `${capitalize(audience || "Homeowners")}: stop letting your home sit in ${market}`,
     ]).map((text) => trimWords(text, 16));
   }
@@ -482,10 +483,14 @@ function scoreFunnelVariation(variation: Omit<FunnelVariation, "score">, input: 
   if (parsed.timeHorizon && combined.includes(parsed.timeHorizon.toLowerCase())) specificity += 2;
   if (/cash ?flow|off-market|approved|credit|sell|buyers|investor/.test(combined)) specificity += 2;
 
-  if (/we guarantee|get|see|access|qualify|sell/.test(combined)) directness += 3;
+  if (/get|see|access|may qualify|sale plan|review/.test(combined)) directness += 3;
   if (variation.cta.length <= 22) directness += 1;
 
-  if (/guarantee|cash-flow positive|approved|off-market/.test(combined)) promiseStrength += 3;
+  if (/cash-flow analysis|may qualify|off-market|sale plan/.test(combined)) promiseStrength += 3;
+  if (detectUnsupportedAdClaims(combined).length > 0) {
+    promiseStrength -= 8;
+    directness -= 4;
+  }
   if (parsed.riskReversal && combined.includes(parsed.riskReversal.toLowerCase().split(" ")[0] || "")) promiseStrength += 1;
 
   const offerTokens = safeText(input.offer).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3);
@@ -899,6 +904,37 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
   ];
 }
 
+function sanitizeFunnelBlueprint(
+  blueprint: FunnelBlueprint,
+  input: NormalizedInput,
+): FunnelBlueprint {
+  const sanitize = (value: unknown, fallback?: string) => sanitizeAdClaimText(value, {
+    intent: input.marketType,
+    location: input.location,
+    fallback,
+  });
+
+  return {
+    ...blueprint,
+    headline: sanitize(blueprint.headline),
+    subheadline: sanitize(blueprint.subheadline),
+    cta: sanitize(blueprint.cta),
+    sections: blueprint.sections.map((section) => ({
+      ...section,
+      title: sanitize(section.title),
+      content: section.content.map((value) => sanitize(value)),
+      media: section.media
+        ? {
+            ...section.media,
+            label: section.media.label ? sanitize(section.media.label) : section.media.label,
+            caption: section.media.caption ? sanitize(section.media.caption) : section.media.caption,
+          }
+        : section.media,
+    })),
+    optimization_notes: blueprint.optimization_notes.map((value) => sanitize(value)),
+  };
+}
+
 export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
   const raw = input || {};
   const normalized = normalizeInput(raw);
@@ -937,7 +973,7 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
   headline = trimWords(headline, 18);
   subheadline = trimWords(subheadline, 32);
 
-  return {
+  return sanitizeFunnelBlueprint({
     funnel_type: FUNNEL_TYPE_BY_GOAL[normalized.funnelGoal],
     headline,
     subheadline,
@@ -949,5 +985,5 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
         ? FOLLOW_UP_ACTION_BY_GOAL[normalized.funnelGoal]
         : "show_thank_you_page_call_5_15_minutes",
     optimization_notes: buildOptimizationNotes(normalized),
-  };
+  }, normalized);
 }

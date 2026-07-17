@@ -28,6 +28,7 @@ import { buildExecutableCampaign, type ExecutableAd, type ExecutableAdSet, type 
 import { getLatestCampaignPlan } from "@/lib/services/campaign-plan-service";
 import { updateMetaPublishResult } from "@/lib/services/campaign-runtime-service";
 import { getAppContext } from "@/lib/services/app-context";
+import { assertExecutableMetaCampaignClaims } from "@/lib/advertising-claim-boundaries";
 
 export type DeploymentResult = {
   mode: "sandbox" | "live";
@@ -155,6 +156,7 @@ export async function prepareCampaignDeployment(params?: {
   }
 
   const executableCampaign = buildExecutableCampaign(plan);
+  assertExecutableMetaCampaignClaims(executableCampaign);
   const { connection, accessToken, executionMode, selectedAccountId, selectedPageId, selectedPixelId } =
     await getMetaConnectionForExecution();
   const launchMode = params?.launchMode === "live" ? "live" : "test";

@@ -9,16 +9,28 @@ import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { parseProductLocalePathname } from "@/lib/i18n/routing";
+import { WorkspaceSelectionForm } from "@/components/workspace/workspace-selection-form";
+import type { WorkspaceOption } from "@/lib/services/workspace-selection-service";
 
 type TopBarProps = {
   userName: string;
   userEmail: string;
   organizationName: string;
   productName?: string;
+  currentOrganizationId?: string | null;
+  workspaceOptions?: WorkspaceOption[];
 };
 
-export function TopBar({ userName, userEmail, organizationName, productName = "DealFlow AI" }: TopBarProps) {
-  const pathname = parseProductLocalePathname(usePathname()).pathname;
+export function TopBar({
+  userName,
+  userEmail,
+  organizationName,
+  productName = "DealFlow AI",
+  currentOrganizationId,
+  workspaceOptions = [],
+}: TopBarProps) {
+  const rawPathname = usePathname();
+  const pathname = parseProductLocalePathname(rawPathname).pathname;
   const { t } = useProductI18n();
 
   if (pathname.startsWith("/preview")) {
@@ -46,6 +58,16 @@ export function TopBar({ userName, userEmail, organizationName, productName = "D
         </div>
 
         <div className="flex items-center gap-3">
+          {workspaceOptions.length > 1 ? (
+            <div className="hidden xl:block">
+              <WorkspaceSelectionForm
+                compact
+                options={workspaceOptions}
+                currentOrganizationId={currentOrganizationId}
+                returnTo={rawPathname}
+              />
+            </div>
+          ) : null}
           <div className="hidden 2xl:block">
             <LocaleSwitcher compact />
           </div>

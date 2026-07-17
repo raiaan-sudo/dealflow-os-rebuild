@@ -139,7 +139,7 @@ const receipt = await deliverSupportNotification({
   transport: async ({ endpoint, headers, body }) => {
     transportCalls += 1;
     assert.equal(endpoint.origin, "http://127.0.0.1:8025");
-    assert.equal(headers["idempotency-key"], "outbox-1");
+    assert.equal(headers["idempotency-key"], "support/outbox-1");
     assert.equal(headers.authorization, undefined);
     const payload = JSON.parse(body);
     assert.equal(payload.destination, "owner@example.test");
@@ -147,6 +147,7 @@ const receipt = await deliverSupportNotification({
     assert.equal(payload.userReference, undefined);
     assert.equal(payload.organizationReference, undefined);
     assert.equal(payload.correlationReference, "correlation-1");
+    assert.equal(payload.idempotencyKey, "support/outbox-1");
     return { ok: true, status: 202, receiptId: "sink-receipt-1" };
   },
 });

@@ -1,5 +1,11 @@
 # White-label and Higgsfield authority contract
 
+> **Dated architecture retained; release status superseded.** The contract below
+> remains predecessor context. Current successor and proof status is
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md).
+> No live creative-provider, GHL, hosted-staging or production acceptance is
+> claimed.
+
 ## White-label partners
 
 White-label behavior is configuration-driven. A customer workspace receives a

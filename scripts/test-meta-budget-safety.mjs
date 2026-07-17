@@ -334,6 +334,9 @@ const launchService = loadTs("src/lib/services/meta-launch-service.ts", {
     },
   },
   "@/lib/integrations/meta/budget-safety": budget,
+  "@/lib/advertising-claim-boundaries": {
+    assertMetaCreativeClaims() {},
+  },
 });
 
 const providerEnvironmentKeys = [

@@ -1,5 +1,12 @@
 # Isolated staging acceptance
 
+> **Predecessor harness contract.** References below to the exact prior-103
+> state and a single 103-to-104 forward application are historical and are not a
+> valid path for the 108-migration successor. See
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md).
+> Successor staging is `NOT_YET_RUN` and requires exact fresh-108 proof or a
+> separately reviewed multi-migration forward plan.
+
 This harness is the only supported one-pass path from an exact local release seal to the isolated DealFlow staging project. It is fail-closed and does not authorize production.
 
 ## Safety boundary

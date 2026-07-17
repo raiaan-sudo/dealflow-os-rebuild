@@ -3,6 +3,7 @@ export * from "./credential-resolver";
 export * from "./fake-adapter";
 export * from "./http-client";
 export * from "./lifecycle-gate";
+export * from "./marketplace-oauth-contract";
 export * from "./memory-repository";
 export * from "./production-gate";
 export * from "./production-adapter";

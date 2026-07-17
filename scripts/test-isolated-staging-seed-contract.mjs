@@ -9,6 +9,10 @@ import { buildStagingMetaProviderContract } from "./lib/staging-meta-provider-co
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
+const successorContract = readFileSync(
+  join(root, "scripts", "staging", "successor-provider-independent-contract.mjs"),
+  "utf8",
+);
 const authorityReset = readFileSync(
   join(root, "scripts", "lib", "synthetic-qa-authority-reset.mjs"),
   "utf8",
@@ -46,6 +50,42 @@ const campaignCreationGateMigration = readFileSync(
     "supabase",
     "migrations",
     "20260710235950_gate_campaign_creation_entitlement.sql",
+  ),
+  "utf8",
+);
+const optimizerMinimumSampleMigration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260716010000_require_optimizer_cpl_minimum_lead_sample.sql",
+  ),
+  "utf8",
+);
+const creditTopUpV2Migration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260716180000_harden_credit_top_up_request_idempotency.sql",
+  ),
+  "utf8",
+);
+const ghlMarketplaceMigration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260716190000_add_ghl_marketplace_oauth_install_foundation.sql",
+  ),
+  "utf8",
+);
+const stripeLifecycleMigration = readFileSync(
+  join(
+    root,
+    "supabase",
+    "migrations",
+    "20260716200000_harden_stripe_payment_lifecycle.sql",
   ),
   "utf8",
 );
@@ -369,6 +409,62 @@ assert.match(source, /providerMutationPerformed: false/);
 assert.match(source, /The live synthetic RLS credit balances are not exactly scoped/);
 assert.match(source, /replayIdempotent: true/);
 assert.match(source, /request_ghl_provisioning_from_billing_activation_v1/);
+assert.match(source, /proveSyntheticCreditAndPendingStripeLifecycle/);
+assert.match(source, /assertSuccessorServiceOnlySchemaReadback/);
+assert.match(source, /successorCreditIntent: "e3000000-0000-4000-8000-000000000001"/);
+assert.match(source, /successorCreditReplayIntent: "e3000000-0000-4000-8000-000000000002"/);
+assert.match(source, /successorCreditRequest: "e3000000-0000-4000-8000-000000000003"/);
+assert.match(source, /checkoutSessionId: "cs_test_df_successor_credit_pending_20260716"/);
+assert.match(source, /successorProviderIndependent: \{/);
+assert.match(source, /exactMigrationChainRequired: 108/);
+assert.match(source, /20260716200000_harden_stripe_payment_lifecycle\.sql/);
+assert.match(successorContract, /SUCCESSOR_SCHEMA_VERSION = "20260716200000"/);
+for (const table of [
+  "ghl_marketplace_oauth_states",
+  "ghl_marketplace_authorities",
+  "ghl_marketplace_lifecycle_events",
+  "ghl_marketplace_token_sets",
+  "ghl_marketplace_token_events",
+  "ghl_marketplace_location_token_exchanges",
+  "ghl_marketplace_realtor_user_operations",
+  "stripe_checkout_payment_lifecycle",
+  "stripe_charge_financial_lifecycle",
+  "stripe_refund_lifecycle",
+  "stripe_dispute_lifecycle",
+]) {
+  assert.match(successorContract, new RegExp(`"${table}"`), `missing successor table ${table}`);
+}
+assert.match(successorContract, /create_credit_top_up_intent_v2/);
+assert.match(successorContract, /bind_credit_top_up_checkout_v1/);
+assert.match(successorContract, /project_stripe_checkout_payment_lifecycle_v1/);
+assert.match(successorContract, /pendingPaymentCreditLedgerRows: 0/);
+assert.match(successorContract, /result\.error\.code !== "42501"/);
+assert.match(successorContract, /authenticatedDenialCount: authenticatedDenials\.length/);
+assert.match(successorContract, /BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED/);
+assert.match(successorContract, /BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY/);
+assert.match(successorContract, /BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY/);
+assert.match(
+  optimizerMinimumSampleMigration,
+  /meta_optimizer_cpl_minimum_lead_sample_guard[\s\S]*before insert on public\.meta_optimization_execution_intents/,
+);
+assert.match(optimizerMinimumSampleMigration, /message = 'below_minimum_leads_for_cpl'/);
+assert.match(creditTopUpV2Migration, /credit_top_up_intents_actor_request_unique/);
+assert.match(creditTopUpV2Migration, /credit_top_up_request_identity_collision/);
+assert.match(creditTopUpV2Migration, /to service_role/);
+assert.match(ghlMarketplaceMigration, /force row level security/);
+assert.match(ghlMarketplaceMigration, /grant select on table public\.%I to service_role/);
+assert.match(ghlMarketplaceMigration, /return 'duplicate'/);
+assert.match(ghlMarketplaceMigration, /return query select 'stale_generation'/);
+assert.match(ghlMarketplaceMigration, /generation = next_generation/);
+assert.match(ghlMarketplaceMigration, /on conflict \(idempotency_key\)/);
+assert.match(ghlMarketplaceMigration, /ghl_marketplace_receipt_is_append_only/);
+assert.match(ghlMarketplaceMigration, /Only opaque encrypted references are stored/);
+assert.match(stripeLifecycleMigration, /force row level security/);
+assert.match(stripeLifecycleMigration, /to service_role/);
+assert.match(stripeLifecycleMigration, /stripe_checkout_lifecycle_identity_collision/);
+assert.match(stripeLifecycleMigration, /p_event_created > current_record\.latest_event_created/);
+assert.match(stripeLifecycleMigration, /current_record\.payment_state <> 'succeeded'/);
+assert.match(stripeLifecycleMigration, /status = 'operator_action_required'/);
 assert.doesNotMatch(source, /upsert\(admin, "campaign_plans"/);
 assert.match(source, /create \$\{childCampaign\.name\} through entitlement RPC/);
 assert.match(source, /p_campaign_id: childCampaign\.id/);
@@ -499,5 +595,5 @@ assert.match(envExample, /^PARTNER_ATTRIBUTION_SIGNING_SECRET=$/m);
 assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);
 
 console.log(
-  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic business roles plus one non-admin QA harness member, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
+  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic business roles plus one non-admin QA harness member, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, successor 105-108 service-only/RLS/idempotency/no-effect inventory, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
 );

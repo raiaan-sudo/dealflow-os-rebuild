@@ -29,6 +29,7 @@ import {
   resolveStripeSubscriptionPlanTier,
 } from "@/lib/billing/stripe-plan-resolution";
 import {
+  CREDIT_TOP_UP_MAXIMUM_CENTS,
   CREDIT_TOP_UP_MINIMUM_CENTS,
   recordCommercialActivationWithInitialCredit,
 } from "@/lib/services/credit-service";
@@ -42,6 +43,13 @@ import {
 } from "@/lib/commercial-activation-policy";
 import type { Database, Json } from "@/lib/supabase/types";
 import { getDeploymentTarget } from "@/lib/deployment-target";
+import {
+  normalizeStripeCheckoutLifecycleEvent,
+  normalizeStripeFinancialLifecycleEvent,
+  StripeLifecycleValidationError,
+  type NormalizedStripeCheckoutLifecycle,
+} from "@/lib/billing/stripe-lifecycle";
+import { getStripeCheckoutPromotionPolicy } from "@/lib/billing/stripe-promotion-policy";
 
 type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
 type BillingInsert = Database["public"]["Tables"]["billing_subscriptions"]["Insert"];
@@ -191,6 +199,32 @@ function getStripeCustomerIdFromSession(session: Stripe.Checkout.Session) {
   }
 
   return session.customer?.id ?? null;
+}
+
+function isMatchingOpenCreditTopUpCheckoutSession(
+  session: Stripe.Checkout.Session,
+  expected: {
+    amountCents: number;
+    customerId: string;
+    organizationId: string;
+    intentId: string;
+    sessionId?: string;
+  },
+) {
+  return (
+    typeof session.id === "string" &&
+    session.id.trim().length > 0 &&
+    (!expected.sessionId || session.id === expected.sessionId) &&
+    session.status === "open" &&
+    session.mode === "payment" &&
+    typeof session.url === "string" &&
+    session.amount_total === expected.amountCents &&
+    session.currency === "usd" &&
+    session.client_reference_id === expected.organizationId &&
+    getStripeCustomerIdFromSession(session) === expected.customerId &&
+    session.metadata?.checkout_kind === "credit_top_up" &&
+    session.metadata?.credit_top_up_intent_id === expected.intentId
+  );
 }
 
 function getStripeSubscriptionFromSession(session: Stripe.Checkout.Session) {
@@ -808,7 +842,7 @@ export async function createBillingCheckoutSession(params: {
         ],
         success_url: urls.successUrl,
         cancel_url: urls.cancelUrl,
-        allow_promotion_codes: true,
+        ...getStripeCheckoutPromotionPolicy({ surface: "direct" }),
         metadata,
         subscription_data: {
           metadata,
@@ -871,9 +905,43 @@ export async function createBillingCheckoutSession(params: {
 
 export async function createCreditTopUpCheckoutSession(params: {
   amountCents: number;
+  clientRequestId: string;
   customerName?: string;
   customerEmail?: string;
 }) {
+  if (!Number.isInteger(params.amountCents)) {
+    throw new ApiError(
+      400,
+      "Credit top-up amount must be a whole number of cents.",
+      "credit_top_up_amount_invalid",
+    );
+  }
+  if (params.amountCents < CREDIT_TOP_UP_MINIMUM_CENTS) {
+    throw new ApiError(
+      400,
+      `Credit top-up minimum is $${(CREDIT_TOP_UP_MINIMUM_CENTS / 100).toFixed(2)}.`,
+      "credit_top_up_minimum_not_met",
+    );
+  }
+  if (params.amountCents > CREDIT_TOP_UP_MAXIMUM_CENTS) {
+    throw new ApiError(
+      400,
+      `Credit top-up maximum is $${(CREDIT_TOP_UP_MAXIMUM_CENTS / 100).toFixed(2)}.`,
+      "credit_top_up_maximum_exceeded",
+    );
+  }
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      params.clientRequestId,
+    )
+  ) {
+    throw new ApiError(
+      400,
+      "Credit top-up request identity is invalid.",
+      "credit_top_up_request_id_invalid",
+    );
+  }
+
   assertBillingCheckoutWritesAllowed();
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
   const stripeProvider = getStripeBillingProvider();
@@ -886,14 +954,7 @@ export async function createCreditTopUpCheckoutSession(params: {
     throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
   }
 
-  const amountCents = Math.floor(params.amountCents);
-  if (!Number.isFinite(amountCents) || amountCents < CREDIT_TOP_UP_MINIMUM_CENTS) {
-    throw new ApiError(
-      400,
-      `Credit top-up minimum is $${(CREDIT_TOP_UP_MINIMUM_CENTS / 100).toFixed(2)}.`,
-      "credit_top_up_minimum_not_met",
-    );
-  }
+  const amountCents = params.amountCents;
 
   const billingClient = createAdminClient();
 
@@ -938,13 +999,14 @@ export async function createCreditTopUpCheckoutSession(params: {
   }
   const customerId = existingBillingRow.stripe_customer_id;
 
-  const creditTopUpIntentId = crypto.randomUUID();
-  const { error: intentError } = await (billingClient as any).rpc(
-    "create_credit_top_up_intent_v1",
+  const proposedCreditTopUpIntentId = crypto.randomUUID();
+  const { data: intentRows, error: intentError } = await (billingClient as any).rpc(
+    "create_credit_top_up_intent_v2",
     {
-      p_intent_id: creditTopUpIntentId,
+      p_intent_id: proposedCreditTopUpIntentId,
       p_organization_id: context.organization.id,
       p_user_id: context.user.id,
+      p_client_request_id: params.clientRequestId,
       p_amount_cents: amountCents,
       p_currency: "usd",
       p_stripe_customer_id: customerId,
@@ -952,7 +1014,76 @@ export async function createCreditTopUpCheckoutSession(params: {
   );
 
   if (intentError) {
+    if (intentError.message.includes("credit_top_up_request_identity_collision")) {
+      throw new ApiError(
+        409,
+        "This credit top-up request identity is already bound to different purchase details.",
+        "credit_top_up_request_identity_collision",
+      );
+    }
     throw new ApiError(500, intentError.message, "credit_top_up_intent_create_failed");
+  }
+
+  const intent = (Array.isArray(intentRows) ? intentRows[0] : intentRows) as {
+    intent_id?: unknown;
+    amount_cents?: unknown;
+    currency?: unknown;
+    stripe_customer_id?: unknown;
+    stripe_checkout_session_id?: unknown;
+    status?: unknown;
+  } | null;
+  if (
+    !intent ||
+    typeof intent.intent_id !== "string" ||
+    intent.amount_cents !== amountCents ||
+    intent.currency !== "usd" ||
+    intent.stripe_customer_id !== customerId ||
+    typeof intent.status !== "string"
+  ) {
+    throw new ApiError(
+      500,
+      "Credit top-up intent returned an invalid durable identity.",
+      "credit_top_up_intent_invalid",
+    );
+  }
+  const creditTopUpIntentId = intent.intent_id;
+
+  if (intent.status === "checkout_created") {
+    if (typeof intent.stripe_checkout_session_id !== "string") {
+      throw new ApiError(
+        409,
+        "The existing credit checkout is missing its provider identity.",
+        "credit_top_up_checkout_identity_missing",
+      );
+    }
+    const existingSession = (await stripeProvider.execute({
+      action: "retrieve_checkout_session",
+      sessionId: intent.stripe_checkout_session_id,
+    })) as Stripe.Checkout.Session;
+    assertStripeObjectRuntimeMode(existingSession, "Stripe credit Checkout Session");
+    const existingSessionValid = isMatchingOpenCreditTopUpCheckoutSession(existingSession, {
+      amountCents,
+      customerId,
+      organizationId: context.organization.id,
+      intentId: creditTopUpIntentId,
+      sessionId: intent.stripe_checkout_session_id,
+    });
+    if (!existingSessionValid) {
+      throw new ApiError(
+        409,
+        "The existing credit checkout can no longer be reused safely.",
+        "credit_top_up_checkout_not_reusable",
+      );
+    }
+    return { url: existingSession.url, sessionId: existingSession.id };
+  }
+
+  if (intent.status !== "created") {
+    throw new ApiError(
+      409,
+      "This credit top-up request has already been finalized.",
+      "credit_top_up_request_finalized",
+    );
   }
 
   const baseUrl =
@@ -985,6 +1116,7 @@ export async function createCreditTopUpCheckoutSession(params: {
       ],
       success_url: `${baseUrl}/settings?credits=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/settings?credits=cancelled`,
+      allow_promotion_codes: false,
       metadata,
       payment_intent_data: {
         metadata,
@@ -992,6 +1124,18 @@ export async function createCreditTopUpCheckoutSession(params: {
     },
   })) as Stripe.Checkout.Session;
   assertStripeObjectRuntimeMode(session, "Stripe credit Checkout Session");
+  if (!isMatchingOpenCreditTopUpCheckoutSession(session, {
+    amountCents,
+    customerId,
+    organizationId: context.organization.id,
+    intentId: creditTopUpIntentId,
+  })) {
+    throw new ApiError(
+      502,
+      "Stripe returned an invalid credit Checkout Session.",
+      "credit_top_up_checkout_invalid",
+    );
+  }
 
   const { error: bindError } = await (billingClient as any).rpc(
     "bind_credit_top_up_checkout_v1",
@@ -1453,11 +1597,15 @@ function getCommercialActivationCandidate(
 }) | null {
   const object = event.data.object as unknown as Stripe.Event.Data.Object & Record<string, unknown>;
 
-  if (event.type === "checkout.session.completed" && object.object === "checkout.session") {
+  if (
+    (event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded") &&
+    object.object === "checkout.session"
+  ) {
     const session = object as unknown as Stripe.Checkout.Session;
     assertStripeObjectRuntimeMode(session, "Stripe Checkout Session");
     return {
-      source: "checkout.session.completed",
+      source: event.type,
       billingStateApplied: syncResult.applied,
       organizationId: syncResult.organizationId,
       userId: syncResult.userId,
@@ -1641,15 +1789,6 @@ async function resolveCommercialActivationBillingState(
   };
 }
 
-function isCreditTopUpCheckoutSession(object: Stripe.Event.Data.Object): object is Stripe.Checkout.Session {
-  const checkoutObject = object as { object?: unknown; metadata?: Record<string, string> | null };
-
-  return (
-    checkoutObject.object === "checkout.session" &&
-    checkoutObject.metadata?.checkout_kind === "credit_top_up"
-  );
-}
-
 async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session, event: Stripe.Event) {
   assertStripeObjectRuntimeMode(session, "Stripe credit Checkout Session");
 
@@ -1682,6 +1821,7 @@ async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session,
     !stripeCustomerId ||
     !Number.isInteger(amountCents) ||
     (amountCents as number) < CREDIT_TOP_UP_MINIMUM_CENTS ||
+    (amountCents as number) > CREDIT_TOP_UP_MAXIMUM_CENTS ||
     currency !== "usd"
   ) {
     throw new ApiError(
@@ -1742,6 +1882,172 @@ async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session,
   return result;
 }
 
+function stripeLifecycleApiError(error: unknown) {
+  if (error instanceof StripeLifecycleValidationError) {
+    return new ApiError(409, error.message, error.code);
+  }
+  return error;
+}
+
+export async function projectStripeCheckoutLifecycleEvent(event: Stripe.Event) {
+  let normalized: NormalizedStripeCheckoutLifecycle | null;
+  try {
+    normalized = normalizeStripeCheckoutLifecycleEvent(event);
+  } catch (error) {
+    throw stripeLifecycleApiError(error);
+  }
+  if (!normalized) return null;
+
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+  const { data, error } = await (admin as any).rpc(
+    "project_stripe_checkout_payment_lifecycle_v1",
+    {
+      p_event_id: normalized.eventId,
+      p_event_type: normalized.eventType,
+      p_event_created: normalized.eventCreated,
+      p_checkout_session_id: normalized.checkoutSessionId,
+      p_checkout_flow: normalized.flow,
+      p_payment_state: normalized.paymentState,
+      p_organization_id: normalized.organizationId,
+      p_user_id: normalized.userId,
+      p_access_key_id: normalized.accessKeyId,
+      p_credit_top_up_intent_id: normalized.creditTopUpIntentId,
+      p_stripe_customer_id: normalized.stripeCustomerId,
+      p_stripe_payment_intent_id: normalized.stripePaymentIntentId,
+      p_stripe_subscription_id: normalized.stripeSubscriptionId,
+      p_amount_total: normalized.amountTotal,
+      p_currency: normalized.currency,
+    },
+  );
+  if (error) {
+    const collision = /mismatch|collision|ambiguity/i.test(error.message);
+    throw new ApiError(
+      collision ? 409 : 500,
+      error.message,
+      collision
+        ? "stripe_checkout_lifecycle_identity_conflict"
+        : "stripe_checkout_lifecycle_projection_failed",
+    );
+  }
+  const projection = (Array.isArray(data) ? data[0] : data) as {
+    applied?: unknown;
+    current_payment_state?: unknown;
+  } | null;
+  if (!projection || typeof projection.current_payment_state !== "string") {
+    throw new ApiError(
+      500,
+      "Stripe Checkout lifecycle returned no durable result.",
+      "stripe_checkout_lifecycle_projection_missing",
+    );
+  }
+  logOperationalEvent("stripe_checkout_lifecycle_projected", {
+    eventId: event.id,
+    eventType: event.type,
+    checkoutSessionId: normalized.checkoutSessionId,
+    checkoutFlow: normalized.flow,
+    paymentState: projection.current_payment_state,
+    projectionApplied: projection.applied === true,
+  });
+  return { normalized, projection };
+}
+
+async function projectStripeFinancialLifecycleEvent(event: Stripe.Event) {
+  let normalized;
+  try {
+    normalized = normalizeStripeFinancialLifecycleEvent(event);
+  } catch (error) {
+    throw stripeLifecycleApiError(error);
+  }
+  if (!normalized) return null;
+
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+  let rpcName: string;
+  let args: Record<string, unknown>;
+  if (normalized.kind === "charge_refund") {
+    rpcName = "project_stripe_charge_refund_lifecycle_v1";
+    args = {
+      p_event_id: normalized.eventId,
+      p_event_created: normalized.eventCreated,
+      p_stripe_charge_id: normalized.stripeChargeId,
+      p_stripe_payment_intent_id: normalized.stripePaymentIntentId,
+      p_stripe_customer_id: normalized.stripeCustomerId,
+      p_organization_id_hint: normalized.organizationIdHint,
+      p_credit_top_up_intent_id_hint: normalized.creditTopUpIntentIdHint,
+      p_amount_cents: normalized.amountCents,
+      p_amount_refunded_cents: normalized.amountRefundedCents,
+      p_currency: normalized.currency,
+    };
+  } else if (normalized.kind === "refund") {
+    rpcName = "project_stripe_refund_lifecycle_v1";
+    args = {
+      p_event_id: normalized.eventId,
+      p_event_type: normalized.eventType,
+      p_event_created: normalized.eventCreated,
+      p_stripe_refund_id: normalized.stripeRefundId,
+      p_stripe_charge_id: normalized.stripeChargeId,
+      p_stripe_payment_intent_id: normalized.stripePaymentIntentId,
+      p_organization_id_hint: normalized.organizationIdHint,
+      p_credit_top_up_intent_id_hint: normalized.creditTopUpIntentIdHint,
+      p_amount_cents: normalized.amountCents,
+      p_currency: normalized.currency,
+      p_refund_status: normalized.status,
+      p_failure_reason: normalized.failureReason,
+    };
+  } else {
+    rpcName = "project_stripe_dispute_lifecycle_v1";
+    args = {
+      p_event_id: normalized.eventId,
+      p_event_type: normalized.eventType,
+      p_event_created: normalized.eventCreated,
+      p_stripe_dispute_id: normalized.stripeDisputeId,
+      p_stripe_charge_id: normalized.stripeChargeId,
+      p_stripe_payment_intent_id: normalized.stripePaymentIntentId,
+      p_organization_id_hint: normalized.organizationIdHint,
+      p_credit_top_up_intent_id_hint: normalized.creditTopUpIntentIdHint,
+      p_amount_cents: normalized.amountCents,
+      p_currency: normalized.currency,
+      p_dispute_status: normalized.status,
+      p_dispute_reason: normalized.reason,
+    };
+  }
+  const { data, error } = await (admin as any).rpc(rpcName, args);
+  if (error) {
+    const conflict = /mismatch|collision|ambiguity/i.test(error.message);
+    throw new ApiError(
+      conflict ? 409 : 500,
+      error.message,
+      conflict
+        ? "stripe_financial_lifecycle_identity_conflict"
+        : "stripe_financial_lifecycle_projection_failed",
+    );
+  }
+  const projection = (Array.isArray(data) ? data[0] : data) as {
+    applied?: unknown;
+    operator_action_required?: unknown;
+  } | null;
+  if (!projection) {
+    throw new ApiError(
+      500,
+      "Stripe financial lifecycle returned no durable result.",
+      "stripe_financial_lifecycle_projection_missing",
+    );
+  }
+  logOperationalEvent("stripe_financial_lifecycle_projected", {
+    eventId: event.id,
+    eventType: event.type,
+    lifecycleKind: normalized.kind,
+    projectionApplied: projection.applied === true,
+    operatorActionRequired: projection.operator_action_required === true,
+  });
+  return { normalized, projection };
+}
+
 export async function handleStripeBillingEvent(event: Stripe.Event) {
   const claim = await claimStripeWebhookEvent(event);
 
@@ -1770,11 +2076,30 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
     });
 
   try {
+    const checkoutLifecycle = await projectStripeCheckoutLifecycleEvent(event);
+    if (checkoutLifecycle?.normalized.flow === "access_key") {
+      throw new ApiError(
+        409,
+        "Access-key Checkout event reached the wrong handler.",
+        "stripe_checkout_handler_mismatch",
+      );
+    }
+
+    const financialLifecycle = await projectStripeFinancialLifecycleEvent(event);
+    if (financialLifecycle) {
+      await settleClaim({ status: "processed" });
+      return { duplicate: false, processed: true };
+    }
+
     if (
-      event.type === "checkout.session.completed" &&
-      isCreditTopUpCheckoutSession(event.data.object)
+      checkoutLifecycle?.normalized.flow === "credit_top_up"
     ) {
-      await applyCreditTopUpCheckoutSession(event.data.object, event);
+      if (checkoutLifecycle.normalized.paymentState === "succeeded") {
+        await applyCreditTopUpCheckoutSession(
+          event.data.object as Stripe.Checkout.Session,
+          event,
+        );
+      }
       await settleClaim({
         status: "processed",
       });
@@ -1785,11 +2110,17 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
       };
     }
 
+    if (checkoutLifecycle && checkoutLifecycle.normalized.paymentState !== "succeeded") {
+      await settleClaim({ status: "processed" });
+      return { duplicate: false, processed: true };
+    }
+
     if (
       event.type === "customer.subscription.created" ||
       event.type === "customer.subscription.updated" ||
       event.type === "customer.subscription.deleted" ||
       event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded" ||
       event.type === "invoice.payment_succeeded" ||
       event.type === "invoice.payment_failed"
     ) {

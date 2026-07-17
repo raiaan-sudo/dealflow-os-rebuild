@@ -815,16 +815,6 @@ export default function OnboardingPage() {
     updateDraft({ leadFormQuestions: [...draft.leadFormQuestions, normalizedQuestion] });
   }
 
-  function addCustomLeadFormQuestion() {
-    const normalizedQuestion = draft.leadFormQuestionDraft.trim();
-    if (!normalizedQuestion || draft.leadFormQuestions.length >= 3) return;
-
-    updateDraft({
-      leadFormQuestions: [...draft.leadFormQuestions.filter((question) => question !== normalizedQuestion), normalizedQuestion].slice(0, 3),
-      leadFormQuestionDraft: "",
-    });
-  }
-
   function goToStep(step: OnboardingStepKey) {
     setCurrentStep(step);
     setPersistenceRevision((current) => current + 1);
@@ -1369,28 +1359,9 @@ export default function OnboardingPage() {
                         );
                       })}
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <Input
-                        value={draft.leadFormQuestionDraft}
-                        onChange={(event) => updateDraft({ leadFormQuestionDraft: event.target.value })}
-                        placeholder={t("onboarding.customQuestion")}
-                        aria-label={t("onboarding.customQuestionAria")}
-                        aria-invalid={Boolean(errors.leadFormQuestionDraft)}
-                        aria-describedby={errors.leadFormQuestionDraft ? "onboarding-lead-question-error" : undefined}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={addCustomLeadFormQuestion}
-                        disabled={draft.leadFormQuestions.length >= 3 || !draft.leadFormQuestionDraft.trim()}
-                      >
-                        {t("onboarding.setup.add")}
-                      </Button>
-                    </div>
                     <p className="mt-2 text-xs leading-5 text-white/48">
                       {t("onboarding.selectedQuestions", { count: draft.leadFormQuestions.length })}
                     </p>
-                    {errors.leadFormQuestionDraft ? <p id="onboarding-lead-question-error" className="mt-2 text-sm text-rose-400">{errors.leadFormQuestionDraft}</p> : null}
                   </div>
                 ) : (
                   <div>

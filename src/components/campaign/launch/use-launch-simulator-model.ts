@@ -170,9 +170,9 @@ export function useLaunchSimulatorModel({
 
   const estimatedPerformance = useMemo(
     () => [
-      { label: "Estimated leads", value: expectedOutcomes.leadsPerMonth },
-      { label: "Estimated CPL", value: expectedOutcomes.costPerLeadRange },
-      { label: "Estimated conversion", value: expectedOutcomes.conversionExpectation },
+      { label: "Lead forecast", value: expectedOutcomes.leadsPerMonth },
+      { label: "CPL forecast", value: expectedOutcomes.costPerLeadRange },
+      { label: "Conversion forecast", value: expectedOutcomes.conversionExpectation },
     ],
     [expectedOutcomes],
   );

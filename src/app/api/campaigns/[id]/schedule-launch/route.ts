@@ -27,6 +27,7 @@ import { buildMetaLaunchInputBinding } from "@/lib/meta-launch-input-snapshot";
 import { buildMetaInstantFormDefinition } from "@/lib/services/meta-instant-form-service";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 import { resolveCreativeContentSha256 } from "@/lib/creative-content-integrity";
+import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
 
 const paramsSchema = z.object({
   id: z.string().uuid(),
@@ -114,6 +115,13 @@ async function buildApprovalSnapshot(params: {
     ?? (typeof offer?.key_offer === "string" ? offer.key_offer : null)
     ?? params.campaign.plan.offer
     ?? params.campaign.campaign.name;
+  assertMetaCreativeClaims({
+    primaryText,
+    headline,
+    overlayText: selectedStaticAd.overlayText,
+    body: selectedStaticAd.hook,
+    cta: selectedStaticAd.cta,
+  });
   const location = (typeof targeting?.market === "string" ? targeting.market : null)
     ?? (typeof businessProfile?.location === "string" ? businessProfile.location : null)
     ?? params.campaign.strategy.location

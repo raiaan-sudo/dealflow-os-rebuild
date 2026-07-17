@@ -16,6 +16,7 @@ import {
   assertCustomerApprovedMetaBudgetCents,
   assertCustomerApprovedMetaLifetimeBudgetCents,
 } from "@/lib/integrations/meta/budget-safety";
+import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
 
 function getSelectedPageId(connection: MetaConnectionRecord) {
   const metadata = connection.connection_metadata;
@@ -416,6 +417,24 @@ export async function createMetaCreative(params: {
   connection: MetaConnectionRecord;
   payload: BuiltMetaAdPayload["creativePayload"];
 }) {
+  const objectStorySpec =
+    params.payload.object_story_spec &&
+    typeof params.payload.object_story_spec === "object" &&
+    !Array.isArray(params.payload.object_story_spec)
+      ? (params.payload.object_story_spec as Record<string, unknown>)
+      : null;
+  const linkData =
+    objectStorySpec?.link_data &&
+    typeof objectStorySpec.link_data === "object" &&
+    !Array.isArray(objectStorySpec.link_data)
+      ? (objectStorySpec.link_data as Record<string, unknown>)
+      : null;
+  assertMetaCreativeClaims({
+    primaryText: linkData?.message,
+    headline: linkData?.name,
+    description: linkData?.description,
+  });
+
   assertMetaLiveWriteEnabled();
   const accountId = getSelectedAdAccountId(params.connection);
 
@@ -428,12 +447,6 @@ export async function createMetaCreative(params: {
   }
 
   const accessToken = getMetaAccessToken(params.connection);
-  const objectStorySpec =
-    params.payload.object_story_spec &&
-    typeof params.payload.object_story_spec === "object" &&
-    !Array.isArray(params.payload.object_story_spec)
-      ? (params.payload.object_story_spec as Record<string, unknown>)
-      : null;
   const pageId =
     typeof objectStorySpec?.page_id === "string" &&
     objectStorySpec.page_id.trim().length > 0

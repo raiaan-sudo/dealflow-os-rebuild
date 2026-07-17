@@ -3,6 +3,7 @@ import { type CreativeBrief } from "@/lib/ai/creative-brief";
 import { getImageGenerationEnv, getVideoGenerationEnv } from "@/lib/env";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { logWarn } from "@/lib/logging";
+import { assertStaticCreativeProviderClaims } from "@/lib/advertising-claim-boundaries";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import {
   executePaidCreativeDispatch,
@@ -266,6 +267,7 @@ export async function createImageAd(
   > | null,
   providerUsage?: ImageProviderUsageContext | null,
 ): Promise<ImageAdResult> {
+  assertStaticCreativeProviderClaims({ creativeBrief, staticAsset });
   const market = safeText(creativeBrief.location) || "your market";
   const audience = safeText(creativeBrief.audience) || "local buyers";
   const offer = safeText(creativeBrief.keyOffer) || "a stronger offer";

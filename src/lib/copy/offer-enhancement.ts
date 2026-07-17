@@ -1,4 +1,9 @@
 import type { CampaignIntent } from "@/lib/campaign-intent";
+import {
+  buildClaimSafeFallback,
+  hasUnsupportedAdClaim,
+  sanitizeAdClaimText,
+} from "@/lib/copy/claim-safety";
 
 export type OfferMarketType = CampaignIntent;
 
@@ -108,9 +113,9 @@ function buildBuyerApprovalVariations(data: ExtractedOfferData) {
   const credit = data.creditScore ? `${data.creditScore}+` : "lower";
 
   return [
-    `Get Approved for a Condo with Just a ${credit} Credit Score`,
-    `Buy Sooner with a ${credit} Credit Score`,
-    `Check Available Homes You Can Qualify for with ${credit} Credit`,
+    `Review Condo Options for Buyers with ${credit} Credit`,
+    `Explore a Buyer Readiness Plan for ${credit} Credit`,
+    `Check Available Homes You May Qualify for with ${credit} Credit`,
   ];
 }
 
@@ -142,10 +147,9 @@ export function generateOfferVariations(
   if (!cleaned) {
     return marketType === "seller"
       ? [
-          "We Guarantee Your Home Sells in 90 Days — Or We’ll Buy It",
-          "Sell Your Home in 90 Days — Guaranteed",
-          "If Your Home Doesn’t Sell in 90 Days, We’ll Buy It",
-          "90-Day Home Sale Guarantee — Or You Don’t Pay",
+          "Get a Market-Based Home Value and Sale Plan",
+          "Review Your Home’s Pricing and Market-Positioning Plan",
+          "See How to Position Your Home Before You List",
         ]
       : [
           "See Better Properties Before the Public Does",
@@ -155,11 +159,11 @@ export function generateOfferVariations(
   }
 
   if ((cleaned.includes("guarantee") || cleaned.includes("sell")) && marketType === "seller") {
+    const timeline = extracted.timeline ? `${extracted.timeline} ` : "";
     return [
-      "We Guarantee Your Home Sells in 90 Days — Or We’ll Buy It",
-      "Sell Your Home in 90 Days — Guaranteed",
-      "If Your Home Doesn’t Sell in 90 Days, We’ll Buy It",
-      "90-Day Home Sale Guarantee — Or You Don’t Pay",
+      `Review a ${timeline}Home Sale Plan`.replace(/\s+/g, " ").trim(),
+      "Get a Market-Based Home Value and Sale Plan",
+      "See How Pricing and Market Conditions Could Shape Your Sale Plan",
     ];
   }
 
@@ -205,12 +209,11 @@ export function generateOfferVariations(
 
 function scoreOfferVariation(value: string) {
   const normalized = safeText(value).toLowerCase();
-  const guarantee = /guarantee|guaranteed/.test(normalized) ? 4 : 0;
-  const riskReversal = /or we['’]ll buy it|don’t pay|if your home doesn’t sell/.test(normalized) ? 5 : 0;
-  const benefit = /sell|approved|access|cashflow|qualify|buyers|under \$|\$\d/.test(normalized) ? 3 : 0;
+  const unsafePenalty = hasUnsupportedAdClaim(normalized) ? -20 : 0;
+  const benefit = /sale plan|access|cashflow|may qualify|buyers|under \$|\$\d/.test(normalized) ? 3 : 0;
   const clarity = normalized.length <= 80 ? 2 : 1;
 
-  return guarantee + riskReversal + benefit + clarity;
+  return unsafePenalty + benefit + clarity;
 }
 
 export function enhanceOffer(
@@ -220,9 +223,13 @@ export function enhanceOffer(
   const extracted = extractOfferData(rawOffer);
 
   if (marketType === "buyer" && extracted.hasCreditContext && extracted.creditScore) {
-    return `Get Approved for a Condo with Just a ${extracted.creditScore}+ Credit Score`;
+    return `Review Condo Options for Buyers with ${extracted.creditScore}+ Credit`;
   }
 
   const variations = generateOfferVariations(rawOffer, marketType);
-  return [...variations].sort((left, right) => scoreOfferVariation(right) - scoreOfferVariation(left))[0] ?? "";
+  const selected = [...variations].sort((left, right) => scoreOfferVariation(right) - scoreOfferVariation(left))[0];
+  return sanitizeAdClaimText(selected, {
+    intent: marketType,
+    fallback: buildClaimSafeFallback({ intent: marketType }),
+  });
 }

@@ -99,7 +99,7 @@ function getMicroLabel(params: {
   const hero = getVisibleSections(params.funnel).find((section) => section.type === "hero");
   const fromTrust = text(trustSection?.title);
   const fromHero = hero?.content.find((item) => / · /.test(item));
-  const fallback = [params.market || params.campaignName || "Local market", "free", "no obligation"].filter(Boolean).join(" · ");
+  const fallback = [params.market || params.campaignName || "Local market", "personalized options", "local guidance"].filter(Boolean).join(" · ");
 
   return (fromTrust || fromHero || fallback).toUpperCase();
 }
@@ -107,7 +107,7 @@ function getMicroLabel(params: {
 function getTrustBullets(funnel: WinningFunnelBlueprint) {
   const trustSection = getVisibleSections(funnel).find((section) => section.type === "trust_bar");
   const bullets = Array.isArray(funnel.proofBadges) && funnel.proofBadges.length > 0 ? funnel.proofBadges : trustSection?.content;
-  const values = (bullets ?? ["100% Free", "No Obligation", "Personalized Options", "Local Guidance"])
+  const values = (bullets ?? ["Personalized Options", "Local Guidance", "Clear Next Steps", "Market-Based Review"])
     .map((item) => text(item))
     .filter(Boolean);
 

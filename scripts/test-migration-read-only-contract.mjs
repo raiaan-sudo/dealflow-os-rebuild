@@ -20,6 +20,13 @@ const migrationContract = fs.readFileSync(
   path.join(root, "docs/dealflow-completion/MIGRATION_AND_ROLLBACK.md"),
   "utf8",
 );
+const successorStatus = fs.readFileSync(
+  path.join(
+    root,
+    "docs/dealflow-completion/FINAL_MASTER_SUCCESSOR_STATUS_20260716.md",
+  ),
+  "utf8",
+);
 
 for (const [label, sql] of [
   ["pre-application", preflight],
@@ -62,6 +69,11 @@ assert.match(postMigration, /ghl_receipt_direct_insert_denied/);
 assert.match(
   migrationContract,
   /Overall verdict: `NO_GO`/,
+);
+assert.match(migrationContract, /Historical predecessor contract/);
+assert.match(
+  migrationContract,
+  /104-migration and 103-to-104 details\s+> below remain evidence for that exact predecessor only/,
 );
 assert.match(migrationContract, /Frozen foundation: `80 MIGRATIONS \/ HISTORICAL_PASS`/);
 assert.match(migrationContract, /Integrated candidate: `104 MIGRATIONS \/ PENDING_FINAL_SEAL`/);
@@ -109,6 +121,24 @@ assert.match(
 );
 assert.match(migrationContract, /Forward recovery, not destructive rollback/);
 
+assert.match(successorStatus, /Overall verdict: `NO_GO`/);
+assert.match(successorStatus, /Source state: `UNSEALED_WORKING_TREE`/);
+assert.match(successorStatus, /Migration portfolio: `108`/);
+assert.match(
+  successorStatus,
+  /`20260716200000_harden_stripe_payment_lifecycle\.sql`/,
+);
+assert.match(successorStatus, /Final verification portfolio: `91` commands per round/);
+assert.match(successorStatus, /Two exact clean-seal rounds: `NOT_YET_RUN`/);
+assert.match(successorStatus, /Isolated hosted staging deployment and acceptance: `NOT_YET_RUN`/);
+assert.match(successorStatus, /Production readiness gate and release: `NOT_YET_RUN \/ NOT_AUTHORIZED`/);
+assert.match(successorStatus, /single-migration 103-to-104 forward proof architecture remain predecessor\s+evidence only/);
+assert.match(successorStatus, /legacy single-migration forward mode is not a valid successor release\s+path/);
+assert.match(successorStatus, /105: `20260716010000_require_optimizer_cpl_minimum_lead_sample\.sql`/);
+assert.match(successorStatus, /106: `20260716180000_harden_credit_top_up_request_idempotency\.sql`/);
+assert.match(successorStatus, /107: `20260716190000_add_ghl_marketplace_oauth_install_foundation\.sql`/);
+assert.match(successorStatus, /108: `20260716200000_harden_stripe_payment_lifecycle\.sql`/);
+
 console.log(
-  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103 staging proof remain predecessor-only, and the current 104-chain remains NO_GO pending exact seal, atomic staging transition, and drain proof.",
+  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103/104 proof remain predecessor-only, and the unsealed 108-migration successor remains NO_GO pending exact seal, fresh isolated staging, drain, and production proof.",
 );

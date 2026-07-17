@@ -1,5 +1,11 @@
 # DealFlow current release issue ledger
 
+> **Superseded current-status snapshot.** This document records the predecessor
+> 104-migration candidate. Current successor truth is
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
+> unsealed 108-migration / 91-command successor, exact rounds and hosted staging
+> `NOT_YET_RUN`, production `NO_GO` and not authorized.
+
 Current verdict: `NO_GO`
 Candidate source seal: `PENDING_FINAL_SEAL`
 Migration identity: `104` files, ending at

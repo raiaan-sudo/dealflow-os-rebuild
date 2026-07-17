@@ -1,3 +1,6 @@
+import type { CampaignIntent } from "@/lib/campaign-intent";
+import { sanitizeAdClaimText } from "@/lib/copy/claim-safety";
+
 export type OfferCampaignMode = "buyer" | "seller" | "investor" | "commercial";
 type OfferIntent = "approval" | "seller_guarantee" | "inventory" | "furnishing" | "generic";
 
@@ -190,6 +193,11 @@ export function normalizeOfferForCampaign(
     normalizedOffer = mode === "seller" ? "Home Value and Sale Plan" : "Curated Home List";
   }
 
+  const claimSafetyIntent: CampaignIntent = mode === "commercial" ? "other" : mode;
+  normalizedOffer = sanitizeAdClaimText(normalizedOffer, {
+    intent: claimSafetyIntent,
+  });
+
   const cta = buildCta(intent, normalizedOffer, mode);
 
   return {
@@ -199,6 +207,8 @@ export function normalizeOfferForCampaign(
     intent,
     changed: raw.length > 0 && raw !== normalizedOffer,
     coachNote: buildCoachNote(intent, normalizedOffer, mode),
-    alternates: buildAlternates(intent, normalizedOffer, mode),
+    alternates: buildAlternates(intent, normalizedOffer, mode).map((value) => sanitizeAdClaimText(value, {
+      intent: claimSafetyIntent,
+    })),
   };
 }

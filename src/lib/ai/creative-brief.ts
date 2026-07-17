@@ -4,6 +4,8 @@ import {
   isSellerCampaignIntent,
   type CampaignIntent,
 } from "@/lib/campaign-intent";
+import { sanitizeAdClaimText } from "@/lib/copy/claim-safety";
+import { enhanceOffer } from "@/lib/copy/offer-enhancement";
 
 export type CreativeBriefInput = {
   location?: string;
@@ -76,7 +78,7 @@ function transformOffer(params: {
 
   if (!offer) {
     return isSellerCampaignIntent(params.marketType)
-      ? "Get your home sold with a stronger plan"
+      ? "Get a stronger home value and sale plan"
       : isInvestorCampaignIntent(params.marketType)
         ? "See stronger investor-grade opportunities"
       : "Get access to better deals";
@@ -305,23 +307,27 @@ export function buildCreativeBrief(input?: CreativeBriefInput | null): CreativeB
     marketType,
   });
 
+  const sanitize = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: marketType,
+    location,
+  });
+
   return {
     location,
-    audience: enforceAudienceLanguage({
+    audience: sanitize(enforceAudienceLanguage({
       value: audience,
       marketType,
       offer: keyOffer,
       location,
-    }),
+    })),
     propertyType,
-    keyOffer,
-    mechanism,
-    painPoints,
+    keyOffer: sanitize(keyOffer),
+    mechanism: sanitize(mechanism),
+    painPoints: painPoints.map((value) => sanitize(value)),
     tone: inferTone({ audience, marketType }),
-    angles: inferAngles({ location, audience, keyOffer, painPoints, marketType }),
-    hooks: inferHooks({ location, audience, keyOffer, painPoints, marketType }),
+    angles: inferAngles({ location, audience, keyOffer, painPoints, marketType }).map((value) => sanitize(value)),
+    hooks: inferHooks({ location, audience, keyOffer, painPoints, marketType }).map((value) => sanitize(value)),
     visualDirection: inferVisualDirection({ location, propertyType }),
     scriptStyle: inferScriptStyle({ marketType, audience }),
   };
 }
-import { enhanceOffer } from "@/lib/copy/offer-enhancement";

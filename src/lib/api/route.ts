@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { getInternalSystemJobSecrets, hasSupabaseEnv } from "@/lib/env";
 import { logError, logWarn } from "@/lib/logging";
+import { AdvertisingClaimUnverifiedError } from "@/lib/copy/claim-safety";
 
 export class ApiError extends Error {
   status: number;
@@ -460,6 +461,17 @@ export function handleApiError(error: unknown, context: string) {
       requestId,
       details: isProduction ? undefined : error.issues,
     });
+  }
+
+  if (error instanceof AdvertisingClaimUnverifiedError) {
+    logWarn(`${context} rejected`, {
+      requestId,
+      code: error.code,
+      message: error.message,
+      policyVersion: error.policyVersion,
+      findings: error.findings,
+    });
+    return apiFailure(error.message, error.code, error.statusCode, { requestId });
   }
 
   if (error instanceof ApiError) {

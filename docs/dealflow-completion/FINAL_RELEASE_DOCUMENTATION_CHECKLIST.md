@@ -1,5 +1,11 @@
 # DealFlow final-release documentation checklist
 
+> **Predecessor checklist snapshot.** Its 104-migration fields are retained for
+> historical traceability. Use
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)
+> as current truth and do not fill any successor seal, staging or production
+> field before the corresponding evidence exists.
+
 Current verdict: `NO_GO`
 
 Root must fill every field from retained evidence after the applicable gate.

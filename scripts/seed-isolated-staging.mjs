@@ -9,6 +9,11 @@ import {
   MAX_SYNTHETIC_QA_AUTHORITY_ROWS,
   resetSyntheticQaHarnessAuthority,
 } from "./lib/synthetic-qa-authority-reset.mjs";
+import {
+  SUCCESSOR_HOSTED_GATES,
+  assertSuccessorServiceOnlySchemaReadback,
+  proveSyntheticCreditAndPendingStripeLifecycle,
+} from "./staging/successor-provider-independent-contract.mjs";
 
 const FIXTURE_LABEL = "DF-STAGING-20260712";
 const FIXTURE_TIMESTAMP = "2026-07-12T12:00:00.000Z";
@@ -159,6 +164,9 @@ const IDS = Object.freeze({
   rlsStripeClaimB: "e1000000-0000-4000-8000-000000000002",
   rlsProviderSettlementA: "e2000000-0000-4000-8000-000000000001",
   rlsProviderSettlementB: "e2000000-0000-4000-8000-000000000002",
+  successorCreditIntent: "e3000000-0000-4000-8000-000000000001",
+  successorCreditReplayIntent: "e3000000-0000-4000-8000-000000000002",
+  successorCreditRequest: "e3000000-0000-4000-8000-000000000003",
 });
 const EXPECTED_FIXED_ORGANIZATION_IDS = Object.freeze([
   IDS.organization,
@@ -1772,6 +1780,21 @@ async function main() {
     throw new Error("The synthetic staging GHL activation request returned no durable receipt");
   }
 
+  const successorFinancialFixture = await proveSyntheticCreditAndPendingStripeLifecycle({
+    serviceClient: admin,
+    authenticatedClient: qaClient,
+    organizationId: IDS.organization,
+    userId,
+    intentId: IDS.successorCreditIntent,
+    replayIntentId: IDS.successorCreditReplayIntent,
+    clientRequestId: IDS.successorCreditRequest,
+    checkoutSessionId: "cs_test_df_successor_credit_pending_20260716",
+  });
+  const successorServiceOnlySchema = await assertSuccessorServiceOnlySchemaReadback({
+    serviceClient: admin,
+    authenticatedClient: qaClient,
+  });
+
   const campaignPlan = {
     fixture: FIXTURE_LABEL,
     objective: "Synthetic staging lead generation",
@@ -2825,6 +2848,14 @@ async function main() {
     ghlActivationRequestId: ghlActivation.request_id,
     ghlActivationStatus: ghlActivation.request_status,
     ghlActivationBlocker: ghlActivation.blocker_code ?? null,
+    successorProviderIndependent: {
+      financialFixture: successorFinancialFixture,
+      serviceOnlySchema: successorServiceOnlySchema,
+      hostedGates: SUCCESSOR_HOSTED_GATES,
+      exactMigrationChainRequired: 108,
+      finalMigration: "20260716200000_harden_stripe_payment_lifecycle.sql",
+      providerMutationPerformed: false,
+    },
     exactFixtureCountsVerified: true,
     exactSyntheticAuthUserCount: finalAuthUsers.length,
     qaHarness: {

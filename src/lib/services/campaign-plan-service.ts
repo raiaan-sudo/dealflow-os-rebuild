@@ -1,5 +1,4 @@
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import { formatCurrency } from "@/lib/formatters";
 import {
   inferCampaignIntent,
   isBuyerLikeCampaignIntent,
@@ -56,6 +55,7 @@ import {
 export type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { getCategoryRulePack } from "@/lib/services/campaign-category-rule-packs";
 import { buildMarketingOptimizationBlueprint } from "@/lib/optimization-engine";
+import { sanitizeAdClaimText } from "@/lib/copy/claim-safety";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 
@@ -937,6 +937,10 @@ export async function generateCampaignPlan(
   },
 ) {
   const context = buildMarketingContext(input);
+  const sanitizeExternalCopy = (value: unknown) => sanitizeAdClaimText(value, {
+    intent: context.intent,
+    location: context.market,
+  });
   const isBuyer = isBuyerLikeCampaignIntent(context.intent);
   const isInvestor = isInvestorCampaignIntent(context.intent);
   const audience = context.audience;
@@ -1135,9 +1139,10 @@ export async function generateCampaignPlan(
 
   const normalizedAds = withAdImageFallback(ads).map((ad) => ({
     ...ad,
-    overlayText: ad.overlayText,
-    headline: ad.headline,
-    body: ad.body,
+    overlayText: sanitizeExternalCopy(ad.overlayText),
+    headline: sanitizeExternalCopy(ad.headline),
+    body: sanitizeExternalCopy(ad.body),
+    cta: sanitizeExternalCopy(ad.cta),
   }));
 
   return {
@@ -1148,31 +1153,31 @@ export async function generateCampaignPlan(
     painPoints,
     mechanism: mechanismLabel,
     funnelType,
-    targetingSummary: ensureCopyContext(targetingSummary, {
+    targetingSummary: sanitizeExternalCopy(ensureCopyContext(targetingSummary, {
       audience: audienceLabel,
       propertyType: propertyLabel,
       keyOffer: offerLabel,
       market: context.market,
-    }),
-    offerSummary: ensureCopyContext(offerSummary, {
+    })),
+    offerSummary: sanitizeExternalCopy(ensureCopyContext(offerSummary, {
       audience: audienceLabel,
       propertyType: propertyLabel,
       keyOffer: offerLabel,
       market: context.market,
-    }),
+    })),
     summary: isBuyer
-      ? ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} looking for ${marketContext}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that already show up across high-performing patterns.`, {
+      ? sanitizeExternalCopy(ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} looking for ${marketContext}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that already show up across high-performing patterns.`, {
           audience: audienceLabel,
           propertyType: propertyLabel,
           keyOffer: offerLabel,
           market: context.market,
-        })
-      : ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} in ${context.market}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that are already recurring in high-performing seller patterns.`, {
+        }))
+      : sanitizeExternalCopy(ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} in ${context.market}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that are already recurring in high-performing seller patterns.`, {
           audience: audienceLabel,
           propertyType: propertyLabel,
           keyOffer: offerLabel,
           market: context.market,
-        }),
+        })),
     creativeStrategy: {
       ...creativeStrategy,
       mechanism:
@@ -1191,12 +1196,12 @@ export async function generateCampaignPlan(
           : [...categoryRulePack.overlayLogic],
     },
     funnelSteps: funnelSteps.map((step) =>
-      ensureCopyContext(step, {
+      sanitizeExternalCopy(ensureCopyContext(step, {
         audience: audienceLabel,
         propertyType: propertyLabel,
         keyOffer: offerLabel,
         market: context.market,
-      }),
+      })),
     ),
     creativeBrief: creativePackage.brief,
     creatives: {
@@ -1205,12 +1210,12 @@ export async function generateCampaignPlan(
     },
     ads: normalizedAds,
     funnel: {
-      headline: funnelHeadline,
-      subheadline: cleanSentence(funnelSubheadline),
-      cta: funnelCta,
+      headline: sanitizeExternalCopy(funnelHeadline),
+      subheadline: sanitizeExternalCopy(cleanSentence(funnelSubheadline)),
+      cta: sanitizeExternalCopy(funnelCta),
       formFields: optimizationBlueprint.funnelConfig.structure.formFields,
-      followUpAction: optimizationBlueprint.funnelConfig.followUpAction,
-      optimizationNotes: optimizationBlueprint.optimizationNotes,
+      followUpAction: sanitizeExternalCopy(optimizationBlueprint.funnelConfig.followUpAction),
+      optimizationNotes: optimizationBlueprint.optimizationNotes.map((value) => sanitizeExternalCopy(value)),
     },
   };
 }
@@ -1424,7 +1429,7 @@ function toVariantLabel(angle: StaticCreativeAsset["angle"]) {
 export function getStrategyWhy(plan: CampaignPlan) {
   if (isInvestorCampaignIntent(plan.intent)) {
     return [
-      `The funnel is built to surface investor-grade opportunities in ${plan.market} before the wider market competes them away.`,
+      `The funnel is built to help investors review property opportunities and risk factors in ${plan.market}.`,
       "The targeting stays centered on acquisition-minded investors and deal-focused audiences, which keeps the message tied to cash flow, speed, and opportunity quality.",
       "The offer works because it promises clearer deal flow and faster filtering, which is what investor audiences care about first.",
     ];
@@ -1434,7 +1439,7 @@ export function getStrategyWhy(plan: CampaignPlan) {
     return [
       `The funnel is built to capture active buyers in ${plan.market} and move them into a consultation before interest cools off.`,
       "The targeting stays focused on in-market shoppers and relocation audiences, which keeps the message tied to current purchase intent instead of broad awareness.",
-      "The offer is low-friction and practical, so it gives serious buyers a clear reason to raise their hand without forcing a hard commitment too early.",
+      "The offer is low-friction and practical, so buyers can request a useful next step without making a hard commitment too early.",
     ];
   }
 
@@ -1446,46 +1451,11 @@ export function getStrategyWhy(plan: CampaignPlan) {
 }
 
 export function getExpectedOutcomes(plan: CampaignPlan): ExpectedOutcomes {
-  const spendFactor = Math.max(1, Math.round(plan.monthlyBudget / 1500));
-
-  if (isInvestorCampaignIntent(plan.intent)) {
-    const baseLeads = 10 + spendFactor * 3;
-    const lowCpl = 85 + spendFactor * 4;
-    const highCpl = lowCpl + 26;
-    const lowConversion = 9 + spendFactor;
-    const highConversion = lowConversion + 3;
-
-    return {
-      leadsPerMonth: `${baseLeads}-${baseLeads + 5}`,
-      costPerLeadRange: `${formatCurrency(lowCpl)}-${formatCurrency(highCpl)}`,
-      conversionExpectation: `${lowConversion}-${highConversion}% of leads progressing into investor calls or deal reviews`,
-    };
-  }
-
-  if (isBuyerLikeCampaignIntent(plan.intent)) {
-    const baseLeads = 18 + spendFactor * 6;
-    const lowCpl = 55 + spendFactor * 3;
-    const highCpl = lowCpl + 20;
-    const lowConversion = 12 + spendFactor;
-    const highConversion = lowConversion + 4;
-
-    return {
-      leadsPerMonth: `${baseLeads}-${baseLeads + 8}`,
-      costPerLeadRange: `${formatCurrency(lowCpl)}-${formatCurrency(highCpl)}`,
-      conversionExpectation: `${lowConversion}-${highConversion}% of leads progressing into booked consultations`,
-    };
-  }
-
-  const baseLeads = 12 + spendFactor * 4;
-  const lowCpl = 70 + spendFactor * 4;
-  const highCpl = lowCpl + 24;
-  const lowConversion = 10 + spendFactor;
-  const highConversion = lowConversion + 3;
-
+  void plan;
   return {
-    leadsPerMonth: `${baseLeads}-${baseLeads + 6}`,
-    costPerLeadRange: `${formatCurrency(lowCpl)}-${formatCurrency(highCpl)}`,
-    conversionExpectation: `${lowConversion}-${highConversion}% of leads progressing into valuation appointments`,
+    leadsPerMonth: "Requires live campaign data",
+    costPerLeadRange: "Requires live campaign data",
+    conversionExpectation: "Requires qualified lead outcomes",
   };
 }
 

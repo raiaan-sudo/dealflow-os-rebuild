@@ -1,4 +1,5 @@
 import {
+  OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER,
   OPTIMIZATION_POLICY_CONTRACT_VERSION,
   type ApprovedOptimizationPolicy,
   type OptimizationEvidenceMetrics,
@@ -109,12 +110,12 @@ export function evaluateRealtorOptimizationPolicy(params: {
 
   const safeMetrics = metrics!;
   const thresholds = KPI;
+  const hasMinimumCplSample =
+    safeMetrics.leads >= policy.minimumLeadsForCplDecision;
+  const cplWouldPause = safeMetrics.cpl > thresholds.CPL_MAX;
   const pauseReasons: string[] = [];
   if (safeMetrics.ctr < thresholds.CTR_KILL) pauseReasons.push("ctr_below_kill_threshold");
-  if (
-    safeMetrics.leads >= policy.minimumLeadsForCplDecision &&
-    safeMetrics.cpl > thresholds.CPL_MAX
-  ) pauseReasons.push("cpl_above_maximum");
+  if (hasMinimumCplSample && cplWouldPause) pauseReasons.push("cpl_above_maximum");
   if (safeMetrics.frequency > thresholds.FREQUENCY_MAX) pauseReasons.push("frequency_above_maximum");
   if (
     safeMetrics.leads === 0 &&
@@ -133,12 +134,25 @@ export function evaluateRealtorOptimizationPolicy(params: {
     };
   }
 
-  const strongCount = [
+  if (!hasMinimumCplSample && cplWouldPause) {
+    return hold(OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER);
+  }
+
+  const nonCplStrongCount = [
     safeMetrics.ctr >= thresholds.CTR_GOOD,
     safeMetrics.cpc > 0 && safeMetrics.cpc <= thresholds.CPC_TARGET,
-    safeMetrics.cpl > 0 && safeMetrics.cpl <= thresholds.CPL_MAX,
     safeMetrics.lp_cvr >= thresholds.CVR_TARGET,
   ].filter(Boolean).length;
+  const cplSupportsScale = safeMetrics.cpl > 0 && safeMetrics.cpl <= thresholds.CPL_MAX;
+  const cplWouldChangeScaleDecision =
+    cplSupportsScale && nonCplStrongCount < 2 && nonCplStrongCount + 1 >= 2;
+
+  if (!hasMinimumCplSample && cplWouldChangeScaleDecision) {
+    return hold(OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER);
+  }
+
+  const strongCount =
+    nonCplStrongCount + (hasMinimumCplSample && cplSupportsScale ? 1 : 0);
   const priorScale = Math.max(0, params.scaleAppliedLast24HoursPercent ?? 0);
   const proposedBudget = Number(params.dailyBudget) * 1.2;
   if (

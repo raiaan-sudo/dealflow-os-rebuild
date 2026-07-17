@@ -293,6 +293,7 @@ async function deliverThroughExternalAdapter(params: {
   transport: SupportDeliveryTransport;
 }) {
   const payload = await loadDeliveryPayload(params.admin, params.outboxId, params.workerId);
+  const providerIdempotencyKey = `support/${params.outboxId}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5_000);
   let response: Awaited<ReturnType<SupportDeliveryTransport>>;
@@ -301,7 +302,7 @@ async function deliverThroughExternalAdapter(params: {
       endpoint: params.policy.endpoint,
       headers: {
         "content-type": "application/json",
-        "idempotency-key": params.outboxId,
+        "idempotency-key": providerIdempotencyKey,
         ...(params.policy.token
           ? { authorization: `Bearer ${params.policy.token}` }
           : {}),
@@ -309,7 +310,7 @@ async function deliverThroughExternalAdapter(params: {
       body: JSON.stringify({
         destination: params.policy.destination,
         replyTo: payload.reply_email,
-        idempotencyKey: params.outboxId,
+        idempotencyKey: providerIdempotencyKey,
         ticketReference: payload.ticket_id,
         correlationReference: payload.correlation_id,
         category: payload.category,

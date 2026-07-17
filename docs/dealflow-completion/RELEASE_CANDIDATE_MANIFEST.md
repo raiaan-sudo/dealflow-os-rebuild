@@ -1,5 +1,11 @@
 # DealFlow release candidate manifest
 
+> **Superseded predecessor manifest.** The unsealed successor has no final
+> commit/tree manifest yet. Use
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)
+> for current 108-migration / 91-command truth. Staging and production remain
+> `NOT_YET_RUN`; production is not authorized.
+
 Current verdict: `NO_GO`
 Final implementation commit/tree: `PENDING_FINAL_SEAL / PENDING_FINAL_SEAL`
 Migration inventory: `104`, ending at

@@ -61,9 +61,9 @@ export class WorkspaceSelectionDeniedError extends Error {
   }
 }
 
-const ACTIVE_WORKSPACE_COOKIE = "dealflow_active_workspace";
+export const ACTIVE_WORKSPACE_COOKIE = "dealflow_active_workspace";
 const ACTIVE_WORKSPACE_HEADER = "x-dealflow-selected-workspace";
-const WORKSPACE_ID_PATTERN =
+export const WORKSPACE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function assertAccountDeletionWorkspaceAccess(

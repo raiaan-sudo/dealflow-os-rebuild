@@ -3,6 +3,7 @@ import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
+import { assertPaidCreativeCampaignClaims } from "@/lib/advertising-claim-boundaries";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -29,6 +30,8 @@ export async function POST(
     if (!campaign) {
       return Response.json({ error: "Campaign not found." }, { status: 404 });
     }
+
+    assertPaidCreativeCampaignClaims(campaign);
 
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "generate-static-ads", `${auth.organizationId}:${auth.userId}:${campaignId}`),

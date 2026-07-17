@@ -1,6 +1,9 @@
 export const INITIAL_COMMERCIAL_ACTIVATION_CREDIT_CENTS = 1_000;
 
-export type CommercialActivationSource = "checkout.session.completed" | "invoice.payment_succeeded";
+export type CommercialActivationSource =
+  | "checkout.session.completed"
+  | "checkout.session.async_payment_succeeded"
+  | "invoice.payment_succeeded";
 
 export type CommercialActivationCandidate = {
   source: CommercialActivationSource;
@@ -37,6 +40,7 @@ export function evaluateCommercialActivationCandidate(
 
   if (
     candidate.source !== "checkout.session.completed" &&
+    candidate.source !== "checkout.session.async_payment_succeeded" &&
     candidate.source !== "invoice.payment_succeeded"
   ) {
     return { eligible: false, reason: "source_not_qualifying" };
@@ -46,7 +50,10 @@ export function evaluateCommercialActivationCandidate(
     return { eligible: false, reason: "payment_not_positive" };
   }
 
-  if (candidate.source === "checkout.session.completed") {
+  if (
+    candidate.source === "checkout.session.completed" ||
+    candidate.source === "checkout.session.async_payment_succeeded"
+  ) {
     if (candidate.paymentStatus !== "paid") {
       return { eligible: false, reason: "checkout_not_paid" };
     }

@@ -6,6 +6,10 @@ import { readFileSync } from "node:fs";
 import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adapter.mjs";
 
 const migration = readFileSync("supabase/migrations/20260713013000_create_customer_authorized_meta_optimizer_executor.sql", "utf8");
+const minimumCplSampleMigration = readFileSync(
+  "supabase/migrations/20260716010000_require_optimizer_cpl_minimum_lead_sample.sql",
+  "utf8",
+);
 const adapter = createNativePostgresTestAdapter({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,
   host: process.env.DEALFLOW_NATIVE_PGHOST,
@@ -26,6 +30,7 @@ const ids = {
   activation: "31000000-0000-4000-8000-000000000006",
   preauth: "31000000-0000-4000-8000-000000000007",
   scaleDecision: "31000000-0000-4000-8000-000000000008",
+  belowMinimumCplScaleDecision: "31000000-0000-4000-8000-00000000000c",
   malformedDecision: "31000000-0000-4000-8000-000000000009",
   pauseDecision: "31000000-0000-4000-8000-00000000000a",
   driftDecision: "31000000-0000-4000-8000-00000000000b",
@@ -136,6 +141,7 @@ await adapter.withDisposableDatabase(async (database) => {
     create table public.app_schema_metadata(key text primary key,value text not null,updated_at timestamptz not null default now());
   `, "Create isolated optimizer fixture");
   psql(migration, "Apply customer-authorized optimizer migration");
+  psql(minimumCplSampleMigration, "Apply optimizer minimum CPL sample migration");
 
   psql(`
     insert into auth.users values ('${ids.customer}'),('${ids.outsider}');
@@ -203,6 +209,37 @@ await adapter.withDisposableDatabase(async (database) => {
       '{"blockers":[]}', '${proposed}'
     );
   `, `Insert ${proposed} decision`);
+
+  insertDecision(
+    ids.belowMinimumCplScaleDecision,
+    {
+      impressions: 2000,
+      clicks: 100,
+      spend: 100,
+      leads: 0,
+      ctr: 3,
+      cpc: 2,
+      cpl: 20,
+      frequency: 2,
+      lp_cvr: 1,
+    },
+    "budget:20:two_or_more_strong_metrics",
+  );
+  mustFail(
+    `set role service_role; select set_config('request.jwt.claim.role','service_role',false);
+     select id from public.enqueue_meta_optimization_execution_intent(
+       '${ids.organization}','${ids.customer}','${ids.campaign}','${ids.belowMinimumCplScaleDecision}',
+       'staging','budget','two_or_more_strong_metrics',6000,'below-minimum-cpl-scale-intent'
+     );`,
+    /below_minimum_leads_for_cpl/,
+    "Reject a budget scale that depends on CPL below the policy minimum lead sample",
+  );
+  assert.equal(
+    psql(`select count(*) from public.meta_optimization_execution_intents where decision_id='${ids.belowMinimumCplScaleDecision}';`),
+    "0",
+    "Rejected CPL-dependent scale must not leave an execution intent",
+  );
+
   insertDecision(ids.scaleDecision, { impressions: 2000, clicks: 100, spend: 100, leads: 5, ctr: 3, cpc: 1, cpl: 20, frequency: 2, lp_cvr: 5 }, "budget:20:two_or_more_strong_metrics");
 
   const enqueueScale = `set role service_role; select set_config('request.jwt.claim.role','service_role',false);

@@ -36,6 +36,7 @@ import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { provisionCompletedMetaInstantFormRoute } from "@/lib/services/meta-instant-form-route-service";
 import { finalizeMetaActivationPreauthorizationAfterPausedLaunch } from "@/lib/services/meta-campaign-activation-authority-service";
 import { getScheduledLaunchExecutionGate } from "@/lib/scheduled-launch-gate";
+import { assertPaidCreativeCampaignClaims } from "@/lib/advertising-claim-boundaries";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -304,6 +305,7 @@ export async function POST(
     ) {
       throw new ApiError(403, "Campaign workspace access was denied.", "forbidden");
     }
+    assertPaidCreativeCampaignClaims(record);
     await assertCampaignCanLaunch(id);
 
     const rateLimit = await consumeRateLimit({

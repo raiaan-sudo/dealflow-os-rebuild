@@ -1,5 +1,11 @@
 # DealFlow GHL staging sandbox contract
 
+> **Contract retained; execution status superseded.** Apply this safety boundary
+> only with the current successor overlay in
+> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md).
+> Marketplace install/token/lifecycle acceptance is `NOT_YET_RUN`; production
+> remains denied.
+
 Status: `INTEGRATED CANDIDATE / FINAL-SEAL PROOF NOT_YET_RUN / PROVIDER ACCEPTANCE NOT_YET_RUN / PRODUCTION DENIED`
 
 ## Boundary

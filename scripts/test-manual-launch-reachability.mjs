@@ -270,6 +270,9 @@ const route = loadTsModuleWithMocks(
     "@/lib/services/campaign-entitlements": {
       assertCampaignCanLaunch: async () => undefined,
     },
+    "@/lib/advertising-claim-boundaries": {
+      assertPaidCreativeCampaignClaims: () => undefined,
+    },
     "@/lib/services/app-context": {
       getAppContext: async () => ({
         user: { id: ownerId },

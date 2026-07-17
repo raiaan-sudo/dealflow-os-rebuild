@@ -105,29 +105,11 @@ function formatLastUpdated(
   });
 }
 
-function parseCostPerLeadRange(value: string) {
-  const matches = value.match(/(\d+(?:\.\d+)?)/g) ?? [];
-  const first = Number(matches[0] ?? 0);
-  const second = Number(matches[1] ?? first);
-
-  if (!Number.isFinite(first) || first <= 0) {
-    return 20;
-  }
-
-  if (!Number.isFinite(second) || second <= 0) {
-    return first;
-  }
-
-  return Number(((first + second) / 2).toFixed(2));
-}
-
 function buildOptimizerInput(params: {
   plan: NonNullable<ReturnType<typeof canonicalCampaignToPlan>>;
   expectedOutcomes: NonNullable<ReturnType<typeof getExpectedOutcomes>>;
   syncSnapshot: Awaited<ReturnType<typeof getLatestMetaCampaignSyncSnapshot>> | null;
 }): CampaignAnalysisInput {
-  const budgetDailyInput = params.plan.runtime.budgetDailyInput ?? 0;
-
   if (params.syncSnapshot) {
     const metrics = params.syncSnapshot.deliveryMetrics;
     const ctrPercent = Number((metrics.ctr * 100).toFixed(2));
@@ -135,10 +117,7 @@ function buildOptimizerInput(params: {
     const cpl = metrics.leads > 0
       ? Number((metrics.spend / metrics.leads).toFixed(2))
       : 0;
-    const estimatedFrequency =
-      metrics.impressions > 0 && metrics.clicks > 0
-        ? Number((metrics.impressions / Math.max(metrics.clicks * 12, 1)).toFixed(2))
-        : 1;
+    const frequency = Number(metrics.frequency ?? 0);
     const lpCvr = metrics.clicks > 0
       ? Number(((metrics.leads / metrics.clicks) * 100).toFixed(2))
       : 0;
@@ -147,7 +126,7 @@ function buildOptimizerInput(params: {
       ctr: ctrPercent,
       cpc,
       cpl,
-      frequency: estimatedFrequency,
+      frequency: Number.isFinite(frequency) && frequency >= 0 ? frequency : 0,
       spend: metrics.spend,
       leads: metrics.leads,
       lp_cvr: lpCvr,
@@ -155,13 +134,13 @@ function buildOptimizerInput(params: {
   }
 
   return {
-    ctr: 1,
-    cpc: 3,
-    cpl: parseCostPerLeadRange(params.expectedOutcomes.costPerLeadRange),
-    frequency: 1,
-    spend: budgetDailyInput,
+    ctr: 0,
+    cpc: 0,
+    cpl: 0,
+    frequency: 0,
+    spend: 0,
     leads: 0,
-    lp_cvr: 6,
+    lp_cvr: 0,
   };
 }
 

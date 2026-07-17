@@ -118,6 +118,7 @@ export default async function CommandCenterPage() {
 
   const rows = rowsResult.rows;
   const issues = issuesResult.issues;
+  const evidenceObservedAt = new Date().toISOString();
   const liveCampaigns = rows.filter(
     (row) => row.launchStatus.includes("completed") || row.launchStatus.includes("live"),
   );
@@ -207,12 +208,13 @@ export default async function CommandCenterPage() {
       id: "friday",
       name: "FRIDAY",
       role: "Security evidence monitor",
-      status: "Live security score not implemented",
+      status: "Security evidence feed unavailable",
       readiness: null,
-      readinessLabel: "unavailable",
-      signal: "This page has no current CI, route-scan, or vulnerability feed, so it does not infer a security percentage.",
-      tone: "green",
+      readinessLabel: "evidence unavailable; no score",
+      signal: `This page has no current CI, route-scan, or vulnerability feed, so it makes no security-readiness claim. Evidence state evaluated at ${evidenceObservedAt}.`,
+      tone: "blue",
       logs: [
+        `Evidence state timestamp: ${evidenceObservedAt}.`,
         "Internal access is allowlist-gated before this page loads.",
         "Run artifacts and CI evidence must be reviewed outside this page.",
       ],
@@ -252,6 +254,12 @@ export default async function CommandCenterPage() {
   ];
 
   const proofs: ProofEvent[] = [
+    {
+      label: "Security evidence feed",
+      value: "unavailable",
+      detail: `No current scanner, CI, or route-security evidence feed is connected. This unavailable state was evaluated at ${evidenceObservedAt}; no score or readiness conclusion is asserted.`,
+      tone: "blue",
+    },
     {
       label: "Stripe webhook window",
       value: ops.available ? `${ops.recentStripeProcessed} processed` : "unavailable",

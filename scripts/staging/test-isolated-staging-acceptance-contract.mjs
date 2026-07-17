@@ -211,6 +211,10 @@ const providerIndependentProof = readFileSync(
   join(root, "scripts", "staging", "run-provider-independent-staging-proof.mjs"),
   "utf8",
 );
+const successorProviderIndependentContract = readFileSync(
+  join(root, "scripts", "staging", "successor-provider-independent-contract.mjs"),
+  "utf8",
+);
 const vercelProtectionContract = readFileSync(
   join(root, "scripts", "staging", "vercel-staging-protection-contract.mjs"),
   "utf8",
@@ -696,8 +700,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 104/);
-assert.match(runner, /20260715010000_move_legacy_org_member_policies_private\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 108/);
+assert.match(runner, /20260716200000_harden_stripe_payment_lifecycle\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -1690,6 +1694,7 @@ assert.doesNotMatch(seedReplayBody, /pendingBeforeApproval !== true/);
 assert.doesNotMatch(seedReplayBody, /rejectedWhilePending !== true/);
 assert.match(seedReplayBody, /classifyExactSyntheticRetentionAuthorityReplay\(first, second\)/);
 assert.match(seedReplayBody, /JSON\.stringify\(first\.qaHarness\) !== JSON\.stringify\(second\.qaHarness\)/);
+assert.match(seedReplayBody, /JSON\.stringify\(first\.successorProviderIndependent\)/);
 assert.match(seed, /admin\.rpc\("bind_verified_partner_attribution_v1"/);
 assert.doesNotMatch(seed, /upsert\(admin, "workspace_partner_attribution"/);
 assert.match(seedContract, /attributionBoundAtomically: true/);
@@ -1963,6 +1968,24 @@ assert.match(providerIndependentProof, /retention_policy\?\.policyVersion !== 2/
 assert.match(providerIndependentProof, /account_deletion_execution_disabled/);
 assert.match(providerIndependentProof, /providerReceiptCount: 0/);
 assert.match(providerIndependentProof, /fullProviderOffboardingPerformed: false/);
+assert.match(providerIndependentProof, /assertSuccessorServiceOnlySchemaReadback/);
+assert.match(providerIndependentProof, /SUCCESSOR_CREDIT_CHECKOUT_SESSION/);
+assert.match(providerIndependentProof, /pendingPaymentCreditLedgerRows: 0/);
+assert.match(providerIndependentProof, /serviceOnlyStateUnchanged: true/);
+assert.match(providerIndependentProof, /successorServiceOnlyBefore/);
+assert.match(providerIndependentProof, /successorServiceOnlyFinal/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 11/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.authenticatedDenialCount !== 11/);
+assert.match(runner, /BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED/);
+assert.match(runner, /BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY/);
+assert.match(runner, /BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY/);
+assert.match(successorProviderIndependentContract, /SUCCESSOR_SCHEMA_VERSION = "20260716200000"/);
+assert.match(successorProviderIndependentContract, /SUCCESSOR_GHL_SERVICE_ONLY_TABLES/);
+assert.match(successorProviderIndependentContract, /SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES/);
+assert.match(successorProviderIndependentContract, /result\.error\.code !== "42501"/);
+assert.match(successorProviderIndependentContract, /create_credit_top_up_intent_v2/);
+assert.match(successorProviderIndependentContract, /project_stripe_checkout_payment_lifecycle_v1/);
+assert.match(successorProviderIndependentContract, /A pending synthetic Stripe Checkout event granted credit/);
 for (const providerName of ["meta", "ghl", "higgsfield", "twilio"]) {
   assert.match(providerIndependentProof, new RegExp(`${providerName}: "BLOCKED_`));
 }
@@ -1977,6 +2000,10 @@ assert.match(runner, /supportInternalNonDeliveringInboxLifecycle: "PASS"/);
 assert.match(runner, /reportingFreshStaleAndFailedRefreshStateHandling: "PASS"/);
 assert.match(runner, /billingCancellationStaleEventReactivationAndReplayProjection: "PASS"/);
 assert.match(runner, /accountDeletionRequestSuspensionAndDisabledWorkerBoundary: "PASS"/);
+assert.match(runner, /successorServiceOnlySchemaRlsAndNoEffectReadback: "PASS"/);
+assert.match(runner, /successorCreditTopUpV2AndPendingStripeProjectionIdempotency: "PASS"/);
+assert.match(runner, /optimizerMinimumSampleAgainstActiveMetaReceipt:[\s\S]{0,120}"BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED"/);
+assert.match(runner, /ghlMarketplaceInstallLifecycleAndTokenRotation:[\s\S]{0,100}"BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY"/);
 assert.match(runner, /ghlSandboxProvisioningFunnelsAndLeadDelivery:[\s\S]{0,100}"BLOCKED_EXTERNAL_PROVIDER_AUTHORITY"/);
 assert.match(runner, /metaSandboxLaunchLeadgenReportingAndOptimization:[\s\S]{0,100}"BLOCKED_EXTERNAL_PROVIDER_AUTHORITY"/);
 assert.match(runner, /stripeTestCheckoutAndSignedWebhook:[\s\S]{0,100}"BLOCKED_EXTERNAL_PROVIDER_AUTHORITY"/);
@@ -2301,5 +2328,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, read-only-resume, or exact-forward authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 104-migration atomic broker with pinned read-only-proven 103-to-104 forward mode and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 108-migration atomic broker with legacy single-migration forward mode disabled and owner-authority retention installation; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

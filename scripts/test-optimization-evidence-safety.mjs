@@ -19,8 +19,14 @@ async function importTypeScript(relativePath) {
 const {
   evaluateOptimizationEvidence,
   OPTIMIZATION_HOLD_STATE,
+  OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER,
   OPTIMIZATION_REVIEW_STATE,
 } = await importTypeScript("src/lib/optimization-engine/safety-policy.ts");
+
+assert.equal(
+  OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER,
+  "below_minimum_leads_for_cpl",
+);
 
 const now = new Date("2026-07-10T16:00:00.000Z");
 const metrics = {
