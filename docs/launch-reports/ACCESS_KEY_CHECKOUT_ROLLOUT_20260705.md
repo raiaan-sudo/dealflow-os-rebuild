@@ -14,7 +14,7 @@ Access-key checkout, key reveal, signup claim, billing merge, and reuse rejectio
 
 ## Supabase
 
-- Project ref: `fdzwbevvbqvyteapphxm`
+- Project ref: `[protected Supabase project ref; SHA-256 ad5e80fbea50d6e2ccc5112a81de18e14f5b44722b07a216a715e78ee6dce321; safe suffix phxm]`
 - Applied migration: `20260705090000_create_billing_access_keys.sql`
 - Verified tables:
   - `public.billing_access_keys`

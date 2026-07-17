@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 
 const MAX_TEXT_BYTES = 8 * 1024 * 1024;
 const rules = [
@@ -27,6 +27,13 @@ const findings = [];
 let scannedFileCount = 0;
 
 for (const path of paths) {
+  if (path === "supabase/.temp" || path.startsWith("supabase/.temp/")) {
+    findings.push({ path, rule: "tracked_or_unignored_supabase_cli_state" });
+  }
+}
+
+for (const path of paths) {
+  if (!existsSync(path)) continue;
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_TEXT_BYTES) continue;
   const buffer = readFileSync(path);

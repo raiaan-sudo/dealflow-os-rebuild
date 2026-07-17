@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1019,
-  "deployableSourceSha256": "bfc52c795cbb926c5ae8788e92f68b3da53b1adb40e32307aa6b975569b22009",
+  "deployableSourceSha256": "a6194b49be6132c188a9e02f737ea29fe9a3a74edbd5f86be525d08a2f94c806",
   "entries": [
     {
       "path": ".github/workflows/ci.yml",
@@ -528,9 +528,9 @@
     },
     {
       "path": "docs/launch-reports/ACCESS_KEY_CHECKOUT_ROLLOUT_20260705.md",
-      "size": 4767,
+      "size": 4871,
       "mode": 33188,
-      "sha256": "c2923687bde846f268aebffc7bdd3aae564de3ec865dc546626b0867b813e9ae"
+      "sha256": "39ca9b8be7cabb8d345b3932e6ff573355562d90594743866f46206d9914a87f"
     },
     {
       "path": "docs/next-16-upgrade-assessment.md",
@@ -858,9 +858,9 @@
     },
     {
       "path": "scripts/scan-release-secrets.mjs",
-      "size": 2300,
+      "size": 2533,
       "mode": 33188,
-      "sha256": "8eb2bb75c20040ccd154a055d771c47e277177895ab4bd96af84819da87ee211"
+      "sha256": "59cb99f923f849d3b0ea460519e044c54b7a9bd4c610baa6a80612775292d75d"
     },
     {
       "path": "scripts/schema-deployment-checklist.md",
@@ -1830,9 +1830,9 @@
     },
     {
       "path": "scripts/test-release-secret-scan-contract.mjs",
-      "size": 888,
+      "size": 1080,
       "mode": 33188,
-      "sha256": "c7e030459c59f39d4c95ec905af9ebf32ffe6bedce3810408e3f0faf69f48326"
+      "sha256": "236c1d1f8a76db241b7783f2b0d48b6864cfaa822e4eb0203763eaa380482c81"
     },
     {
       "path": "scripts/test-reliability-wave.mjs",

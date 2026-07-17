@@ -17,6 +17,9 @@ dist/
 # vercel
 .vercel/
 
+# Supabase CLI local state (may contain protected project identifiers)
+supabase/.temp/
+
 # logs
 npm-debug.log*
 yarn-debug.log*
