@@ -138,6 +138,7 @@ function runOfflineChecks() {
   const metaLaunchService = "src/lib/services/meta-launch-service.ts";
   const imageProvider = "src/lib/integrations/creative/image-provider.ts";
   const loginForm = "src/components/auth/login-form.tsx";
+  const authCallback = "src/app/auth/callback/route.ts";
   const middleware = "src/proxy.ts";
   const ciGateSource = fileExists(".github/workflows/ci.yml")
     ? ".github/workflows/ci.yml"
@@ -145,7 +146,7 @@ function runOfflineChecks() {
   const productionRunbook = "docs/production-100-client-runbook.md";
   const membershipPolicyMigration = "supabase/migrations/20260430060000_harden_membership_insert_policy.sql";
 
-  assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
+  assertIncludes(loginForm, "callbackUrl.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps the centrally validated next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
   assertIncludes(
     middleware,
@@ -232,7 +233,8 @@ function runOfflineChecks() {
   assertIncludes(loginForm, "supabase.auth.signInWithPassword({\n          email,\n          password,\n          options:", "Signin Turnstile token support", "Supabase Auth password sign-in can receive a Turnstile token");
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
   assertIncludes(loginForm, "resetPasswordForEmail", "Forgot password support", "login page can request a Supabase password reset link");
-  assertIncludes(loginForm, "PASSWORD_RECOVERY", "Password recovery completion", "login page handles Supabase recovery sessions");
+  assertIncludes(loginForm, 'getAuthCallbackUrl("recovery", redirectedFrom)', "Password recovery callback", "password reset links use the server-side PKCE callback");
+  assertIncludes(authCallback, "supabase.auth.exchangeCodeForSession(code)", "Password recovery completion", "the server callback exchanges the one-time recovery code before update-password mode");
   assertIncludes(middleware, "https://challenges.cloudflare.com", "Turnstile CSP allowlist", "production CSP allows Cloudflare Turnstile script, frame, and verification traffic");
   assertIncludes(rateLimitHelpers, "rate_limit_unavailable", "Durable rate limiting fails closed", "production rate limiting no longer falls back to in-memory buckets");
   assertIncludes(rateLimitHelpers, "p_bucket_key", "Durable rate-limit RPC contract", "rate limiter calls the Supabase RPC with versioned parameter names");

@@ -11,8 +11,9 @@ type WorkspaceMetricInput = {
 };
 
 function finiteNonnegative(value: number | null | undefined) {
-  const normalized = Number(value ?? 0);
-  return Number.isFinite(normalized) && normalized > 0 ? normalized : 0;
+  if (value === null || value === undefined) return null;
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized >= 0 ? normalized : null;
 }
 
 export function resolveCampaignDeliveryMetricTruth(input: {
@@ -20,19 +21,15 @@ export function resolveCampaignDeliveryMetricTruth(input: {
   workspaceMetrics: WorkspaceMetricInput;
 }) {
   const campaignMetrics = input.campaignDeliveryMetrics;
-  const source = campaignMetrics ? "campaign_meta_snapshot" as const : "workspace_fallback" as const;
-  const leads = campaignMetrics
-    ? finiteNonnegative(campaignMetrics.leads)
-    : finiteNonnegative(input.workspaceMetrics.totalLeads);
-  const spend = campaignMetrics
-    ? finiteNonnegative(campaignMetrics.spend)
-    : finiteNonnegative(input.workspaceMetrics.totalSpend);
+  const source = campaignMetrics ? "campaign_meta_snapshot" as const : "missing" as const;
+  const leads = campaignMetrics ? finiteNonnegative(campaignMetrics.leads) : null;
+  const spend = campaignMetrics ? finiteNonnegative(campaignMetrics.spend) : null;
   return {
     source,
     leads,
     spend,
-    impressions: campaignMetrics ? finiteNonnegative(campaignMetrics.impressions) : 0,
-    clicks: campaignMetrics ? finiteNonnegative(campaignMetrics.clicks) : 0,
-    cpl: leads > 0 ? spend / leads : 0,
+    impressions: campaignMetrics ? finiteNonnegative(campaignMetrics.impressions) : null,
+    clicks: campaignMetrics ? finiteNonnegative(campaignMetrics.clicks) : null,
+    cpl: leads !== null && spend !== null && leads > 0 ? spend / leads : null,
   };
 }

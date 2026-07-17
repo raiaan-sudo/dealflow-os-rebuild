@@ -13,6 +13,10 @@ const ambiguousDispatchMigrationPath = path.join(
   repoRoot,
   "supabase/migrations/20260713016000_terminalize_ambiguous_ghl_dispatches.sql",
 );
+const providerAwarePublicationMigrationPath = path.join(
+  repoRoot,
+  "supabase/migrations/20260717082000_provider_aware_funnel_publication.sql",
+);
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-ghl-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
@@ -1033,6 +1037,10 @@ try {
   psql(
     fs.readFileSync(ambiguousDispatchMigrationPath, "utf8"),
     "GHL ambiguous-dispatch terminalization migration failed",
+  );
+  psql(
+    fs.readFileSync(providerAwarePublicationMigrationPath, "utf8"),
+    "GHL provider-aware publication migration failed",
   );
 
   const ambiguousProvisioningRunId = "60000000-0000-4000-8000-000000000001";
@@ -2169,7 +2177,16 @@ try {
       select concat_ws('|', status, current_step, coalesce(destination_url, ''))
       from public.settle_ghl_location_personalization_v1(
         '${claim.id}', '${claim.workerId}', '${claim.token}', ${claim.generation},
-        '${outcome}', '{"synthetic":true,"providerMutationAttempted":false}'::jsonb,
+        '${outcome}', (
+          select case when '${claim.step}' = 'forms' then jsonb_build_object(
+            'synthetic', true,
+            'providerMutationAttempted', false,
+            'verifiedReferences', personalization.required_form_ids,
+            'responseFingerprint', repeat('a', 64)
+          ) else '{"synthetic":true,"providerMutationAttempted":false}'::jsonb end
+          from public.ghl_location_personalizations personalization
+          where personalization.id = '${claim.id}'
+        ),
         null, null, timezone('utc', now())
       );
     `, `Personalization ${claim.step} settlement failed`);
@@ -2306,6 +2323,48 @@ try {
   assert.equal(revisedFormsClaim.campaignId, firstCampaignId);
   assert.equal(revisedFormsClaim.step, "forms");
   settlePersonalization(revisedFormsClaim, "succeeded");
+  assert.equal(
+    psql(`
+      begin;
+      set local role service_role;
+      set local request.jwt.claim.role = 'service_role';
+      select status || '|' || destination_url
+      from public.finalize_ghl_funnel_publication_v1('${revisedFormsClaim.id}');
+      commit;
+    `, "Provider-aware GHL funnel publication failed"),
+    "ready|https://funnels.example.test/campaign-a",
+    "A verified GHL-hosted funnel was not finalized as ready",
+  );
+  assert.equal(
+    psql(`
+      begin;
+      set local role service_role;
+      set local request.jwt.claim.role = 'service_role';
+      select destination_url from public.resolve_ghl_ready_campaign_destination_v3(
+        '${paidOrganizationId}', '${firstCampaignId}', 'sandbox'
+      );
+      commit;
+    `, "Provider-aware GHL destination resolution failed"),
+    "https://funnels.example.test/campaign-a",
+  );
+  assert.equal(
+    psql(`select count(*) from public.ghl_funnel_publication_receipts
+      where publication_id=(select id from public.ghl_funnel_publications where campaign_id='${firstCampaignId}');`),
+    "1",
+    "Provider-aware GHL publication did not preserve exactly one replay-safe receipt",
+  );
+  psql(`begin;
+    set local role service_role;
+    set local request.jwt.claim.role = 'service_role';
+    select id from public.finalize_ghl_funnel_publication_v1('${revisedFormsClaim.id}');
+    commit;`,
+    "Provider-aware GHL publication replay failed");
+  assert.equal(
+    psql(`select count(*) from public.ghl_funnel_publication_receipts
+      where publication_id=(select id from public.ghl_funnel_publications where campaign_id='${firstCampaignId}');`),
+    "1",
+    "Provider-aware GHL publication replay duplicated its receipt",
+  );
 
   psql(`
     update public.campaign_plans

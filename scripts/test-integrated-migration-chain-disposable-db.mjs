@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const FOUNDATION_LAST =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 115;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 120;
 const TRANSACTION_OWNING_MIGRATION =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const REQUIRED_EXTENSIONS = [
@@ -55,6 +55,11 @@ const REQUIRED_EXTENSIONS = [
   "20260717040000_bind_generated_static_storage_tenancy.sql",
   "20260717050000_create_privacy_consent_dsar_authority.sql",
   "20260717060000_install_owner_decision_authority_grants.sql",
+  "20260717070000_complete_privacy_runtime_and_dynamic_deletion.sql",
+  "20260717080000_harden_support_delivery_lifecycle.sql",
+  "20260717081000_expand_campaign_lifecycle_authority.sql",
+  "20260717082000_provider_aware_funnel_publication.sql",
+  "20260717090000_create_canonical_lead_outcome_ledger.sql",
 ];
 const config = Object.freeze({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,
@@ -422,7 +427,141 @@ function assertFunctionPrivilegeMatrix(session, signature, expected) {
   assert.equal(actual, expected, `unexpected RPC privilege matrix for ${signature}`);
 }
 
+function normalizedManagedCatalog(session) {
+  const material = session.psql(`
+    with catalog(item) as (
+      select jsonb_build_array('namespace', namespace.nspname, namespace.nspacl)::text
+      from pg_namespace namespace where namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('relation', namespace.nspname, relation.relname,
+        relation.relkind, relation.relpersistence, relation.relrowsecurity,
+        relation.relforcerowsecurity, relation.relacl)::text
+      from pg_class relation join pg_namespace namespace on namespace.oid=relation.relnamespace
+      where namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('column', namespace.nspname, relation.relname,
+        attribute.attnum, attribute.attname,
+        format_type(attribute.atttypid,attribute.atttypmod), attribute.attnotnull,
+        pg_get_expr(default_value.adbin,default_value.adrelid))::text
+      from pg_attribute attribute
+      join pg_class relation on relation.oid=attribute.attrelid
+      join pg_namespace namespace on namespace.oid=relation.relnamespace
+      left join pg_attrdef default_value
+        on default_value.adrelid=attribute.attrelid and default_value.adnum=attribute.attnum
+      where attribute.attnum > 0 and not attribute.attisdropped
+        and namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('constraint', namespace.nspname, relation.relname,
+        constraint_record.conname, constraint_record.contype,
+        pg_get_constraintdef(constraint_record.oid,true))::text
+      from pg_constraint constraint_record
+      join pg_class relation on relation.oid=constraint_record.conrelid
+      join pg_namespace namespace on namespace.oid=relation.relnamespace
+      where namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('function', namespace.nspname, procedure.proname,
+        pg_get_function_identity_arguments(procedure.oid), procedure.prokind,
+        procedure.prosecdef, procedure.provolatile, procedure.proparallel,
+        procedure.proacl, procedure.proconfig)::text
+      from pg_proc procedure join pg_namespace namespace on namespace.oid=procedure.pronamespace
+      where namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('type', namespace.nspname, type_record.typname,
+        type_record.typtype, type_record.typcategory, type_record.typnotnull,
+        type_record.typacl)::text
+      from pg_type type_record join pg_namespace namespace on namespace.oid=type_record.typnamespace
+      where namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('enum', namespace.nspname, type_record.typname,
+        enum_record.enumsortorder, enum_record.enumlabel)::text
+      from pg_enum enum_record
+      join pg_type type_record on type_record.oid=enum_record.enumtypid
+      join pg_namespace namespace on namespace.oid=type_record.typnamespace
+      where namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('policy', schemaname, tablename, policyname,
+        permissive, roles, cmd, qual, with_check)::text
+      from pg_policies where schemaname in ('public','private')
+      union all
+      select jsonb_build_array('trigger', namespace.nspname, relation.relname,
+        trigger_record.tgname, pg_get_triggerdef(trigger_record.oid,true))::text
+      from pg_trigger trigger_record
+      join pg_class relation on relation.oid=trigger_record.tgrelid
+      join pg_namespace namespace on namespace.oid=relation.relnamespace
+      where not trigger_record.tgisinternal and namespace.nspname in ('public','private')
+      union all
+      select jsonb_build_array('publication_relation', publication.pubname,
+        namespace.nspname, relation.relname)::text
+      from pg_publication_rel publication_relation
+      join pg_publication publication on publication.oid=publication_relation.prpubid
+      join pg_class relation on relation.oid=publication_relation.prrelid
+      join pg_namespace namespace on namespace.oid=relation.relnamespace
+      where namespace.nspname in ('public','private')
+    ) select item from catalog order by item;
+  `, { label: "Capture managed structural catalog oracle" });
+  return { digest: sha256(material), records: material ? material.split("\n").length : 0 };
+}
+
 function verifyIntegratedObjects(session) {
+  const successorTables = [
+    "account_deletion_resource_manifest",
+    "account_deletion_tombstones",
+    "support_delivery_lifecycle_events",
+    "support_delivery_lifecycle_state",
+    "campaign_approval_snapshots",
+    "campaign_lifecycle_authority",
+    "campaign_lifecycle_events",
+    "campaign_provider_action_intents",
+    "ghl_funnel_publications",
+    "ghl_funnel_publication_receipts",
+    "lead_outcome_definitions",
+    "lead_outcome_events",
+    "lead_outcome_current",
+  ];
+  assert.equal(
+    session.psql(`
+      select string_agg(c.relname, ',' order by c.relname)
+      from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='public' and c.relkind in ('r','p')
+        and c.relname = any(array[${successorTables.map((name) => `'${name}'`).join(",")}]);
+    `, { label: "Verify post-audit successor tables" }),
+    [...successorTables].sort().join(","),
+  );
+  assert.equal(
+    session.psql(`
+      select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='public' and c.relname = any(array[${successorTables.map((name) => `'${name}'`).join(",")}])
+        and c.relrowsecurity and c.relforcerowsecurity;
+    `, { label: "Verify post-audit successor forced RLS" }),
+    String(successorTables.length),
+  );
+  assert.equal(
+    session.psql("select value from public.app_schema_metadata where key='schema_version';", {
+      label: "Verify post-audit terminal schema version",
+    }),
+    "20260717090000",
+  );
+  for (const signature of [
+    "public.prepare_account_deletion_completion_v2(uuid,uuid,bigint,integer,integer)",
+    "public.attest_account_deletion_tombstone_anchor_v1(uuid,uuid,bigint,text,text)",
+    "public.record_support_delivery_callback_v1(text,text,text,timestamp with time zone,text,text)",
+    "public.finalize_ghl_funnel_publication_v1(uuid)",
+    "public.resolve_ghl_ready_campaign_destination_v3(uuid,uuid,text)",
+    "public.record_lead_outcome_event_v1(uuid,uuid,uuid,uuid,text,text,text,text,uuid,text,text,text,text,text,text,timestamp with time zone,uuid,text,text)",
+  ]) {
+    assertFunctionPrivilegeMatrix(session, signature, "false|false|true");
+  }
+  assertFunctionPrivilegeMatrix(
+    session,
+    "public.approve_campaign_snapshot_v1(uuid,text,jsonb,bigint,text,timestamp with time zone,text)",
+    "false|true|false",
+  );
+  assertFunctionPrivilegeMatrix(
+    session,
+    "public.transition_campaign_lifecycle_v1(uuid,bigint,text,text,text,text,uuid,text)",
+    "false|true|true",
+  );
+
   const tables = session.psql(`
     select string_agg(c.relname, ',' order by c.relname)
       from pg_class c
@@ -649,6 +788,111 @@ function verifyIntegratedObjects(session) {
     ),
     String(migrations.length),
   );
+
+  session.psql(`
+    insert into auth.users(id) values
+      ('7a000000-0000-4000-8000-000000000001');
+    insert into public.users(id,email) values
+      ('7a000000-0000-4000-8000-000000000001','successor-proof@example.invalid');
+    insert into public.organizations(id,name,slug,owner_user_id) values
+      ('7a000000-0000-4000-8000-000000000002','Successor proof','successor-proof','7a000000-0000-4000-8000-000000000001');
+    insert into public.organization_memberships(organization_id,user_id,role) values
+      ('7a000000-0000-4000-8000-000000000002','7a000000-0000-4000-8000-000000000001','owner');
+    insert into public.campaign_plans(id,organization_id,user_id,plan,publish_state) values
+      ('7a000000-0000-4000-8000-000000000003','7a000000-0000-4000-8000-000000000002',
+       '7a000000-0000-4000-8000-000000000001','{}'::jsonb,'draft');
+    insert into public.leads(
+      id,organization_id,user_id,campaign_id,first_name,last_name,email
+    ) values
+      ('7a000000-0000-4000-8000-000000000004','7a000000-0000-4000-8000-000000000002',
+       '7a000000-0000-4000-8000-000000000001','7a000000-0000-4000-8000-000000000003',
+       'Successor','Proof','lead-successor-proof@example.invalid');
+  `, { label: "Seed post-audit successor behavior fixtures" });
+  session.psqlMustFail(`
+    set role authenticated;
+    select set_config('request.jwt.claim.role','authenticated',false);
+    select set_config('request.jwt.claim.sub','7a000000-0000-4000-8000-000000000001',false);
+    select state from public.transition_campaign_lifecycle_v1(
+      '7a000000-0000-4000-8000-000000000003',1,'active','customer_active',repeat('a',64),
+      'customer-active-forbidden',null,'customer'
+    );
+  `, /campaign_lifecycle_provider_state_forbidden/i, {
+    label: "Reject customer-forged provider lifecycle state",
+  });
+  const lifecycleFirst = session.psql(`
+    set role authenticated;
+    select set_config('request.jwt.claim.role','authenticated',false);
+    select set_config('request.jwt.claim.sub','7a000000-0000-4000-8000-000000000001',false);
+    select state || '|' || state_version::text from public.transition_campaign_lifecycle_v1(
+      '7a000000-0000-4000-8000-000000000003',1,'generated','customer_generated',repeat('b',64),
+      'customer-generated-0001',null,'customer'
+    );
+    reset role;
+  `, { label: "Record allowed customer campaign lifecycle transition" });
+  assert.equal(lifecycleFirst.split("\n").at(-1), "generated|2");
+  const lifecycleReplay = session.psql(`
+    set role authenticated;
+    select set_config('request.jwt.claim.role','authenticated',false);
+    select set_config('request.jwt.claim.sub','7a000000-0000-4000-8000-000000000001',false);
+    select state || '|' || state_version::text from public.transition_campaign_lifecycle_v1(
+      '7a000000-0000-4000-8000-000000000003',1,'generated','customer_generated',repeat('b',64),
+      'customer-generated-0001',null,'customer'
+    );
+    reset role;
+  `, { label: "Replay campaign lifecycle transition after version advance" });
+  assert.equal(lifecycleReplay.split("\n").at(-1), "generated|2");
+
+  session.psql(`
+    insert into public.owner_decision_authority_grants(
+      id,environment,authority_mode,capability,decision_ids,selected_values,
+      selected_values_sha256,envelope_id,envelope_sha256,payload_sha256,signature_reference,
+      authority_id,key_id,public_key_sha256,generation,revocation_generation,
+      host_project_id_sha256,candidate_commit,candidate_tree,candidate_digest,tracked_file_count,
+      dependency_lock_sha256,migration_portfolio_sha256,migration_count,template_sha256,
+      decision_inventory_sha256,requirement_inventory_sha256,effective_at,expires_at
+    ) values(
+      '7a000000-0000-4000-8000-000000000005','staging','synthetic_staging','lead.outcome.definition',
+      array['OUTCOME-001'], '[{"value":"appointment_booked"}]'::jsonb, repeat('c',64),
+      'successor-proof-envelope',repeat('d',64),repeat('e',64),
+      'ed25519:successor-proof-authority:successor-proof-key:'||repeat('e',64),
+      'successor-proof-authority','successor-proof-key',repeat('f',64),1,0,repeat('1',64),
+      repeat('2',40),repeat('3',40),repeat('4',64),1200,repeat('5',64),repeat('6',64),120,
+      repeat('7',64),repeat('8',64),repeat('9',64),timezone('utc',now())-interval '1 minute',
+      timezone('utc',now())+interval '1 hour'
+    );
+    insert into public.lead_outcome_definitions(
+      id,organization_id,outcome_type,definition_version,definition_text,qualification_rules,
+      authority_grant_id,definition_digest,effective_at
+    ) values(
+      '7a000000-0000-4000-8000-000000000006','7a000000-0000-4000-8000-000000000002',
+      'appointment_booked',1,'A verified provider appointment exists for the lead.',
+      '{"providerStatus":["booked","confirmed"]}'::jsonb,
+      '7a000000-0000-4000-8000-000000000005',repeat('a',64),'2026-07-16T00:00:00Z'
+    );
+  `, { label: "Install synthetic lead-outcome definition authority" });
+  const recordOutcomeSql = (payloadDigest) => `
+    set role service_role;
+    select set_config('request.jwt.claim.role','service_role',false);
+    select replayed::text || '|' || current_projection_updated::text
+    from public.record_lead_outcome_event_v1(
+      '7a000000-0000-4000-8000-000000000002','7a000000-0000-4000-8000-000000000004',
+      '7a000000-0000-4000-8000-000000000003','7a000000-0000-4000-8000-000000000006',
+      'appointment_booked','synthetic_staging','synthetic-event-0001','synthetic-outcome-0001',
+      null,null,null,null,null,null,null,'2026-07-17T12:00:00Z',null,null,'${payloadDigest}'
+    );
+    reset role;
+  `;
+  assert.equal(
+    session.psql(recordOutcomeSql("c".repeat(64)), { label: "Record canonical lead outcome" }).split("\n").at(-1),
+    "false|true",
+  );
+  assert.equal(
+    session.psql(recordOutcomeSql("c".repeat(64)), { label: "Replay canonical lead outcome" }).split("\n").at(-1),
+    "true|false",
+  );
+  session.psqlMustFail(recordOutcomeSql("d".repeat(64)), /lead_outcome_idempotency_collision/i, {
+    label: "Reject canonical lead outcome idempotency collision",
+  });
 }
 
 async function proveFreshAndReplay() {
@@ -660,6 +904,7 @@ async function proveFreshAndReplay() {
     verifyIntegratedObjects(session);
     const beforeReplay = {
       schema: normalizedSchemaDump(session),
+      catalog: normalizedManagedCatalog(session),
       security: normalizedSecurityOracle(session),
     };
     const replay = applyMigrations(session, migrations);
@@ -667,6 +912,7 @@ async function proveFreshAndReplay() {
     assert.equal(replay.skipped.length, migrations.length);
     const afterReplay = {
       schema: normalizedSchemaDump(session),
+      catalog: normalizedManagedCatalog(session),
       security: normalizedSecurityOracle(session),
     };
     assert.deepEqual(afterReplay, beforeReplay);
@@ -690,12 +936,13 @@ async function proveFoundationThenExtensions() {
     verifyIntegratedObjects(session);
     return {
       schema: normalizedSchemaDump(session),
+      catalog: normalizedManagedCatalog(session),
       security: normalizedSecurityOracle(session),
     };
   });
 }
 
-async function proveExact104ThenForward115() {
+async function proveExact104ThenForward120() {
   return adapter.withDisposableDatabase(async (session) => {
     installRemoteEquivalentDefaults(session);
     const prior = applyMigrations(session, migrations.slice(0, 104));
@@ -709,26 +956,28 @@ async function proveExact104ThenForward115() {
       "104|20260715010000",
     );
     const forward = applyMigrations(session, migrations.slice(104));
-    assert.equal(forward.applied.length, 11);
+    assert.equal(forward.applied.length, 16);
     assert.equal(forward.skipped.length, 0);
     assert.equal(
       session.psql(
         "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;",
-        { label: "Verify exact post-forward-115 migration history" },
+        { label: "Verify exact post-forward-120 migration history" },
       ),
-      "115|20260717060000",
+      "120|20260717090000",
     );
     verifyIntegratedObjects(session);
     const beforeReplay = {
       schema: normalizedSchemaDump(session),
+      catalog: normalizedManagedCatalog(session),
       security: normalizedSecurityOracle(session),
     };
     const replay = applyMigrations(session, migrations.slice(104));
     assert.equal(replay.applied.length, 0);
-    assert.equal(replay.skipped.length, 11);
+    assert.equal(replay.skipped.length, 16);
     assert.deepEqual(
       {
         schema: normalizedSchemaDump(session),
+        catalog: normalizedManagedCatalog(session),
         security: normalizedSecurityOracle(session),
       },
       beforeReplay,
@@ -792,15 +1041,16 @@ try {
   }
   const fresh = await proveFreshAndReplay();
   const staged = await proveFoundationThenExtensions();
-  const forward104To115 = await proveExact104ThenForward115();
+  const forward104To120 = await proveExact104ThenForward120();
   await provePerFileAtomicFailure();
   assert.deepEqual(staged, fresh);
-  assert.deepEqual(forward104To115, fresh);
+  assert.deepEqual(forward104To120, fresh);
   assert.deepEqual(adapter.listDisposableDatabases(), []);
   console.log(
     `Integrated migration chain PASS: ${migrations.length} migrations, ` +
-      `fresh/replay/foundation-extension/forward-104-to-115 schema=${fresh.schema.digest}, ` +
-      `schemaBytes=${fresh.schema.bytes}, security=${fresh.security.digest}, ` +
+      `fresh/replay/foundation-extension/forward-104-to-120 schema=${fresh.schema.digest}, ` +
+      `schemaBytes=${fresh.schema.bytes}, catalog=${fresh.catalog.digest}, ` +
+      `catalogRecords=${fresh.catalog.records}, security=${fresh.security.digest}, ` +
       `securityBytes=${fresh.security.bytes}`,
   );
 } finally {

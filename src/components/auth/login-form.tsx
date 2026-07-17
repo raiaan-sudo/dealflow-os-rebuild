@@ -255,6 +255,19 @@ export function LoginForm({
           window.location.origin,
           href("/onboarding?fresh=1"),
         );
+        const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (assurance.error) {
+          throw assurance.error;
+        }
+        if (
+          assurance.data.nextLevel === "aal2" &&
+          assurance.data.currentLevel !== "aal2"
+        ) {
+          const challengeUrl = new URL(href("/mfa"), window.location.origin);
+          challengeUrl.searchParams.set("redirectedFrom", nextPath);
+          window.location.assign(challengeUrl.toString());
+          return;
+        }
         window.location.assign(nextPath);
         return;
       }

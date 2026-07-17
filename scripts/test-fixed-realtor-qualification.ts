@@ -60,7 +60,7 @@ const route = readFileSync(
 );
 assert.ok(
   route.indexOf("hasOnlyApprovedRealtorQualificationQuestions") <
-    route.indexOf("saveCampaignPlan(buildCampaignInput"),
+    route.indexOf('"submit_onboarding_draft_v2"'),
   "question authority must be validated before campaign persistence",
 );
 assert.match(route, /qualification_question_unsupported/);

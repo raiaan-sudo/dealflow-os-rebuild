@@ -198,7 +198,7 @@ assert.match(lifecycleGate, /assertGhlSandboxAllowed/);
 assert.match(lifecycleGate, /target === "production"/);
 assert.match(lifecycleGate, /target === "staging"/);
 assert.match(lifecycleGate, /gate\.exactIsolatedStagingHost !== true/);
-assert.match(webhookRoute, /verifyGhlWebhookSignature\(rawBody/);
+assert.match(webhookRoute, /verifyGhlWebhookSignatures\(rawBody,\s*\{[\s\S]*ghl:[\s\S]*legacy:/);
 assert.match(webhookRoute, /projectionStatus: acceptance\.projectionStatus/);
 assert.match(lifecycleService, /projectionStatus !== "reconciled"/);
 assert.match(lifecycleService, /projectionStatus !== "operator_action_required"/);

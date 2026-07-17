@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { MetaLaunchInputBinding } from "@/lib/meta-launch-input-snapshot";
 import type { CampaignLaunchProviderMutationSettlement } from "@/lib/services/campaign-launch-audit-service";
 import { finalizeMetaActivationPreauthorizationAfterPausedLaunch } from "@/lib/services/meta-campaign-activation-authority-service";
+import { transitionCanonicalCampaignLifecycleBySystem } from "@/lib/services/canonical-campaign-lifecycle-service";
 
 const SCHEDULED_LAUNCH_LEASE_MS = 30 * 60_000;
 const SCHEDULED_LAUNCH_HEARTBEAT_MS = 60_000;
@@ -771,9 +772,35 @@ export async function processScheduledCampaignLaunchBatch(params?: {
         void assertLeaseAndGates().catch(() => undefined);
       }, SCHEDULED_LAUNCH_HEARTBEAT_MS);
 
+      await transitionCanonicalCampaignLifecycleBySystem({
+        organizationId: claim.organizationId,
+        campaignId: claim.campaignId,
+        toState: "publishing",
+        reasonCode: "scheduled_provider_publish_started",
+        evidence: {
+          launchRecordId: claim.id,
+          leaseGeneration: claim.leaseGeneration,
+          scheduledFor: claim.scheduledFor,
+        },
+        idempotencyKey: `provider-publish:${claim.id}:${claim.leaseGeneration}`,
+        client,
+      });
       const result = await dispatch(claim, { assertLeaseAndGates, client });
       await assertLeaseAndGates();
       await completeScheduledLaunch(client, claim, result);
+      await transitionCanonicalCampaignLifecycleBySystem({
+        organizationId: claim.organizationId,
+        campaignId: claim.campaignId,
+        toState: "provider_paused",
+        reasonCode: "provider_object_set_created_paused",
+        evidence: {
+          launchRecordId: claim.id,
+          leaseGeneration: claim.leaseGeneration,
+          providerObjectsCreatedPaused: true,
+        },
+        idempotencyKey: `provider-paused:${claim.id}:${claim.leaseGeneration}`,
+        client,
+      });
       await finalizeMetaActivationPreauthorizationAfterPausedLaunch({
         organizationId: claim.organizationId,
         userId: claim.userId,
@@ -800,6 +827,22 @@ export async function processScheduledCampaignLaunchBatch(params?: {
       if (released?.status === "scheduled") {
         retryingIds.push(claim.id);
       } else if (released?.status === "operator_action_required") {
+        await transitionCanonicalCampaignLifecycleBySystem({
+          organizationId: claim.organizationId,
+          campaignId: claim.campaignId,
+          toState: "operator_required",
+          reasonCode: "provider_publish_operator_action_required",
+          evidence: {
+            launchRecordId: claim.id,
+            leaseGeneration: claim.leaseGeneration,
+            errorCode:
+              dispatchError && typeof dispatchError === "object" && "code" in dispatchError
+                ? String(dispatchError.code)
+                : "provider_publish_failed",
+          },
+          idempotencyKey: `provider-operator:${claim.id}:${claim.leaseGeneration}`,
+          client,
+        }).catch(() => undefined);
         operatorActionIds.push(claim.id);
       }
     } finally {

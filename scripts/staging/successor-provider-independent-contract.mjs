@@ -1,4 +1,4 @@
-export const SUCCESSOR_SCHEMA_VERSION = "20260716200000";
+export const SUCCESSOR_SCHEMA_VERSION = "20260717090000";
 
 export const SUCCESSOR_GHL_SERVICE_ONLY_TABLES = Object.freeze([
   "ghl_marketplace_oauth_states",
@@ -17,9 +17,19 @@ export const SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES = Object.freeze([
   "stripe_dispute_lifecycle",
 ]);
 
+export const SUCCESSOR_POST_AUDIT_SERVICE_ONLY_TABLES = Object.freeze([
+  "account_deletion_resource_manifest",
+  "account_deletion_tombstones",
+  "support_delivery_lifecycle_events",
+  "support_delivery_lifecycle_state",
+  "ghl_funnel_publications",
+  "ghl_funnel_publication_receipts",
+]);
+
 export const SUCCESSOR_SERVICE_ONLY_TABLES = Object.freeze([
   ...SUCCESSOR_GHL_SERVICE_ONLY_TABLES,
   ...SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES,
+  ...SUCCESSOR_POST_AUDIT_SERVICE_ONLY_TABLES,
 ]);
 
 const EXPECTED_SYNTHETIC_COUNTS = Object.freeze({
@@ -34,6 +44,12 @@ const EXPECTED_SYNTHETIC_COUNTS = Object.freeze({
   stripe_charge_financial_lifecycle: 0,
   stripe_refund_lifecycle: 0,
   stripe_dispute_lifecycle: 0,
+  account_deletion_resource_manifest: 0,
+  account_deletion_tombstones: 0,
+  support_delivery_lifecycle_events: 0,
+  support_delivery_lifecycle_state: 0,
+  ghl_funnel_publications: 0,
+  ghl_funnel_publication_receipts: 0,
 });
 
 function firstRow(value) {
@@ -252,6 +268,7 @@ export async function assertSuccessorServiceOnlySchemaReadback({
     serviceOnlyTableCount: SUCCESSOR_SERVICE_ONLY_TABLES.length,
     ghlMarketplaceTableCount: SUCCESSOR_GHL_SERVICE_ONLY_TABLES.length,
     stripeLifecycleTableCount: SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES.length,
+    postAuditServiceOnlyTableCount: SUCCESSOR_POST_AUDIT_SERVICE_ONLY_TABLES.length,
     serviceCounts,
     authenticatedDenials,
     authenticatedDenialCount: authenticatedDenials.length,

@@ -9,8 +9,8 @@
       "src/lib"
     ],
     "migrationRoot": "supabase/migrations",
-    "finalMigration": "20260717060000_install_owner_decision_authority_grants.sql",
-    "expectedMigrationCount": 115
+    "finalMigration": "20260717090000_create_canonical_lead_outcome_ledger.sql",
+    "expectedMigrationCount": 120
   },
   "invariant": "Every privileged or tenant-bypass path must bind an exact actor, organization or explicitly classified global authority, and resource before access or mutation. Unknown surfaces fail closed.",
   "classes": [
@@ -113,6 +113,14 @@
     "rate_limit_buckets": "service-only global abuse-prevention buckets"
   },
   "serviceRoleExceptions": {
+    "src/app/api/support/delivery-callback/route.ts": {
+      "mode": "signed_provider_receipt_scope",
+      "requiredMarkers": [
+        "verifyAndParseSupportLifecycleCallback",
+        "p_provider_receipt_id",
+        "record_support_delivery_callback_v1"
+      ]
+    },
     "src/app/api/billing/status/route.ts": {
       "mode": "authenticated_context_delegated",
       "requiredMarkers": ["getAppContext", "getBillingSummary"]

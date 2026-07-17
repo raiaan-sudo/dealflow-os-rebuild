@@ -22,12 +22,12 @@ import {
 } from "../lib/final-verification-command-contract.mjs";
 import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
 import {
-  assertExactForward104To115Portfolio,
+  assertExactForward104To120Portfolio,
   classifyForward104RemoteHistory,
-  FORWARD_104_TO_115_AUTHORITY,
+  FORWARD_104_TO_120_AUTHORITY,
   loadExactPrior104StagingSeal,
   loadExactPrior104SyntheticSurfaceSeal,
-} from "./forward-104-to-115-contract.mjs";
+} from "./forward-104-to-120-contract.mjs";
 
 import {
   classifyExactStagingAuthSurface,
@@ -102,11 +102,11 @@ const expectedPriorMigrationPortfolioSha256 =
 const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
-const exactMigrationCount = 115;
+const exactMigrationCount = 120;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260717060000_install_owner_decision_authority_grants.sql";
+  "20260717090000_create_canonical_lead_outcome_ledger.sql";
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -537,7 +537,7 @@ if (roundSummaryPaths[0] === roundSummaryPaths[1]) {
 }
 const releaseIdentity = captureCleanReleaseIdentity();
 const migrationIdentity = migrationPortfolioIdentity();
-const successorForwardPortfolio = assertExactForward104To115Portfolio(
+const successorForwardPortfolio = assertExactForward104To120Portfolio(
   migrationIdentity.records,
   migrationDir,
 );
@@ -552,7 +552,7 @@ const migrationSources = migrations.map((file) => {
 });
 const atomicMigrationTransaction = buildAtomicMigrationTransaction(migrationSources);
 const forwardMigrationSources = migrationSources.slice(
-  FORWARD_104_TO_115_AUTHORITY.prior.migrationCount,
+  FORWARD_104_TO_120_AUTHORITY.prior.migrationCount,
 );
 const forwardAtomicMigrationTransaction = buildAtomicMigrationTransaction(
   forwardMigrationSources,
@@ -1484,14 +1484,14 @@ function assertPrior104RowCountContinuity(
   const unchangedManagedTables = [];
   for (const [table, preCount] of Object.entries(preForward.tableRowCounts)) {
     if (!Object.hasOwn(postForward.tableRowCounts, table)) {
-      throw new Error(`The 104-to-115 transition removed the pre-existing managed table ${table}`);
+      throw new Error(`The 104-to-120 transition removed the pre-existing managed table ${table}`);
     }
     if (
       allowExpectedControlPlaneCountChanges &&
       expectedControlPlaneCountChanges.has(table)
     ) continue;
     if (postForward.tableRowCounts[table] !== preCount) {
-      throw new Error(`The 104-to-115 transition changed the row count of ${table}`);
+      throw new Error(`The 104-to-120 transition changed the row count of ${table}`);
     }
     unchangedManagedTables.push(table);
   }
@@ -2332,7 +2332,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
 
 if (migrationMode === "APPLY_FORWARD_EXACT") {
   if (!priorMigrationProofDir) {
-    throw new Error("Exact 104-to-115 forward mode requires the pinned prior-104 proof directory");
+    throw new Error("Exact 104-to-120 forward mode requires the pinned prior-104 proof directory");
   }
   assertOutsideRelease(priorMigrationProofDir, "Prior 104 migration proof directory");
   if (realpathSync(priorMigrationProofDir) === realpathSync(evidenceDir)) {
@@ -2353,7 +2353,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     ["show", `${priorApplication.applicationCommit}:${brokerRelativePath}`],
     "Unable to recover the exact prior-104 broker source",
   );
-  if (sha256(priorBrokerSource) !== FORWARD_104_TO_115_AUTHORITY.prior.brokerSourceSha256) {
+  if (sha256(priorBrokerSource) !== FORWARD_104_TO_120_AUTHORITY.prior.brokerSourceSha256) {
     throw new Error("Exact prior-104 broker is not bound to retained Git history");
   }
   git(
@@ -2364,7 +2364,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   const expectedPriorVersions = successorForwardPortfolio.priorVersions;
   const expectedForwardVersions = successorForwardPortfolio.forwardVersions;
   const expectedCurrentVersions = successorForwardPortfolio.currentVersions;
-  const forwardMigrations = FORWARD_104_TO_115_AUTHORITY.forwardMigrations.map((item) => ({
+  const forwardMigrations = FORWARD_104_TO_120_AUTHORITY.forwardMigrations.map((item) => ({
     version: item.version,
     file: item.file,
     sha256: item.sha256,
@@ -2372,12 +2372,12 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   }));
   const common = {
     migrationMode: "APPLY_FORWARD_EXACT",
-    transition: "EXACT_104_TO_115",
+    transition: "EXACT_104_TO_120",
     forwardOnly: true,
-    priorMigrationCount: FORWARD_104_TO_115_AUTHORITY.prior.migrationCount,
+    priorMigrationCount: FORWARD_104_TO_120_AUTHORITY.prior.migrationCount,
     forwardMigrationCount: forwardMigrations.length,
     forwardMigrations,
-    terminalVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    terminalVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
     idempotencyPolicy: "FAIL_CLOSED_READ_ONLY_REPROOF_AFTER_ANY_COMMIT_OR_AMBIGUITY",
     broker: brokerEvidenceIdentity,
     brokerSourceSha256: brokerSourceIdentity.sha256,
@@ -2402,7 +2402,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   };
   const preflightRecord = writeJsonEvidence("staging-broker-preflight.json", {
     schemaVersion: "dealflow.staging-broker-preflight.v1",
-    status: "PREPARED_EXACT_FORWARD_104_TO_115",
+    status: "PREPARED_EXACT_FORWARD_104_TO_120",
     remoteReadStarted: false,
     remoteMutationStarted: false,
     remoteMutationCompleted: false,
@@ -2412,7 +2412,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     "staging-migration-summary.pre-mutation.json",
     {
       schemaVersion: "dealflow.staging-migration-summary.v1",
-      status: "PREPARED_EXACT_FORWARD_104_TO_115",
+      status: "PREPARED_EXACT_FORWARD_104_TO_120",
       remoteReadStarted: false,
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
@@ -2423,7 +2423,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     "evidence-manifest.pre-mutation.json",
     {
       schemaVersion: "dealflow.staging-evidence-manifest.v1",
-      status: "PREPARED_EXACT_FORWARD_104_TO_115",
+      status: "PREPARED_EXACT_FORWARD_104_TO_120",
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
       broker: brokerEvidenceIdentity,
@@ -2434,7 +2434,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
   const readStartedRecord = writeJsonEvidence("staging-remote-read-started.json", {
     schemaVersion: "dealflow.staging-remote-read-status.v1",
-    status: "REMOTE_READ_STARTED_EXACT_FORWARD_104_TO_115",
+    status: "REMOTE_READ_STARTED_EXACT_FORWARD_104_TO_120",
     remoteReadStarted: true,
     remoteMutationStarted: false,
     remoteMutationCompleted: false,
@@ -2483,10 +2483,10 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
 
   const assertExactSafeAuthSurface = (proof, label) => {
     const exactHistoricalSynthetic =
-      proof.status === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.status &&
-      proof.userCount === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.userCount &&
-      proof.emailSetSha256 === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.emailSetSha256 &&
-      proof.identitySetSha256 === FORWARD_104_TO_115_AUTHORITY.prior.authSurface.identitySetSha256;
+      proof.status === FORWARD_104_TO_120_AUTHORITY.prior.authSurface.status &&
+      proof.userCount === FORWARD_104_TO_120_AUTHORITY.prior.authSurface.userCount &&
+      proof.emailSetSha256 === FORWARD_104_TO_120_AUTHORITY.prior.authSurface.emailSetSha256 &&
+      proof.identitySetSha256 === FORWARD_104_TO_120_AUTHORITY.prior.authSurface.identitySetSha256;
     if (
       proof.unexpectedIdentityCount !== 0 ||
       proof.rawIdentityValuesPersisted !== false ||
@@ -2521,7 +2521,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     }
     if (
       preForwardState.structuralCatalogSha256 !==
-      FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256
+      FORWARD_104_TO_120_AUTHORITY.prior.structuralCatalogSha256
     ) {
       failureCode = "prior_104_catalog_not_exact";
       throw new Error("Remote staging catalog drifted from the pinned prior-104 qibh seal");
@@ -2532,7 +2532,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     const preForwardDumpRepeat = captureNormalizedSchemaDump();
     preForwardSchemaSha256 = sha256(preForwardDump);
     if (
-      preForwardSchemaSha256 !== FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256 ||
+      preForwardSchemaSha256 !== FORWARD_104_TO_120_AUTHORITY.prior.normalizedSchemaSha256 ||
       preForwardSchemaSha256 !== sha256(preForwardDumpRepeat)
     ) {
       failureCode = "prior_104_schema_not_exact_or_stable";
@@ -2556,7 +2556,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       priorSyntheticSurface,
       "Verify pre-forward synthetic relational surface",
     );
-    failureCode = "provider_controls_read_failed_before_forward_115";
+    failureCode = "provider_controls_read_failed_before_forward_120";
     const activationControls = sql(
       "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
       "Verify pre-forward closed Meta activation controls",
@@ -2571,14 +2571,14 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       ghlControls.length !== 3 ||
       ghlControls.some((row) => !row.endsWith(":false:false:false"))
     ) {
-      failureCode = "provider_controls_not_closed_before_forward_115";
+      failureCode = "provider_controls_not_closed_before_forward_120";
       throw new Error("Provider runtime controls are not fail-closed before forward migration");
     }
 
     assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
     mutationStartedRecord = writeJsonEvidence("staging-mutation-started.json", {
       schemaVersion: "dealflow.staging-mutation-status.v1",
-      status: "FORWARD_104_TO_115_MUTATION_STARTED",
+      status: "FORWARD_104_TO_120_MUTATION_STARTED",
       remoteMutationStarted: true,
       remoteMutationCompleted: false,
       singleOuterTransaction: true,
@@ -2591,9 +2591,9 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     });
     remoteMutationStarted = true;
     // This immutable marker is the final operation before the only remote
-    // write. Migrations 105-115 and all 11 history receipts share one outer
+    // write. Migrations 105-120 and all 16 history receipts share one outer
     // PostgreSQL transaction. There is no retry after this boundary.
-    failureCode = "forward_104_to_115_atomic_transaction_failed";
+    failureCode = "forward_104_to_120_atomic_transaction_failed";
     transactionExecution = executeForwardMigrationTransaction();
     if (
       !transactionExecution.succeeded ||
@@ -2602,19 +2602,19 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       JSON.stringify(transactionExecution.appliedInTransaction) !==
         JSON.stringify(expectedForwardVersions)
     ) {
-      throw new Error("The exact migrations 105-115 transaction did not commit completely");
+      throw new Error("The exact migrations 105-120 transaction did not commit completely");
     }
     remoteMutationCompleted = true;
 
-    failureCode = "forward_115_structural_state_read_failed";
-    postForwardState = captureRemoteStructuralState("Forward staging post-115 verification");
+    failureCode = "forward_120_structural_state_read_failed";
+    postForwardState = captureRemoteStructuralState("Forward staging post-120 verification");
     if (
       !hasExactMigrationHistory(postForwardState) ||
       JSON.stringify(postForwardState.migrationHistoryVersions) !==
         JSON.stringify(expectedCurrentVersions)
     ) {
-      failureCode = "forward_115_history_mismatch";
-      throw new Error("Remote staging does not contain the exact ordered 115-migration history");
+      failureCode = "forward_120_history_mismatch";
+      throw new Error("Remote staging does not contain the exact ordered 120-migration history");
     }
     if (postForwardState.storageObjectCount !== 0) {
       failureCode = "post_forward_storage_surface_not_empty";
@@ -2635,80 +2635,80 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       "Verify post-forward synthetic relational surface",
       { requireSuccessorCredentialTables: true },
     );
-    failureCode = "forward_115_prior_customer_row_counts_changed";
+    failureCode = "forward_120_prior_customer_row_counts_changed";
     prior104RowCountContinuity = assertPrior104RowCountContinuity(
       preForwardRelationalSurface,
       postForwardRelationalSurface,
       { allowExpectedControlPlaneCountChanges: true },
     );
-    failureCode = "forward_115_catalog_repeat_read_failed";
+    failureCode = "forward_120_catalog_repeat_read_failed";
     const postForwardCatalogRepeat = captureRemoteCatalogIdentity(
-      "Forward staging repeated post-115 catalog identity",
+      "Forward staging repeated post-120 catalog identity",
     );
     postForwardCatalogRepeatSha256 = postForwardCatalogRepeat.structuralCatalogSha256;
     if (postForwardCatalogRepeatSha256 !== postForwardState.structuralCatalogSha256) {
-      failureCode = "forward_115_catalog_nondeterministic";
+      failureCode = "forward_120_catalog_nondeterministic";
       throw new Error("Post-migration structural catalog was not stable across repeated capture");
     }
-    failureCode = "forward_115_managed_catalog_first_capture_failed";
+    failureCode = "forward_120_managed_catalog_first_capture_failed";
     postForwardManagedCatalog = captureManagedCatalogIdentity(
-      "Forward staging post-115 managed catalog oracle",
+      "Forward staging post-120 managed catalog oracle",
     );
-    failureCode = "forward_115_managed_catalog_repeat_capture_failed";
+    failureCode = "forward_120_managed_catalog_repeat_capture_failed";
     const postForwardManagedCatalogRepeat = captureManagedCatalogIdentity(
-      "Forward staging repeated post-115 managed catalog oracle",
+      "Forward staging repeated post-120 managed catalog oracle",
     );
     if (
       postForwardManagedCatalog.managedStructuralCatalogSha256 !==
-        FORWARD_104_TO_115_AUTHORITY.current.managedStructuralCatalogSha256 ||
+        FORWARD_104_TO_120_AUTHORITY.current.managedStructuralCatalogSha256 ||
       postForwardManagedCatalog.managedStructuralCatalogSha256 !==
         postForwardManagedCatalogRepeat.managedStructuralCatalogSha256 ||
       postForwardManagedCatalog.managedStructuralCatalogRecordCount !==
         postForwardManagedCatalogRepeat.managedStructuralCatalogRecordCount
     ) {
-      failureCode = "forward_115_managed_catalog_not_exact_or_stable";
-      throw new Error("Post-migration managed catalog does not match the independent 115 oracle");
+      failureCode = "forward_120_managed_catalog_not_exact_or_stable";
+      throw new Error("Post-migration managed catalog does not match the independent 120 oracle");
     }
-    failureCode = "forward_115_schema_first_capture_failed";
+    failureCode = "forward_120_schema_first_capture_failed";
     const postForwardDump = captureNormalizedSchemaDump();
-    failureCode = "forward_115_schema_repeat_capture_failed";
+    failureCode = "forward_120_schema_repeat_capture_failed";
     const postForwardDumpRepeat = captureNormalizedSchemaDump();
     postForwardSchemaSha256 = sha256(postForwardDump);
     postForwardSchemaBytes = Buffer.byteLength(postForwardDump);
     if (postForwardSchemaSha256 !== sha256(postForwardDumpRepeat)) {
-      failureCode = "forward_115_schema_nondeterministic";
+      failureCode = "forward_120_schema_nondeterministic";
       throw new Error("Post-migration normalized schema was not stable across repeated capture");
     }
-    failureCode = "forward_115_managed_schema_first_capture_failed";
+    failureCode = "forward_120_managed_schema_first_capture_failed";
     const postForwardManagedDump = captureManagedNormalizedSchemaDump();
-    failureCode = "forward_115_managed_schema_repeat_capture_failed";
+    failureCode = "forward_120_managed_schema_repeat_capture_failed";
     const postForwardManagedDumpRepeat = captureManagedNormalizedSchemaDump();
     postForwardManagedSchemaSha256 = sha256(postForwardManagedDump);
     postForwardManagedSchemaBytes = Buffer.byteLength(postForwardManagedDump);
     if (
       postForwardManagedSchemaSha256 !==
-        FORWARD_104_TO_115_AUTHORITY.current.managedNormalizedSchemaSha256 ||
+        FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256 ||
       postForwardManagedSchemaSha256 !== sha256(postForwardManagedDumpRepeat)
     ) {
-      failureCode = "forward_115_managed_schema_not_exact_or_stable";
-      throw new Error("Post-migration managed schema does not match the independent 115 oracle");
+      failureCode = "forward_120_managed_schema_not_exact_or_stable";
+      throw new Error("Post-migration managed schema does not match the independent 120 oracle");
     }
-    failureCode = "forward_115_managed_security_capture_failed";
+    failureCode = "forward_120_managed_security_capture_failed";
     postForwardManagedSecurity = captureManagedSecurityOracle(
-      "Forward staging post-115 managed security oracle",
+      "Forward staging post-120 managed security oracle",
     );
     if (
       postForwardManagedSecurity.managedSecurityOracleSha256 !==
-      FORWARD_104_TO_115_AUTHORITY.current.managedSecurityOracleSha256
+      FORWARD_104_TO_120_AUTHORITY.current.managedSecurityOracleSha256
     ) {
-      failureCode = "forward_115_managed_security_not_exact";
-      throw new Error("Post-migration ACL, policy, or routine state drifted from the independent 115 oracle");
+      failureCode = "forward_120_managed_security_not_exact";
+      throw new Error("Post-migration ACL, policy, or routine state drifted from the independent 120 oracle");
     }
     failureCode = "retention_table_or_column_acl_not_hardened";
     retentionAuthorityAcl = captureAndAssertRetentionAuthorityAcl(
       "Verify post-forward retention authority table and column ACLs",
     );
-    failureCode = "provider_controls_read_failed_after_forward_115";
+    failureCode = "provider_controls_read_failed_after_forward_120";
     const postActivationControls = sql(
       "select environment || ':' || activation_writes_enabled::text from public.meta_campaign_activation_runtime_controls order by environment;",
       "Verify post-forward closed Meta activation controls",
@@ -2723,15 +2723,15 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       postGhlControls.length !== 3 ||
       postGhlControls.some((row) => !row.endsWith(":false:false:false"))
     ) {
-      failureCode = "provider_controls_not_closed_after_forward_115";
+      failureCode = "provider_controls_not_closed_after_forward_120";
       throw new Error("Provider runtime controls are not fail-closed after forward migration");
     }
-    failureCode = "forward_115_forced_rls_count_read_failed";
+    failureCode = "forward_120_forced_rls_count_read_failed";
     forcedRlsCount = Number(sql(
       "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p') and c.relrowsecurity and c.relforcerowsecurity;",
       "Count post-forward forced-RLS tables",
     ));
-    failureCode = "forward_115_broker_source_rebind_failed";
+    failureCode = "forward_120_broker_source_rebind_failed";
     assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
     terminalStatus = "PASS";
     failureCode = null;
@@ -2765,7 +2765,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
           {
             requireSuccessorCredentialTables:
               observedHistoryClass ===
-              "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF",
+              "POSSIBLE_CURRENT_120_REQUIRES_FULL_READ_ONLY_PROOF",
           },
         );
         let observedRowCountContinuity = null;
@@ -2776,7 +2776,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
             {
               allowExpectedControlPlaneCountChanges:
                 observedHistoryClass ===
-                "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF",
+                "POSSIBLE_CURRENT_120_REQUIRES_FULL_READ_ONLY_PROOF",
             },
           );
         }
@@ -2785,7 +2785,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
         let observedManagedSecuritySha256 = null;
         if (
           observedHistoryClass ===
-          "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF"
+          "POSSIBLE_CURRENT_120_REQUIRES_FULL_READ_ONLY_PROOF"
         ) {
           const observedManagedDump = captureManagedNormalizedSchemaDump();
           const observedManagedDumpRepeat = captureManagedNormalizedSchemaDump();
@@ -2805,8 +2805,8 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
           JSON.stringify(observedState.migrationHistoryVersions) ===
             JSON.stringify(expectedPriorVersions) &&
           observedState.structuralCatalogSha256 ===
-            FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256 &&
-          observedSchemaSha256 === FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256 &&
+            FORWARD_104_TO_120_AUTHORITY.prior.structuralCatalogSha256 &&
+          observedSchemaSha256 === FORWARD_104_TO_120_AUTHORITY.prior.normalizedSchemaSha256 &&
           observedSchemaSha256 === sha256(observedDumpRepeat) &&
           observedCatalogRepeat.structuralCatalogSha256 ===
             observedState.structuralCatalogSha256 &&
@@ -2818,7 +2818,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
           remoteMutationCompleted = false;
           terminalStatus = "ROLLED_BACK_EXACT_PRIOR_104";
         } else if (
-          observedHistoryClass === "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF" &&
+          observedHistoryClass === "POSSIBLE_CURRENT_120_REQUIRES_FULL_READ_ONLY_PROOF" &&
           JSON.stringify(observedState.migrationHistoryVersions) ===
             JSON.stringify(expectedCurrentVersions) &&
           observedSchemaSha256 === sha256(observedDumpRepeat) &&
@@ -2829,15 +2829,15 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
             "EXACT_PREEXISTING_CUSTOMER_ROW_COUNTS_PRESERVED" &&
           observedRelationalSurface.status === "EXACT_SEALED_SYNTHETIC_ROOTS_ONLY" &&
           observedManagedSchemaSha256 ===
-            FORWARD_104_TO_115_AUTHORITY.current.managedNormalizedSchemaSha256 &&
+            FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256 &&
           observedManagedCatalogSha256 ===
-            FORWARD_104_TO_115_AUTHORITY.current.managedStructuralCatalogSha256 &&
+            FORWARD_104_TO_120_AUTHORITY.current.managedStructuralCatalogSha256 &&
           observedManagedSecuritySha256 ===
-            FORWARD_104_TO_115_AUTHORITY.current.managedSecurityOracleSha256
+            FORWARD_104_TO_120_AUTHORITY.current.managedSecurityOracleSha256
         ) {
           terminalStatus = remoteMutationCompleted
-            ? "FAILED_AFTER_FORWARD_115_COMMIT"
-            : "FAILED_FORWARD_115_STATE_DETECTED_REQUIRES_READ_ONLY_REPROOF";
+            ? "FAILED_AFTER_FORWARD_120_COMMIT"
+            : "FAILED_FORWARD_120_STATE_DETECTED_REQUIRES_READ_ONLY_REPROOF";
           remoteMutationCompleted = remoteMutationCompleted ? true : null;
         } else {
           remoteMutationCompleted = null;
@@ -2853,7 +2853,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
   if (!mutationStartedRecord) {
     mutationStartedRecord = writeJsonEvidence("staging-mutation-started.json", {
       schemaVersion: "dealflow.staging-mutation-status.v1",
-      status: "FORWARD_104_TO_115_MUTATION_NOT_STARTED",
+      status: "FORWARD_104_TO_120_MUTATION_NOT_STARTED",
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
       ...common,
@@ -2931,7 +2931,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       schemaVersion: "dealflow.staging-evidence-manifest.v1",
       status: terminalStatus,
       migrationMode: "APPLY_FORWARD_EXACT",
-      transition: "EXACT_104_TO_115",
+      transition: "EXACT_104_TO_120",
       remoteMutationStarted,
       remoteMutationCompleted,
       broker: brokerEvidenceIdentity,
@@ -2949,7 +2949,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
       ],
     });
     throw new Error(
-      `Exact forward migrations 105-115 ${terminalStatus}; evidence manifest ${failureManifestRecord.sha256}`,
+      `Exact forward migrations 105-120 ${terminalStatus}; evidence manifest ${failureManifestRecord.sha256}`,
     );
   }
 
@@ -2986,11 +2986,11 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     repeatedStructuralCatalogSha256: postForwardCatalogRepeatSha256,
     singleOuterTransaction: true,
     migrationHistoryReceiptsInsideOuterTransaction: true,
-    lastAttemptedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
-    lastAppliedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
-    lastCommittedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastAttemptedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastAppliedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastCommittedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
     remoteStateVerification: {
-      status: "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
+      status: "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",
       readOnly: true,
       exactPrior104StateBeforeMutation: true,
       exactCommittedPortfolioState: true,
@@ -3022,17 +3022,17 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     postForwardRelationalSurface,
     prior104RowCountContinuity,
     ...retentionAuthorityAcl,
-    lastAttemptedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
-    lastAppliedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
-    lastCommittedVersion: FORWARD_104_TO_115_AUTHORITY.current.finalMigration.slice(0, 14),
-    remoteStateVerificationStatus: "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
+    lastAttemptedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastAppliedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
+    lastCommittedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
+    remoteStateVerificationStatus: "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",
     ...common,
   });
   const manifestRecord = writeJsonEvidence("evidence-manifest.json", {
     schemaVersion: "dealflow.staging-evidence-manifest.v1",
     status: "PASS",
     migrationMode: "APPLY_FORWARD_EXACT",
-    transition: "EXACT_104_TO_115",
+    transition: "EXACT_104_TO_120",
     remoteMutationStarted: true,
     remoteMutationCompleted: true,
     broker: brokerEvidenceIdentity,
@@ -3050,7 +3050,7 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     ],
   });
   process.stdout.write(
-    `Exact forward migrations 105-115 PASS: prior 104 qibh seal proven, 11 migrations committed, PostgreSQL ${serverVersion}, schema ${postForwardSchemaSha256}, manifest ${manifestRecord.sha256}\n`,
+    `Exact forward migrations 105-120 PASS: prior 104 qibh seal proven, 16 migrations committed, PostgreSQL ${serverVersion}, schema ${postForwardSchemaSha256}, manifest ${manifestRecord.sha256}\n`,
   );
   process.exit(0);
 }

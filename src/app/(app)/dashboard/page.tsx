@@ -41,6 +41,8 @@ import { createClient } from "@/lib/supabase/server";
 import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
 import { getRequestProductI18n } from "@/lib/i18n/server";
 import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
+import { getLeadOutcomePortfolioForCampaign } from "@/lib/services/lead-outcome-reporting-service";
+import type { LeadOutcomePortfolio } from "@/lib/integrations/meta/reporting-portfolio-contract";
 
 const EMPTY_DASHBOARD_METRICS: DashboardMetrics = {
   totalLeads: 0,
@@ -160,6 +162,7 @@ type DashboardLoadState = {
   } | null;
   leadLoopVerified: boolean;
   firstWeekSuccess: FirstWeekSuccessState | null;
+  leadOutcomePortfolio: LeadOutcomePortfolio;
   lastUpdatedAt: string;
   routeError: boolean;
 };
@@ -282,7 +285,7 @@ async function loadDashboardStateForCampaign(
     const metaCampaignId = record?.runtime.campaignId ?? null;
     const resolvedCampaignId = resolvedCampaign?.campaignId ?? campaignId ?? record?.id ?? null;
     const lastUpdatedAt = new Date().toISOString();
-    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, selectedAdSummary, leadLoopVerified] = await Promise.all([
+    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, selectedAdSummary, leadLoopVerified, leadOutcomePortfolio] = await Promise.all([
       withTimeout(
         getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
         getDefaultMetaConnectionState(),
@@ -339,6 +342,7 @@ async function loadDashboardStateForCampaign(
         2_500,
       ),
       withTimeout(loadLeadLoopVerified(resolvedCampaignId).catch(() => false), false, 2_500),
+      withTimeout(getLeadOutcomePortfolioForCampaign(resolvedCampaignId).catch(() => null), null, 2_500),
     ]);
     const recentLeads = dashboardData?.recentLeads ?? [];
     const firstWeekSuccess = record
@@ -371,6 +375,7 @@ async function loadDashboardStateForCampaign(
       selectedAdSummary,
       leadLoopVerified,
       firstWeekSuccess,
+      leadOutcomePortfolio,
       lastUpdatedAt,
       routeError: false,
     };
@@ -390,6 +395,7 @@ async function loadDashboardStateForCampaign(
       selectedAdSummary: null,
       leadLoopVerified: false,
       firstWeekSuccess: null,
+      leadOutcomePortfolio: null,
       lastUpdatedAt: new Date().toISOString(),
       routeError: true,
     };
@@ -473,6 +479,7 @@ export default async function DashboardPage({
         selectedAdSummary={state.selectedAdSummary}
         leadLoopVerified={state.leadLoopVerified}
         firstWeekSuccess={state.firstWeekSuccess}
+        leadOutcomePortfolio={state.leadOutcomePortfolio}
         renderedAt={state.lastUpdatedAt}
         optimizerResult={analyzeCampaign(
           buildOptimizerInput({

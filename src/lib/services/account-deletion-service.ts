@@ -37,6 +37,10 @@ import {
   privacyDigest,
   readPrivacySystemAuthority,
 } from "@/lib/services/privacy-authority-service";
+import {
+  anchorAccountDeletionTombstone,
+  AntiResurrectionPolicyError,
+} from "@/lib/account-deletion/anti-resurrection-contract";
 
 type UntypedClient = {
   from: (relation: string) => any;
@@ -383,6 +387,87 @@ async function executeInternalDeletionAction(
     outcome,
     code: requiredString(result.result_code, "deletion_internal_receipt_invalid"),
     metadata: sanitizeAccountDeletionReceiptMetadata(result.receipt_metadata),
+  };
+}
+
+async function executeFinalDeletionTask(
+  admin: UntypedClient,
+  task: ClaimedAccountDeletionTask,
+): Promise<TaskExecutionReceipt> {
+  const backupRetentionDays = Math.min(
+    Math.max(Number(process.env.ACCOUNT_DELETION_BACKUP_RETENTION_DAYS ?? 30), 1),
+    3_650,
+  );
+  const tombstoneRetentionDays = Math.min(
+    Math.max(Number(process.env.ACCOUNT_DELETION_TOMBSTONE_RETENTION_DAYS ?? 3_650), backupRetentionDays + 1),
+    36_500,
+  );
+  const prepared = await admin.rpc("prepare_account_deletion_completion_v2", {
+    p_request_id: task.request_id,
+    p_claim_token: task.claim_token,
+    p_claim_generation: task.claim_generation,
+    p_backup_retention_days: backupRetentionDays,
+    p_tombstone_retention_days: tombstoneRetentionDays,
+  });
+  if (prepared.error) {
+    return {
+      outcome: "operator_required",
+      code: prepared.error.message?.includes("dynamic_inventory")
+        ? "account_deletion_dynamic_inventory_unresolved"
+        : "account_deletion_completion_manifest_unavailable",
+    };
+  }
+  const preparation = row(firstRow(prepared.data));
+  const manifestDigest = requiredString(preparation.manifest_digest, "deletion_manifest_invalid");
+  const subjectDigest = requiredString(preparation.subject_digest, "deletion_manifest_invalid");
+  const tombstoneResult = await admin
+    .from("account_deletion_tombstones")
+    .select("state,backup_expiry_at,tombstone_expiry_at,external_anchor_receipt_digest")
+    .eq("request_id", task.request_id)
+    .maybeSingle();
+  if (tombstoneResult.error || !tombstoneResult.data) {
+    return { outcome: "operator_required", code: "account_deletion_tombstone_unavailable" };
+  }
+  const tombstone = row(tombstoneResult.data);
+  let externalReceiptDigest = typeof tombstone.external_anchor_receipt_digest === "string"
+    ? tombstone.external_anchor_receipt_digest
+    : null;
+  if (tombstone.state !== "anchored" || !externalReceiptDigest) {
+    try {
+      const anchored = await anchorAccountDeletionTombstone({
+        requestId: task.request_id,
+        subjectDigest,
+        manifestDigest,
+        backupExpiryAt: requiredString(tombstone.backup_expiry_at, "deletion_tombstone_invalid"),
+        tombstoneExpiryAt: requiredString(tombstone.tombstone_expiry_at, "deletion_tombstone_invalid"),
+      });
+      externalReceiptDigest = anchored.receiptDigest;
+      const attestation = await admin.rpc("attest_account_deletion_tombstone_anchor_v1", {
+        p_request_id: task.request_id,
+        p_claim_token: task.claim_token,
+        p_claim_generation: task.claim_generation,
+        p_manifest_digest: manifestDigest,
+        p_external_anchor_receipt_digest: externalReceiptDigest,
+      });
+      if (attestation.error) {
+        throw new AccountDeletionUncertainError("Deletion tombstone receipt could not be persisted.");
+      }
+    } catch (error) {
+      if (error instanceof AntiResurrectionPolicyError) {
+        if (error.uncertain) throw new AccountDeletionUncertainError(error.code);
+        return { outcome: "operator_required", code: error.code };
+      }
+      throw error;
+    }
+  }
+  const internal = await executeInternalDeletionAction(admin, task);
+  return {
+    ...internal,
+    metadata: {
+      ...(internal.metadata ?? {}),
+      dynamicManifestDigest: manifestDigest,
+      externalTombstoneReceiptDigest: externalReceiptDigest,
+    },
   };
 }
 
@@ -959,6 +1044,9 @@ async function executeClaimedTask(
   }
   if (task.task_kind === "delete_creative_storage") {
     return executeCreativeStorageTask(admin, task);
+  }
+  if (task.task_kind === "complete_request") {
+    return executeFinalDeletionTask(admin as unknown as UntypedClient, task);
   }
   return executeInternalDeletionAction(admin as unknown as UntypedClient, task);
 }

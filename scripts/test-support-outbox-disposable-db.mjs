@@ -15,6 +15,10 @@ const externalDeliveryMigrationPath = path.join(
   root,
   "supabase/migrations/20260713010000_harden_support_external_delivery.sql",
 );
+const deliveryLifecycleMigrationPath = path.join(
+  root,
+  "supabase/migrations/20260717080000_harden_support_delivery_lifecycle.sql",
+);
 const preflightPath = path.join(
   root,
   "docs/dealflow-completion/evidence/migration/read-only-preflight.sql",
@@ -74,6 +78,12 @@ function psqlArgs() {
 
 function psql(sql, label) {
   return requireSuccess(docker(psqlArgs(), { input: sql }), label);
+}
+
+function psqlMustFail(sql, pattern, label) {
+  const result = docker(psqlArgs(), { input: sql });
+  assert.notEqual(result.status, 0, `${label}: unexpectedly succeeded`);
+  assert.match(sanitize(result.stderr || result.stdout), pattern, label);
 }
 
 function cleanup() {
@@ -290,6 +300,10 @@ try {
     fs.readFileSync(externalDeliveryMigrationPath, "utf8"),
     "External support delivery migration failed against the disposable database",
   );
+  psql(
+    fs.readFileSync(deliveryLifecycleMigrationPath, "utf8"),
+    "Support delivery lifecycle migration failed against the disposable database",
+  );
 
   psql(`
     insert into auth.users(id, email) values ('${userId}', 'signed-in@example.test');
@@ -460,11 +474,66 @@ try {
   `, "Support external receipt settlement failed");
   assert.match(deliveryReceiptId, /^[0-9a-f-]{36}$/i);
 
+  const callbackSql = ({
+    eventId = "support-event-accepted-0001",
+    eventType = "accepted",
+    payloadDigest = "b".repeat(64),
+  } = {}) => `
+    begin;
+    set local role service_role;
+    set local request.jwt.claim.role = 'service_role';
+    select lifecycle_state || '|' || replayed::text
+    from public.record_support_delivery_callback_v1(
+      '${eventId}', '${eventType}', 'mail-sink-receipt-1', timezone('utc', now()),
+      '${payloadDigest}', 'request-support-callback-0001'
+    );
+    commit;
+  `;
+  assert.equal(psql(callbackSql(), "Support accepted callback failed"), "accepted|false");
+  assert.equal(psql(callbackSql(), "Support accepted callback replay failed"), "accepted|true");
+  psqlMustFail(
+    callbackSql({ payloadDigest: "c".repeat(64) }),
+    /support_delivery_callback_dedupe_collision/i,
+    "Support callback idempotency collision was accepted",
+  );
+  assert.equal(
+    psql(callbackSql({
+      eventId: "support-event-bounced-0002",
+      eventType: "bounced",
+      payloadDigest: "d".repeat(64),
+    }), "Support bounce callback failed"),
+    "bounced|false",
+  );
+  assert.equal(
+    psql(`select status || '|' || last_error_code from public.support_notification_outbox
+      where id='${duePendingOutboxId}';`, "Support bounce projection failed"),
+    "operator_action_required|support_delivery_bounced",
+  );
+  psql(`
+    insert into public.support_delivery_receipts(
+      outbox_id,ticket_id,organization_id,user_id,adapter,delivery_scope,
+      destination_reference,provider_receipt_id
+    ) values(
+      '${expiredProcessingOutboxId}','40000000-0000-4000-8000-000000000001',
+      '${organizationId}','${userId}','mail_sink','noncommunication_test',
+      '${destinationReference}','mail-sink-receipt-1'
+    );
+  `, "Ambiguous legacy support receipt fixture failed");
+  psqlMustFail(
+    callbackSql({
+      eventId: "support-event-ambiguous-0003",
+      payloadDigest: "e".repeat(64),
+    }),
+    /support_delivery_callback_receipt_ambiguous/i,
+    "Ambiguous legacy support receipt was mapped to an arbitrary ticket",
+  );
+
   assert.equal(
     psql(`
       select concat_ws(
         ':',
         queue.status,
+        (queue.delivered_at is not null)::text,
         (queue.locked_by is null)::text,
         receipt.user_id::text,
         receipt.delivery_scope,
@@ -475,8 +544,8 @@ try {
       join public.support_delivery_receipts receipt on receipt.outbox_id = queue.id
       where queue.id = '${duePendingOutboxId}';
     `, "Support external durable receipt verification failed"),
-    `delivered:true:${userId}:noncommunication_test:${destinationReference}:mail-sink-receipt-1`,
-    "Support external settlement did not atomically persist the user-scoped receipt and deliver the outbox",
+    `operator_action_required:true:true:${userId}:noncommunication_test:${destinationReference}:mail-sink-receipt-1`,
+    "Support delivery lost its durable receipt or delivered-at proof after a negative provider callback",
   );
 
   assert.equal(

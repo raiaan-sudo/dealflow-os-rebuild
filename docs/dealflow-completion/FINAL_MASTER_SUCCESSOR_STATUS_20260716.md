@@ -1,5 +1,12 @@
 # DealFlow final-master successor status — 2026-07-16
 
+> **Superseded as current status on 2026-07-17.** Preserve this snapshot for
+> history. Reconciled current truth and the execution sequence are in
+> [`../release/MASTER_RELEASE_PLAN.md`](../release/MASTER_RELEASE_PLAN.md),
+> especially its controlling section 0 execution-status overlay. The current
+> working candidate contains 120 migrations; the 115-migration statements in
+> this historical snapshot must not be used as present truth.
+
 Overall verdict: `NO_GO`
 
 Source state: `UNSEALED_WORKING_TREE`

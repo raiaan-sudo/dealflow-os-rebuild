@@ -205,8 +205,8 @@ const priorProofContract = readFileSync(
   join(root, "scripts", "staging", "prior-migration-proof-contract.mjs"),
   "utf8",
 );
-const forward104To115Contract = readFileSync(
-  join(root, "scripts", "staging", "forward-104-to-115-contract.mjs"),
+const forward104To120Contract = readFileSync(
+  join(root, "scripts", "staging", "forward-104-to-120-contract.mjs"),
   "utf8",
 );
 const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
@@ -422,7 +422,7 @@ assert.doesNotMatch(
   /EXPECTED_REPO = "\/private\/tmp\//,
   "The staging runner must not bind execution to a disposable repository path",
 );
-assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-final-master-20260716"/);
+assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-release-closure-plan"/);
 assert.match(runner, /EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean\.vercel\.app"/);
 assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
 assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);
@@ -725,8 +725,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 115/);
-assert.match(runner, /20260717060000_install_owner_decision_authority_grants\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 120/);
+assert.match(runner, /20260717090000_create_canonical_lead_outcome_ledger\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -806,8 +806,8 @@ assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
 assert.match(
   runner,
-  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*"EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
-  "the common final gate must accept exact fresh, read-only resume, or exact 104-to-115 forward status",
+  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*"EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
+  "the common final gate must accept exact fresh, read-only resume, or exact 104-to-120 forward status",
 );
 assert.match(runner, /verify retained prior migration application tree/);
 assert.match(runner, /verify prior migration application ancestry/);
@@ -828,23 +828,23 @@ const currentResumeGate = runner.slice(
 assert.match(currentResumeGate, /exactCurrentResumePriorIdentity/);
 assert.doesNotMatch(
   currentResumeGate,
-  /FORWARD_104_TO_115_AUTHORITY\.prior/,
-  "current-115 resume must validate its own retained prior application instead of the historical 104 transition authority",
+  /FORWARD_104_TO_120_AUTHORITY\.prior/,
+  "current-120 resume must validate its own retained prior application instead of the historical 104 transition authority",
 );
 const pinnedForwardGate = runner.slice(
   runner.indexOf("const exactForwardApplication ="),
   runner.indexOf("if (\n    migrationSummary.status"),
 );
-assert.match(pinnedForwardGate, /migrationSummary\.transition === "EXACT_104_TO_115"/);
-assert.match(pinnedForwardGate, /FORWARD_104_TO_115_AUTHORITY\.forwardMigrations\.length/);
+assert.match(pinnedForwardGate, /migrationSummary\.transition === "EXACT_104_TO_120"/);
+assert.match(pinnedForwardGate, /FORWARD_104_TO_120_AUTHORITY\.forwardMigrations\.length/);
 assert.match(pinnedForwardGate, /JSON\.stringify\(migrationSummary\.forwardMigrations\)/);
-assert.match(pinnedForwardGate, /EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO/);
-assert.match(pinnedForwardGate, /FORWARD_104_TO_115_AUTHORITY\.prior\.proofCommit/);
-assert.match(pinnedForwardGate, /FORWARD_104_TO_115_AUTHORITY\.prior\.proofTree/);
+assert.match(pinnedForwardGate, /EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO/);
+assert.match(pinnedForwardGate, /FORWARD_104_TO_120_AUTHORITY\.prior\.proofCommit/);
+assert.match(pinnedForwardGate, /FORWARD_104_TO_120_AUTHORITY\.prior\.proofTree/);
 assert.match(pinnedForwardGate, /rawValuesPersisted === false/);
-assert.match(forward104To115Contract, /forwardMigrations: Object\.freeze\(\[/);
-assert.match(forward104To115Contract, /migrationCount: 104/);
-assert.match(forward104To115Contract, /migrationCount: 115/);
+assert.match(forward104To120Contract, /forwardMigrations: Object\.freeze\(\[/);
+assert.match(forward104To120Contract, /migrationCount: 104/);
+assert.match(forward104To120Contract, /migrationCount: 120/);
 assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
 assert.match(runner, /Staging acceptance requires Node 24/);
 assert.match(runner, /!\/\^v24\\\.\/.+parsed\.runtime/s);
@@ -2035,12 +2035,13 @@ assert.match(providerIndependentProof, /pendingPaymentCreditLedgerRows: 0/);
 assert.match(providerIndependentProof, /serviceOnlyStateUnchanged: true/);
 assert.match(providerIndependentProof, /successorServiceOnlyBefore/);
 assert.match(providerIndependentProof, /successorServiceOnlyFinal/);
-assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 11/);
-assert.match(runner, /parsed\.successorProviderIndependent\?\.authenticatedDenialCount !== 11/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 17/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.postAuditServiceOnlyTableCount !== 6/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.authenticatedDenialCount !== 17/);
 assert.match(runner, /BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED/);
 assert.match(runner, /BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY/);
 assert.match(runner, /BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY/);
-assert.match(successorProviderIndependentContract, /SUCCESSOR_SCHEMA_VERSION = "20260716200000"/);
+assert.match(successorProviderIndependentContract, /SUCCESSOR_SCHEMA_VERSION = "20260717090000"/);
 assert.match(successorProviderIndependentContract, /SUCCESSOR_GHL_SERVICE_ONLY_TABLES/);
 assert.match(successorProviderIndependentContract, /SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES/);
 assert.match(successorProviderIndependentContract, /result\.error\.code !== "42501"/);
@@ -2395,5 +2396,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 104-to-115 forward, or read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 115-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 104-to-120 forward, or read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 120-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

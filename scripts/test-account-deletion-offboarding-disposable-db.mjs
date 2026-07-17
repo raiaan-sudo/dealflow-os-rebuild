@@ -12,7 +12,7 @@ const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
 const proposalPath = process.env.ACCOUNT_DELETION_MIGRATION_PROPOSAL
   ?? path.join(migrationsDir, "20260713026000_add_account_deletion_and_provider_offboarding.sql");
-const requiredFinalMigration = "20260717060000_install_owner_decision_authority_grants.sql";
+const requiredFinalMigration = "20260717090000_create_canonical_lead_outcome_ledger.sql";
 const retentionAuthorityMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -92,7 +92,7 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 115, "test expects the exact 115-migration candidate");
+  assert.equal(migrations.length, 120, "test expects the exact 120-migration candidate");
   assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
@@ -630,7 +630,110 @@ try {
     executeAndSettle("purge_expired_financial_records");
     executeAndSettle("expire_deletion_receipt_details");
     settleTask(claimTask("delete_auth_identity"), "completed", "auth_identity_soft_deleted", { synthetic: true });
-    executeAndSettle("complete_request");
+    {
+      const task = claimTask("complete_request");
+      mustFail(session, asRole("authenticated", `
+        select * from public.prepare_account_deletion_completion_v2(
+          '${requestId}','${task.claim_token}',${Number(task.claim_generation)},30,3650
+        );
+      `, USER_A), /permission denied|service_role_required/i,
+      "authenticated caller prepared a deletion completion manifest");
+      session.psql(`
+        set role postgres;
+        do $dealflow_test_privacy_authority$
+        declare
+          relation_count integer;
+          generation_digest text;
+          classification_digest text;
+          classifications jsonb;
+          grant_id uuid := '9a000000-0000-4000-8000-000000000001';
+        begin
+          select refreshed.relation_count, refreshed.inventory_generation_digest
+          into strict relation_count, generation_digest
+          from public.refresh_privacy_data_inventory_v1() refreshed;
+          select jsonb_agg(jsonb_build_object(
+            'relation_schema', inventory.relation_schema,
+            'relation_name', inventory.relation_name,
+            'authority_class', 'synthetic_staging_test_only',
+            'scope_column', null,
+            'disposition', 'synthetic_test_only',
+            'retention_class', 'synthetic_test_only',
+            'executor_task', 'synthetic_test_only'
+          ) order by inventory.relation_schema, inventory.relation_name),
+          encode(extensions.digest(convert_to(coalesce(string_agg(concat_ws('|',
+            inventory.relation_schema, inventory.relation_name,
+            'synthetic_staging_test_only', '', 'synthetic_test_only',
+            'synthetic_test_only', 'synthetic_test_only'
+          ), E'\\n' order by inventory.relation_schema, inventory.relation_name), ''),
+            'UTF8'), 'sha256'), 'hex')
+          into strict classifications, classification_digest
+          from public.privacy_data_inventory inventory;
+          insert into public.privacy_authority_grants(
+            id,environment,authority_mode,status,generation,candidate_commit,
+            candidate_tree,candidate_digest,authority_packet_digest,
+            signature_bundle_digest,policy_version,policy_digest,
+            inventory_generation_digest,inventory_relation_count,
+            inventory_classification_digest,allowed_purposes,
+            consent_maximum_age_days,dsar_request_expiry_hours,
+            export_artifact_expiry_hours,legal_retention_authorized,
+            legal_authority_ref_digest,grant_digest,granted_at,expires_at
+          ) values(
+            grant_id,'staging','synthetic_staging','active',1,repeat('1',40),
+            repeat('2',40),repeat('3',64),repeat('4',64),repeat('5',64),
+            'synthetic-account-deletion-test-v1',repeat('6',64),
+            generation_digest,relation_count,classification_digest,array['synthetic_test'],
+            365,72,24,false,null,repeat('0',64),clock_timestamp(),
+            clock_timestamp()+interval '1 hour'
+          );
+          perform * from public.install_privacy_inventory_classifications_v1(
+            grant_id,classifications
+          );
+        end;
+        $dealflow_test_privacy_authority$;
+        reset role;
+      `, { label: "Install isolated synthetic dynamic privacy inventory authority" });
+      const preparation = JSON.parse(lastLine(session.psql(asRole("service_role", `
+        select row_to_json(prepared)::text
+        from public.prepare_account_deletion_completion_v2(
+          '${requestId}','${task.claim_token}',${Number(task.claim_generation)},30,3650
+        ) prepared;
+      `), { label: "Prepare catalog-bound deletion manifest and tombstone" })));
+      assert.match(preparation.manifest_digest, /^[a-f0-9]{64}$/);
+      assert.match(preparation.subject_digest, /^sha256:[a-f0-9]{64}$/);
+      assert.equal(preparation.tombstone_state, "pending_anchor");
+      assert.equal(lastLine(session.psql(asRole("service_role", `
+        select count(*) from public.account_deletion_resource_manifest
+        where request_id='${requestId}' and status='completed';
+      `))), lastLine(session.psql(asRole("service_role", `
+        select count(*) from public.account_deletion_resource_manifest
+        where request_id='${requestId}';
+      `))), "the synthetic manifest retained a pending classified relation");
+      mustFail(session, asRole("service_role", `
+        select id from public.attest_account_deletion_tombstone_anchor_v1(
+          '${requestId}','${task.claim_token}',${Number(task.claim_generation)},
+          '${"f".repeat(64)}','${RECEIPT_HASH}'
+        );
+      `), /tombstone_anchor_conflict/i, "a mismatched manifest digest anchored a tombstone");
+      assert.equal(lastLine(session.psql(asRole("service_role", `
+        select state from public.attest_account_deletion_tombstone_anchor_v1(
+          '${requestId}','${task.claim_token}',${Number(task.claim_generation)},
+          '${preparation.manifest_digest}','${RECEIPT_HASH}'
+        );
+      `), { label: "Attest the independent synthetic tombstone receipt" })), "anchored");
+      const raw = lastLine(session.psql(asRole("service_role", `
+        select row_to_json(result)::text
+        from public.execute_account_deletion_internal_action_v1(
+          '${task.id}','${task.claim_token}',${Number(task.claim_generation)}
+        ) result;
+      `), { label: "Complete deletion only after manifest and tombstone proof" }));
+      const result = JSON.parse(raw);
+      assert.equal(result.result_outcome, "completed");
+      settleTask(task, result.result_outcome, result.result_code, {
+        ...(result.receipt_metadata ?? {}),
+        dynamicManifestDigest: preparation.manifest_digest,
+        externalTombstoneReceiptDigest: RECEIPT_HASH,
+      });
+    }
 
     assert.equal(lastLine(session.psql(asRole("service_role", `select state from public.account_deletion_requests where id='${requestId}';`))), "completed");
     assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.account_deletion_tasks where request_id='${requestId}' and status='completed';`))), "16");
@@ -656,7 +759,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 115 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 120 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }

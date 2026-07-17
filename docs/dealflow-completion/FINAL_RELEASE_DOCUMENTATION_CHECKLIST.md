@@ -1,5 +1,10 @@
 # DealFlow final-release documentation checklist
 
+> **Superseded as the controlling checklist on 2026-07-17.** Preserve this
+> predecessor snapshot. Use
+> [`../release/MASTER_RELEASE_PLAN.md`](../release/MASTER_RELEASE_PLAN.md),
+> especially §§14 and 27, for current gates and definition of done.
+
 > **Predecessor checklist snapshot.** Its 104-migration fields are retained for
 > historical traceability. Use
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)

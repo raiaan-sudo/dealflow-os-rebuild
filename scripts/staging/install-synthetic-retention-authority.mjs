@@ -35,7 +35,7 @@ const roundPaths = [resolve(roundOneArg), resolve(roundTwoArg)];
 const expectedRepo = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
 );
-const expectedBranch = "codex/dealflow-final-master-20260716";
+const expectedBranch = "codex/dealflow-release-closure-plan";
 const expectedTrustBundleRelativePath =
   "config/security/supabase-prod-ca-2021.crt";
 const expectedTrustBundlePath = resolve(repo, expectedTrustBundleRelativePath);
@@ -56,9 +56,9 @@ const expectedProjectFingerprint =
 const expectedProjectSafeSuffix = "qibh";
 const expectedVercelProjectIdFingerprint =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
-const expectedMigrationCount = 115;
+const expectedMigrationCount = 120;
 const expectedFinalMigration =
-  "20260717060000_install_owner_decision_authority_grants.sql";
+  "20260717090000_create_canonical_lead_outcome_ledger.sql";
 const expectedLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedDeferrals = FINAL_VERIFICATION_HOSTED_DEFERRALS;
 const authorityMarker =
@@ -211,7 +211,7 @@ function captureMigrationIdentity() {
     files.at(-1) !== expectedFinalMigration ||
     new Set(files.map((name) => name.slice(0, 14))).size !== files.length
   ) {
-    throw new Error("The exact 115-migration authority-hardened portfolio is required");
+    throw new Error("The exact 120-migration authority-hardened portfolio is required");
   }
   const digest = createHash("sha256");
   const records = files.map((name) => {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { subDays } from "date-fns";
 import { cookies, headers } from "next/headers";
 import { slugify } from "@/lib/utils";
@@ -107,6 +108,25 @@ async function assertAccountDeletionWorkspaceAccess(
     throw new Error("Account deletion access fence is unavailable.");
   }
   if ((suspensionResult.data ?? []).length > 0) {
+    throw new AccountDeletionWorkspaceSuspendedError();
+  }
+
+  const subjectDigests = [...organizationIds].map(
+    (organizationId) =>
+      `sha256:${createHash("sha256")
+        .update(`${organizationId}:${userId}`)
+        .digest("hex")}`,
+  );
+  const tombstoneResult = await (admin as any)
+    .from("account_deletion_tombstones")
+    .select("subject_digest,state")
+    .in("subject_digest", subjectDigests)
+    .neq("state", "restore_approved")
+    .limit(1);
+  if (tombstoneResult.error) {
+    throw new Error("Account deletion restore fence is unavailable.");
+  }
+  if ((tombstoneResult.data ?? []).length > 0) {
     throw new AccountDeletionWorkspaceSuspendedError();
   }
 }

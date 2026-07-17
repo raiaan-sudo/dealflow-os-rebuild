@@ -7,6 +7,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { MetaSyncRefreshButton } from "@/components/dashboard/meta-sync-refresh-button";
 import { MetaOptimizationPolicyControl } from "@/components/dashboard/meta-optimization-policy-control";
+import { MetaReportingPortfolioCard } from "@/components/dashboard/meta-reporting-portfolio-card";
 import type { MetaConnectionState } from "@/lib/integrations/meta/types";
 import type { Database } from "@/lib/supabase/types";
 import type {
@@ -28,6 +29,10 @@ import { formatStableDashboardUtcTimestamp } from "@/lib/dashboard/stable-utc-da
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
 import type { ProductMessageKey } from "@/lib/i18n/messages";
+import {
+  buildMetaReportingPortfolio,
+  type LeadOutcomePortfolio,
+} from "@/lib/integrations/meta/reporting-portfolio-contract";
 
 type AppointmentSummary = Pick<
   Database["public"]["Tables"]["appointments"]["Row"],
@@ -81,6 +86,7 @@ type Props = {
   leadLoopVerified?: boolean;
   firstWeekSuccess?: FirstWeekSuccessState | null;
   renderedAt?: string;
+  leadOutcomePortfolio?: LeadOutcomePortfolio;
 };
 
 function formatDateTime(value: string, locale: ProductLocale) {
@@ -216,6 +222,7 @@ export function CampaignDashboardView({
   leadLoopVerified = false,
   firstWeekSuccess = null,
   renderedAt,
+  leadOutcomePortfolio = null,
 }: Props) {
   const { currency: formatCurrency, locale, t } = useProductI18n();
   const localizedStatus = (value: string | null | undefined) => {
@@ -584,21 +591,26 @@ export function CampaignDashboardView({
       ]
     : [];
 
+  const reportingPortfolio = buildMetaReportingPortfolio({
+    snapshot: syncSnapshot,
+    outcomes: leadOutcomePortfolio,
+    now: new Date(renderedAt ?? "1970-01-01T00:00:00.000Z"),
+  });
   const metrics = [
-    { label: t("dashboard.totalLeads"), value: String(displayedLeads) },
+    { label: t("dashboard.totalLeads"), value: displayedLeads === null ? t("common.unavailable") : String(displayedLeads) },
     { label: t("dashboard.totalAppointments"), value: String(displayedAppointments) },
-    { label: t("dashboard.spend"), value: currency(displayedSpend) },
-    { label: t("dashboard.cpl"), value: currency(displayedCpl) },
+    { label: t("dashboard.spend"), value: displayedSpend === null ? t("common.unavailable") : currency(displayedSpend) },
+    { label: t("dashboard.cpl"), value: displayedCpl === null ? t("common.unavailable") : currency(displayedCpl) },
   ];
   const hasMetricData =
-    displayedLeads > 0 ||
-    displayedSpend > 0 ||
+    Number(displayedLeads ?? 0) > 0 ||
+    Number(displayedSpend ?? 0) > 0 ||
     Number(liveMetrics?.impressions ?? 0) > 0 ||
     Number(liveMetrics?.clicks ?? 0) > 0;
   const headlineMetrics = [
-    { label: t("dashboard.leads"), value: String(displayedLeads) },
-    { label: t("dashboard.cpl"), value: displayedLeads > 0 ? currency(displayedCpl) : t("common.waitingForData") },
-    { label: t("dashboard.spend"), value: displayedSpend > 0 ? currency(displayedSpend) : t("common.waitingForData") },
+    { label: t("dashboard.leads"), value: displayedLeads === null ? t("common.unavailable") : String(displayedLeads) },
+    { label: t("dashboard.cpl"), value: displayedCpl !== null ? currency(displayedCpl) : t("common.waitingForData") },
+    { label: t("dashboard.spend"), value: displayedSpend !== null ? currency(displayedSpend) : t("common.waitingForData") },
   ];
   const firstWeekLastVerifiedText = firstWeekSuccess?.lastVerifiedAt
     ? localizedDateTime(firstWeekSuccess.lastVerifiedAt)
@@ -674,6 +686,34 @@ export function CampaignDashboardView({
           </p>
         ) : null}
       </Card>
+
+      <MetaReportingPortfolioCard
+        portfolio={reportingPortfolio}
+        currency={currency}
+        labels={{
+          title: t("dashboard.reportingPortfolio.title"),
+          description: t("dashboard.reportingPortfolio.description"),
+          providerDelivery: t("dashboard.reportingPortfolio.providerDelivery"),
+          businessOutcomes: t("dashboard.reportingPortfolio.businessOutcomes"),
+          state: {
+            current: t("dashboard.reportingPortfolio.state.current"),
+            delayed: t("dashboard.reportingPortfolio.state.delayed"),
+            stale: t("dashboard.reportingPortfolio.state.stale"),
+            partial: t("dashboard.reportingPortfolio.state.partial"),
+            missing: t("dashboard.reportingPortfolio.state.missing"),
+            failed: t("dashboard.reportingPortfolio.state.failed"),
+          },
+          spend: t("dashboard.spend"),
+          impressions: t("dashboard.impressions"),
+          clicks: t("dashboard.clicks"),
+          leads: t("dashboard.leads"),
+          conversations: t("dashboard.reportingPortfolio.conversations"),
+          appointments: t("dashboard.totalAppointments"),
+          qualified: t("dashboard.reportingPortfolio.qualified"),
+          closedWon: t("dashboard.reportingPortfolio.closedWon"),
+          unavailable: t("common.unavailable"),
+        }}
+      />
 
       {firstWeekSuccess ? (
         <Card className="rounded-[24px] p-6">

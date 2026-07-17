@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 115;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 120;
 const REQUIRED_FINAL_MIGRATION =
-  "20260717060000_install_owner_decision_authority_grants.sql";
+  "20260717090000_create_canonical_lead_outcome_ledger.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",
@@ -77,7 +77,7 @@ if (
 const commands = [
   ["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]],
   ["npm", ["ls", "--all"]],
-  ["git", ["diff", "--check"]],
+  ["npm", ["run", "format:check"]],
   ["npm", ["audit", "--omit=dev", "--audit-level=low"]],
   ["npm", ["run", "test:security:scan-release"]],
   ["npm", ["run", "security:scan-release"]],

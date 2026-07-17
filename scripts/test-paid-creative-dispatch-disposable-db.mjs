@@ -205,15 +205,37 @@ try {
 
     const staticImageId = "75000000-0000-4000-a000-000000000001";
     const staticThumbId = "75000000-0000-4000-a000-000000000002";
+    const staticStoragePath = `generated-static/${organizationId}/${userId}/${campaignId}/openai/${staticDispatchId}.image`;
+    const staticStorageUrl = `https://storage.example.invalid/storage/v1/object/public/creative-assets/${staticStoragePath}`;
+    const staticStorageSha256 = "c".repeat(64);
+    assert.equal(session.psql(serviceSql(`
+      select authorized, reused, permit_state
+      from public.authorize_generated_static_storage_upload_v1(
+        '${staticDispatchId}', '${organizationId}', '${userId}', '${campaignId}',
+        'creative-assets', '${staticStoragePath}', '${staticStorageSha256}', 68, 'image/png'
+      );
+    `), { label: "Authorize canonical static upload" }), "t|f|authorized");
+    session.psql(serviceSql(`
+      insert into storage.objects(bucket_id, name)
+      values ('creative-assets', '${staticStoragePath}');
+    `), { label: "Observe canonical static object" });
     session.psql(`
       insert into public.creative_assets(
         id, user_id, campaign_id, asset_type, generation_method, status,
         provider_name, paid_creative_dispatch_id, file_url
       ) values
-        ('${staticImageId}', '${userId}', '${campaignId}', 'image_frame', 'image_generation', 'ready', 'openai', '${staticDispatchId}', 'https://assets.invalid/static-proof.png'),
-        ('${staticThumbId}', '${userId}', '${campaignId}', 'thumbnail', 'image_generation', 'ready', 'openai', '${staticDispatchId}', 'https://assets.invalid/static-proof.png');
+        ('${staticImageId}', '${userId}', '${campaignId}', 'image_frame', 'image_generation', 'ready', 'openai', '${staticDispatchId}', '${staticStorageUrl}'),
+        ('${staticThumbId}', '${userId}', '${campaignId}', 'thumbnail', 'image_generation', 'ready', 'openai', '${staticDispatchId}', '${staticStorageUrl}');
     `, { label: "Project static provider output" });
-    const staticReceipt = `{"kind":"static_creative","campaignId":"${campaignId}","staticAssetId":"proof","creativeAssetIds":["${staticImageId}","${staticThumbId}"]}`;
+    assert.equal(session.psql(serviceSql(`
+      select bound, reused, storage_bucket, storage_path
+      from public.bind_generated_static_storage_v1(
+        '${staticDispatchId}', '${organizationId}', '${userId}', '${campaignId}',
+        '${staticImageId}', '${staticThumbId}', 'creative-assets', '${staticStoragePath}',
+        '${staticStorageUrl}', '${staticStorageSha256}', 68, 'image/png'
+      );
+    `), { label: "Bind canonical static object" }), `t|f|creative-assets|${staticStoragePath}`);
+    const staticReceipt = `{"kind":"static_creative","campaignId":"${campaignId}","staticAssetId":"proof","creativeAssetIds":["${staticImageId}","${staticThumbId}"],"storageBucket":"creative-assets","storagePath":"${staticStoragePath}","contentSha256":"${staticStorageSha256}"}`;
     assert.equal(session.psql(serviceSql(`
       select finalized, reused_projection, dispatch_state, usage_status
       from public.finalize_paid_creative_projection_v1(

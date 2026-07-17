@@ -17,8 +17,8 @@ const trustBundle = readFileSync(
 
 assert.match(source, /authority broker requires Node 24/);
 assert.match(source, /!\/\^v24\\\.\/.+value\.runtime/s);
-assert.match(source, /expectedMigrationCount = 115/);
-assert.match(source, /20260717060000_install_owner_decision_authority_grants\.sql/);
+assert.match(source, /expectedMigrationCount = 120/);
+assert.match(source, /20260717090000_create_canonical_lead_outcome_ledger\.sql/);
 assert.match(source, /expectedProjectSafeSuffix = "qibh"/);
 assert.match(source, /expectedProjectFingerprint/);
 assert.match(source, /config\/security\/supabase-prod-ca-2021\.crt/);
@@ -31,7 +31,7 @@ assert.equal(
   createHash("sha256").update(trustBundle).digest("hex"),
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
 );
-assert.match(source, /expectedBranch = "codex\/dealflow-final-master-20260716"/);
+assert.match(source, /expectedBranch = "codex\/dealflow-release-closure-plan"/);
 assert.match(
   source,
   /expectedRepo = realpathSync\([\s\S]*fileURLToPath\(import\.meta\.url\)[\s\S]*"\.\.\/\.\."/,

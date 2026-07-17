@@ -232,7 +232,11 @@ let expectedProviderEventId = appointment.providerEventId;
 const serviceModule = { exports: {} };
 new Function("require", "module", "exports", serviceOutput)(
   (specifier) => {
+    if (specifier === "node:crypto") return nodeCrypto;
     if (specifier === "@/lib/api/route") return { ApiError };
+    if (specifier === "@/lib/integrations/gohighlevel/outcome-contract") {
+      return { classifyGhlLifecycleOutcome: () => null };
+    }
     if (specifier === "@/lib/supabase/admin") {
       return {
         createAdminClient: () => ({
@@ -261,6 +265,7 @@ assert.deepEqual(await acceptGhlLifecycleWebhook(appointment, "production"), {
   receipt: rpcResponse.data,
   projectionStatus: "reconciled",
   projectionCode: "canonical_state_projected",
+  outcome: { status: "not_applicable", outcomeType: null },
 });
 rpcResponse = {
   data: { projection_status: "operator_action_required", projection_code: "ghl_lifecycle_unknown_lead_binding" },

@@ -799,6 +799,9 @@ const schedulerMocks = {
       errorCode: null,
     }),
   },
+  "@/lib/services/canonical-campaign-lifecycle-service": {
+    transitionCanonicalCampaignLifecycleBySystem: async () => ({ status: "scheduled" }),
+  },
   "@/lib/supabase/admin": { createAdminClient: () => null },
 };
 const {

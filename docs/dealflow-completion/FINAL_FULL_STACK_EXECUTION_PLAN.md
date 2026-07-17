@@ -1,5 +1,9 @@
 # DealFlow final full-stack execution plan
 
+> **Superseded as an execution authority on 2026-07-17.** Preserve this document
+> as historical planning evidence. The only current release-closure authority is
+> [`../release/MASTER_RELEASE_PLAN.md`](../release/MASTER_RELEASE_PLAN.md).
+
 Status: **EXECUTION READY / PRODUCTION NO_GO**
 Plan version: `dealflow.full-stack-execution.v1`
 Starting baseline commit: `042fed5d9080a2cd4ba3393420584b61d6f3eb7e`

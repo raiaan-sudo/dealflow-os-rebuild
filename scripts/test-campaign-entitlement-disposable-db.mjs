@@ -188,7 +188,9 @@ try {
   assert.match(campaignPersistenceSource, /\.eq\("organization_id", organizationId\)/);
   assert.doesNotMatch(campaignPersistenceSource, /\.or\(`user_id\.eq\./);
   assert.match(planPersistenceSource, /createCampaignPlanWithEntitlement\(/);
-  assert.match(onboardingRouteSource, /createOnly:\s*true/);
+  assert.match(onboardingRouteSource, /submit_onboarding_draft_v2/);
+  assert.match(onboardingRouteSource, /p_campaign_id:\s*deterministicCampaignId/);
+  assert.doesNotMatch(onboardingRouteSource, /createOnly:\s*true/);
   assert.match(creationServiceSource, /create_campaign_plan_with_entitlement_v1/);
   assert.match(paidActivationMigrationSource, /commercial_activations/);
   assert.match(paidActivationMigrationSource, /legacy_commercial_activation_reconciled/);

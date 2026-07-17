@@ -17,12 +17,12 @@ import { fileURLToPath } from "node:url";
 
 import { createNativePostgresTestAdapter } from "../lib/native-postgres-test-adapter.mjs";
 import {
-  assertExactForward104To115Portfolio,
+  assertExactForward104To120Portfolio,
   classifyForward104RemoteHistory,
-  FORWARD_104_TO_115_AUTHORITY,
+  FORWARD_104_TO_120_AUTHORITY,
   loadExactPrior104StagingSeal,
   loadExactPrior104SyntheticSurfaceSeal,
-} from "./forward-104-to-115-contract.mjs";
+} from "./forward-104-to-120-contract.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repo = join(scriptDir, "..", "..");
@@ -32,7 +32,7 @@ const brokerSource = readFileSync(
   "utf8",
 );
 const contractSource = readFileSync(
-  join(scriptDir, "forward-104-to-115-contract.mjs"),
+  join(scriptDir, "forward-104-to-120-contract.mjs"),
   "utf8",
 );
 const priorProofContractSource = readFileSync(
@@ -45,51 +45,51 @@ const records = readdirSync(migrationDir)
   .map((name) => ({ name }));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
-assert.equal(FORWARD_104_TO_115_AUTHORITY.prior.migrationCount, 104);
-assert.equal(FORWARD_104_TO_115_AUTHORITY.current.migrationCount, 115);
-assert.equal(FORWARD_104_TO_115_AUTHORITY.forwardMigrations.length, 11);
+assert.equal(FORWARD_104_TO_120_AUTHORITY.prior.migrationCount, 104);
+assert.equal(FORWARD_104_TO_120_AUTHORITY.current.migrationCount, 120);
+assert.equal(FORWARD_104_TO_120_AUTHORITY.forwardMigrations.length, 16);
 assert.equal(
-  FORWARD_104_TO_115_AUTHORITY.prior.migrationPortfolioSha256,
+  FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256,
   "f44431a984f93c736fcc229d2fff321cff3c676b3d334d4a8ca25d715e353224",
 );
 assert.equal(
-  FORWARD_104_TO_115_AUTHORITY.current.migrationPortfolioSha256,
-  "581f4a33126f65259939c1c307fa5c6f949c1956b4354db5889bc95625885849",
+  FORWARD_104_TO_120_AUTHORITY.current.migrationPortfolioSha256,
+  "fa6f66b0346b7674f5613a206fcc188e1cb38cc0332919f9fe76337c2a37570f",
 );
 assert.equal(
-  FORWARD_104_TO_115_AUTHORITY.current.managedNormalizedSchemaSha256,
-  "95521f13162e117ec65404952725a48d523b9dfed1256c918c5b9b03234956a8",
+  FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,
+  "dcccf3e9514fa8cade3c88d39a518670f435807ac2d1461ca80c06db5ad10ffc",
 );
 assert.equal(
-  FORWARD_104_TO_115_AUTHORITY.current.managedStructuralCatalogSha256,
-  "3f71938f061459fab8c772ce38e328162066230dd5ba517e295fcc7cc162dda9",
+  FORWARD_104_TO_120_AUTHORITY.current.managedStructuralCatalogSha256,
+  "ca06bf720c65fd139d04f6446479bd291b8e7b790d217bac3f82233c1c4a0b1b",
 );
 assert.equal(
-  FORWARD_104_TO_115_AUTHORITY.current.managedSecurityOracleSha256,
-  "71902205082f696f14fdac21eec1275f782e0d928898d7ffff5f6e0a14284d07",
+  FORWARD_104_TO_120_AUTHORITY.current.managedSecurityOracleSha256,
+  "3a5e6b71867885fcb593d528e232d23d6bf339854511c8be59b39125cac4f48d",
 );
 assert.equal(
-  FORWARD_104_TO_115_AUTHORITY.current.finalMigration,
-  "20260717060000_install_owner_decision_authority_grants.sql",
+  FORWARD_104_TO_120_AUTHORITY.current.finalMigration,
+  "20260717090000_create_canonical_lead_outcome_ledger.sql",
 );
 
-const exact = assertExactForward104To115Portfolio(records, migrationDir);
+const exact = assertExactForward104To120Portfolio(records, migrationDir);
 assert.equal(exact.priorRecords.length, 104);
-assert.equal(exact.forwardRecords.length, 11);
+assert.equal(exact.forwardRecords.length, 16);
 assert.deepEqual(
   exact.forwardVersions,
-  FORWARD_104_TO_115_AUTHORITY.forwardMigrations.map(({ version }) => version),
+  FORWARD_104_TO_120_AUTHORITY.forwardMigrations.map(({ version }) => version),
 );
 
 assert.throws(
-  () => assertExactForward104To115Portfolio([...records].reverse(), migrationDir),
+  () => assertExactForward104To120Portfolio([...records].reverse(), migrationDir),
   /unordered, duplicate, or ambiguous/,
   "Reordered migrations must be rejected before authority can be used",
 );
 const duplicateRecords = [...records];
 duplicateRecords[105] = duplicateRecords[104];
 assert.throws(
-  () => assertExactForward104To115Portfolio(duplicateRecords, migrationDir),
+  () => assertExactForward104To120Portfolio(duplicateRecords, migrationDir),
   /unordered, duplicate, or ambiguous/,
   "Duplicate migration identities must be rejected",
 );
@@ -97,12 +97,12 @@ assert.throws(
 const driftDir = mkdtempSync(join(tmpdir(), "dealflow-forward-contract-"));
 try {
   cpSync(migrationDir, driftDir, { recursive: true });
-  const finalPath = join(driftDir, FORWARD_104_TO_115_AUTHORITY.current.finalMigration);
+  const finalPath = join(driftDir, FORWARD_104_TO_120_AUTHORITY.current.finalMigration);
   writeFileSync(finalPath, `${readFileSync(finalPath, "utf8")}\n-- drift\n`);
   assert.throws(
-    () => assertExactForward104To115Portfolio(records, driftDir),
-    /drift in ordered migrations 105 through 115/,
-    "Any byte drift in migrations 105-115 must be rejected",
+    () => assertExactForward104To120Portfolio(records, driftDir),
+    /drift in ordered migrations 105 through 120/,
+    "Any byte drift in migrations 105-120 must be rejected",
   );
 } finally {
   rmSync(driftDir, { recursive: true, force: true });
@@ -118,7 +118,7 @@ assert.equal(
 );
 assert.equal(
   classifyForward104RemoteHistory(exact.currentVersions, historyContext),
-  "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF",
+  "POSSIBLE_CURRENT_120_REQUIRES_FULL_READ_ONLY_PROOF",
 );
 for (const [label, values] of [
   ["gap", exact.priorVersions.filter((_, index) => index !== 50)],
@@ -136,12 +136,12 @@ for (const [label, values] of [
 
 for (const marker of [
   "loadExactPrior104StagingSeal(priorMigrationProofDir)",
-  "assertExactForward104To115Portfolio(",
-  'transition: "EXACT_104_TO_115"',
-  'status: "FORWARD_104_TO_115_MUTATION_STARTED"',
-  "Migrations 105-115 and all 11 history receipts share one outer",
+  "assertExactForward104To120Portfolio(",
+  'transition: "EXACT_104_TO_120"',
+  'status: "FORWARD_104_TO_120_MUTATION_STARTED"',
+  "Migrations 105-120 and all 16 history receipts share one outer",
   'terminalStatus = "ROLLED_BACK_EXACT_PRIOR_104"',
-  '"FAILED_FORWARD_115_STATE_DETECTED_REQUIRES_READ_ONLY_REPROOF"',
+  '"FAILED_FORWARD_120_STATE_DETECTED_REQUIRES_READ_ONLY_REPROOF"',
   'remoteMutationCompleted = remoteMutationCompleted ? true : null',
   'idempotencyPolicy: "FAIL_CLOSED_READ_ONLY_REPROOF_AFTER_ANY_COMMIT_OR_AMBIGUITY"',
   "Pre-forward auth surface",
@@ -153,28 +153,28 @@ for (const marker of [
   "captureManagedNormalizedSchemaDump()",
   "captureManagedCatalogIdentity(",
   "captureManagedSecurityOracle(",
-  "forward_115_managed_schema_not_exact_or_stable",
-  "forward_115_managed_catalog_not_exact_or_stable",
-  "forward_115_managed_security_not_exact",
+  "forward_120_managed_schema_not_exact_or_stable",
+  "forward_120_managed_catalog_not_exact_or_stable",
+  "forward_120_managed_security_not_exact",
   "post_forward_relational_or_credential_surface_not_exact",
 ]) {
   assert.ok(brokerSource.includes(marker), `Broker is missing ${marker}`);
 }
 for (const marker of [
-  FORWARD_104_TO_115_AUTHORITY.projectFingerprint,
-  FORWARD_104_TO_115_AUTHORITY.projectSafeSuffix,
-  FORWARD_104_TO_115_AUTHORITY.prior.proofCommit,
-  FORWARD_104_TO_115_AUTHORITY.prior.proofTree,
-  FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256,
-  FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256,
+  FORWARD_104_TO_120_AUTHORITY.projectFingerprint,
+  FORWARD_104_TO_120_AUTHORITY.projectSafeSuffix,
+  FORWARD_104_TO_120_AUTHORITY.prior.proofCommit,
+  FORWARD_104_TO_120_AUTHORITY.prior.proofTree,
+  FORWARD_104_TO_120_AUTHORITY.prior.normalizedSchemaSha256,
+  FORWARD_104_TO_120_AUTHORITY.prior.structuralCatalogSha256,
   "Prior 104 staging artifacts must be canonical owner-only regular files",
   "Prior 104 staging artifact does not match its pinned SHA-256",
 ]) {
   assert.ok(contractSource.includes(marker), `Forward authority is missing ${marker}`);
 }
 assert.ok(
-  priorProofContractSource.includes("EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO"),
-  "The exact forward-115 application proof must be admissible for later read-only resume",
+  priorProofContractSource.includes("EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO"),
+  "The exact forward-120 application proof must be admissible for later read-only resume",
 );
 
 const activeStart = brokerSource.indexOf('if (migrationMode === "APPLY_FORWARD_EXACT") {');
@@ -210,18 +210,18 @@ assert.doesNotMatch(
 );
 for (const exactActiveMarker of [
   "prior_104_relational_or_credential_surface_not_exact",
-  "forward_115_structural_state_read_failed",
-  "forward_115_schema_first_capture_failed",
-  "forward_115_schema_repeat_capture_failed",
-  "forward_115_managed_schema_first_capture_failed",
-  "forward_115_managed_schema_repeat_capture_failed",
-  "forward_115_managed_security_capture_failed",
-  "provider_controls_read_failed_after_forward_115",
-  "forward_115_forced_rls_count_read_failed",
+  "forward_120_structural_state_read_failed",
+  "forward_120_schema_first_capture_failed",
+  "forward_120_schema_repeat_capture_failed",
+  "forward_120_managed_schema_first_capture_failed",
+  "forward_120_managed_schema_repeat_capture_failed",
+  "forward_120_managed_security_capture_failed",
+  "provider_controls_read_failed_after_forward_120",
+  "forward_120_forced_rls_count_read_failed",
 ]) {
   assert.ok(
     activeBranch.includes(exactActiveMarker),
-    `Active 104-to-115 branch is missing exact stage ${exactActiveMarker}`,
+    `Active 104-to-120 branch is missing exact stage ${exactActiveMarker}`,
   );
 }
 
@@ -229,7 +229,7 @@ const priorProofDir = process.env.DEALFLOW_PRIOR_104_PROOF_DIR?.trim();
 if (priorProofDir) {
   const seal = loadExactPrior104StagingSeal(priorProofDir);
   const syntheticSeal = loadExactPrior104SyntheticSurfaceSeal(priorProofDir);
-  assert.equal(seal.applicationCommit, FORWARD_104_TO_115_AUTHORITY.prior.proofCommit);
+  assert.equal(seal.applicationCommit, FORWARD_104_TO_120_AUTHORITY.prior.proofCommit);
   assert.equal(seal.migrationCount, 104);
   assert.equal(seal.rawValuesPersisted, false);
   assert.equal(syntheticSeal.evidence.containsRealCustomerData, false);
@@ -469,12 +469,12 @@ if (nativeConfigNames.every((name) => process.env[name])) {
       database.psqlMustFail(
         buildForwardTransaction({ injectFailure: true }),
         /division by zero/,
-        { label: "Force actual 11-migration outer-transaction rollback", timeoutMs: 180_000 },
+        { label: "Force actual 16-migration outer-transaction rollback", timeoutMs: 180_000 },
       );
       assert.equal(
         database.psql("select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;"),
         "104|20260715010000",
-        "A late failure must roll back all 11 migrations and receipts",
+        "A late failure must roll back all 16 migrations and receipts",
       );
       assert.equal(
         database.psql("select to_regclass('public.ghl_marketplace_oauth_states') is null;"),
@@ -484,24 +484,24 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 
       const forwardTransaction = buildForwardTransaction();
       database.psql(forwardTransaction, {
-        label: "Apply actual 104-to-115 transaction",
+        label: "Apply actual 104-to-120 transaction",
         timeoutMs: 180_000,
       });
       assert.equal(
         database.psql("select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;"),
-        "115|20260717060000",
+        "120|20260717090000",
       );
       const exactManagedSchema = managedSchemaDigest(database);
       forwardManagedCatalog = managedCatalogDigest(database);
       assert.equal(
         exactManagedSchema,
-        FORWARD_104_TO_115_AUTHORITY.current.managedNormalizedSchemaSha256,
-        "Actual single-transaction successor must equal the independent 115 schema pin",
+        FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,
+        "Actual single-transaction successor must equal the independent 120 schema pin",
       );
       assert.equal(
         forwardManagedCatalog,
-        FORWARD_104_TO_115_AUTHORITY.current.managedStructuralCatalogSha256,
-        "Actual single-transaction successor must equal the independent 115 catalog pin",
+        FORWARD_104_TO_120_AUTHORITY.current.managedStructuralCatalogSha256,
+        "Actual single-transaction successor must equal the independent 120 catalog pin",
       );
       database.psqlMustFail(
         buildForwardTransaction({ records: exact.forwardRecords.slice(0, 1) }),
@@ -510,7 +510,7 @@ if (nativeConfigNames.every((name) => process.env[name])) {
       );
       assert.equal(
         database.psql("select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;"),
-        "115|20260717060000",
+        "120|20260717090000",
       );
       assert.equal(
         managedSchemaDigest(database),
@@ -520,7 +520,7 @@ if (nativeConfigNames.every((name) => process.env[name])) {
     });
     await adapter.withDisposableDatabase(async (database) => {
       database.psql(remoteEquivalentFixtureSql, {
-        label: "Install remote-equivalent fresh-115 fixture",
+        label: "Install remote-equivalent fresh-120 fixture",
       });
       for (const record of records) {
         database.psql(
@@ -536,21 +536,21 @@ if (nativeConfigNames.every((name) => process.env[name])) {
       }
       assert.equal(
         database.psql("select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;"),
-        "115|20260717060000",
+        "120|20260717090000",
       );
       assert.equal(
         managedCatalogDigest(database),
         forwardManagedCatalog,
-        "Fresh 115 and exact 104-to-115 paths must produce the same independently pinned managed catalog",
+        "Fresh 120 and exact 104-to-120 paths must produce the same independently pinned managed catalog",
       );
     });
   } finally {
     if (createdPostgresRole) adapter.psql("drop role postgres;");
   }
   nativeIdempotencyProof =
-    "native PostgreSQL 17.6 actual 104-to-115 late-failure rollback, exact pinned schema, and duplicate-reentry rollback";
+    "native PostgreSQL 17.6 actual 104-to-120 late-failure rollback, exact pinned schema, and duplicate-reentry rollback";
 }
 
 console.log(
-  `forward 104-to-115 staging authority contract: PASS (exact qibh/3ab010b prior seal, 104-prefix and 11-migration SHA pins, terminal 115 history, synthetic-only identity fence, no-retry ambiguity recovery, ${nativeIdempotencyProof})`,
+  `forward 104-to-120 staging authority contract: PASS (exact qibh/3ab010b prior seal, 104-prefix and 16-migration SHA pins, terminal 120 history, synthetic-only identity fence, no-retry ambiguity recovery, ${nativeIdempotencyProof})`,
 );

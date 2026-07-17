@@ -33,7 +33,7 @@ const identity: RuntimeCandidateIdentity = Object.freeze({
   trackedFileCount: 1_200,
   dependencyLockSha256: "4".repeat(64),
   migrationPortfolioSha256: "5".repeat(64),
-  migrationCount: 115,
+  migrationCount: 120,
 });
 const now = new Date();
 const issuedAt = new Date(now.getTime() - 60_000).toISOString();

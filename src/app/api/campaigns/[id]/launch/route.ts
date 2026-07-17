@@ -37,6 +37,7 @@ import { provisionCompletedMetaInstantFormRoute } from "@/lib/services/meta-inst
 import { finalizeMetaActivationPreauthorizationAfterPausedLaunch } from "@/lib/services/meta-campaign-activation-authority-service";
 import { getScheduledLaunchExecutionGate } from "@/lib/scheduled-launch-gate";
 import { assertPaidCreativeCampaignClaims } from "@/lib/advertising-claim-boundaries";
+import { transitionCanonicalCampaignLifecycleBySystem } from "@/lib/services/canonical-campaign-lifecycle-service";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -299,10 +300,15 @@ export async function POST(
     if (!appContext) {
       throw new ApiError(401, "Authentication is required.", "unauthorized");
     }
-    if (
-      record.campaign.organization_id &&
-      record.campaign.organization_id !== appContext.organization.id
-    ) {
+    const campaignOrganizationId = record.campaign.organization_id;
+    if (!campaignOrganizationId) {
+      throw new ApiError(
+        500,
+        "Campaign is missing workspace context.",
+        "campaign_workspace_missing",
+      );
+    }
+    if (campaignOrganizationId !== appContext.organization.id) {
       throw new ApiError(403, "Campaign workspace access was denied.", "forbidden");
     }
     assertPaidCreativeCampaignClaims(record);
@@ -368,16 +374,9 @@ export async function POST(
       completedReceipt.metaAdIds.length === 1
     ) {
       if (persistedContract.destinationContract.adDestination === "meta_instant_form") {
-        if (!record.campaign.organization_id) {
-          throw new ApiError(
-            500,
-            "Campaign is missing workspace context.",
-            "campaign_workspace_missing",
-          );
-        }
         await provisionCompletedMetaInstantFormRoute({
           record,
-          organizationId: record.campaign.organization_id,
+          organizationId: campaignOrganizationId,
           actorUserId: appContext.user.id,
         });
       }
@@ -476,6 +475,17 @@ export async function POST(
       try {
       let launchInputDigest: string | null = null;
       await assertClaimAndLocks();
+      await transitionCanonicalCampaignLifecycleBySystem({
+        organizationId: campaignOrganizationId,
+        campaignId: id,
+        toState: "publishing",
+        reasonCode: "manual_provider_publish_started",
+        evidence: {
+          launchRecordId: launchClaim!.id,
+          leaseGeneration: launchClaim!.leaseGeneration,
+        },
+        idempotencyKey: `provider-publish:${launchClaim!.id}:${launchClaim!.leaseGeneration}`,
+      });
       const response = await launchCampaignToMeta(
         id,
         {
@@ -587,14 +597,6 @@ export async function POST(
         throw launchError;
       }
 
-      if (!record.campaign.organization_id) {
-        throw new ApiError(
-          500,
-          "Campaign is missing workspace context.",
-          "campaign_workspace_missing",
-        );
-      }
-
       if (!launchInputDigest) {
         throw new ApiError(
           409,
@@ -629,8 +631,20 @@ export async function POST(
         },
       });
       launchCompletionCommitted = true;
+      await transitionCanonicalCampaignLifecycleBySystem({
+        organizationId: campaignOrganizationId,
+        campaignId: id,
+        toState: "provider_paused",
+        reasonCode: "provider_object_set_created_paused",
+        evidence: {
+          launchRecordId: launchClaim!.id,
+          leaseGeneration: launchClaim!.leaseGeneration,
+          providerObjectsCreatedPaused: true,
+        },
+        idempotencyKey: `provider-paused:${launchClaim!.id}:${launchClaim!.leaseGeneration}`,
+      });
       const activationFinalization = await finalizeMetaActivationPreauthorizationAfterPausedLaunch({
-        organizationId: record.campaign.organization_id,
+        organizationId: campaignOrganizationId,
         userId: record.campaign.user_id,
         campaignId: id,
         launchRecordId: launchClaim!.id,
@@ -639,7 +653,7 @@ export async function POST(
       if (persistedContract.destinationContract.adDestination === "meta_instant_form") {
         await provisionCompletedMetaInstantFormRoute({
           record,
-          organizationId: record.campaign.organization_id,
+          organizationId: campaignOrganizationId,
           actorUserId: appContext.user.id,
         });
       }

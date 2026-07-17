@@ -176,6 +176,10 @@ export function evaluateOptimizationEvidence(params: {
       blockers.push("below_minimum_spend");
     }
 
+    if (params.metrics.leads < policy.minimumLeadsForCplDecision) {
+      blockers.push(OPTIMIZATION_MINIMUM_CPL_SAMPLE_BLOCKER);
+    }
+
     const lastMutationMs = params.lastProviderMutationAt
       ? Date.parse(params.lastProviderMutationAt)
       : Number.NaN;

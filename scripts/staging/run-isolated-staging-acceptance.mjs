@@ -95,12 +95,12 @@ import {
   resolvePinnedVercelCli,
 } from "./vercel-cli-selection-contract.mjs";
 import { synchronizeExactVercelEnvironment } from "./vercel-environment-sync-contract.mjs";
-import { FORWARD_104_TO_115_AUTHORITY } from "./forward-104-to-115-contract.mjs";
+import { FORWARD_104_TO_120_AUTHORITY } from "./forward-104-to-120-contract.mjs";
 
 const EXPECTED_REPO = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
 );
-const EXPECTED_BRANCH = "codex/dealflow-final-master-20260716";
+const EXPECTED_BRANCH = "codex/dealflow-release-closure-plan";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_STAGING_BASE_URL = `https://${EXPECTED_STAGING_HOST}`;
 const EXPECTED_PARTNER_ONE_HOST =
@@ -124,9 +124,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 115;
+const EXPECTED_MIGRATION_COUNT = 120;
 const EXPECTED_FINAL_MIGRATION =
-  "20260717060000_install_owner_decision_authority_grants.sql";
+  "20260717090000_create_canonical_lead_outcome_ledger.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
   "14f8d5a4ab0ad9f2b4063a398157df8445b7f3ac495a5c8f0b0297233a061db3";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
@@ -480,7 +480,7 @@ Safe resume after a previously sealed atomic application:
     --round-two /absolute/path/final-verification-round-2.json
 
 Exact bounded forward transition from the pinned read-only-proven 104-migration
-staging seal to the current 115-migration portfolio:
+staging seal to the current 120-migration portfolio:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-forward-migration --deploy \\
     --prior-migration-proof-dir /absolute/path/pinned-104/migration-proof \\
@@ -498,7 +498,7 @@ Required execution environment:
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
 Exactly one migration mode is required. Resume mode is read-only. Forward mode
-is restricted to the exact pinned 104-to-115 transition authority.`;
+is restricted to the exact pinned 104-to-120 transition authority.`;
 }
 
 function parseArguments(argv) {
@@ -1572,9 +1572,9 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 115 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 120 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260717060000_install_owner_decision_authority_grants.sql" ||
+      "20260717090000_create_canonical_lead_outcome_ledger.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
@@ -1582,11 +1582,12 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.successorProviderIndependent?.financialFixture?.pendingPaymentCreditLedgerRows !== 0 ||
     parsed.successorProviderIndependent?.financialFixture?.providerMutationPerformed !== false ||
     parsed.successorProviderIndependent?.financialFixture?.financialEffectPerformed !== false ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.schemaVersion !== "20260716200000" ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.serviceOnlyTableCount !== 11 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.schemaVersion !== "20260717090000" ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.serviceOnlyTableCount !== 17 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.ghlMarketplaceTableCount !== 7 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.stripeLifecycleTableCount !== 4 ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.authenticatedDenialCount !== 11 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.postAuditServiceOnlyTableCount !== 6 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.authenticatedDenialCount !== 17 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.hostedGates?.optimizerMinimumSampleActiveReceiptProof !==
       "BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED" ||
@@ -1747,9 +1748,10 @@ async function runProviderIndependentStagingProof(
     parsed.accountDeletion?.providerReceiptCount !== 0 ||
     parsed.accountDeletion?.hostedWorkerFailClosed !== true ||
     parsed.accountDeletion?.fullProviderOffboardingPerformed !== false ||
-    parsed.successorProviderIndependent?.schemaVersion !== "20260716200000" ||
-    parsed.successorProviderIndependent?.serviceOnlyTableCount !== 11 ||
-    parsed.successorProviderIndependent?.authenticatedDenialCount !== 11 ||
+    parsed.successorProviderIndependent?.schemaVersion !== "20260717090000" ||
+    parsed.successorProviderIndependent?.serviceOnlyTableCount !== 17 ||
+    parsed.successorProviderIndependent?.postAuditServiceOnlyTableCount !== 6 ||
+    parsed.successorProviderIndependent?.authenticatedDenialCount !== 17 ||
     parsed.successorProviderIndependent?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.serviceOnlyStateUnchanged !== true ||
     parsed.successorProviderIndependent?.pendingCreditTopUpIntentId !==
@@ -5598,48 +5600,48 @@ async function main() {
   const exactForwardApplication =
     options.applyForwardMigration &&
     migrationSummary.migrationMode === "APPLY_FORWARD_EXACT" &&
-    migrationSummary.transition === "EXACT_104_TO_115" &&
+    migrationSummary.transition === "EXACT_104_TO_120" &&
     migrationSummary.forwardOnly === true &&
     migrationSummary.priorMigrationCount ===
-      FORWARD_104_TO_115_AUTHORITY.prior.migrationCount &&
+      FORWARD_104_TO_120_AUTHORITY.prior.migrationCount &&
     migrationSummary.forwardMigrationCount ===
-      FORWARD_104_TO_115_AUTHORITY.forwardMigrations.length &&
+      FORWARD_104_TO_120_AUTHORITY.forwardMigrations.length &&
     JSON.stringify(migrationSummary.forwardMigrations) ===
-      JSON.stringify(FORWARD_104_TO_115_AUTHORITY.forwardMigrations) &&
+      JSON.stringify(FORWARD_104_TO_120_AUTHORITY.forwardMigrations) &&
     migrationSummary.terminalVersion === EXPECTED_FINAL_MIGRATION.slice(0, 14) &&
     migrationSummary.migrationPortfolioSha256 ===
-      FORWARD_104_TO_115_AUTHORITY.current.migrationPortfolioSha256 &&
+      FORWARD_104_TO_120_AUTHORITY.current.migrationPortfolioSha256 &&
     migrationSummary.remoteMutationStarted === true &&
     migrationSummary.remoteMutationCompleted === true &&
     migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
     migrationSummary.serviceRoleRetentionConfigurationSelectOnly === true &&
     migrationSummary.remoteStateVerificationStatus ===
-      "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO" &&
+      "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO" &&
     priorApplicationRetainedHistory &&
     migrationSummary.priorApplication?.applicationCommit ===
-      FORWARD_104_TO_115_AUTHORITY.prior.proofCommit &&
+      FORWARD_104_TO_120_AUTHORITY.prior.proofCommit &&
     migrationSummary.priorApplication?.applicationTree ===
-      FORWARD_104_TO_115_AUTHORITY.prior.proofTree &&
+      FORWARD_104_TO_120_AUTHORITY.prior.proofTree &&
     migrationSummary.priorApplication?.manifestSha256 ===
-      FORWARD_104_TO_115_AUTHORITY.priorEvidence.artifactSha256[
+      FORWARD_104_TO_120_AUTHORITY.priorEvidence.artifactSha256[
         "evidence-manifest.json"
       ] &&
     migrationSummary.priorApplication?.migrationCount ===
-      FORWARD_104_TO_115_AUTHORITY.prior.migrationCount &&
+      FORWARD_104_TO_120_AUTHORITY.prior.migrationCount &&
     migrationSummary.priorApplication?.lastCommittedVersion ===
-      FORWARD_104_TO_115_AUTHORITY.prior.finalMigration.slice(0, 14) &&
+      FORWARD_104_TO_120_AUTHORITY.prior.finalMigration.slice(0, 14) &&
     migrationSummary.priorApplication?.migrationPortfolioSha256 ===
-      FORWARD_104_TO_115_AUTHORITY.prior.migrationPortfolioSha256 &&
+      FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256 &&
     migrationSummary.priorApplication?.normalizedSchemaSha256 ===
-      FORWARD_104_TO_115_AUTHORITY.prior.normalizedSchemaSha256 &&
+      FORWARD_104_TO_120_AUTHORITY.prior.normalizedSchemaSha256 &&
     migrationSummary.priorApplication?.structuralCatalogSha256 ===
-      FORWARD_104_TO_115_AUTHORITY.prior.structuralCatalogSha256 &&
+      FORWARD_104_TO_120_AUTHORITY.prior.structuralCatalogSha256 &&
     migrationSummary.priorApplication?.evidenceKind ===
       "read_only_exact_verification" &&
     migrationSummary.priorApplication?.portfolioApplicationRemoteMutationCompleted === true &&
     migrationSummary.priorApplication?.rawValuesPersisted === false &&
     JSON.stringify(migrationSummary.priorApplication?.authSurface) ===
-      JSON.stringify(FORWARD_104_TO_115_AUTHORITY.prior.authSurface);
+      JSON.stringify(FORWARD_104_TO_120_AUTHORITY.prior.authSurface);
   if (
     migrationSummary.status !== "PASS" ||
     (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication) ||
@@ -5648,7 +5650,7 @@ async function main() {
     ![
       "EXACT_COMMITTED_PORTFOLIO",
       "EXACT_EXISTING_COMMITTED_PORTFOLIO",
-      "EXACT_FORWARD_104_TO_115_COMMITTED_PORTFOLIO",
+      "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",
     ].includes(migrationSummary.remoteStateVerificationStatus) ||
     migrationSummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.migrationHistoryCount !== EXPECTED_MIGRATION_COUNT ||

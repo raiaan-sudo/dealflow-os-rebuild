@@ -21,7 +21,7 @@ const NATIVE_POSTGRES_COMMAND_TEMPLATE =
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
   "npm ci --ignore-scripts --no-audit --no-fund",
   "npm ls --all",
-  "git diff --check",
+  "npm run format:check",
   "npm audit --omit=dev --audit-level=low",
   "npm run test:security:scan-release",
   "npm run security:scan-release",
@@ -114,7 +114,7 @@ export const FINAL_VERIFICATION_COMMAND_PORTFOLIO = Object.freeze([
 
 export const FINAL_VERIFICATION_COMMAND_COUNT = 91;
 export const FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256 =
-  "52299caf080e75208de7e60c35b484cb83f9074e8ece57f8ad8067ef0b16c999";
+  "e911e09b18f312ef95440fa1fddb4a1459373ac169209f44e399a0a727134d85";
 export const FINAL_VERIFICATION_HOSTED_DEFERRALS = Object.freeze([
   "npm run rls:cross-tenant",
   "npm run rls:fixture-smoke",

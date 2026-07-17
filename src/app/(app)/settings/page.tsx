@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
 import { AccountDeletionCard } from "@/components/settings/account-deletion-card";
 import { PrivacyRequestCard } from "@/components/settings/privacy-request-card";
+import { MfaSecurityCard } from "@/components/settings/mfa-security-card";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
 import { getRequestProductI18n } from "@/lib/i18n/server";
@@ -117,6 +118,7 @@ export default async function SettingsPage() {
         </div>
       </Card>
 
+      <MfaSecurityCard />
       <PrivacyRequestCard />
       <AccountDeletionCard />
     </PageShell>

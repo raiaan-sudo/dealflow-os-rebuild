@@ -305,6 +305,11 @@ const route = loadTsModuleWithMocks(
         errorCode: null,
       }),
     },
+    "@/lib/services/canonical-campaign-lifecycle-service": {
+      transitionCanonicalCampaignLifecycleBySystem: async () => {
+        throw new Error("canonical lifecycle mutation must remain unreachable");
+      },
+    },
     "@/lib/scheduled-launch-gate": {
       getScheduledLaunchExecutionGate: () => ({ allowed: true, reason: null }),
     },

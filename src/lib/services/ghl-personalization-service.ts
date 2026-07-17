@@ -159,6 +159,7 @@ export async function processGhlPersonalizationWorkerBatch(input: {
             outcome: result.outcome,
             providerRequestId: result.providerRequestId,
             responseFingerprint: result.responseFingerprint,
+            verifiedReferences: result.outcome === "succeeded" ? result.verifiedReferences : [],
             verifiedReferenceCount: result.outcome === "succeeded" ? result.verifiedReferences.length : 0,
             campaignId,
             valuesFingerprint: text(claimed.values_fingerprint),
@@ -183,6 +184,15 @@ export async function processGhlPersonalizationWorkerBatch(input: {
     });
     if (settlement.error || !row(settlement.data)) {
       throw new Error(settlement.error?.message ?? "GHL personalization settlement lost its lease.");
+    }
+    if (step === "forms" && outcome === "succeeded") {
+      const publication = await input.client.rpc("finalize_ghl_funnel_publication_v1", {
+        p_personalization_id: id,
+      });
+      const publicationRow = row(publication.data);
+      if (publication.error || !publicationRow || publicationRow.status !== "ready") {
+        throw new Error(publication.error?.message ?? "GHL funnel publication receipt could not be finalized.");
+      }
     }
     results.push({ id, outcome, providerMutationAttempted });
   }
@@ -225,7 +235,23 @@ export async function resolveReadyGhlDestination(input: {
   campaignId: string;
   environment: "sandbox" | "production";
 }) {
-  const { data, error } = await input.client.rpc("resolve_ghl_ready_campaign_destination_v2", {
+  const prior = await input.client.rpc("resolve_ghl_ready_campaign_destination_v2", {
+    p_organization_id: input.organizationId,
+    p_campaign_id: input.campaignId,
+    p_environment: input.environment,
+  });
+  if (prior.error) throw new Error(`GHL destination resolution failed: ${prior.error.message}`);
+  const priorReady = row(prior.data);
+  if (priorReady?.personalization_id) {
+    const publication = await input.client.rpc("finalize_ghl_funnel_publication_v1", {
+      p_personalization_id: text(priorReady.personalization_id),
+    });
+    const publicationRow = row(publication.data);
+    if (publication.error || !publicationRow || publicationRow.status !== "ready") {
+      throw new Error(`GHL funnel publication proof failed: ${publication.error?.message ?? "publication is not ready"}`);
+    }
+  }
+  const { data, error } = await input.client.rpc("resolve_ghl_ready_campaign_destination_v3", {
     p_organization_id: input.organizationId,
     p_campaign_id: input.campaignId,
     p_environment: input.environment,
@@ -234,6 +260,7 @@ export async function resolveReadyGhlDestination(input: {
   const resolved = row(data);
   return resolved
     ? {
+        publicationId: text(resolved.publication_id),
         personalizationId: text(resolved.personalization_id),
         campaignId: text(resolved.campaign_id),
         locationMappingId: text(resolved.location_mapping_id),

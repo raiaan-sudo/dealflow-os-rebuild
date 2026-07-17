@@ -27,6 +27,7 @@ const expectedPublicApiRoutes = new Map([
   ["/api/access-keys/reveal-ack", new Set(["POST"])],
   ["/api/integrations/ghl/embed-context", new Set(["GET", "POST"])],
   ["/api/integrations/ghl/webhook", new Set(["POST"])],
+  ["/api/support/delivery-callback", new Set(["POST"])],
 ]);
 
 const expectedPublicApiMethodGuards = new Map([
@@ -36,6 +37,9 @@ const expectedPublicApiMethodGuards = new Map([
   ])],
   ["/api/integrations/ghl/webhook", new Map([
     ["POST", ["resolveGhlLifecycleEnvironment", "verifyGhlWebhookSignatures"]],
+  ])],
+  ["/api/support/delivery-callback", new Map([
+    ["POST", ["parseTextBody", "verifyAndParseSupportLifecycleCallback"]],
   ])],
 ]);
 

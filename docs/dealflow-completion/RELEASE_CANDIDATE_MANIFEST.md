@@ -1,5 +1,9 @@
 # DealFlow release candidate manifest
 
+> **Superseded as current candidate truth on 2026-07-17.** Preserve this
+> predecessor manifest. The current durable identity, gaps, and promotion gates
+> are in [`../release/MASTER_RELEASE_PLAN.md`](../release/MASTER_RELEASE_PLAN.md).
+
 > **Superseded predecessor manifest.** The unsealed successor has no final
 > commit/tree manifest yet. Use
 > [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md)

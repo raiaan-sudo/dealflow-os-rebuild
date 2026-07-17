@@ -416,9 +416,9 @@ assert.match(source, /successorCreditReplayIntent: "e3000000-0000-4000-8000-0000
 assert.match(source, /successorCreditRequest: "e3000000-0000-4000-8000-000000000003"/);
 assert.match(source, /checkoutSessionId: "cs_test_df_successor_credit_pending_20260716"/);
 assert.match(source, /successorProviderIndependent: \{/);
-assert.match(source, /exactMigrationChainRequired: 115/);
-assert.match(source, /20260717060000_install_owner_decision_authority_grants\.sql/);
-assert.match(successorContract, /SUCCESSOR_SCHEMA_VERSION = "20260716200000"/);
+assert.match(source, /exactMigrationChainRequired: 120/);
+assert.match(source, /20260717090000_create_canonical_lead_outcome_ledger\.sql/);
+assert.match(successorContract, /SUCCESSOR_SCHEMA_VERSION = "20260717090000"/);
 for (const table of [
   "ghl_marketplace_oauth_states",
   "ghl_marketplace_authorities",
@@ -431,6 +431,12 @@ for (const table of [
   "stripe_charge_financial_lifecycle",
   "stripe_refund_lifecycle",
   "stripe_dispute_lifecycle",
+  "account_deletion_resource_manifest",
+  "account_deletion_tombstones",
+  "support_delivery_lifecycle_events",
+  "support_delivery_lifecycle_state",
+  "ghl_funnel_publications",
+  "ghl_funnel_publication_receipts",
 ]) {
   assert.match(successorContract, new RegExp(`"${table}"`), `missing successor table ${table}`);
 }
@@ -595,5 +601,5 @@ assert.match(envExample, /^PARTNER_ATTRIBUTION_SIGNING_SECRET=$/m);
 assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);
 
 console.log(
-  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic business roles plus one non-admin QA harness member, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, successor 105-115 service-only/RLS/idempotency/no-effect inventory, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
+  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic business roles plus one non-admin QA harness member, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, DB-owner-installed exact synthetic deletion authority and policy, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, successor 105-120 service-only/RLS/idempotency/no-effect inventory, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
 );

@@ -9,8 +9,8 @@ import { basename, dirname, join } from "node:path";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
-export const FORWARD_104_TO_115_AUTHORITY = Object.freeze({
-  schemaVersion: "dealflow.staging-forward-104-to-115-authority.v1",
+export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
+  schemaVersion: "dealflow.staging-forward-104-to-120-authority.v1",
   projectFingerprint:
     "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c",
   projectSafeSuffix: "qibh",
@@ -38,21 +38,21 @@ export const FORWARD_104_TO_115_AUTHORITY = Object.freeze({
     }),
   }),
   current: Object.freeze({
-    migrationCount: 115,
+    migrationCount: 120,
     finalMigration:
-      "20260717060000_install_owner_decision_authority_grants.sql",
+      "20260717090000_create_canonical_lead_outcome_ledger.sql",
     migrationPortfolioSha256:
-      "581f4a33126f65259939c1c307fa5c6f949c1956b4354db5889bc95625885849",
+      "fa6f66b0346b7674f5613a206fcc188e1cb38cc0332919f9fe76337c2a37570f",
     // Independently reproduced twice on PostgreSQL 17.6: once from a fresh
-    // 115-migration database and once from the exact 104 prefix followed by
-    // migrations 105-115. The managed schema omits ACL rendering; the
+    // 120-migration database and once from the exact 104 prefix followed by
+    // migrations 105-120. The managed schema omits ACL rendering; the
     // independent security oracle below binds ACLs, policies, and routines.
     managedNormalizedSchemaSha256:
-      "95521f13162e117ec65404952725a48d523b9dfed1256c918c5b9b03234956a8",
+      "dcccf3e9514fa8cade3c88d39a518670f435807ac2d1461ca80c06db5ad10ffc",
     managedStructuralCatalogSha256:
-      "3f71938f061459fab8c772ce38e328162066230dd5ba517e295fcc7cc162dda9",
+      "ca06bf720c65fd139d04f6446479bd291b8e7b790d217bac3f82233c1c4a0b1b",
     managedSecurityOracleSha256:
-      "71902205082f696f14fdac21eec1275f782e0d928898d7ffff5f6e0a14284d07",
+      "3a5e6b71867885fcb593d528e232d23d6bf339854511c8be59b39125cac4f48d",
   }),
   forwardMigrations: Object.freeze([
     Object.freeze({
@@ -121,6 +121,36 @@ export const FORWARD_104_TO_115_AUTHORITY = Object.freeze({
       sha256: "e7447581bf01e34f7e1751de46ff1827b064c171e1ceec0f5b16b344d9d06ab8",
       bytes: 15181,
     }),
+    Object.freeze({
+      version: "20260717070000",
+      file: "20260717070000_complete_privacy_runtime_and_dynamic_deletion.sql",
+      sha256: "6a554a72b631d09644ae3b88e985c338e077ad38febf09c1298c46b8b262fa97",
+      bytes: 16773,
+    }),
+    Object.freeze({
+      version: "20260717080000",
+      file: "20260717080000_harden_support_delivery_lifecycle.sql",
+      sha256: "71db8a821e05231ff3af20b18bbb629d8f37861dc3b6616dcde8dd06e8fcf948",
+      bytes: 9468,
+    }),
+    Object.freeze({
+      version: "20260717081000",
+      file: "20260717081000_expand_campaign_lifecycle_authority.sql",
+      sha256: "5b9861d310456e1a9d90b3ba1b2d85faef4bbd361651282bc9a30a1d478b8b4b",
+      bytes: 21278,
+    }),
+    Object.freeze({
+      version: "20260717082000",
+      file: "20260717082000_provider_aware_funnel_publication.sql",
+      sha256: "6787041d74216102cc5dcd63f8250981ec1921eafcc663231d6e105999dfebc4",
+      bytes: 10615,
+    }),
+    Object.freeze({
+      version: "20260717090000",
+      file: "20260717090000_create_canonical_lead_outcome_ledger.sql",
+      sha256: "3de79eb21cdddddaac9e85dfe9f6d419ec059e2c39e37fd16c07bbd5ab4df2de",
+      bytes: 15133,
+    }),
   ]),
   priorEvidence: Object.freeze({
     artifactSha256: Object.freeze({
@@ -179,9 +209,9 @@ function portfolioSha256(records, migrationDirectory) {
   return digest.digest("hex");
 }
 
-export function assertExactForward104To115Portfolio(records, migrationDirectory) {
-  if (!Array.isArray(records) || records.length !== FORWARD_104_TO_115_AUTHORITY.current.migrationCount) {
-    throw new Error("Forward authority requires the exact 115-migration portfolio");
+export function assertExactForward104To120Portfolio(records, migrationDirectory) {
+  if (!Array.isArray(records) || records.length !== FORWARD_104_TO_120_AUTHORITY.current.migrationCount) {
+    throw new Error("Forward authority requires the exact 120-migration portfolio");
   }
   const names = records.map((record) => record.name);
   const versions = names.map((name) => name.slice(0, 14));
@@ -192,12 +222,12 @@ export function assertExactForward104To115Portfolio(records, migrationDirectory)
   ) {
     throw new Error("Forward authority rejects unordered, duplicate, or ambiguous migration identities");
   }
-  const priorRecords = records.slice(0, FORWARD_104_TO_115_AUTHORITY.prior.migrationCount);
-  const forwardRecords = records.slice(FORWARD_104_TO_115_AUTHORITY.prior.migrationCount);
+  const priorRecords = records.slice(0, FORWARD_104_TO_120_AUTHORITY.prior.migrationCount);
+  const forwardRecords = records.slice(FORWARD_104_TO_120_AUTHORITY.prior.migrationCount);
   if (
-    priorRecords.at(-1)?.name !== FORWARD_104_TO_115_AUTHORITY.prior.finalMigration ||
+    priorRecords.at(-1)?.name !== FORWARD_104_TO_120_AUTHORITY.prior.finalMigration ||
     portfolioSha256(priorRecords, migrationDirectory) !==
-      FORWARD_104_TO_115_AUTHORITY.prior.migrationPortfolioSha256
+      FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256
   ) {
     throw new Error("Forward authority rejects drift in the exact historical 104-migration prefix");
   }
@@ -211,12 +241,12 @@ export function assertExactForward104To115Portfolio(records, migrationDirectory)
     };
   });
   if (
-    JSON.stringify(actualForward) !== JSON.stringify(FORWARD_104_TO_115_AUTHORITY.forwardMigrations) ||
-    forwardRecords.at(-1)?.name !== FORWARD_104_TO_115_AUTHORITY.current.finalMigration ||
+    JSON.stringify(actualForward) !== JSON.stringify(FORWARD_104_TO_120_AUTHORITY.forwardMigrations) ||
+    forwardRecords.at(-1)?.name !== FORWARD_104_TO_120_AUTHORITY.current.finalMigration ||
     portfolioSha256(records, migrationDirectory) !==
-      FORWARD_104_TO_115_AUTHORITY.current.migrationPortfolioSha256
+      FORWARD_104_TO_120_AUTHORITY.current.migrationPortfolioSha256
   ) {
-    throw new Error("Forward authority rejects drift in ordered migrations 105 through 115");
+    throw new Error("Forward authority rejects drift in ordered migrations 105 through 120");
   }
   return Object.freeze({
     priorRecords: Object.freeze([...priorRecords]),
@@ -228,7 +258,7 @@ export function assertExactForward104To115Portfolio(records, migrationDirectory)
 }
 
 function assertExactPrior104Payload({ proof, summary, manifest }) {
-  const authority = FORWARD_104_TO_115_AUTHORITY;
+  const authority = FORWARD_104_TO_120_AUTHORITY;
   const prior = authority.prior;
   const shared = [proof, summary];
   if (
@@ -304,7 +334,7 @@ export function loadExactPrior104StagingSeal(directory) {
   ) {
     throw new Error("Prior 104 staging seal must be a real canonical directory");
   }
-  const expectedDigests = FORWARD_104_TO_115_AUTHORITY.priorEvidence.artifactSha256;
+  const expectedDigests = FORWARD_104_TO_120_AUTHORITY.priorEvidence.artifactSha256;
   const expectedNames = Object.keys(expectedDigests).sort();
   const actualNames = readdirSync(directory).sort();
   if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
@@ -388,7 +418,7 @@ export function loadExactPrior104SyntheticSurfaceSeal(priorProofDirectory) {
   ) {
     throw new Error("Prior 104 synthetic surface bundle must be a canonical owner-only directory");
   }
-  const authority = FORWARD_104_TO_115_AUTHORITY.priorEvidence.syntheticSurface;
+  const authority = FORWARD_104_TO_120_AUTHORITY.priorEvidence.syntheticSurface;
   const manifestBytes = readCanonicalOwnerOnlyFile(
     join(outerDirectory, "evidence-manifest.json"),
     "Prior 104 outer evidence manifest",
@@ -529,7 +559,7 @@ export function classifyForward104RemoteHistory(
   ) {
     return "UNEXPECTED_OR_AMBIGUOUS_HISTORY";
   }
-  const authority = FORWARD_104_TO_115_AUTHORITY;
+  const authority = FORWARD_104_TO_120_AUTHORITY;
   const priorFinal = authority.prior.finalMigration.slice(0, 14);
   const currentFinal = authority.current.finalMigration.slice(0, 14);
   if (
@@ -543,6 +573,6 @@ export function classifyForward104RemoteHistory(
     versions.at(-1) === currentFinal &&
     new Set(versions).size === versions.length &&
     JSON.stringify(versions) === JSON.stringify(currentVersions)
-  ) return "POSSIBLE_CURRENT_115_REQUIRES_FULL_READ_ONLY_PROOF";
+  ) return "POSSIBLE_CURRENT_120_REQUIRES_FULL_READ_ONLY_PROOF";
   return "UNEXPECTED_OR_AMBIGUOUS_HISTORY";
 }

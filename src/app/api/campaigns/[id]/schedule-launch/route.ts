@@ -28,6 +28,10 @@ import { buildMetaInstantFormDefinition } from "@/lib/services/meta-instant-form
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 import { resolveCreativeContentSha256 } from "@/lib/creative-content-integrity";
 import { assertMetaCreativeClaims } from "@/lib/advertising-claim-boundaries";
+import {
+  markCanonicalCampaignScheduled,
+  prepareCanonicalCampaignApproval,
+} from "@/lib/services/canonical-campaign-lifecycle-service";
 
 const paramsSchema = z.object({
   id: z.string().uuid(),
@@ -390,6 +394,14 @@ export async function POST(
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
+    const canonicalApproval = await prepareCanonicalCampaignApproval({
+      campaignId: id,
+      materialInputDigest: customerApprovalDigest,
+      approvedSnapshot: immutableApproval.launchApprovalSnapshot,
+      approvedDailyBudgetMinor,
+      currency: approvedCurrency,
+      scheduledFor: scheduledFor.toISOString(),
+    });
     const activationAuthorization = await preauthorizeMetaCampaignActivation({
       campaignId: id,
       campaignName: record.campaign.name,
@@ -400,6 +412,14 @@ export async function POST(
       ...immutableApproval,
       customerApprovalDigest,
       idempotencyKey: `meta_activation:${id}:${Math.floor(scheduledFor.getTime() / 1000)}`,
+    });
+    await markCanonicalCampaignScheduled({
+      campaignId: id,
+      approvalSnapshotId: canonicalApproval.approvalSnapshotId,
+      expectedVersion: canonicalApproval.version,
+      scheduledFor: activationAuthorization.scheduledFor,
+      activationAuthorizationId: activationAuthorization.authorizationId,
+      client: canonicalApproval.client,
     });
 
     return apiSuccess({

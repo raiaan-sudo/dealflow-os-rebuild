@@ -55,6 +55,8 @@ export async function POST(request: Request) {
       providerLocationFingerprint: event.payloadFingerprint.slice(0, 12),
       projectionStatus: acceptance.projectionStatus,
       projectionCode: acceptance.projectionCode,
+      outcomeStatus: acceptance.outcome.status,
+      outcomeType: acceptance.outcome.outcomeType,
       providerEnvironment,
       communicationsSent: false,
       providerMutationAttempted: false,
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
       received: true,
       duplicateSafe: true,
       projectionStatus: acceptance.projectionStatus,
+      outcomeStatus: acceptance.outcome.status,
     });
   } catch (error) {
     return handleApiError(error, "GHL lifecycle webhook");

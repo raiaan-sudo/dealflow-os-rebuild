@@ -1,12 +1,52 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { evaluateMetaOptimizationExecutionGate } from "../src/lib/meta-optimization-execution-gate";
+import type { MetaOptimizationAuthorityResult } from "../src/lib/authority/owner-decision-authority-contract";
 import { evaluateRealtorOptimizationPolicy } from "../src/lib/optimization-engine/realtor-policy";
 import type { ApprovedOptimizationPolicy } from "../src/lib/optimization-engine/safety-policy";
 
 const canonicalStagingProjectId = String(
   JSON.parse(readFileSync(".vercel/project.json", "utf8")).projectId,
 );
+
+const authorityPolicy = {
+  contractVersion: "dealflow-realtor-optimization-v2",
+  currencies: ["CAD", "USD"],
+  maximumObservationAgeMinutes: 60,
+  minimumImpressions: 1_000,
+  minimumClicks: 20,
+  minimumSpendMinor: 5_000,
+  minimumLeadsForCplDecision: 1,
+  attributionWindowDays: 7,
+  cooldownMinutes: 1_440,
+  maximumBudgetIncreasePercent: 20,
+  maximumBudgetDecreasePercent: 100,
+  maximumDailyScalePercent: 20,
+  thresholds: {
+    ctrGoodPercent: 2,
+    ctrKillPercent: 0.5,
+    cpcTargetMajor: 1,
+    cplMaximumMajor: 50,
+    landingPageConversionTargetPercent: 5,
+    frequencyMaximum: 4,
+    noLeadsTimeoutHours: 24,
+    spendMultiplierKill: 2,
+  },
+} as const;
+const productionAuthority = {
+  authorized: true,
+  capability: "meta_optimization_provider_writes",
+  reason: "authorized",
+  authorityMode: "production",
+  packetDigest: "a".repeat(64),
+  decisionId: "OWNER-007",
+  signatureReference: `ed25519:owner:key:${"a".repeat(64)}`,
+  policy: authorityPolicy,
+} satisfies MetaOptimizationAuthorityResult;
+const stagingAuthority = {
+  ...productionAuthority,
+  authorityMode: "synthetic_staging",
+} satisfies MetaOptimizationAuthorityResult;
 
 const stagingHost = {
   VERCEL_ENV: "production",
@@ -19,6 +59,12 @@ const stagingHost = {
   META_OPTIMIZATION_SANDBOX_ACCOUNT_ID: "act_99100000001",
 };
 assert.deepEqual(evaluateMetaOptimizationExecutionGate(stagingHost), {
+  enabled: false,
+  environment: null,
+  accountIds: [],
+  blockedReason: "optimizer_signed_owner_authority_required",
+});
+assert.deepEqual(evaluateMetaOptimizationExecutionGate(stagingHost, stagingAuthority), {
   enabled: true,
   environment: "staging",
   accountIds: ["99100000001"],
@@ -30,11 +76,19 @@ for (const key of [
   "META_OPTIMIZATION_SANDBOX_ACCOUNT_ID",
 ] as const) {
   assert.equal(
-    evaluateMetaOptimizationExecutionGate({ ...stagingHost, [key]: undefined }).enabled,
+    evaluateMetaOptimizationExecutionGate(
+      { ...stagingHost, [key]: undefined },
+      stagingAuthority,
+    ).enabled,
     false,
     `staging gate must close without ${key}`,
   );
 }
+assert.equal(
+  evaluateMetaOptimizationExecutionGate(stagingHost, productionAuthority).enabled,
+  false,
+  "staging gate must reject production owner authority",
+);
 
 const productionHost = {
   VERCEL_ENV: "production",
@@ -51,27 +105,43 @@ assert.deepEqual(evaluateMetaOptimizationExecutionGate(productionHost), {
   enabled: false,
   environment: null,
   accountIds: [],
-  blockedReason: "exact_optimizer_host_attestation_required",
+  blockedReason: "optimizer_signed_owner_authority_required",
+});
+assert.deepEqual(evaluateMetaOptimizationExecutionGate(productionHost, productionAuthority), {
+  enabled: true,
+  environment: "production",
+  accountIds: ["99100000001", "99200000001"],
+  blockedReason: null,
 });
 for (const key of [
-  "DEALFLOW_PRODUCTION_HOST_ATTESTATION",
   "ALLOW_META_PRODUCTION_OPTIMIZATION",
   "DEALFLOW_PRODUCTION_META_OPTIMIZATION_ATTESTATION",
   "META_OPTIMIZATION_PRODUCTION_ACCOUNT_IDS",
 ] as const) {
   assert.equal(
-    evaluateMetaOptimizationExecutionGate({ ...productionHost, [key]: undefined }).enabled,
+    evaluateMetaOptimizationExecutionGate(
+      { ...productionHost, [key]: undefined },
+      productionAuthority,
+    ).enabled,
     false,
     `production gate must close without ${key}`,
   );
 }
 assert.equal(
-  evaluateMetaOptimizationExecutionGate({ ...productionHost, META_OPTIMIZATION_PRODUCTION_ACCOUNT_IDS: "99100000001,bad" }).enabled,
+  evaluateMetaOptimizationExecutionGate(
+    { ...productionHost, META_OPTIMIZATION_PRODUCTION_ACCOUNT_IDS: "99100000001,bad" },
+    productionAuthority,
+  ).enabled,
   false,
 );
 assert.equal(
   evaluateMetaOptimizationExecutionGate({ ...productionHost, VERCEL_PROJECT_ID: "wrong-project" }).enabled,
   false,
+);
+assert.equal(
+  evaluateMetaOptimizationExecutionGate(productionHost, stagingAuthority).enabled,
+  false,
+  "production gate must reject synthetic staging owner authority",
 );
 
 const approvedPolicy: ApprovedOptimizationPolicy = {

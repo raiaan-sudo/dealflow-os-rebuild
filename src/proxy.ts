@@ -67,6 +67,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/access-keys/reveal-ack",
   "/api/integrations/ghl/embed-context",
   "/api/integrations/ghl/webhook",
+  "/api/support/delivery-callback",
 ]);
 const STAGING_ACCESS_HEADER = "x-dealflow-staging-access";
 const STAGING_ACCESS_COOKIE = "__Host-dealflow-staging-access";

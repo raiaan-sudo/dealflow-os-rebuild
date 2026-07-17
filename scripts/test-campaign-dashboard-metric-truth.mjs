@@ -70,7 +70,7 @@ assert.deepEqual(earlyDelivery, {
   spend: 37.25,
   impressions: 2400,
   clicks: 31,
-  cpl: 0,
+  cpl: null,
 });
 
 const zeroSnapshot = resolveCampaignDeliveryMetricTruth({
@@ -85,10 +85,10 @@ const noCampaignSnapshot = resolveCampaignDeliveryMetricTruth({
   campaignDeliveryMetrics: null,
   workspaceMetrics: { totalSpend: 25, totalLeads: 5 },
 });
-assert.equal(noCampaignSnapshot.source, "workspace_fallback");
-assert.equal(noCampaignSnapshot.spend, 25);
-assert.equal(noCampaignSnapshot.leads, 5);
-assert.equal(noCampaignSnapshot.cpl, 5);
+assert.equal(noCampaignSnapshot.source, "missing");
+assert.equal(noCampaignSnapshot.spend, null);
+assert.equal(noCampaignSnapshot.leads, null);
+assert.equal(noCampaignSnapshot.cpl, null);
 
 assert.match(componentSource, /resolveCampaignDeliveryMetricTruth/);
 assert.doesNotMatch(componentSource, /const displayedLeads = hasLivePerformance/);

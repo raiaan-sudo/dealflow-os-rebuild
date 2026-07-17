@@ -10,6 +10,8 @@ const paths = {
   appLayout: "src/app/(app)/layout.tsx",
   loginPage: "src/app/(auth)/login/page.tsx",
   loginForm: "src/components/auth/login-form.tsx",
+  safeRedirect: "src/lib/auth/safe-redirect.ts",
+  authCallback: "src/app/auth/callback/route.ts",
   leadForm: "src/app/f/[slug]/lead-capture-form.tsx",
   feedbackWidget: "src/components/layout/feedback-widget.tsx",
   creativeWizard: "src/app/(app)/build/creatives/creative-wizard.tsx",
@@ -70,13 +72,13 @@ function findFunction(source, fileName, functionName) {
 
 function loadRedirectValidator() {
   const { sourceFile, node } = findFunction(
-    sources.loginForm,
-    paths.loginForm,
-    "getSafeRedirectPath",
+    sources.safeRedirect,
+    paths.safeRedirect,
+    "getSafeAuthRedirectPath",
   );
-  const functionSource = node.getText(sourceFile);
+  const functionSource = node.getText(sourceFile).replace(/^export\s+/, "");
   const executable = ts.transpileModule(
-    `const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding?fresh=1";\n${functionSource}\nglobalThis.__redirectValidator = getSafeRedirectPath;`,
+    `const parseProductLocalePathname = (pathname) => ({ pathname });\n${functionSource}\nglobalThis.__redirectValidator = getSafeAuthRedirectPath;`,
     {
       compilerOptions: {
         module: ts.ModuleKind.None,
@@ -116,6 +118,11 @@ for (const [name, value, expected] of redirectCases) {
 
 assertIncludes(
   "loginForm",
+  'import { getSafeAuthRedirectPath } from "@/lib/auth/safe-redirect";',
+  "login must use the shared safe redirect contract",
+);
+assertIncludes(
+  "loginForm",
   'href("/onboarding?fresh=1")',
   "login redirect fallback must use the locale-aware href helper",
 );
@@ -131,27 +138,25 @@ assertIncludes(
   "results must preserve an explicit campaign selection",
 );
 
-const recoveryParse = sources.loginForm.indexOf(
-  'const hashParams = new URLSearchParams(window.location.hash.slice(1));',
+assertIncludes(
+  "loginForm",
+  'getAuthCallbackUrl("recovery", redirectedFrom)',
+  "password recovery must use the server-side PKCE callback",
 );
-const fragmentCleanup = sources.loginForm.indexOf("window.history.replaceState(", recoveryParse);
-const clientCreation = sources.loginForm.indexOf("const supabase = createClient();", recoveryParse);
-const sessionExchange = sources.loginForm.indexOf("client.auth.setSession", recoveryParse);
-const sessionFailure = sources.loginForm.indexOf("if (sessionError)", recoveryParse);
-
-assert.ok(recoveryParse >= 0, "recovery fragment must be parsed synchronously");
-assert.ok(
-  recoveryParse < fragmentCleanup && fragmentCleanup < clientCreation && clientCreation < sessionExchange,
-  "recovery fragment cleanup must happen before client creation and asynchronous session exchange",
+assertIncludes(
+  "authCallback",
+  "supabase.auth.exchangeCodeForSession(code)",
+  "the PKCE callback must exchange the one-time code server-side",
 );
-assert.ok(
-  fragmentCleanup < sessionFailure,
-  "recovery fragment cleanup must precede the setSession failure path",
+assertIncludes(
+  "authCallback",
+  'mode: "update-password"',
+  "a successful recovery exchange must enter update-password mode",
 );
-assert.equal(
-  sources.loginForm.indexOf("window.history.replaceState(", fragmentCleanup + 1),
-  -1,
-  "fragment cleanup must not be deferred to a success-only path",
+assert.doesNotMatch(
+  sources.loginForm,
+  /window\.location\.hash|auth\.setSession/,
+  "recovery must not parse or persist bearer credentials from a browser fragment",
 );
 
 assertIncludes("rootLayout", 'default: "DealFlow OS — Build, launch, and optimize campaigns"', "root title fallback");

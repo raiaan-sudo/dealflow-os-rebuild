@@ -326,6 +326,15 @@ assert.throws(
 assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 91);
 assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 91);
 assert.equal(new Set(FINAL_VERIFICATION_COMMAND_PORTFOLIO).size, 91);
+assert.equal(packageJson.scripts["format:check"], "git diff --check");
+assert.equal(
+  packageJson.scripts["release:qualify"],
+  "node ./scripts/run-dealflow-final-verification.mjs",
+);
+assert.equal(
+  packageJson.scripts["release:staging:qualify"],
+  "node ./scripts/staging/run-isolated-staging-acceptance.mjs",
+);
 assert.match(
   packageJson.scripts["test:dealflow-completion"],
   /npm run test:final-critical/,
@@ -384,7 +393,7 @@ assert.equal(
 );
 assert.equal(
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
-  "52299caf080e75208de7e60c35b484cb83f9074e8ece57f8ad8067ef0b16c999",
+  "e911e09b18f312ef95440fa1fddb4a1459373ac169209f44e399a0a727134d85",
 );
 const exactNativePostgresRuntime = Object.freeze({
   pgbin: "/fixture/postgresql/17.6/bin",
@@ -524,7 +533,7 @@ const exactSummaryIdentity = Object.freeze({
   trackedWorktreeSha256: "c".repeat(64),
   trackedFileCount: 900,
   dependencyLockSha256: "d".repeat(64),
-  migrationCount: 115,
+  migrationCount: 120,
   migrationPortfolioSha256: "e".repeat(64),
 });
 const exactRecords = exactCommandPortfolio.map((command, index) => ({
@@ -740,11 +749,11 @@ assert.throws(
 );
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 115",
-  "20260717060000_install_owner_decision_authority_grants.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 120",
+  "20260717090000_create_canonical_lead_outcome_ledger.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
-  '["git", ["diff", "--check"]]',
+  '["npm", ["run", "format:check"]]',
   '["npm", ["audit", "--omit=dev", "--audit-level=low"]]',
   '["npm", ["run", "security:scan-release"]]',
   '["npm", ["run", "test:release-evidence-current"]]',
@@ -799,8 +808,8 @@ for (const marker of [
 
 const npmCi = source.indexOf('["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]');
 const npmLs = source.indexOf('["npm", ["ls", "--all"]]');
-const gitDiff = source.indexOf('["git", ["diff", "--check"]]');
-assert.ok(npmCi >= 0 && npmCi < npmLs && npmLs < gitDiff, "Final runner must preserve the broker-bound first two commands");
+const formatCheck = source.indexOf('["npm", ["run", "format:check"]]');
+assert.ok(npmCi >= 0 && npmCi < npmLs && npmLs < formatCheck, "Final runner must preserve the broker-bound first two commands");
 const hostedDeferralSource = source.slice(
   source.indexOf("const environmentOnlyDeferrals = Object.freeze(["),
   source.indexOf("\nfunction sanitize", source.indexOf("const environmentOnlyDeferrals")),
@@ -836,5 +845,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (exclusive worktree lock, migration 115, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 120, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

@@ -38,6 +38,7 @@ import { createAdminClient } from "@/lib/server/supabase-admin";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import { reconcileCampaignProviderReadback } from "@/lib/services/campaign-runtime-service";
+import { transitionCanonicalCampaignLifecycleBySystem } from "@/lib/services/canonical-campaign-lifecycle-service";
 import { logError, logWarn } from "@/lib/logging";
 import type { Json } from "@/lib/supabase/types";
 
@@ -767,6 +768,40 @@ export async function syncMetaCampaignStatus(params?: {
                   : "Meta readback did not match a safely classifiable authorized delivery state; operator reconciliation is required.",
           internalActor: params?.internalActor,
         });
+        const canonicalState = providerState === "active" && activationAuthorized
+          ? "active"
+          : providerState === "paused"
+            ? "paused"
+            : providerState === "operator_action_required" ||
+                (providerState === "active" && !activationAuthorized)
+              ? "operator_required"
+              : null;
+        if (canonicalState) {
+          const lifecycleClient = createAdminClient();
+          if (!lifecycleClient) {
+            throw new ApiError(
+              503,
+              "Campaign lifecycle reconciliation is unavailable.",
+              "campaign_lifecycle_unavailable",
+            );
+          }
+          await transitionCanonicalCampaignLifecycleBySystem({
+            organizationId: context.organization.id,
+            campaignId: internalCampaignId,
+            toState: canonicalState,
+            reasonCode: `meta_readback_${canonicalState}`,
+            evidence: {
+              providerState,
+              activationAuthorized,
+              readAt: syncedAt,
+              source: ids.source,
+            },
+            idempotencyKey: `meta-readback:${internalCampaignId}:${syncedAt}:${canonicalState}`,
+            actorKind: "provider_reconciliation",
+            client: lifecycleClient,
+            allowUnapprovedLegacyNoop: true,
+          });
+        }
       }
     }
   }
