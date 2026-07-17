@@ -20,6 +20,8 @@ const image = "postgres:17.6";
 const containerName = `dealflow-privacy-${process.pid}-${randomBytes(3).toString("hex")}`;
 const db = createDisposablePostgresHarness({ containerName, image, maxBuffer: 16 * 1024 * 1024 });
 const password = randomBytes(24).toString("hex");
+const migrationOwnerPrelude = db.mode === "native" ? "" : "set role postgres;";
+const migrationOwnerReset = db.mode === "native" ? "" : "reset role;";
 let cleaned = false;
 
 function docker(args, options = {}) { return db.run(args, options); }
@@ -238,7 +240,10 @@ try {
   ], { timeout: 30_000 }), "Disposable PostgreSQL failed to start");
   await waitForPostgres();
   assert.match(session.psql("show server_version;"), /^17\.6\b/);
-  session.psql(`${prelude}\nbegin; set role postgres; ${migration}\n${terminalAuthorityMigration} reset role; commit;`, "Apply privacy and terminal authority migrations");
+  session.psql(
+    `${prelude}\nbegin; ${migrationOwnerPrelude} ${migration}\n${terminalAuthorityMigration} ${migrationOwnerReset} commit;`,
+    "Apply privacy and terminal authority migrations",
+  );
   assert.equal(session.psql("select value from public.app_schema_metadata where key='schema_version';"), "20260717060000");
   assert.equal(session.psql("select count(*) from public.privacy_data_inventory where authority_class<>'unresolved_owner_privacy_authority' or executor_task is not null or authority_grant_id is not null;"), "0");
   assert.equal(session.psql("select count(*) from public.privacy_data_inventory where relation_name in('owner_decision_authority_grants','owner_decision_authority_revocations') and authority_class='unresolved_owner_privacy_authority';"), "2");

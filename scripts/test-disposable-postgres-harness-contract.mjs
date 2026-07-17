@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   assertDisposablePostgresCleanupResult,
   createDisposablePostgresHarness,
+  nativeCompatiblePostgresUsername,
 } from "./lib/disposable-postgres-harness.mjs";
 import {
   acquireNativePostgresPrefixLock,
@@ -45,6 +46,17 @@ assert.deepEqual(requireFinalVerificationNativeEnvironment(validFinalEnvironment
 assert.throws(
   () => requireFinalVerificationNativeEnvironment({ ...validFinalEnvironment, DEALFLOW_DISPOSABLE_DB_MODE: "docker" }),
   /requires DEALFLOW_DISPOSABLE_DB_MODE=native/,
+);
+
+assert.equal(
+  nativeCompatiblePostgresUsername("postgres", "supabase_admin"),
+  "supabase_admin",
+  "Docker's default postgres connection must map to the configured native superuser",
+);
+assert.equal(
+  nativeCompatiblePostgresUsername("authenticated", "supabase_admin"),
+  "authenticated",
+  "non-superuser role simulations must remain exact",
 );
 for (const missing of nativeNames) {
   const environment = { ...validFinalEnvironment };

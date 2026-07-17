@@ -55,6 +55,11 @@ function parsePsqlUsername(args, fallback) {
   return fallback;
 }
 
+export function nativeCompatiblePostgresUsername(username, nativeSuperuser) {
+  if (username === "postgres") return nativeSuperuser;
+  return username;
+}
+
 function roleSql(username, superuser, sql) {
   if (username === superuser) return sql;
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(username)) {
@@ -243,7 +248,10 @@ class DisposablePostgresHarness {
     if (typeof sql !== "string" || sql.trim() === "") {
       throw new Error("Native PostgreSQL psql command did not provide SQL input");
     }
-    const username = parsePsqlUsername(commandArgs, this.#nativeUser);
+    const username = nativeCompatiblePostgresUsername(
+      parsePsqlUsername(commandArgs, this.#nativeUser),
+      this.#nativeUser,
+    );
     const stdout = session.psql(roleSql(username, this.#nativeUser, sql), {
       label: "Run native disposable PostgreSQL statement",
       timeoutMs: options.timeout,
@@ -266,7 +274,10 @@ class DisposablePostgresHarness {
       const session = this.#requireSession();
       const { command, commandArgs } = parseExec(psqlArgs, this.#containerName);
       if (command !== "psql") throw new Error("Native concurrent command is not psql");
-      const username = parsePsqlUsername(commandArgs, this.#nativeUser);
+      const username = nativeCompatiblePostgresUsername(
+        parsePsqlUsername(commandArgs, this.#nativeUser),
+        this.#nativeUser,
+      );
       const [stdout] = await session.psqlConcurrent(
         [roleSql(username, this.#nativeUser, sql)],
         { label: "Run concurrent native disposable PostgreSQL statement" },

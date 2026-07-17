@@ -17,6 +17,18 @@ const image = "postgres:17.6";
 const containerName = `dealflow-platform-operator-${process.pid}-${randomBytes(3).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
 const password = randomBytes(24).toString("hex");
+const databaseSuperuser = disposablePostgres.mode === "native"
+  ? process.env.DEALFLOW_NATIVE_PGUSER
+  : "postgres";
+if (!/^[a-z_][a-z0-9_]{0,62}$/.test(databaseSuperuser ?? "")) {
+  throw new Error("Disposable PostgreSQL superuser is invalid");
+}
+const migrationOwnerPrelude = disposablePostgres.mode === "native"
+  ? ""
+  : "set role postgres;";
+const migrationOwnerReset = disposablePostgres.mode === "native"
+  ? ""
+  : "reset role;";
 let cleaned = false;
 
 function docker(args, options = {}) {
@@ -42,7 +54,7 @@ function psqlRaw(sql) {
   return docker([
     "exec", "-i", "--env", `PGPASSWORD=${password}`, containerName,
     "psql", "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align",
-    "--field-separator=|", "--quiet", "--username=postgres", "--dbname=postgres",
+    "--field-separator=|", "--quiet", `--username=${databaseSuperuser}`, "--dbname=postgres",
   ], { input: sql, timeout: 120_000 });
 }
 
@@ -70,7 +82,7 @@ function cleanup() {
 async function waitForPostgres() {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const ready = docker(
-      ["exec", containerName, "pg_isready", "--username=postgres", "--dbname=postgres"],
+      ["exec", containerName, "pg_isready", `--username=${databaseSuperuser}`, "--dbname=postgres"],
       { timeout: 5_000 },
     );
     if (ready.status === 0) return;
@@ -179,7 +191,7 @@ try {
         key text primary key, value text not null, updated_at timestamptz not null default now()
       );
       insert into auth.users(id) values ${ids.map((id) => `('${id}')`).join(",")};
-      begin; set role postgres; ${migration} reset role; commit;
+      begin; ${migrationOwnerPrelude} ${migration} ${migrationOwnerReset} commit;
     `, { label: "Apply platform operator migration", timeoutMs: 120_000 });
 
     assert.equal(

@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1103,
-  "deployableSourceSha256": "20bd87f2f60a958b19060807ed75136e18c5a0f878f184a9a337c758a3b54c06",
+  "deployableSourceSha256": "a6a5612a07f0ee4667038312982b34f9994896e94258fe31a7ee412fc469b00e",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -834,9 +834,9 @@
     },
     {
       "path": "scripts/lib/disposable-postgres-harness.mjs",
-      "size": 9553,
+      "size": 9856,
       "mode": 33188,
-      "sha256": "db3675ea83db3fc0f1c83888199d5553a824858538495ff7ea1e9b0205b218c5"
+      "sha256": "9dd768ebf94d07e88edb900beb1bf71a623db6151ef89226d17850114c21426d"
     },
     {
       "path": "scripts/lib/final-verification-command-contract.mjs",
@@ -1518,9 +1518,9 @@
     },
     {
       "path": "scripts/test-disposable-postgres-harness-contract.mjs",
-      "size": 10013,
+      "size": 10400,
       "mode": 33188,
-      "sha256": "78ee32e3e97a49e08b2f5d317a3e91f7cdf4aec41c022b982c2fb40246898f08"
+      "sha256": "eb328ae6106014d65807fd976372b12f1ad5b7366acf757abca60db696d9066b"
     },
     {
       "path": "scripts/test-final-catalog-acl-oracle-contract.mjs",
@@ -1956,9 +1956,9 @@
     },
     {
       "path": "scripts/test-platform-operator-authority-disposable-db.mjs",
-      "size": 13385,
+      "size": 13866,
       "mode": 33188,
-      "sha256": "ef2dd2e9d9aba537f1e2ba949bf508569b22016a0f343567a761c92395f28f6e"
+      "sha256": "36448cef764d8d62674261be0a17ba0c40f4a7aa49b64084cb0753e37276ffca"
     },
     {
       "path": "scripts/test-post-audit-successor-contract.ts",
@@ -1974,9 +1974,9 @@
     },
     {
       "path": "scripts/test-privacy-consent-dsar-disposable-db.mjs",
-      "size": 28317,
+      "size": 28498,
       "mode": 33188,
-      "sha256": "64b91d6aba4b84c4e3277b2d71aa774e8c1f7bb1e5471f803341b7898a5c2cdd"
+      "sha256": "563ae85767a4ee7d0beec03a1ce09953a41def0847307c93bf65335861d735d5"
     },
     {
       "path": "scripts/test-privileged-tenancy-disposable-db.mjs",
