@@ -307,7 +307,7 @@ function captureCleanReleaseIdentity() {
     ["rev-parse", "--abbrev-ref", "HEAD"],
     "Unable to identify the release branch",
   ).trim();
-  if (branch !== "codex/dealflow-final-master-20260716") {
+  if (branch !== "codex/dealflow-release-closure-plan") {
     throw new Error("The migration broker requires the exact isolated release branch");
   }
   const tracked = trackedWorktreeIdentity();
