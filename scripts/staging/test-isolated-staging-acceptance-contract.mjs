@@ -547,6 +547,102 @@ assert.match(runner, /SYNTHETIC_PLATFORM_OPERATOR_CAPABILITY/);
 assert.match(runner, /phase === "multi_role_browser" && role === "operator"/);
 assert.match(runner, /admin\.auth\.admin\.mfa\.listFactors/);
 assert.match(runner, /admin\.auth\.admin\.mfa\.deleteFactor/);
+assert.match(runner, /removeSyntheticMfaFactorExactly/);
+assert.match(runner, /isExactAlreadyInvalidSyntheticSession/);
+assert.match(runner, /syntheticMfaFactorAlreadyAbsentReadbackCount/);
+assert.match(runner, /globalSignOutAlreadyInvalidAfterMfaRemovalCount/);
+assert.match(runner, /syntheticMfaFactorReadbackRequired:/);
+assert.match(runner, /synthetic MFA factor cleanup was not proven by readback/);
+const syntheticMfaCleanupSource = runner.slice(
+  runner.indexOf("function isExactAlreadyInvalidSyntheticSession("),
+  runner.indexOf("async function revokeSyntheticSessionPhase("),
+);
+const syntheticMfaCleanupSandbox = {};
+runInNewContext(
+  `${syntheticMfaCleanupSource}\nthis.isExactAlreadyInvalidSyntheticSessionForContract = isExactAlreadyInvalidSyntheticSession; this.removeSyntheticMfaFactorExactlyForContract = removeSyntheticMfaFactorExactly;`,
+  syntheticMfaCleanupSandbox,
+);
+assert.equal(
+  syntheticMfaCleanupSandbox.isExactAlreadyInvalidSyntheticSessionForContract({
+    status: 403,
+    message: "Auth session missing!",
+  }),
+  true,
+);
+assert.equal(
+  syntheticMfaCleanupSandbox.isExactAlreadyInvalidSyntheticSessionForContract({
+    status: 500,
+    message: "Auth session missing!",
+  }),
+  false,
+);
+const syntheticMfaCleanupSession = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  mfaFactorId: "22222222-2222-4222-8222-222222222222",
+};
+const removedSyntheticMfa = await syntheticMfaCleanupSandbox
+  .removeSyntheticMfaFactorExactlyForContract(
+    {
+      auth: {
+        admin: {
+          mfa: {
+            deleteFactor: async () => ({
+              data: { id: syntheticMfaCleanupSession.mfaFactorId },
+              error: null,
+            }),
+            listFactors: async () => ({ data: { factors: [] }, error: null }),
+          },
+        },
+      },
+    },
+    syntheticMfaCleanupSession,
+  );
+assert.deepEqual(
+  JSON.parse(JSON.stringify(removedSyntheticMfa)),
+  {
+    required: true,
+    removed: true,
+    deleteAccepted: true,
+    readbackAbsent: true,
+    alreadyAbsent: false,
+  },
+);
+const alreadyAbsentSyntheticMfa = await syntheticMfaCleanupSandbox
+  .removeSyntheticMfaFactorExactlyForContract(
+    {
+      auth: {
+        admin: {
+          mfa: {
+            deleteFactor: async () => {
+              throw new Error("already absent");
+            },
+            listFactors: async () => ({ data: { factors: [] }, error: null }),
+          },
+        },
+      },
+    },
+    syntheticMfaCleanupSession,
+  );
+assert.equal(alreadyAbsentSyntheticMfa.removed, true);
+assert.equal(alreadyAbsentSyntheticMfa.alreadyAbsent, true);
+const retainedSyntheticMfa = await syntheticMfaCleanupSandbox
+  .removeSyntheticMfaFactorExactlyForContract(
+    {
+      auth: {
+        admin: {
+          mfa: {
+            deleteFactor: async () => ({ data: null, error: new Error("failed") }),
+            listFactors: async () => ({
+              data: { factors: [{ id: syntheticMfaCleanupSession.mfaFactorId }] },
+              error: null,
+            }),
+          },
+        },
+      },
+    },
+    syntheticMfaCleanupSession,
+  );
+assert.equal(retainedSyntheticMfa.removed, false);
 assert.match(runner, /anon\.auth\.mfa\.enroll/);
 assert.match(runner, /anon\.auth\.mfa\.challengeAndVerify/);
 assert.match(runner, /assurance\.data\?\.currentLevel !== "aal2"/);

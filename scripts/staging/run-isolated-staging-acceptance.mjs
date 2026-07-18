@@ -4633,6 +4633,64 @@ function browserSessionBundle(portfolio) {
   return { json, secrets };
 }
 
+function isExactAlreadyInvalidSyntheticSession(error) {
+  return (
+    [400, 403].includes(error?.status) &&
+    /^Auth session missing!?$/i.test(error?.message ?? "")
+  );
+}
+
+async function removeSyntheticMfaFactorExactly(admin, session) {
+  if (!session.mfaFactorId) {
+    return {
+      required: false,
+      removed: true,
+      deleteAccepted: false,
+      readbackAbsent: true,
+      alreadyAbsent: false,
+    };
+  }
+
+  let deleteAccepted = false;
+  try {
+    const deleted = await admin.auth.admin.mfa.deleteFactor({
+      userId: session.userId,
+      id: session.mfaFactorId,
+    });
+    deleteAccepted =
+      !deleted.error && deleted.data?.id === session.mfaFactorId;
+  } catch {
+    // The authoritative postcondition is the bounded admin readback below.
+  }
+
+  let listed;
+  try {
+    listed = await admin.auth.admin.mfa.listFactors({
+      userId: session.userId,
+    });
+  } catch {
+    return {
+      required: true,
+      removed: false,
+      deleteAccepted,
+      readbackAbsent: false,
+      alreadyAbsent: false,
+    };
+  }
+  const factors = listed.data?.factors;
+  const readbackAbsent =
+    !listed.error &&
+    Array.isArray(factors) &&
+    !factors.some((factor) => factor.id === session.mfaFactorId);
+  return {
+    required: true,
+    removed: readbackAbsent,
+    deleteAccepted,
+    readbackAbsent,
+    alreadyAbsent: readbackAbsent && !deleteAccepted,
+  };
+}
+
 async function revokeSyntheticSessionPhase(
   admin,
   phase,
@@ -4647,20 +4705,63 @@ async function revokeSyntheticSessionPhase(
   const cleaned = new Set();
   const refreshRevocationProven = new Set();
   const mfaFactorCleanupProven = new Set();
+  const mfaFactorCleanupDeleteAccepted = new Set();
+  const mfaFactorCleanupAlreadyAbsent = new Set();
+  const globalSignOutAccepted = new Set();
+  const globalSignOutAlreadyInvalid = new Set();
   const failures = [];
   const supabaseUrl = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
   const revokeOne = async (session) => {
+    let mfaCleanup = {
+      required: false,
+      removed: true,
+      deleteAccepted: false,
+      readbackAbsent: true,
+      alreadyAbsent: false,
+    };
     try {
+      mfaCleanup = await removeSyntheticMfaFactorExactly(admin, session);
+      if (!mfaCleanup.removed) {
+        failures.push(
+          `${session.role}: synthetic MFA factor cleanup was not proven by readback`,
+        );
+      } else if (mfaCleanup.required) {
+        mfaFactorCleanupProven.add(session);
+        if (mfaCleanup.deleteAccepted) {
+          mfaFactorCleanupDeleteAccepted.add(session);
+        }
+        if (mfaCleanup.alreadyAbsent) {
+          mfaFactorCleanupAlreadyAbsent.add(session);
+        }
+      }
+
       const result = await admin.auth.admin.signOut(session.accessToken, "global");
       if (result.error) {
-        failures.push(`${session.role}: ${result.error.message}`);
+        if (
+          mfaCleanup.required &&
+          mfaCleanup.removed &&
+          isExactAlreadyInvalidSyntheticSession(result.error)
+        ) {
+          globalSignOutAlreadyInvalid.add(session);
+        } else {
+          failures.push(`${session.role}: synthetic global sign-out was not accepted`);
+        }
       } else {
-        if (!session.refreshToken) {
+        globalSignOutAccepted.add(session);
+      }
+
+      if (!session.refreshToken) {
+        if (
+          (globalSignOutAccepted.has(session) || globalSignOutAlreadyInvalid.has(session)) &&
+          mfaCleanup.removed
+        ) {
           cleaned.add(session);
           refreshRevocationProven.add(session);
-          return;
         }
+        return;
+      }
+      {
         const refreshProbe = createStagingAnonClient(supabaseUrl, anonKey, {
           allowDuringTermination,
         });
@@ -4683,8 +4784,13 @@ async function revokeSyntheticSessionPhase(
           ) &&
           !refreshed.data.session;
         if (invalidRefreshAuthorityProven) {
-          cleaned.add(session);
           refreshRevocationProven.add(session);
+          if (
+            (globalSignOutAccepted.has(session) || globalSignOutAlreadyInvalid.has(session)) &&
+            mfaCleanup.removed
+          ) {
+            cleaned.add(session);
+          }
         } else if (refreshed.error || !refreshed.data.session) {
           failures.push(
             `${session.role}: refresh-token invalidation could not be distinguished from provider or transport failure`,
@@ -4694,7 +4800,7 @@ async function revokeSyntheticSessionPhase(
             refreshed.data.session.access_token,
             "global",
           );
-          if (!containment.error) cleaned.add(session);
+          if (!containment.error && mfaCleanup.removed) cleaned.add(session);
           failures.push(`${session.role}: refresh token remained usable after global sign-out`);
         }
       }
@@ -4702,28 +4808,6 @@ async function revokeSyntheticSessionPhase(
       failures.push(
         `${session.role}: ${error instanceof Error ? error.message : String(error)}`,
       );
-    } finally {
-      if (session.mfaFactorId) {
-        try {
-          const deleted = await admin.auth.admin.mfa.deleteFactor({
-            userId: session.userId,
-            id: session.mfaFactorId,
-          });
-          if (deleted.error || deleted.data?.id !== session.mfaFactorId) {
-            cleaned.delete(session);
-            failures.push(`${session.role}: synthetic MFA factor cleanup failed`);
-          } else {
-            mfaFactorCleanupProven.add(session);
-          }
-        } catch (error) {
-          cleaned.delete(session);
-          failures.push(
-            `${session.role}: synthetic MFA factor cleanup failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      }
     }
   };
   if (allowDuringTermination) {
@@ -4751,7 +4835,10 @@ async function revokeSyntheticSessionPhase(
   return {
     phase,
     globalSignOutRequestedUserCount: target.length,
-    globalSignOutAcceptedUserCount: cleaned.size,
+    globalSignOutAcceptedUserCount: globalSignOutAccepted.size,
+    globalSignOutAlreadyInvalidAfterMfaRemovalCount:
+      globalSignOutAlreadyInvalid.size,
+    globalSessionInvalidationProvenUserCount: cleaned.size,
     globalRefreshTokenScope: true,
     pendingGlobalSignOutUserCountAfterCleanup:
       failureContext.pendingSyntheticUserGlobalSignOuts.length,
@@ -4761,6 +4848,12 @@ async function revokeSyntheticSessionPhase(
     syntheticMfaFactorCleanupRequiredCount:
       target.filter((session) => Boolean(session.mfaFactorId)).length,
     syntheticMfaFactorCleanupAcceptedCount: mfaFactorCleanupProven.size,
+    syntheticMfaFactorDeleteAcceptedCount:
+      mfaFactorCleanupDeleteAccepted.size,
+    syntheticMfaFactorAlreadyAbsentReadbackCount:
+      mfaFactorCleanupAlreadyAbsent.size,
+    syntheticMfaFactorReadbackRequired:
+      target.some((session) => Boolean(session.mfaFactorId)),
     allSyntheticMfaFactorsRemoved:
       mfaFactorCleanupProven.size ===
         target.filter((session) => Boolean(session.mfaFactorId)).length,
