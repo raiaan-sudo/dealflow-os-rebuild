@@ -193,7 +193,7 @@ const COMMITTED_FORWARD_RECOVERY_ARTIFACTS = Object.freeze([
   "staging-remote-read-started.json",
 ]);
 
-const COMMITTED_FORWARD_RECOVERY_SEAL = Object.freeze({
+const LEGACY_COMMITTED_FORWARD_RECOVERY_SEAL = Object.freeze({
   applicationCommit: "2546b7c44116e0920534ef58f649acd9c037c586",
   applicationTree: "9c404170b7a5a4708d4685a6c22f540894eabf2e",
   manifestSha256: "cc3e8c91f0f95a61b4b2f8e0c113367781e80bdf01ccf3a727a64cf664b2b6c7",
@@ -204,6 +204,24 @@ const COMMITTED_FORWARD_RECOVERY_SEAL = Object.freeze({
   migrationPortfolioSha256: "066dacae58f0987a281bff1f8b21cfaaa2a1cebe49e797a0f764f88d21be74ca",
   postStructuralCatalogSha256: "6e638308fac2144c019934361831685c5a43cb77155e9882d10a9d650fd3058e",
   postNormalizedSchemaSha256: "081c495390be502caba2a66fc0091d788652672578bcb1dd02fd33321d5b5aee",
+});
+
+const FORWARD_104_TO_120_CATALOG_RECOVERY_SEAL = Object.freeze({
+  applicationCommit: "c7c9944d7b68e639ba4257ff33235a5dc7d23499",
+  applicationTree: "d6c66dac2699b901316d7470691dbfb336363003",
+  manifestSha256: "6ee6198163dfb51d2f3adf3cfeee5fbbc0611c2ae8bd7aeefd3cac6f474ea467",
+  summarySha256: "07a1e5f4e18c1a83a3a57d527c22e5c144db56f9b0bf49fdff8f06f765c48792",
+  mutationStatusSha256: "722b9dd21abb0ca6c8d6a709ccfaf8077195557b2f8fceeaa326ea022cebc240",
+  failureSha256: "4930be4c6de2ee099ceb0886cd4e17ec0dfdec4dbb0428cc17881d88057956e4",
+  brokerSourceSha256: "2a44ecaabbb33325302c51393890dcd017d88ad9af1f761ee88f585b5542548d",
+  migrationPortfolioSha256: "fa6f66b0346b7674f5613a206fcc188e1cb38cc0332919f9fe76337c2a37570f",
+  postStructuralCatalogSha256: "69555dfa8eb23734329bb9998f3c18520539643cedc5b54c58ed7a884e991b98",
+  postNormalizedSchemaSha256: null,
+});
+
+const COMMITTED_FORWARD_RECOVERY_SEALS = Object.freeze({
+  legacy_forward_103_acl: LEGACY_COMMITTED_FORWARD_RECOVERY_SEAL,
+  forward_104_to_120_catalog_rendering: FORWARD_104_TO_120_CATALOG_RECOVERY_SEAL,
 });
 
 const APPLICATION_REMOTE_STATES = new Set([
@@ -236,12 +254,17 @@ function assertBaseEvidence(manifest, proof, summary, expectedMigrationCount) {
 }
 
 export function isExactCommittedForwardRecoverySeal(candidate) {
-  return Boolean(
-    candidate &&
-    Object.entries(COMMITTED_FORWARD_RECOVERY_SEAL).every(
-      ([field, expected]) => candidate[field] === expected,
-    )
-  );
+  return classifyExactCommittedForwardRecoverySeal(candidate) !== null;
+}
+
+export function classifyExactCommittedForwardRecoverySeal(candidate) {
+  if (!candidate) return null;
+  for (const [kind, seal] of Object.entries(COMMITTED_FORWARD_RECOVERY_SEALS)) {
+    if (Object.entries(seal).every(([field, expected]) => candidate[field] === expected)) {
+      return kind;
+    }
+  }
+  return null;
 }
 
 export function classifyPriorMigrationEvidence({
@@ -274,6 +297,86 @@ export function classifyPriorMigrationEvidence({
     }
     if (!/^\d{14}$/.test(expectedFinalVersion ?? "")) {
       throw new Error("Committed-forward recovery requires the exact final migration version");
+    }
+    const forward104To120CatalogRecovery =
+      mutationStatus?.transition === "EXACT_104_TO_120";
+    if (forward104To120CatalogRecovery) {
+      const expectedStatus = "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN";
+      const expectedFailureCode = "forward_120_managed_catalog_not_exact_or_stable";
+      const hex64 = /^[a-f0-9]{64}$/;
+      if (
+        manifest?.schemaVersion !== "dealflow.staging-evidence-manifest.v1" ||
+        manifest.status !== expectedStatus ||
+        manifest.migrationMode !== "APPLY_FORWARD_EXACT" ||
+        manifest.transition !== "EXACT_104_TO_120" ||
+        manifest.remoteMutationStarted !== true ||
+        manifest.remoteMutationCompleted !== null ||
+        summary?.schemaVersion !== "dealflow.staging-migration-summary.v1" ||
+        summary.status !== expectedStatus ||
+        summary.failureCode !== expectedFailureCode ||
+        summary.migrationMode !== "APPLY_FORWARD_EXACT" ||
+        summary.transition !== "EXACT_104_TO_120" ||
+        summary.forwardOnly !== true ||
+        summary.remoteMutationStarted !== true ||
+        summary.remoteMutationCompleted !== null ||
+        summary.singleOuterTransaction !== true ||
+        summary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
+        summary.migrationCount !== expectedMigrationCount ||
+        summary.priorMigrationCount !== 104 ||
+        summary.forwardMigrationCount !== 16 ||
+        summary.terminalVersion !== expectedFinalVersion ||
+        failure?.schemaVersion !== "dealflow.isolated-staging-migration-failure.v1" ||
+        failure.status !== expectedStatus ||
+        failure.failureCode !== expectedFailureCode ||
+        failure.migrationMode !== "APPLY_FORWARD_EXACT" ||
+        failure.transition !== "EXACT_104_TO_120" ||
+        failure.forwardOnly !== true ||
+        failure.remoteMutationStarted !== true ||
+        failure.remoteMutationCompleted !== null ||
+        failure.migrationCount !== expectedMigrationCount ||
+        failure.priorMigrationCount !== 104 ||
+        failure.forwardMigrationCount !== 16 ||
+        failure.terminalVersion !== expectedFinalVersion ||
+        mutationStatus?.schemaVersion !== "dealflow.staging-mutation-status.v1" ||
+        mutationStatus.status !== expectedStatus ||
+        mutationStatus.failureCode !== expectedFailureCode ||
+        mutationStatus.migrationMode !== "APPLY_FORWARD_EXACT" ||
+        mutationStatus.transition !== "EXACT_104_TO_120" ||
+        mutationStatus.forwardOnly !== true ||
+        mutationStatus.remoteMutationStarted !== true ||
+        mutationStatus.remoteMutationCompleted !== null ||
+        mutationStatus.singleOuterTransaction !== true ||
+        mutationStatus.migrationHistoryReceiptsInsideOuterTransaction !== true ||
+        mutationStatus.transactionCommitMarkerSeen !== true ||
+        mutationStatus.attemptedCount !== 16 ||
+        mutationStatus.appliedInTransactionCount !== 16 ||
+        mutationStatus.processExitStatus !== 0 ||
+        mutationStatus.processSignal !== null ||
+        mutationStatus.processError !== false ||
+        mutationStatus.processErrorCode !== null ||
+        mutationStatus.databaseSqlstate !== null ||
+        mutationStatus.lastAttemptedVersion !== expectedFinalVersion ||
+        mutationStatus.lastAppliedVersion !== expectedFinalVersion ||
+        mutationStatus.lastCommittedVersion !== null ||
+        mutationStatus.migrationCount !== expectedMigrationCount ||
+        mutationStatus.priorMigrationCount !== 104 ||
+        mutationStatus.forwardMigrationCount !== 16 ||
+        mutationStatus.terminalVersion !== expectedFinalVersion ||
+        !hex64.test(mutationStatus.postStructuralCatalogSha256 ?? "") ||
+        mutationStatus.postNormalizedSchemaSha256 !== null
+      ) {
+        throw new Error(
+          "Prior committed-forward recovery proof is not the exact sealed 104-to-120 post-commit catalog-rendering failure",
+        );
+      }
+      return Object.freeze({
+        evidenceKind: "committed_forward_recovery",
+        recoveryKind: "forward_104_to_120_catalog_rendering",
+        requiredNames: COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
+        evidenceRemoteMutationStarted: true,
+        evidenceRemoteMutationCompleted: true,
+        portfolioApplicationRemoteMutationCompleted: true,
+      });
     }
     const expectedStatus = "FAILED_AFTER_FORWARD_103_COMMIT";
     const expectedFailureCode = "retention_table_or_column_acl_not_hardened";
@@ -343,6 +446,7 @@ export function classifyPriorMigrationEvidence({
     }
     return Object.freeze({
       evidenceKind: "committed_forward_recovery",
+      recoveryKind: "legacy_forward_103_acl",
       requiredNames: COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
       evidenceRemoteMutationStarted: true,
       evidenceRemoteMutationCompleted: true,

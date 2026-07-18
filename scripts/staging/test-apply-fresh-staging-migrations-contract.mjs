@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { createNativePostgresTestAdapter } from "../lib/native-postgres-test-adapter.mjs";
 import {
+  classifyExactCommittedForwardRecoverySeal,
   classifyExactStagingAuthSurface,
   classifyPriorMigrationEvidence,
   isExactCommittedForwardRecoverySeal,
@@ -61,11 +62,14 @@ requireMarker(
 );
 requireMarker(/Prior migration proof artifact does not match its sealed digest/, "prior artifact digest verification");
 requireMarker(/Prior migration proof does not match the exact pinned prior-state seal/, "exact prior seal pin");
-requireMarker(/isExactCommittedForwardRecoverySeal/, "dedicated committed-forward recovery seal gate");
+requireMarker(/classifyExactCommittedForwardRecoverySeal/, "dedicated committed-forward recovery seal gate");
 assert.match(priorProofContractSource, /cc3e8c91f0f95a61b4b2f8e0c113367781e80bdf01ccf3a727a64cf664b2b6c7/, "exact failed-forward manifest pin");
 assert.match(priorProofContractSource, /2546b7c44116e0920534ef58f649acd9c037c586/, "exact failed-forward commit pin");
 assert.match(priorProofContractSource, /9c404170b7a5a4708d4685a6c22f540894eabf2e/, "exact failed-forward tree pin");
+assert.match(priorProofContractSource, /6ee6198163dfb51d2f3adf3cfeee5fbbc0611c2ae8bd7aeefd3cac6f474ea467/, "exact 104-to-120 catalog-recovery manifest pin");
+assert.match(priorProofContractSource, /722b9dd21abb0ca6c8d6a709ccfaf8077195557b2f8fceeaa326ea022cebc240/, "exact 104-to-120 catalog-recovery mutation pin");
 requireMarker(/SEALED_FORWARD_103_COMMIT_REQUIRES_READ_ONLY_REPROOF/, "dedicated read-only recovery identity");
+requireMarker(/SEALED_FORWARD_104_TO_120_COMMIT_REQUIRES_READ_ONLY_REPROOF/, "dedicated 104-to-120 read-only recovery identity");
 requireMarker(/5978cfc9a80f511cfed02d1d1f810a4720db7cc1/, "prior application commit pin");
 requireMarker(/7ea61c55363d40d1e23fb35e45029e653e6682a7/, "prior application tree pin");
 requireMarker(/f4a7209d74fdc1dad3f82290c837d2a8c289546eca7f8b7373efe9e0e6aa3f63/, "prior manifest digest pin");
@@ -869,6 +873,113 @@ for (const field of Object.keys(exactCommittedRecoverySeal)) {
     `The committed-forward seal must reject a changed ${field}`,
   );
 }
+const exactForward104To120CatalogRecoverySeal = {
+  applicationCommit: "c7c9944d7b68e639ba4257ff33235a5dc7d23499",
+  applicationTree: "d6c66dac2699b901316d7470691dbfb336363003",
+  manifestSha256: "6ee6198163dfb51d2f3adf3cfeee5fbbc0611c2ae8bd7aeefd3cac6f474ea467",
+  summarySha256: "07a1e5f4e18c1a83a3a57d527c22e5c144db56f9b0bf49fdff8f06f765c48792",
+  mutationStatusSha256: "722b9dd21abb0ca6c8d6a709ccfaf8077195557b2f8fceeaa326ea022cebc240",
+  failureSha256: "4930be4c6de2ee099ceb0886cd4e17ec0dfdec4dbb0428cc17881d88057956e4",
+  brokerSourceSha256: "2a44ecaabbb33325302c51393890dcd017d88ad9af1f761ee88f585b5542548d",
+  migrationPortfolioSha256: "fa6f66b0346b7674f5613a206fcc188e1cb38cc0332919f9fe76337c2a37570f",
+  postStructuralCatalogSha256: "69555dfa8eb23734329bb9998f3c18520539643cedc5b54c58ed7a884e991b98",
+  postNormalizedSchemaSha256: null,
+};
+assert.equal(
+  classifyExactCommittedForwardRecoverySeal(exactForward104To120CatalogRecoverySeal),
+  "forward_104_to_120_catalog_rendering",
+  "The exact 104-to-120 committed catalog-rendering failure seal must be classified",
+);
+assert.equal(
+  isExactCommittedForwardRecoverySeal(exactForward104To120CatalogRecoverySeal),
+  true,
+  "The exact 104-to-120 committed catalog-rendering failure seal must be accepted",
+);
+
+function committedForward104To120CatalogRecoveryFixture() {
+  const finalVersion = "20260717090000";
+  const common = {
+    migrationMode: "APPLY_FORWARD_EXACT",
+    transition: "EXACT_104_TO_120",
+    forwardOnly: true,
+    remoteMutationStarted: true,
+    remoteMutationCompleted: null,
+    migrationCount: 120,
+    priorMigrationCount: 104,
+    forwardMigrationCount: 16,
+    terminalVersion: finalVersion,
+  };
+  return {
+    actualNames: [...PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS],
+    manifest: {
+      schemaVersion: "dealflow.staging-evidence-manifest.v1",
+      status: "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN",
+      migrationMode: "APPLY_FORWARD_EXACT",
+      transition: "EXACT_104_TO_120",
+      remoteMutationStarted: true,
+      remoteMutationCompleted: null,
+    },
+    proof: null,
+    summary: {
+      schemaVersion: "dealflow.staging-migration-summary.v1",
+      status: "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN",
+      failureCode: "forward_120_managed_catalog_not_exact_or_stable",
+      ...common,
+      singleOuterTransaction: true,
+      migrationHistoryReceiptsInsideOuterTransaction: true,
+    },
+    failure: {
+      schemaVersion: "dealflow.isolated-staging-migration-failure.v1",
+      status: "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN",
+      failureCode: "forward_120_managed_catalog_not_exact_or_stable",
+      ...common,
+    },
+    mutationStatus: {
+      schemaVersion: "dealflow.staging-mutation-status.v1",
+      status: "FAILED_FORWARD_REMOTE_STATE_NOT_PROVEN",
+      failureCode: "forward_120_managed_catalog_not_exact_or_stable",
+      ...common,
+      singleOuterTransaction: true,
+      migrationHistoryReceiptsInsideOuterTransaction: true,
+      transactionCommitMarkerSeen: true,
+      attemptedCount: 16,
+      appliedInTransactionCount: 16,
+      processExitStatus: 0,
+      processSignal: null,
+      processError: false,
+      processErrorCode: null,
+      databaseSqlstate: null,
+      lastAttemptedVersion: finalVersion,
+      lastAppliedVersion: finalVersion,
+      lastCommittedVersion: null,
+      postStructuralCatalogSha256: "a".repeat(64),
+      postNormalizedSchemaSha256: null,
+    },
+    expectedMigrationCount: 120,
+    expectedFinalVersion: finalVersion,
+  };
+}
+const forward104To120CatalogRecovery =
+  committedForward104To120CatalogRecoveryFixture();
+assert.deepEqual(
+  classifyPriorMigrationEvidence(forward104To120CatalogRecovery),
+  {
+    evidenceKind: "committed_forward_recovery",
+    recoveryKind: "forward_104_to_120_catalog_rendering",
+    requiredNames: PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
+    evidenceRemoteMutationStarted: true,
+    evidenceRemoteMutationCompleted: true,
+    portfolioApplicationRemoteMutationCompleted: true,
+  },
+  "The exact 104-to-120 commit-marker failure must enter bounded read-only recovery",
+);
+const missing104To120CommitMarker = structuredClone(forward104To120CatalogRecovery);
+missing104To120CommitMarker.mutationStatus.transactionCommitMarkerSeen = false;
+assert.throws(
+  () => classifyPriorMigrationEvidence(missing104To120CommitMarker),
+  /exact sealed 104-to-120 post-commit catalog-rendering failure/,
+  "The 104-to-120 recovery path must reject a missing transaction commit marker",
+);
 assert.equal(
   classifyPriorMigrationEvidence(committedRecovery.args).evidenceKind,
   "committed_forward_recovery",

@@ -31,8 +31,8 @@ import {
 
 import {
   classifyExactStagingAuthSurface,
+  classifyExactCommittedForwardRecoverySeal,
   classifyPriorMigrationEvidence,
-  isExactCommittedForwardRecoverySeal,
   isAllowedStagingAuthSurfaceUserCount,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
   PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
@@ -1888,21 +1888,20 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior103 }) {
     const mutationStatusSha256 = sha256(mutationStatusArtifact.contents);
     const failureSha256 = sha256(failureArtifact.contents);
     const summarySha256 = sha256(summaryArtifact.contents);
-    const expectedPriorApplied = expectedApplied.slice(0, expectedPriorMigrationCount);
-    const exactForwardMigration = expectedApplied.at(-1);
+    const recoverySealKind = classifyExactCommittedForwardRecoverySeal({
+      applicationCommit: mutationStatus.headCommit,
+      applicationTree: mutationStatus.headTree,
+      manifestSha256,
+      summarySha256,
+      mutationStatusSha256,
+      failureSha256,
+      brokerSourceSha256: mutationStatus.brokerSourceSha256,
+      migrationPortfolioSha256: mutationStatus.migrationPortfolioSha256,
+      postStructuralCatalogSha256: mutationStatus.postStructuralCatalogSha256,
+      postNormalizedSchemaSha256: mutationStatus.postNormalizedSchemaSha256,
+    });
     if (
-      !isExactCommittedForwardRecoverySeal({
-        applicationCommit: mutationStatus.headCommit,
-        applicationTree: mutationStatus.headTree,
-        manifestSha256,
-        summarySha256,
-        mutationStatusSha256,
-        failureSha256,
-        brokerSourceSha256: mutationStatus.brokerSourceSha256,
-        migrationPortfolioSha256: mutationStatus.migrationPortfolioSha256,
-        postStructuralCatalogSha256: mutationStatus.postStructuralCatalogSha256,
-        postNormalizedSchemaSha256: mutationStatus.postNormalizedSchemaSha256,
-      }) ||
+      recoverySealKind !== evidenceTruth.recoveryKind ||
       summary.headCommit !== mutationStatus.headCommit ||
       summary.headTree !== mutationStatus.headTree ||
       failure.headCommit !== mutationStatus.headCommit ||
@@ -1919,24 +1918,6 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior103 }) {
       mutationStatus.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
       summary.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
       failure.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
-      JSON.stringify(mutationStatus.forwardMigration) !==
-        JSON.stringify(exactForwardMigration) ||
-      JSON.stringify(summary.forwardMigration) !== JSON.stringify(exactForwardMigration) ||
-      JSON.stringify(failure.forwardMigration) !== JSON.stringify(exactForwardMigration) ||
-      mutationStatus.priorApplication?.applicationCommit !==
-        expectedPriorApplicationCommit ||
-      mutationStatus.priorApplication?.applicationTree !== expectedPriorApplicationTree ||
-      mutationStatus.priorApplication?.manifestSha256 !== expectedPriorManifestSha256 ||
-      mutationStatus.priorApplication?.migrationPortfolioSha256 !==
-        expectedPriorMigrationPortfolioSha256 ||
-      mutationStatus.priorApplication?.lastCommittedVersion !==
-        expectedPriorFinalMigration.slice(0, 14) ||
-      JSON.stringify(mutationStatus.priorApplication?.migrationFiles) !==
-        JSON.stringify(expectedPriorApplied) ||
-      mutationStatus.preflightStructuralCatalogSha256 !==
-        mutationStatus.priorApplication?.structuralCatalogSha256 ||
-      mutationStatus.preflightNormalizedSchemaSha256 !==
-        mutationStatus.priorApplication?.normalizedSchemaSha256 ||
       mutationStatus.broker?.path !== brokerRelativePath ||
       mutationStatus.brokerSourceSha256 !== mutationStatus.broker?.sha256 ||
       manifest.broker?.path !== brokerRelativePath ||
@@ -1945,6 +1926,106 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior103 }) {
       throw new Error(
         "Prior committed-forward recovery evidence does not match the one exact pinned seal",
       );
+    }
+    let recoveredNormalizedSchemaSha256 = mutationStatus.postNormalizedSchemaSha256;
+    let recoveryReadOnlyAuthority = null;
+    if (recoverySealKind === "legacy_forward_103_acl") {
+      const expectedPriorApplied = expectedApplied.slice(0, expectedPriorMigrationCount);
+      const exactForwardMigration = expectedApplied.at(-1);
+      if (
+        JSON.stringify(mutationStatus.forwardMigration) !==
+          JSON.stringify(exactForwardMigration) ||
+        JSON.stringify(summary.forwardMigration) !== JSON.stringify(exactForwardMigration) ||
+        JSON.stringify(failure.forwardMigration) !== JSON.stringify(exactForwardMigration) ||
+        mutationStatus.priorApplication?.applicationCommit !==
+          expectedPriorApplicationCommit ||
+        mutationStatus.priorApplication?.applicationTree !== expectedPriorApplicationTree ||
+        mutationStatus.priorApplication?.manifestSha256 !== expectedPriorManifestSha256 ||
+        mutationStatus.priorApplication?.migrationPortfolioSha256 !==
+          expectedPriorMigrationPortfolioSha256 ||
+        mutationStatus.priorApplication?.lastCommittedVersion !==
+          expectedPriorFinalMigration.slice(0, 14) ||
+        JSON.stringify(mutationStatus.priorApplication?.migrationFiles) !==
+          JSON.stringify(expectedPriorApplied) ||
+        mutationStatus.preflightStructuralCatalogSha256 !==
+          mutationStatus.priorApplication?.structuralCatalogSha256 ||
+        mutationStatus.preflightNormalizedSchemaSha256 !==
+          mutationStatus.priorApplication?.normalizedSchemaSha256
+      ) {
+        throw new Error("Legacy committed-forward recovery evidence is not exact");
+      }
+    } else if (recoverySealKind === "forward_104_to_120_catalog_rendering") {
+      if (
+        JSON.stringify(mutationStatus.forwardMigrations) !==
+          JSON.stringify(FORWARD_104_TO_120_AUTHORITY.forwardMigrations) ||
+        JSON.stringify(summary.forwardMigrations) !==
+          JSON.stringify(FORWARD_104_TO_120_AUTHORITY.forwardMigrations) ||
+        JSON.stringify(failure.forwardMigrations) !==
+          JSON.stringify(FORWARD_104_TO_120_AUTHORITY.forwardMigrations) ||
+        mutationStatus.priorApplication?.applicationCommit !==
+          FORWARD_104_TO_120_AUTHORITY.prior.proofCommit ||
+        mutationStatus.priorApplication?.applicationTree !==
+          FORWARD_104_TO_120_AUTHORITY.prior.proofTree ||
+        mutationStatus.priorApplication?.manifestSha256 !==
+          FORWARD_104_TO_120_AUTHORITY.priorEvidence.artifactSha256[
+            "evidence-manifest.json"
+          ] ||
+        mutationStatus.priorApplication?.proofSha256 !==
+          FORWARD_104_TO_120_AUTHORITY.priorEvidence.artifactSha256[
+            "staging-migration-proof.json"
+          ] ||
+        mutationStatus.priorApplication?.summarySha256 !==
+          FORWARD_104_TO_120_AUTHORITY.priorEvidence.artifactSha256[
+            "staging-migration-summary.json"
+          ] ||
+        mutationStatus.priorApplication?.migrationCount !==
+          FORWARD_104_TO_120_AUTHORITY.prior.migrationCount ||
+        mutationStatus.priorApplication?.migrationPortfolioSha256 !==
+          FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256 ||
+        mutationStatus.priorApplication?.lastCommittedVersion !==
+          FORWARD_104_TO_120_AUTHORITY.prior.finalMigration.slice(0, 14) ||
+        mutationStatus.preflightStructuralCatalogSha256 !==
+          mutationStatus.priorApplication?.structuralCatalogSha256 ||
+        mutationStatus.preflightNormalizedSchemaSha256 !==
+          mutationStatus.priorApplication?.normalizedSchemaSha256
+      ) {
+        throw new Error("104-to-120 committed-forward recovery evidence is not exact");
+      }
+      const recoveredManagedSchemaSha256 = sha256(
+        captureManagedNormalizedSchemaDump(),
+      );
+      const recoveredManagedCatalog = captureManagedCatalogIdentity(
+        "Recover committed 104-to-120 managed catalog authority",
+      );
+      const recoveredManagedSecurity = captureManagedSecurityOracle(
+        "Recover committed 104-to-120 managed security authority",
+      );
+      recoveredNormalizedSchemaSha256 = sha256(captureNormalizedSchemaDump());
+      if (
+        recoveredManagedSchemaSha256 !==
+          FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256 ||
+        recoveredManagedCatalog.managedStructuralCatalogSha256 !==
+          FORWARD_104_TO_120_AUTHORITY.current.managedStructuralCatalogSha256 ||
+        recoveredManagedSecurity.managedSecurityOracleSha256 !==
+          FORWARD_104_TO_120_AUTHORITY.current.managedSecurityOracleSha256
+      ) {
+        throw new Error(
+          "Committed 104-to-120 recovery readback does not match the independent managed authorities",
+        );
+      }
+      recoveryReadOnlyAuthority = Object.freeze({
+        status: "EXACT_MANAGED_120_AUTHORITIES",
+        managedNormalizedSchemaSha256: recoveredManagedSchemaSha256,
+        managedStructuralCatalogSha256:
+          recoveredManagedCatalog.managedStructuralCatalogSha256,
+        managedStructuralCatalogRecordCount:
+          recoveredManagedCatalog.managedStructuralCatalogRecordCount,
+        managedSecurityOracleSha256:
+          recoveredManagedSecurity.managedSecurityOracleSha256,
+        rawDatabaseValuesPersisted: false,
+      });
+    } else {
+      throw new Error("Unsupported committed-forward recovery kind");
     }
     const priorTree = git(
       ["rev-parse", "--verify", `${mutationStatus.headCommit}^{tree}`],
@@ -1978,7 +2059,7 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior103 }) {
       lastCommittedVersion: expectedFinalVersion,
       migrationFiles: expectedApplied,
       migrationPortfolioSha256: mutationStatus.migrationPortfolioSha256,
-      normalizedSchemaSha256: mutationStatus.postNormalizedSchemaSha256,
+      normalizedSchemaSha256: recoveredNormalizedSchemaSha256,
       structuralCatalogSha256: mutationStatus.postStructuralCatalogSha256,
       singleOuterTransaction: true,
       migrationHistoryReceiptsInsideOuterTransaction: true,
@@ -1987,7 +2068,10 @@ function loadAndValidatePriorMigrationProof({ requirePinnedPrior103 }) {
       evidenceRemoteMutationCompleted: true,
       portfolioApplicationRemoteMutationCompleted: true,
       sourceRemoteStateVerificationStatus:
-        "SEALED_FORWARD_103_COMMIT_REQUIRES_READ_ONLY_REPROOF",
+        recoverySealKind === "legacy_forward_103_acl"
+          ? "SEALED_FORWARD_103_COMMIT_REQUIRES_READ_ONLY_REPROOF"
+          : "SEALED_FORWARD_104_TO_120_COMMIT_REQUIRES_READ_ONLY_REPROOF",
+      recoveryReadOnlyAuthority,
       remoteMutationCompleted: true,
     });
   }

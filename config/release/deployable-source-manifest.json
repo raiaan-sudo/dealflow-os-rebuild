@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1103,
-  "deployableSourceSha256": "edb3d9c7cea23efa1c06a6f575efc1c465fb0210b8623c96fb4029ab615a8dfa",
+  "deployableSourceSha256": "9ba0928182bb9ed0e987d30a82a043e16ab6d755cf7c2a491db676598c0b0183",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -984,9 +984,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 176284,
+      "size": 180574,
       "mode": 33188,
-      "sha256": "cfa144783371547a0a3edbc7223438230d18b7b9094381fd362667f5d41908cb"
+      "sha256": "83708c7d93a5aad3ed41911be6d2a80e897a6629e0755a8895195b5e47120520"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1056,9 +1056,9 @@
     },
     {
       "path": "scripts/staging/prior-migration-proof-contract.mjs",
-      "size": 19697,
+      "size": 25349,
       "mode": 33188,
-      "sha256": "4075267f4eb0af506ab197ed56a31b951bc00258e79c7b9f68dc4d17c88381d7"
+      "sha256": "b373368576816a12b5b90e20b51ca8f6efff5bb9bde09ff6f044171df5e22887"
     },
     {
       "path": "scripts/staging/provider-session-bundle-contract.mjs",
@@ -1128,9 +1128,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 53827,
+      "size": 58821,
       "mode": 33188,
-      "sha256": "4c189b217e8a2202d223df21258b4d4ac4643959da4581e1d5e9611021199717"
+      "sha256": "22e8082c5aa2e4b2acb2353b5388c4fdf44ccbb57619f70bea917611466bc658"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
