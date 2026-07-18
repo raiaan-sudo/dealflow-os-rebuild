@@ -1390,8 +1390,23 @@ function captureAndAssertSyntheticRelationalSurface(
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(table)) {
       throw new Error("The sealed high-risk row-count authority contains an invalid table");
     }
+    const scope = syntheticAuthority.highRiskCountScopes?.[table] ?? null;
+    if (
+      scope !== null &&
+      (
+        !["campaign_id", "organization_id"].includes(scope.column) ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+          scope.value ?? "",
+        )
+      )
+    ) {
+      throw new Error("The sealed high-risk row-count scope is invalid");
+    }
+    const whereClause = scope
+      ? ` where "${scope.column}" = '${scope.value}'::uuid`
+      : "";
     const count = Number(sql(
-      `select count(*) from public."${table}";`,
+      `select count(*) from public."${table}"${whereClause};`,
       `${labelPrefix} exact high-risk row count ${table}`,
     ));
     if (!Number.isSafeInteger(count) || count !== expected) {

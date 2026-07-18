@@ -150,6 +150,8 @@ for (const marker of [
   "rawErrorPersisted: false",
   "loadExactPrior104SyntheticSurfaceSeal(",
   "captureAndAssertSyntheticRelationalSurface(",
+  "highRiskCountScopes",
+  "whereClause",
   "captureManagedNormalizedSchemaDump()",
   "captureManagedCatalogIdentity(",
   "captureManagedSecurityOracle(",
@@ -236,6 +238,20 @@ if (priorProofDir) {
   assert.equal(syntheticSeal.evidence.providerCredentialPresent, false);
   assert.equal(syntheticSeal.userIds.length, 11);
   assert.equal(syntheticSeal.organizationIds.length, 10);
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(syntheticSeal.highRiskCountScopes).map(([table, scope]) => [
+        table,
+        scope.column,
+      ]),
+    ),
+    {
+      leads: "campaign_id",
+      provider_usage_events: "organization_id",
+      system_jobs: "organization_id",
+    },
+    "The sealed high-risk counts must preserve their original acceptance-query scopes",
+  );
 }
 
 let nativeIdempotencyProof = "static exact-history/idempotency contract";

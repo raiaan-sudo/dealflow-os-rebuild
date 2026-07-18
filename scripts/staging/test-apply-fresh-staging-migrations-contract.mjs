@@ -136,6 +136,19 @@ requireMarker(
   "query-level structural-state stage attribution",
 );
 requireMarker(/captureAndAssertStagingAuthSurface/, "empty-or-exact-synthetic auth-surface verifier");
+requireMarker(
+  /syntheticAuthority\.highRiskCountScopes\?\.\[table\]/,
+  "sealed high-risk count scope lookup",
+);
+requireMarker(
+  /where \"\$\{scope\.column\}\" = '\$\{scope\.value\}'::uuid/,
+  "scoped high-risk count query",
+);
+assert.doesNotMatch(
+  source,
+  /`select count\(\*\) from public\.\"\$\{table\}\";`/,
+  "Scoped acceptance counts must not be compared to an unscoped table-wide count",
+);
 requireMarker(/with bounded_auth_users as \(/, "single-statement bounded auth identity snapshot");
 requireMarker(/auth_count as \(/, "single-statement auth count snapshot");
 requireMarker(/'totalCount', \(select total_count from auth_count\)/, "count and identities share one statement snapshot");

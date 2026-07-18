@@ -508,7 +508,10 @@ export function loadExactPrior104SyntheticSurfaceSeal(priorProofDirectory) {
         ),
     ) ||
     !userIds.includes(first.userId) ||
-    !organizationIds.includes(first.organizationId)
+    !organizationIds.includes(first.organizationId) ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      first.campaignId ?? "",
+    )
   ) {
     throw new Error("Prior 104 seed proof does not bind the exact synthetic user and organization roots");
   }
@@ -528,6 +531,17 @@ export function loadExactPrior104SyntheticSurfaceSeal(priorProofDirectory) {
   return Object.freeze({
     userIds: Object.freeze(userIds),
     organizationIds: Object.freeze(organizationIds),
+    highRiskCountScopes: Object.freeze({
+      leads: Object.freeze({ column: "campaign_id", value: first.campaignId }),
+      provider_usage_events: Object.freeze({
+        column: "organization_id",
+        value: first.organizationId,
+      }),
+      system_jobs: Object.freeze({
+        column: "organization_id",
+        value: first.organizationId,
+      }),
+    }),
     evidence: Object.freeze({
       schemaVersion: "dealflow.prior-104-synthetic-relational-authority.v1",
       fixture: authority.fixture,

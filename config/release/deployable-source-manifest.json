@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1103,
-  "deployableSourceSha256": "d0e1407a8aae41182b3be82478d736645cc0456de678bd35a51f495173b0dc6c",
+  "deployableSourceSha256": "5dc08a0e8f7d608b15c951548bb2a84480db36c05465247d084c961340e729b5",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -984,9 +984,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 174708,
+      "size": 175236,
       "mode": 33188,
-      "sha256": "fa16f5e33bcdfa8970be07d14e336a26cee594ba876cf9b3bf228fc937dc9dd9"
+      "sha256": "2a44ecaabbb33325302c51393890dcd017d88ad9af1f761ee88f585b5542548d"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1020,9 +1020,9 @@
     },
     {
       "path": "scripts/staging/forward-104-to-120-contract.mjs",
-      "size": 24164,
+      "size": 24663,
       "mode": 33188,
-      "sha256": "fca4e4acd9ef7a04dfe12c119ab1152b47b6b030c2fd311118abc9286da8f1a3"
+      "sha256": "1af1dd5cbf2f392c9ff43f8532182555440e602df53de8fa5eb673241d1db940"
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
@@ -1128,9 +1128,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 53421,
+      "size": 53827,
       "mode": 33188,
-      "sha256": "8b438733beac8d8e956df88ca999bf94450de4cd1d0899eed0bcf20b47d6bbf0"
+      "sha256": "4c189b217e8a2202d223df21258b4d4ac4643959da4581e1d5e9611021199717"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1164,9 +1164,9 @@
     },
     {
       "path": "scripts/staging/test-forward-104-to-120-contract.mjs",
-      "size": 23559,
+      "size": 24001,
       "mode": 33188,
-      "sha256": "21f8825bbc2407b3f099b57d832c8f278e44c7cafd69da7b699768ce4f0d31af"
+      "sha256": "6f20fa4c87943ab5349e70f0b782b578173d6f37e3da6cf17551c71cfb0160e3"
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
