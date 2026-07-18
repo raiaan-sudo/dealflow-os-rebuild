@@ -45,12 +45,15 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
       "fa6f66b0346b7674f5613a206fcc188e1cb38cc0332919f9fe76337c2a37570f",
     // Independently reproduced twice on PostgreSQL 17.6: once from a fresh
     // 120-migration database and once from the exact 104 prefix followed by
-    // migrations 105-120. The managed schema omits ACL rendering; the
-    // independent security oracle below binds ACLs, policies, and routines.
+    // migrations 105-120. The managed catalog uses a pg_catalog-only search
+    // path, sorted ACL sets, and canonical JSON records so equivalent hosted
+    // PostgreSQL catalog rendering cannot create a false mismatch. The managed
+    // schema omits ACL rendering; the independent security oracle below binds
+    // ACLs, policies, and routines.
     managedNormalizedSchemaSha256:
       "dcccf3e9514fa8cade3c88d39a518670f435807ac2d1461ca80c06db5ad10ffc",
     managedStructuralCatalogSha256:
-      "ca06bf720c65fd139d04f6446479bd291b8e7b790d217bac3f82233c1c4a0b1b",
+      "7d2981e288c278a081539777ca1a23be0f5558b9e16c7db5991dcc52d4afce36",
     managedSecurityOracleSha256:
       "3a5e6b71867885fcb593d528e232d23d6bf339854511c8be59b39125cac4f48d",
   }),

@@ -44,6 +44,12 @@ const records = readdirSync(migrationDir)
   .sort()
   .map((name) => ({ name }));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const canonicalizeManagedCatalogMaterial = (material) => String(material ?? "")
+  .split("\n")
+  .filter(Boolean)
+  .map((line) => JSON.stringify(JSON.parse(line)))
+  .sort()
+  .join("\n");
 
 assert.equal(FORWARD_104_TO_120_AUTHORITY.prior.migrationCount, 104);
 assert.equal(FORWARD_104_TO_120_AUTHORITY.current.migrationCount, 120);
@@ -62,7 +68,7 @@ assert.equal(
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedStructuralCatalogSha256,
-  "ca06bf720c65fd139d04f6446479bd291b8e7b790d217bac3f82233c1c4a0b1b",
+  "7d2981e288c278a081539777ca1a23be0f5558b9e16c7db5991dcc52d4afce36",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedSecurityOracleSha256,
@@ -154,6 +160,9 @@ for (const marker of [
   "whereClause",
   "captureManagedNormalizedSchemaDump()",
   "captureManagedCatalogIdentity(",
+  "canonicalizeManagedCatalogMaterial(",
+  "set search_path=pg_catalog;",
+  "jsonb_agg(acl_item::text order by acl_item::text)",
   "captureManagedSecurityOracle(",
   "forward_120_managed_schema_not_exact_or_stable",
   "forward_120_managed_catalog_not_exact_or_stable",
@@ -341,15 +350,25 @@ if (nativeConfigNames.every((name) => process.env[name])) {
       .trim();
     return sha256(normalized);
   };
-  const managedCatalogDigest = (database) => sha256(database.psql(
-    `with catalog(item) as (
-       select jsonb_build_array('namespace', namespace.nspname, namespace.nspacl)::text
+  const managedCatalogDigest = (database) => sha256(canonicalizeManagedCatalogMaterial(
+    database.psql(
+    `set search_path=pg_catalog;
+     with catalog(item) as (
+       select jsonb_build_array('namespace', namespace.nspname,
+         case when namespace.nspacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(namespace.nspacl) acl_item
+         ) end)::text
        from pg_namespace namespace
        where namespace.nspname in ('public','private')
        union all
        select jsonb_build_array('relation', namespace.nspname, relation.relname,
          relation.relkind, relation.relpersistence, relation.relrowsecurity,
-         relation.relforcerowsecurity, relation.relacl)::text
+         relation.relforcerowsecurity,
+         case when relation.relacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(relation.relacl) acl_item
+         ) end)::text
        from pg_class relation
        join pg_namespace namespace on namespace.oid=relation.relnamespace
        where namespace.nspname in ('public','private')
@@ -378,14 +397,20 @@ if (nativeConfigNames.every((name) => process.env[name])) {
        select jsonb_build_array('function', namespace.nspname, procedure.proname,
          pg_get_function_identity_arguments(procedure.oid), procedure.prokind,
          procedure.prosecdef, procedure.provolatile, procedure.proparallel,
-         procedure.proacl, procedure.proconfig)::text
+         case when procedure.proacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(procedure.proacl) acl_item
+         ) end, procedure.proconfig)::text
        from pg_proc procedure
        join pg_namespace namespace on namespace.oid=procedure.pronamespace
        where namespace.nspname in ('public','private')
        union all
        select jsonb_build_array('type', namespace.nspname, type_record.typname,
          type_record.typtype, type_record.typcategory, type_record.typnotnull,
-         type_record.typacl)::text
+         case when type_record.typacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(type_record.typacl) acl_item
+         ) end)::text
        from pg_type type_record
        join pg_namespace namespace on namespace.oid=type_record.typnamespace
        where namespace.nspname in ('public','private')
@@ -419,7 +444,7 @@ if (nativeConfigNames.every((name) => process.env[name])) {
        where namespace.nspname in ('public','private')
      ) select item from catalog order by item;`,
     { label: "Capture exact managed successor catalog", timeoutMs: 180_000 },
-  ));
+  )));
   const remoteEquivalentFixtureSql = `
     alter default privileges in schema public grant all privileges on tables to postgres;
     alter default privileges in schema public grant all privileges on sequences to postgres;

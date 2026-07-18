@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1103,
-  "deployableSourceSha256": "5dc08a0e8f7d608b15c951548bb2a84480db36c05465247d084c961340e729b5",
+  "deployableSourceSha256": "edb3d9c7cea23efa1c06a6f575efc1c465fb0210b8623c96fb4029ab615a8dfa",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -984,9 +984,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 175236,
+      "size": 176284,
       "mode": 33188,
-      "sha256": "2a44ecaabbb33325302c51393890dcd017d88ad9af1f761ee88f585b5542548d"
+      "sha256": "cfa144783371547a0a3edbc7223438230d18b7b9094381fd362667f5d41908cb"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1020,9 +1020,9 @@
     },
     {
       "path": "scripts/staging/forward-104-to-120-contract.mjs",
-      "size": 24663,
+      "size": 24866,
       "mode": 33188,
-      "sha256": "1af1dd5cbf2f392c9ff43f8532182555440e602df53de8fa5eb673241d1db940"
+      "sha256": "4cbc1ae163b016947da2595ef35188263f361b51fadfebed15fb5713413ade01"
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
@@ -1164,9 +1164,9 @@
     },
     {
       "path": "scripts/staging/test-forward-104-to-120-contract.mjs",
-      "size": 24001,
+      "size": 25085,
       "mode": 33188,
-      "sha256": "6f20fa4c87943ab5349e70f0b782b578173d6f37e3da6cf17551c71cfb0160e3"
+      "sha256": "b58777795c3ace1badf4a8952320f32abc88203566e4f49fa9f570225a03df00"
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
@@ -1728,9 +1728,9 @@
     },
     {
       "path": "scripts/test-integrated-migration-chain-disposable-db.mjs",
-      "size": 46817,
+      "size": 47849,
       "mode": 33188,
-      "sha256": "3e7f1dde15afccdc44b7de64c1f8c39f1511fbb8b20fa77b9610c1106d11b92e"
+      "sha256": "38bd11ba96e9587ac7d6709dd1b28a7bee8f3662f72ac0154c230307926f24c9"
     },
     {
       "path": "scripts/test-internal-sms-notifications.mjs",

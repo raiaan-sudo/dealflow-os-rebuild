@@ -146,6 +146,15 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function canonicalizeManagedCatalogMaterial(material) {
+  return String(material ?? "")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.stringify(JSON.parse(line)))
+    .sort()
+    .join("\n");
+}
+
 function captureBrokerSourceIdentity() {
   const invokedPath = fileURLToPath(import.meta.url);
   const stat = lstatSync(invokedPath);
@@ -925,14 +934,23 @@ function captureRemoteCatalogIdentity(label) {
 
 function captureManagedCatalogIdentity(label) {
   const material = sql(
-    `with catalog(item) as (
-       select jsonb_build_array('namespace', namespace.nspname, namespace.nspacl)::text
+    `set search_path=pg_catalog;
+     with catalog(item) as (
+       select jsonb_build_array('namespace', namespace.nspname,
+         case when namespace.nspacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(namespace.nspacl) acl_item
+         ) end)::text
        from pg_namespace namespace
        where namespace.nspname in ('public','private')
        union all
        select jsonb_build_array('relation', namespace.nspname, relation.relname,
          relation.relkind, relation.relpersistence, relation.relrowsecurity,
-         relation.relforcerowsecurity, relation.relacl)::text
+         relation.relforcerowsecurity,
+         case when relation.relacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(relation.relacl) acl_item
+         ) end)::text
        from pg_class relation
        join pg_namespace namespace on namespace.oid=relation.relnamespace
        where namespace.nspname in ('public','private')
@@ -961,14 +979,20 @@ function captureManagedCatalogIdentity(label) {
        select jsonb_build_array('function', namespace.nspname, procedure.proname,
          pg_get_function_identity_arguments(procedure.oid), procedure.prokind,
          procedure.prosecdef, procedure.provolatile, procedure.proparallel,
-         procedure.proacl, procedure.proconfig)::text
+         case when procedure.proacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(procedure.proacl) acl_item
+         ) end, procedure.proconfig)::text
        from pg_proc procedure
        join pg_namespace namespace on namespace.oid=procedure.pronamespace
        where namespace.nspname in ('public','private')
        union all
        select jsonb_build_array('type', namespace.nspname, type_record.typname,
          type_record.typtype, type_record.typcategory, type_record.typnotnull,
-         type_record.typacl)::text
+         case when type_record.typacl is null then null else (
+           select jsonb_agg(acl_item::text order by acl_item::text)
+           from unnest(type_record.typacl) acl_item
+         ) end)::text
        from pg_type type_record
        join pg_namespace namespace on namespace.oid=type_record.typnamespace
        where namespace.nspname in ('public','private')
@@ -1004,9 +1028,12 @@ function captureManagedCatalogIdentity(label) {
     label,
     300_000,
   );
+  const canonicalMaterial = canonicalizeManagedCatalogMaterial(material);
   return Object.freeze({
-    managedStructuralCatalogSha256: sha256(material),
-    managedStructuralCatalogRecordCount: material ? material.split("\n").length : 0,
+    managedStructuralCatalogSha256: sha256(canonicalMaterial),
+    managedStructuralCatalogRecordCount: canonicalMaterial
+      ? canonicalMaterial.split("\n").length
+      : 0,
   });
 }
 
