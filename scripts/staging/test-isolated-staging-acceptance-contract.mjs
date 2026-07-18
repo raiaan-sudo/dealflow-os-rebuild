@@ -2035,6 +2035,7 @@ assert.match(successorProviderIndependentContract, /PostgREST intentionally retu
 assert.match(providerIndependentProof, /SUCCESSOR_CREDIT_CHECKOUT_SESSION/);
 assert.match(providerIndependentProof, /pendingPaymentCreditLedgerRows: 0/);
 assert.match(providerIndependentProof, /serviceOnlyStateUnchanged: true/);
+assert.match(providerIndependentProof, /postAuditServiceOnlyTableCount:\s*successorServiceOnlyFinal\.postAuditServiceOnlyTableCount/);
 assert.match(providerIndependentProof, /successorServiceOnlyBefore/);
 assert.match(providerIndependentProof, /successorServiceOnlyFinal/);
 assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 17/);

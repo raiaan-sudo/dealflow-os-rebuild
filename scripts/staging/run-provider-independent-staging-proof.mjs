@@ -774,6 +774,8 @@ async function main() {
     successorProviderIndependent: {
       schemaVersion: successorServiceOnlyFinal.schemaVersion,
       serviceOnlyTableCount: successorServiceOnlyFinal.serviceOnlyTableCount,
+      postAuditServiceOnlyTableCount:
+        successorServiceOnlyFinal.postAuditServiceOnlyTableCount,
       authenticatedDenialCount: successorServiceOnlyFinal.authenticatedDenialCount,
       exactSyntheticCountsVerified: true,
       serviceOnlyStateUnchanged: true,
