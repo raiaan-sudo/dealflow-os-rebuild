@@ -72,7 +72,11 @@ async function exactCount(client, table, expected) {
 }
 
 async function assertAuthenticatedTableDenied(client, table) {
-  const result = await client.from(table).select("*", { count: "exact", head: true });
+  // PostgREST intentionally returns an empty body for denied HEAD requests. In
+  // that case supabase-js can only expose `{ message: "" }`, so the SQLSTATE is
+  // unavailable even though the response is a correct HTTP 403. A bounded GET
+  // preserves the structured 42501 denial needed by this security oracle.
+  const result = await client.from(table).select("*").limit(1);
   if (
     !result.error ||
     result.error.code !== "42501" ||

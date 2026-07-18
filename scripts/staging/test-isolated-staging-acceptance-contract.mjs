@@ -2030,6 +2030,8 @@ assert.match(providerIndependentProof, /account_deletion_execution_disabled/);
 assert.match(providerIndependentProof, /providerReceiptCount: 0/);
 assert.match(providerIndependentProof, /fullProviderOffboardingPerformed: false/);
 assert.match(providerIndependentProof, /assertSuccessorServiceOnlySchemaReadback/);
+assert.match(successorProviderIndependentContract, /\.select\("\*"\)\.limit\(1\)/);
+assert.match(successorProviderIndependentContract, /PostgREST intentionally returns an empty body for denied HEAD requests/);
 assert.match(providerIndependentProof, /SUCCESSOR_CREDIT_CHECKOUT_SESSION/);
 assert.match(providerIndependentProof, /pendingPaymentCreditLedgerRows: 0/);
 assert.match(providerIndependentProof, /serviceOnlyStateUnchanged: true/);
