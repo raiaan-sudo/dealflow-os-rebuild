@@ -1231,7 +1231,7 @@ test("white-label child receives attributed branding across core product routes"
   ).toBeVisible();
   await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
   for (const route of [
-    { path: "/builder", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
+    { path: "/builder?resume=1", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
     { path: "/launch", finalPathname: "/launch" },
     { path: "/results", finalPathname: "/en/dashboard", readPathname: policyPath },
     { path: "/support", finalPathname: "/support" },
@@ -1280,7 +1280,7 @@ test("second white-label child receives only partner-two branding and tenant dat
   ).toBeVisible();
   await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   for (const route of [
-    { path: "/builder", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
+    { path: "/builder?resume=1", finalPathname: "/en/onboarding", readPathname: "/api/billing/status" },
     { path: "/launch", finalPathname: "/launch" },
     { path: "/results", finalPathname: "/en/dashboard", readPathname: policyPath },
     { path: "/support", finalPathname: "/support" },

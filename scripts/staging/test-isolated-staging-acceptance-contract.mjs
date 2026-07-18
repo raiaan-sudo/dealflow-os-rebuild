@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   lstatSync,
   mkdtempSync,
@@ -288,6 +288,17 @@ assert.equal(
   2,
   "both white-label journeys must fully settle the public login document before auth handoff",
 );
+assert.equal(
+  (browserSpec.match(/path: "\/builder\?resume=1", finalPathname: "\/en\/onboarding"/g) ?? [])
+    .length,
+  2,
+  "both white-label builder checks must use the read-only resume path",
+);
+assert.doesNotMatch(
+  browserSpec,
+  /path: "\/builder", finalPathname: "\/en\/onboarding"/,
+  "hosted white-label acceptance must not trigger a new-plan DELETE while writes are forbidden",
+);
 assert.doesNotMatch(
   browserSpec.slice(
     browserSpec.indexOf('test("white-label child receives attributed branding'),
@@ -530,6 +541,36 @@ assert.doesNotMatch(runner, /activeSyntheticSessions/);
 assert.match(runner, /refreshTokenReuseAcrossProofPhases: false/);
 assert.match(runner, /failureContext.transientSecrets/);
 assert.match(runner, /admin\.auth\.admin\.signOut\(session\.accessToken, "global"\)/);
+assert.match(runner, /install_synthetic_staging_platform_operator_grant_v1/);
+assert.match(runner, /resolve_owner_decision_authority_v1/);
+assert.match(runner, /SYNTHETIC_PLATFORM_OPERATOR_CAPABILITY/);
+assert.match(runner, /phase === "multi_role_browser" && role === "operator"/);
+assert.match(runner, /admin\.auth\.admin\.mfa\.listFactors/);
+assert.match(runner, /admin\.auth\.admin\.mfa\.deleteFactor/);
+assert.match(runner, /anon\.auth\.mfa\.enroll/);
+assert.match(runner, /anon\.auth\.mfa\.challengeAndVerify/);
+assert.match(runner, /assurance\.data\?\.currentLevel !== "aal2"/);
+assert.match(runner, /claimRecord\?\.aal !== "aal2"/);
+assert.match(runner, /syntheticMfaFactorCleanupAcceptedCount !== 1/);
+assert.match(runner, /syntheticTotpSecretPersisted: false/);
+assert.match(runner, /syntheticTotpCodePersisted: false/);
+const syntheticTotpSource = runner.slice(
+  runner.indexOf("function decodeBase32Secret("),
+  runner.indexOf("async function installSyntheticPlatformOperatorAuthority("),
+);
+const syntheticTotpSandbox = { Buffer, createHmac };
+runInNewContext(
+  `${syntheticTotpSource}\nthis.createTotpCodeForContract = createTotpCode;`,
+  syntheticTotpSandbox,
+);
+assert.equal(
+  syntheticTotpSandbox.createTotpCodeForContract(
+    "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    59_000,
+  ),
+  "287082",
+  "synthetic operator TOTP must match the RFC 6238 SHA-1 vector",
+);
 assert.match(runner, /refresh_token_not_found/);
 assert.match(runner, /refresh_token_already_used/);
 assert.match(runner, /refreshed\.error\?\.status === 400/);

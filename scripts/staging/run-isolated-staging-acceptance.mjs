@@ -2,7 +2,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -230,6 +230,10 @@ const STAGING_TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA";
 const STAGING_TURNSTILE_TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const SYNTHETIC_SESSION_PORTFOLIO_SCHEMA =
   "dealflow.synthetic-staging-session-portfolio.v1";
+const SYNTHETIC_PLATFORM_OPERATOR_CAPABILITY =
+  "platform_admin_security_surface";
+const SYNTHETIC_PLATFORM_OPERATOR_DECISION_ID =
+  "OWNER-ADMIN-SECURITY-SURFACE";
 const SYNTHETIC_RLS_PROOF_ROLES = Object.freeze([
   "paidDirect",
   "attacker",
@@ -4131,6 +4135,158 @@ function rememberTransientSecrets(values) {
   ];
 }
 
+function decodeBase32Secret(value) {
+  const normalized = String(value ?? "").replaceAll(" ", "").replace(/=+$/u, "").toUpperCase();
+  if (!/^[A-Z2-7]{16,256}$/u.test(normalized)) {
+    throw new Error("Synthetic operator TOTP secret is malformed");
+  }
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let accumulator = 0;
+  const bytes = [];
+  for (const character of normalized) {
+    const index = alphabet.indexOf(character);
+    if (index < 0) throw new Error("Synthetic operator TOTP secret is malformed");
+    accumulator = (accumulator << 5) | index;
+    bits += 5;
+    while (bits >= 8) {
+      bits -= 8;
+      bytes.push((accumulator >>> bits) & 0xff);
+      accumulator &= (1 << bits) - 1;
+    }
+  }
+  if (bytes.length < 10) throw new Error("Synthetic operator TOTP secret is too short");
+  return Buffer.from(bytes);
+}
+
+function createTotpCode(secret, timestampMs = Date.now()) {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) {
+    throw new Error("Synthetic operator TOTP timestamp is invalid");
+  }
+  const key = decodeBase32Secret(secret);
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(timestampMs / 30_000)));
+  try {
+    const digest = createHmac("sha1", key).update(counter).digest();
+    try {
+      const offset = digest[digest.length - 1] & 0x0f;
+      const binary = digest.readUInt32BE(offset) & 0x7fffffff;
+      return String(binary % 1_000_000).padStart(6, "0");
+    } finally {
+      digest.fill(0);
+    }
+  } finally {
+    key.fill(0);
+    counter.fill(0);
+  }
+}
+
+async function installSyntheticPlatformOperatorAuthority(
+  admin,
+  seed,
+  identity,
+  migrations,
+  vercelProjectId,
+) {
+  assertExecutionMayContinue();
+  const operatorUserId = seed.scenarios?.operator?.userId;
+  if (!/^[a-f0-9-]{36}$/iu.test(operatorUserId ?? "")) {
+    throw new Error("Synthetic platform operator identity is missing");
+  }
+  const existing = await admin.auth.admin.getUserById(operatorUserId);
+  assertExecutionMayContinue();
+  if (
+    existing.error ||
+    existing.data.user?.id !== operatorUserId ||
+    existing.data.user?.email?.trim().toLowerCase() !== EXPECTED_OPERATOR_EMAIL
+  ) {
+    throw new Error("Synthetic platform operator identity does not match the exact seed");
+  }
+  const authorityResponse = await admin.rpc("resolve_owner_decision_authority_v1", {
+    p_environment: "staging",
+    p_capability: SYNTHETIC_PLATFORM_OPERATOR_CAPABILITY,
+    p_host_project_id_sha256: sha256(vercelProjectId),
+    p_candidate_commit: identity.commit,
+    p_candidate_tree: identity.tree,
+    p_candidate_digest: identity.trackedWorktreeSha256,
+    p_tracked_file_count: identity.trackedFileCount,
+    p_dependency_lock_sha256: identity.dependencyLockSha256,
+    p_migration_portfolio_sha256: migrations.migrationPortfolioSha256,
+    p_migration_count: migrations.migrationCount,
+  });
+  assertExecutionMayContinue();
+  const authority = Array.isArray(authorityResponse.data)
+    ? authorityResponse.data[0]
+    : authorityResponse.data;
+  const selected = Array.isArray(authority?.selected_values)
+    ? authority.selected_values[0]
+    : null;
+  if (
+    authorityResponse.error ||
+    !authority ||
+    authority.authority_mode !== "synthetic_staging" ||
+    JSON.stringify(authority.decision_ids) !==
+      JSON.stringify([SYNTHETIC_PLATFORM_OPERATOR_DECISION_ID]) ||
+    selected?.id !== SYNTHETIC_PLATFORM_OPERATOR_DECISION_ID ||
+    selected?.selectedValue?.capabilityGrants?.[SYNTHETIC_PLATFORM_OPERATOR_CAPABILITY] !==
+      "APPROVED_ENABLED" ||
+    authority.policy?.contractVersion !== "dealflow-platform-operator-v1" ||
+    authority.policy?.requiredAssuranceLevel !== "aal2" ||
+    authority.policy?.maximumSessionAgeMinutes !== 10 ||
+    !/^[a-f0-9]{64}$/u.test(authority.payload_sha256 ?? "") ||
+    authority.signature_reference !==
+      `ed25519:${authority.authority_id}:${authority.key_id}:${authority.payload_sha256}` ||
+    authority.candidate_commit !== identity.commit ||
+    authority.candidate_tree !== identity.tree ||
+    authority.candidate_digest !== identity.trackedWorktreeSha256 ||
+    authority.host_project_id_sha256 !== sha256(vercelProjectId) ||
+    Number(authority.migration_count) !== migrations.migrationCount ||
+    authority.migration_portfolio_sha256 !== migrations.migrationPortfolioSha256
+  ) {
+    throw new Error("Exact synthetic staging platform-admin authority is unavailable");
+  }
+  const expiresAt = new Date(Date.now() + 6 * 60 * 60_000).toISOString();
+  const grantResponse = await admin.rpc(
+    "install_synthetic_staging_platform_operator_grant_v1",
+    {
+      p_user_id: operatorUserId,
+      p_operator_role: "operator",
+      p_expires_at: expiresAt,
+      p_candidate_commit: identity.commit,
+      p_candidate_tree: identity.tree,
+      p_candidate_digest: identity.trackedWorktreeSha256,
+      p_authority_packet_digest: authority.payload_sha256,
+      p_signed_authority_ref: authority.signature_reference,
+    },
+  );
+  assertExecutionMayContinue();
+  if (
+    grantResponse.error ||
+    !/^[a-f0-9-]{36}$/iu.test(String(grantResponse.data ?? ""))
+  ) {
+    throw new Error("Synthetic staging platform-operator grant installation failed");
+  }
+  return Object.freeze({
+    status: "PASS",
+    environment: "staging",
+    authorityMode: "synthetic_staging",
+    capability: SYNTHETIC_PLATFORM_OPERATOR_CAPABILITY,
+    operatorRole: "operator",
+    requiredAssuranceLevel: "aal2",
+    maximumSessionAgeMinutes: 10,
+    candidateBound: true,
+    ownerDecisionAuthorityResolvedExactly: true,
+    grantIdentifierValidated: true,
+    grantExpiresWithinHours: 6,
+    rawUserIdentifierPersisted: false,
+    rawGrantIdentifierPersisted: false,
+    rawAuthorityReferencePersisted: false,
+    productionMutationPerformed: false,
+    providerMutationPerformed: false,
+    realCustomerDataAccessed: false,
+  });
+}
+
 function validateSyntheticSessionRoleNames(roleNames) {
   const normalized = [...new Set(roleNames)].sort();
   if (
@@ -4164,6 +4320,9 @@ async function createSyntheticSessionPortfolio(
   const projectRef = extractProjectRef(supabaseUrl);
   const sessions = {};
   let minimumObservedLifetimeSeconds = Number.POSITIVE_INFINITY;
+  let syntheticAal2RoleCount = 0;
+  let syntheticTotpEnrollmentCount = 0;
+  let staleSyntheticMfaFactorDeletionCount = 0;
 
   for (const role of roleNames) {
     const email = SYNTHETIC_STAGING_ROLE_EMAILS[role];
@@ -4181,6 +4340,29 @@ async function createSyntheticSessionPortfolio(
       throw new Error(`Synthetic session portfolio identity mismatch for ${role}`);
     }
 
+    const requiresSyntheticAal2 = phase === "multi_role_browser" && role === "operator";
+    if (requiresSyntheticAal2) {
+      const factors = await admin.auth.admin.mfa.listFactors({ userId: expectedUserId });
+      assertExecutionMayContinue();
+      if (factors.error || !Array.isArray(factors.data?.factors)) {
+        throw new Error("Unable to inspect exact synthetic operator MFA state");
+      }
+      for (const factor of factors.data.factors) {
+        if (!/^[a-f0-9-]{36}$/iu.test(factor?.id ?? "")) {
+          throw new Error("Synthetic operator has a malformed MFA factor identity");
+        }
+        const deleted = await admin.auth.admin.mfa.deleteFactor({
+          userId: expectedUserId,
+          id: factor.id,
+        });
+        assertExecutionMayContinue();
+        if (deleted.error || deleted.data?.id !== factor.id) {
+          throw new Error("Unable to clear prior synthetic operator MFA factor");
+        }
+        staleSyntheticMfaFactorDeletionCount += 1;
+      }
+    }
+
     const anon = createStagingAnonClient(supabaseUrl, anonKey);
     const link = await admin.auth.admin.generateLink({ type: "magiclink", email });
     assertExecutionMayContinue();
@@ -4189,14 +4371,15 @@ async function createSyntheticSessionPortfolio(
       throw new Error(`Unable to create non-delivering synthetic session for ${role}`);
     }
     const verified = await anon.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
-    const session = verified.data.session;
-    const user = verified.data.user;
+    let session = verified.data.session;
+    let user = verified.data.user;
     rememberTransientSecrets([
       session?.access_token,
       session?.refresh_token,
     ]);
+    let pendingSession = null;
     if (session?.access_token) {
-      failureContext.pendingSyntheticUserGlobalSignOuts.push({
+      pendingSession = {
         phase,
         role,
         userId: expectedUserId,
@@ -4204,7 +4387,9 @@ async function createSyntheticSessionPortfolio(
         accessToken: session.access_token,
         refreshToken: session.refresh_token ?? null,
         accessJwtExpiresAt: Number(session.expires_at),
-      });
+        mfaFactorId: null,
+      };
+      failureContext.pendingSyntheticUserGlobalSignOuts.push(pendingSession);
     }
     assertExecutionMayContinue();
     if (
@@ -4215,6 +4400,80 @@ async function createSyntheticSessionPortfolio(
       user.email?.trim().toLowerCase() !== email
     ) {
       throw new Error(`Unable to verify exact synthetic session identity for ${role}`);
+    }
+    if (requiresSyntheticAal2) {
+      const enrolled = await anon.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "DealFlow isolated staging operator proof",
+        issuer: "DealFlow isolated staging",
+      });
+      assertExecutionMayContinue();
+      const factorId = enrolled.data?.id;
+      const totpSecret = enrolled.data?.totp?.secret;
+      rememberTransientSecrets([
+        factorId,
+        totpSecret,
+        enrolled.data?.totp?.qr_code,
+        enrolled.data?.totp?.uri,
+      ]);
+      if (
+        enrolled.error ||
+        !/^[a-f0-9-]{36}$/iu.test(factorId ?? "") ||
+        typeof totpSecret !== "string" ||
+        !pendingSession
+      ) {
+        throw new Error("Unable to enroll exact synthetic operator TOTP factor");
+      }
+      pendingSession.mfaFactorId = factorId;
+      const totpCode = createTotpCode(totpSecret);
+      rememberTransientSecrets([totpCode]);
+      const elevated = await anon.auth.mfa.challengeAndVerify({
+        factorId,
+        code: totpCode,
+      });
+      rememberTransientSecrets([
+        elevated.data?.access_token,
+        elevated.data?.refresh_token,
+      ]);
+      assertExecutionMayContinue();
+      if (
+        elevated.error ||
+        !elevated.data?.access_token ||
+        !elevated.data.refresh_token ||
+        elevated.data.user?.id !== expectedUserId
+      ) {
+        throw new Error("Unable to elevate exact synthetic operator session to AAL2");
+      }
+      const elevatedSession = await anon.auth.setSession({
+        access_token: elevated.data.access_token,
+        refresh_token: elevated.data.refresh_token,
+      });
+      const [assurance, claims] = await Promise.all([
+        anon.auth.mfa.getAuthenticatorAssuranceLevel(),
+        anon.auth.getClaims(),
+      ]);
+      assertExecutionMayContinue();
+      const claimRecord = claims.data?.claims;
+      if (
+        elevatedSession.error ||
+        !elevatedSession.data.session?.access_token ||
+        !elevatedSession.data.session.refresh_token ||
+        elevatedSession.data.user?.id !== expectedUserId ||
+        assurance.error ||
+        assurance.data?.currentLevel !== "aal2" ||
+        claims.error ||
+        claimRecord?.aal !== "aal2" ||
+        claimRecord?.sub !== expectedUserId
+      ) {
+        throw new Error("Synthetic operator AAL2 session verification failed");
+      }
+      session = elevatedSession.data.session;
+      user = elevatedSession.data.user;
+      pendingSession.accessToken = session.access_token;
+      pendingSession.refreshToken = session.refresh_token;
+      pendingSession.accessJwtExpiresAt = Number(session.expires_at);
+      syntheticAal2RoleCount += 1;
+      syntheticTotpEnrollmentCount += 1;
     }
     const expiresAt = Number(session.expires_at);
     const remainingLifetimeSeconds = expiresAt - Math.floor(Date.now() / 1000);
@@ -4301,6 +4560,12 @@ async function createSyntheticSessionPortfolio(
       exactSeedIdentityCount: roleNames.length,
       nonDeliveringAdminMagicLinkCount: roleNames.length,
       portfolioPasswordSignInCount: 0,
+      syntheticAal2RoleCount,
+      syntheticTotpEnrollmentCount,
+      staleSyntheticMfaFactorDeletionCount,
+      expectedSyntheticAal2RoleCount: phase === "multi_role_browser" ? 1 : 0,
+      syntheticTotpSecretPersisted: false,
+      syntheticTotpCodePersisted: false,
       minimumRequiredLifetimeSeconds,
       minimumObservedLifetimeSeconds,
       rawTokenPersisted: false,
@@ -4381,6 +4646,7 @@ async function revokeSyntheticSessionPhase(
   }
   const cleaned = new Set();
   const refreshRevocationProven = new Set();
+  const mfaFactorCleanupProven = new Set();
   const failures = [];
   const supabaseUrl = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
@@ -4436,6 +4702,28 @@ async function revokeSyntheticSessionPhase(
       failures.push(
         `${session.role}: ${error instanceof Error ? error.message : String(error)}`,
       );
+    } finally {
+      if (session.mfaFactorId) {
+        try {
+          const deleted = await admin.auth.admin.mfa.deleteFactor({
+            userId: session.userId,
+            id: session.mfaFactorId,
+          });
+          if (deleted.error || deleted.data?.id !== session.mfaFactorId) {
+            cleaned.delete(session);
+            failures.push(`${session.role}: synthetic MFA factor cleanup failed`);
+          } else {
+            mfaFactorCleanupProven.add(session);
+          }
+        } catch (error) {
+          cleaned.delete(session);
+          failures.push(
+            `${session.role}: synthetic MFA factor cleanup failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
     }
   };
   if (allowDuringTermination) {
@@ -4470,6 +4758,13 @@ async function revokeSyntheticSessionPhase(
     refreshTokenInvalidationProbeCount: refreshRevocationProven.size,
     allSyntheticUserRefreshTokensRevoked:
       refreshRevocationProven.size === target.length,
+    syntheticMfaFactorCleanupRequiredCount:
+      target.filter((session) => Boolean(session.mfaFactorId)).length,
+    syntheticMfaFactorCleanupAcceptedCount: mfaFactorCleanupProven.size,
+    allSyntheticMfaFactorsRemoved:
+      mfaFactorCleanupProven.size ===
+        target.filter((session) => Boolean(session.mfaFactorId)).length,
+    rawMfaFactorIdentifiersPersistedToEvidence: false,
     accessJwtImmediateRevocationSupported: false,
     accessJwtDisposition: "VALID_UNTIL_EXPIRY",
     latestAccessJwtExpiryUnix,
@@ -6151,8 +6446,22 @@ async function main() {
     providerMutationPerformed: false,
   });
 
-  failureContext.stage = "provider_independent_acceptance";
   const admin = createStagingAdminClient();
+  failureContext.stage = "synthetic_platform_operator_authority";
+  const syntheticPlatformOperatorAuthority =
+    await installSyntheticPlatformOperatorAuthority(
+      admin,
+      seedOne,
+      identity,
+      migrations,
+      vercelAuthority.projectId,
+    );
+  writeJson(
+    join(options.evidenceDir, "synthetic-platform-operator-authority.json"),
+    syntheticPlatformOperatorAuthority,
+  );
+
+  failureContext.stage = "provider_independent_acceptance";
   const syntheticSessionLifecycle = [];
   const rlsCrossTenantPortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
     phase: "rls_cross_tenant",
@@ -6289,6 +6598,15 @@ async function main() {
     roleNames: SYNTHETIC_MULTI_ROLE_BROWSER_ROLES,
     minimumRequiredLifetimeSeconds: 50 * 60,
   });
+  if (
+    multiRolePortfolio.attestation.syntheticAal2RoleCount !== 1 ||
+    multiRolePortfolio.attestation.syntheticTotpEnrollmentCount !== 1 ||
+    multiRolePortfolio.attestation.expectedSyntheticAal2RoleCount !== 1 ||
+    multiRolePortfolio.attestation.syntheticTotpSecretPersisted !== false ||
+    multiRolePortfolio.attestation.syntheticTotpCodePersisted !== false
+  ) {
+    throw new Error("Multi-role browser portfolio did not prove one exact synthetic AAL2 operator");
+  }
   const multiRoleBundle = browserSessionBundle(multiRolePortfolio);
   syntheticSessionLifecycle.push(multiRolePortfolio.attestation);
   const multiRoleEnvironment = multiRoleBrowserEnvironment(
@@ -6303,9 +6621,19 @@ async function main() {
     evidenceDir: options.evidenceDir,
     secrets: multiRoleBundle.secrets,
   });
-  syntheticSessionLifecycle.push(
-    await revokeSyntheticSessionPhase(admin, "multi_role_browser"),
+  const multiRoleCleanup = await revokeSyntheticSessionPhase(
+    admin,
+    "multi_role_browser",
   );
+  if (
+    multiRoleCleanup.syntheticMfaFactorCleanupRequiredCount !== 1 ||
+    multiRoleCleanup.syntheticMfaFactorCleanupAcceptedCount !== 1 ||
+    multiRoleCleanup.allSyntheticMfaFactorsRemoved !== true ||
+    multiRoleCleanup.rawMfaFactorIdentifiersPersistedToEvidence !== false
+  ) {
+    throw new Error("Synthetic operator MFA factor cleanup was not exactly proven");
+  }
+  syntheticSessionLifecycle.push(multiRoleCleanup);
 
   const safePortfolio = await createSyntheticSessionPortfolio(admin, seedOne, {
     phase: "safe_browser",
@@ -6506,6 +6834,8 @@ async function main() {
     seedReplayIdempotent: true,
     syntheticRetentionOwnerAuthorityPassed: true,
     syntheticRetentionAuthorityInstallationMode: retentionAuthorityMode,
+    syntheticPlatformOperatorAuthorityPassed: true,
+    syntheticPlatformOperatorAal2Passed: true,
     hostedZeroExternalEffectsPassed: true,
     preDeployPublicWindowAbsent: true,
     threeAliasApplicationGatePassed: true,
