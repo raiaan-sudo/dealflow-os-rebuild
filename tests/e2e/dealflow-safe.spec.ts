@@ -217,11 +217,20 @@ function mutationDisposition(method: string, rawUrl: string) {
   if (READ_ONLY_METHODS.has(method)) return "read" as const;
   if (exactTurnstileTestRequest) return "read" as const;
 
-  if (
+  const exactSyntheticStagingDraftMutation =
     sameOrigin &&
-    method === "PUT" &&
-    requestUrl.pathname === "/api/onboarding/plan"
-  ) {
+    requestUrl.pathname === "/api/onboarding/plan" &&
+    requestUrl.search === "" &&
+    requestUrl.hash === "" &&
+    (
+      method === "PUT" ||
+      (
+        method === "DELETE" &&
+        HOSTED_ACCEPTANCE &&
+        AUTHENTICATED_STAGING_PROOF_ENABLED
+      )
+    );
+  if (exactSyntheticStagingDraftMutation) {
     return "synthetic_staging_draft" as const;
   }
 

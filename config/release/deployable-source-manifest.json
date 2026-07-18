@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1103,
-  "deployableSourceSha256": "8647fb1fda16669053131393c5262510489ea5dd5c8f76029782a5800bb83b88",
+  "deployableSourceSha256": "ce0c53a57d5cf285fba937f6ff59ade063bd9c813fe51fcbc81e46705800cc2e",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -6480,9 +6480,9 @@
     },
     {
       "path": "tests/e2e/dealflow-safe.spec.ts",
-      "size": 51087,
+      "size": 51363,
       "mode": 33188,
-      "sha256": "adb4b06b9446ee0548a0822b9b8c7b3fbdf5a7b0d05b7f5b9120083890d2c8e3"
+      "sha256": "2f606b76d45b84db6aa75f2fbb42b9f043ef40c7f379f25798381b49e4dc7bdc"
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
@@ -6528,9 +6528,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 23421,
+      "size": 23820,
       "mode": 33188,
-      "sha256": "b81402c38169787642d790f9d2d1a079d6ab91f894de315bf281c52d9a036d8d"
+      "sha256": "b24b9fedcab6d079fdc8838d004c1c5230f52ff410f0970949d141674c3ca8e5"
     },
     {
       "path": "tests/performance/README.md",

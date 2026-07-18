@@ -104,6 +104,13 @@ requireAll(
     "PRODUCTION_HOSTS",
     "READ_ONLY_METHODS",
     'requestUrl.pathname === "/api/onboarding/plan"',
+    'requestUrl.search === ""',
+    'requestUrl.hash === ""',
+    'method === "DELETE"',
+    "HOSTED_ACCEPTANCE",
+    "AUTHENTICATED_STAGING_PROOF_ENABLED",
+    "exactSyntheticStagingDraftMutation",
+    'gotoAndSettle(page, "/onboarding?new=1")',
     'requestUrl.pathname === "/api/activation/events"',
     "installBrowserContextNetworkBoundary(context",
     'route.abort("blockedbyclient")',
@@ -206,6 +213,11 @@ requireAll(
 assert.doesNotMatch(spec, /getByText\("Daily ad spend",\s*\{ exact: true \}\)/);
 assert.doesNotMatch(spec, /getByText\("Lead capture",\s*\{ exact: true \}\)/);
 assert.doesNotMatch(spec, /following-sibling/);
+assert.doesNotMatch(
+  spec,
+  /method === "DELETE"\s*\|\|/,
+  "Synthetic draft DELETE authority must remain conjunctive and staging-authenticated",
+);
 assert.doesNotMatch(
   spec,
   /errorText === "net::ERR_ABORTED"[^]*requestFailures\.push\([^)]*\)\s*;?\s*}\s*else/s,
