@@ -124,6 +124,7 @@ const existingExactVerificationFailureCodes = Object.freeze({
   REMOTE_STRUCTURAL_STATE: "existing_remote_structural_state_not_proven",
   MIGRATION_HISTORY: "existing_migration_history_not_proven",
   STORAGE_SURFACE: "existing_storage_surface_not_proven",
+  GHL_EMBED_AUTH_EXCHANGE_SURFACE: "existing_ghl_embed_auth_exchange_surface_not_proven",
   AUTH_SURFACE: "existing_auth_surface_not_proven",
   AUTH_COUNT_CONSISTENCY: "existing_auth_count_consistency_not_proven",
   STRUCTURAL_CATALOG_BINDING: "existing_structural_catalog_binding_not_proven",
@@ -1269,6 +1270,16 @@ function captureRemoteStructuralState(labelPrefix, attributeStage = null) {
     "select count(*) from storage.objects;",
     `${labelPrefix} storage-object count`,
   ));
+  const ghlEmbedAuthExchangeTableExists = sql(
+    "select to_regclass('public.ghl_embed_auth_exchanges') is not null;",
+    `${labelPrefix} GHL embed auth-exchange table existence`,
+  ) === "t";
+  const ghlEmbedAuthExchangeCount = ghlEmbedAuthExchangeTableExists
+    ? Number(sql(
+      "select count(*) from public.ghl_embed_auth_exchanges;",
+      `${labelPrefix} GHL embed auth-exchange count`,
+    ))
+    : null;
   return Object.freeze({
     ...structuralCatalog,
     historyTableExists,
@@ -1280,6 +1291,7 @@ function captureRemoteStructuralState(labelPrefix, attributeStage = null) {
     vaultTableCount,
     authUserCount,
     storageObjectCount,
+    ghlEmbedAuthExchangeCount,
   });
 }
 
@@ -2293,6 +2305,10 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     if (existingState.storageObjectCount !== 0) {
       throw new Error("Existing isolated staging contains storage objects");
     }
+    verificationStage = "GHL_EMBED_AUTH_EXCHANGE_SURFACE";
+    if (existingState.ghlEmbedAuthExchangeCount !== 0) {
+      throw new Error("Existing isolated staging contains GHL embed auth exchanges before seed");
+    }
     verificationStage = "AUTH_SURFACE";
     const authSurface = captureAndAssertStagingAuthSurface(
       "Verify existing staging auth surface is empty or the exact synthetic fixture set",
@@ -2379,6 +2395,8 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       authUserCountAtVerification: authSurface.userCount,
       authUserSurfaceAtVerification: authSurface,
       storageObjectCountAtVerification: existingState.storageObjectCount,
+      ghlEmbedAuthExchangeCountAtVerification:
+        existingState.ghlEmbedAuthExchangeCount,
       normalizedSchemaSha256: existingSchemaSha256,
       normalizedSchemaBytes: Buffer.byteLength(existingDump),
       singleOuterTransaction: priorApplication.singleOuterTransaction,
@@ -2416,6 +2434,8 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       remoteStateVerificationStatus: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
       authUserCountAtVerification: authSurface.userCount,
       authUserSurfaceAtVerification: authSurface,
+      ghlEmbedAuthExchangeCountAtVerification:
+        existingState.ghlEmbedAuthExchangeCount,
       ...retentionAuthorityAcl,
     });
     const manifestRecord = writeJsonEvidence("evidence-manifest.json", {
@@ -3138,6 +3158,8 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     postForwardRelationalSurface,
     prior104RowCountContinuity,
     storageObjectCountAtVerification: postForwardState.storageObjectCount,
+    ghlEmbedAuthExchangeCountAtVerification:
+      postForwardState.ghlEmbedAuthExchangeCount,
     normalizedSchemaSha256: postForwardSchemaSha256,
     normalizedSchemaBytes: postForwardSchemaBytes,
     managedNormalizedSchemaSha256: postForwardManagedSchemaSha256,
@@ -3182,6 +3204,8 @@ if (migrationMode === "APPLY_FORWARD_EXACT") {
     preForwardRelationalSurface,
     postForwardRelationalSurface,
     prior104RowCountContinuity,
+    ghlEmbedAuthExchangeCountAtVerification:
+      postForwardState.ghlEmbedAuthExchangeCount,
     ...retentionAuthorityAcl,
     lastAttemptedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
     lastAppliedVersion: FORWARD_104_TO_120_AUTHORITY.current.finalMigration.slice(0, 14),
@@ -3611,6 +3635,8 @@ if (migrationMode === "APPLY_SUCCESSOR_EXACT") {
     activationRuntimeControlsDefaultClosed: true,
     ghlRuntimeControlsDefaultClosed: true,
     ...retentionAuthorityAcl,
+    ghlEmbedAuthExchangeCountAtVerification:
+      postForwardState.ghlEmbedAuthExchangeCount,
     normalizedSchemaSha256: postForwardSchemaSha256,
     normalizedSchemaBytes: postForwardSchemaBytes,
     repeatedStructuralCatalogSha256: postForwardCatalogRepeatSha256,
@@ -3643,6 +3669,8 @@ if (migrationMode === "APPLY_SUCCESSOR_EXACT") {
     serverVersion,
     migrationHistoryCount: postForwardState.migrationHistoryCount,
     normalizedSchemaSha256: postForwardSchemaSha256,
+    ghlEmbedAuthExchangeCountAtVerification:
+      postForwardState.ghlEmbedAuthExchangeCount,
     ...retentionAuthorityAcl,
     lastAttemptedVersion: requiredFinalMigration.slice(0, 14),
     lastAppliedVersion: requiredFinalMigration.slice(0, 14),
@@ -4170,6 +4198,8 @@ const result = {
   ...retentionAuthorityAcl,
   authUserCountAfter,
   storageObjectCountAfter,
+  ghlEmbedAuthExchangeCountAtVerification:
+    postCommitState.ghlEmbedAuthExchangeCount,
   normalizedSchemaSha256: sha256(dump),
   normalizedSchemaBytes: Buffer.byteLength(dump),
   singleOuterTransaction: true,
@@ -4208,6 +4238,8 @@ const summaryRecord = writeJsonEvidence(
     migrationHistoryCount: result.migrationHistoryCount,
     migrationPortfolioSha256: result.migrationPortfolioSha256,
     normalizedSchemaSha256: result.normalizedSchemaSha256,
+    ghlEmbedAuthExchangeCountAtVerification:
+      postCommitState.ghlEmbedAuthExchangeCount,
     ...retentionAuthorityAcl,
     tlsServerAuthentication: result.tlsServerAuthentication,
     verificationRoundSummarySha256,

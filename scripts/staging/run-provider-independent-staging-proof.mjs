@@ -201,6 +201,12 @@ function assertEnvironment() {
 
 async function main() {
   const baseUrl = assertEnvironment();
+  const preflightGhlEmbedAuthExchangeCount = Number(
+    requireEnvironment("DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT"),
+  );
+  if (preflightGhlEmbedAuthExchangeCount !== 0) {
+    throw new Error("The direct PostgreSQL GHL embed auth-exchange preflight count must be zero");
+  }
   const supabaseTarget = parseExactHostedSupabaseProjectUrl(
     requireEnvironment("NEXT_PUBLIC_SUPABASE_URL"),
   );
@@ -235,6 +241,7 @@ async function main() {
   const successorServiceOnlyBefore = await assertSuccessorServiceOnlySchemaReadback({
     serviceClient: admin,
     authenticatedClient: paid,
+    preflightGhlEmbedAuthExchangeCount,
   });
   const successorPendingPayment = await noError(
     await admin
@@ -511,6 +518,7 @@ async function main() {
   const successorServiceOnlyAfter = await assertSuccessorServiceOnlySchemaReadback({
     serviceClient: admin,
     authenticatedClient: paid,
+    preflightGhlEmbedAuthExchangeCount,
   });
   if (JSON.stringify(successorServiceOnlyBefore) !== JSON.stringify(successorServiceOnlyAfter)) {
     throw new Error("Provider-independent journey changed the successor service-only schema state");
@@ -692,6 +700,7 @@ async function main() {
   const successorServiceOnlyFinal = await assertSuccessorServiceOnlySchemaReadback({
     serviceClient: admin,
     authenticatedClient: paid,
+    preflightGhlEmbedAuthExchangeCount,
   });
   if (JSON.stringify(successorServiceOnlyBefore) !== JSON.stringify(successorServiceOnlyFinal)) {
     throw new Error("Provider-independent portfolio changed the successor service-only schema state");
@@ -777,6 +786,10 @@ async function main() {
       postAuditServiceOnlyTableCount:
         successorServiceOnlyFinal.postAuditServiceOnlyTableCount,
       authenticatedDenialCount: successorServiceOnlyFinal.authenticatedDenialCount,
+      serviceRoleDirectDenialCount:
+        successorServiceOnlyFinal.serviceRoleDirectDenialCount,
+      ghlEmbedAuthExchangeCountSource:
+        successorServiceOnlyFinal.ghlEmbedAuthExchangeCountSource,
       exactSyntheticCountsVerified: true,
       serviceOnlyStateUnchanged: true,
       pendingCreditTopUpIntentId: IDS.successorCreditIntent,

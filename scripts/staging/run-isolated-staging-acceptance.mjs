@@ -1502,7 +1502,11 @@ async function runCapturedProofCommand(
   }
 }
 
-function seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl) {
+function seedEnvironment(
+  partnerBaseUrl,
+  secondPartnerBaseUrl,
+  ghlEmbedAuthExchangePreflightCount,
+) {
   return {
     ...childBaseEnvironment(),
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
@@ -1516,6 +1520,8 @@ function seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl) {
     QA_EMAIL: EXPECTED_QA_EMAIL,
     STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
     PARTNER_ATTRIBUTION_SIGNING_SECRET: process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
+    DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT:
+      String(ghlEmbedAuthExchangePreflightCount),
   };
 }
 
@@ -1528,14 +1534,22 @@ function parseSingleJsonOutput(output, label) {
   }
 }
 
-async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
+async function runSeed(
+  partnerBaseUrl,
+  secondPartnerBaseUrl,
+  ghlEmbedAuthExchangePreflightCount,
+) {
   const secrets = protectedRuntimeValues();
   const result = await runInterruptible(
     EXECUTABLE,
     [join(EXPECTED_REPO, "scripts", "seed-isolated-staging.mjs")],
     {
       label: "isolated synthetic staging seed",
-      env: seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl),
+      env: seedEnvironment(
+        partnerBaseUrl,
+        secondPartnerBaseUrl,
+        ghlEmbedAuthExchangePreflightCount,
+      ),
       timeoutMs: 5 * 60_000,
       secrets,
     },
@@ -1611,6 +1625,9 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.successorProviderIndependent?.serviceOnlySchema?.stripeLifecycleTableCount !== 4 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.postAuditServiceOnlyTableCount !== 7 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.authenticatedDenialCount !== 18 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.serviceRoleDirectDenialCount !== 1 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.ghlEmbedAuthExchangeCountSource !==
+      "direct_postgres_preseed_read_only" ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.hostedGates?.optimizerMinimumSampleActiveReceiptProof !==
       "BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED" ||
@@ -1698,6 +1715,7 @@ async function runProviderIndependentStagingProof(
   baseUrl,
   providerSessionBundleJson,
   providerSessionSecrets,
+  ghlEmbedAuthExchangePreflightCount,
 ) {
   const environment = {
     ...childBaseEnvironment(),
@@ -1710,6 +1728,8 @@ async function runProviderIndependentStagingProof(
     STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
     STAGING_TURNSTILE_TEST_TOKEN,
     STAGING_SYNTHETIC_PROVIDER_SESSION_BUNDLE: providerSessionBundleJson,
+    DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT:
+      String(ghlEmbedAuthExchangePreflightCount),
     ALLOW_META_LIVE_LAUNCH: "false",
     ALLOW_META_CAPI_EVENTS: "false",
     GHL_SANDBOX_WRITES_ENABLED: "false",
@@ -1775,6 +1795,9 @@ async function runProviderIndependentStagingProof(
     parsed.successorProviderIndependent?.serviceOnlyTableCount !== 18 ||
     parsed.successorProviderIndependent?.postAuditServiceOnlyTableCount !== 7 ||
     parsed.successorProviderIndependent?.authenticatedDenialCount !== 18 ||
+    parsed.successorProviderIndependent?.serviceRoleDirectDenialCount !== 1 ||
+    parsed.successorProviderIndependent?.ghlEmbedAuthExchangeCountSource !==
+      "direct_postgres_preseed_read_only" ||
     parsed.successorProviderIndependent?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.serviceOnlyStateUnchanged !== true ||
     parsed.successorProviderIndependent?.pendingCreditTopUpIntentId !==
@@ -5971,6 +5994,13 @@ async function main() {
   const migrationSummary = JSON.parse(
     readFileSync(join(migrationEvidenceDir, "staging-migration-summary.json"), "utf8"),
   );
+  const ghlEmbedAuthExchangePreflightCount =
+    migrationSummary.ghlEmbedAuthExchangeCountAtVerification;
+  if (ghlEmbedAuthExchangePreflightCount !== 0) {
+    throw new Error(
+      "The read-only migration broker did not prove an empty GHL embed auth-exchange surface",
+    );
+  }
   let priorApplicationRetainedHistory = false;
   if (
     options.verifyExistingMigrations ||
@@ -6597,8 +6627,16 @@ async function main() {
   });
 
   failureContext.stage = "synthetic_staging_seed";
-  const seedOne = await runSeed(partnerOneAlias.aliasUrl, secondPartnerAlias.aliasUrl);
-  const seedTwo = await runSeed(partnerOneAlias.aliasUrl, secondPartnerAlias.aliasUrl);
+  const seedOne = await runSeed(
+    partnerOneAlias.aliasUrl,
+    secondPartnerAlias.aliasUrl,
+    ghlEmbedAuthExchangePreflightCount,
+  );
+  const seedTwo = await runSeed(
+    partnerOneAlias.aliasUrl,
+    secondPartnerAlias.aliasUrl,
+    ghlEmbedAuthExchangePreflightCount,
+  );
   const retentionAuthorityReplayMode = assertSeedReplayIsIdempotent(seedOne, seedTwo);
   writeJson(join(options.evidenceDir, "synthetic-seed.json"), {
     status: "PASS",
@@ -6735,6 +6773,7 @@ async function main() {
     EXPECTED_STAGING_BASE_URL,
     providerBundle.json,
     providerBundle.secrets,
+    ghlEmbedAuthExchangePreflightCount,
   );
   writeJson(join(options.evidenceDir, "provider-independent-journeys.json"), {
     ...providerIndependentProof,

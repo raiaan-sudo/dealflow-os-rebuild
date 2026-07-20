@@ -53,6 +53,9 @@ const EXPECTED_SYNTHETIC_COUNTS = Object.freeze({
   ghl_funnel_publication_receipts: 0,
   ghl_embed_auth_exchanges: 0,
 });
+const SERVICE_ROLE_DIRECT_READ_DENIED_TABLES = new Set([
+  "ghl_embed_auth_exchanges",
+]);
 
 function firstRow(value) {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -85,6 +88,18 @@ async function assertAuthenticatedTableDenied(client, table) {
     (Array.isArray(result.data) && result.data.length !== 0)
   ) {
     throw new Error(`Successor service-only ${table} was not denied to authenticated`);
+  }
+  return { table, denied: true, sqlstate: "42501" };
+}
+
+async function assertServiceRoleDirectTableDenied(client, table) {
+  const result = await client.from(table).select("*").limit(1);
+  if (
+    !result.error ||
+    result.error.code !== "42501" ||
+    (Array.isArray(result.data) && result.data.length !== 0)
+  ) {
+    throw new Error(`Successor RPC-only ${table} was readable directly by service_role`);
   }
   return { table, denied: true, sqlstate: "42501" };
 }
@@ -243,6 +258,7 @@ export async function proveSyntheticCreditAndPendingStripeLifecycle({
 export async function assertSuccessorServiceOnlySchemaReadback({
   serviceClient,
   authenticatedClient,
+  preflightGhlEmbedAuthExchangeCount,
 }) {
   const metadata = assertNoError(
     await serviceClient
@@ -257,7 +273,20 @@ export async function assertSuccessorServiceOnlySchemaReadback({
   }
 
   const serviceCounts = {};
+  const serviceRoleDirectDenials = [];
   for (const table of SUCCESSOR_SERVICE_ONLY_TABLES) {
+    if (SERVICE_ROLE_DIRECT_READ_DENIED_TABLES.has(table)) {
+      if (preflightGhlEmbedAuthExchangeCount !== EXPECTED_SYNTHETIC_COUNTS[table]) {
+        throw new Error(
+          `Successor RPC-only ${table} direct PostgreSQL preflight count is not exact`,
+        );
+      }
+      serviceCounts[table] = preflightGhlEmbedAuthExchangeCount;
+      serviceRoleDirectDenials.push(
+        await assertServiceRoleDirectTableDenied(serviceClient, table),
+      );
+      continue;
+    }
     serviceCounts[table] = await exactCount(
       serviceClient,
       table,
@@ -278,6 +307,9 @@ export async function assertSuccessorServiceOnlySchemaReadback({
     serviceCounts,
     authenticatedDenials,
     authenticatedDenialCount: authenticatedDenials.length,
+    serviceRoleDirectDenials,
+    serviceRoleDirectDenialCount: serviceRoleDirectDenials.length,
+    ghlEmbedAuthExchangeCountSource: "direct_postgres_preseed_read_only",
     exactSyntheticCountsVerified: true,
     providerMutationPerformed: false,
   };

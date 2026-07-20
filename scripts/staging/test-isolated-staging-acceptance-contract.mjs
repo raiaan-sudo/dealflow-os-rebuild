@@ -933,6 +933,9 @@ assert.match(runner, /migrationSummary\.migrationMode === "VERIFY_EXISTING_EXACT
 assert.match(runner, /isExactSafeStagingAuthSurfaceProof/);
 assert.match(runner, /migrationSummary\.authUserSurfaceAtVerification/);
 assert.match(runner, /migrationSummary\.authUserCountAtVerification/);
+assert.match(runner, /migrationSummary\.ghlEmbedAuthExchangeCountAtVerification/);
+assert.match(runner, /ghlEmbedAuthExchangePreflightCount !== 0/);
+assert.match(runner, /DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT/);
 assert.match(runner, /migrationSummary\.migrationMode === "APPLY_FORWARD_EXACT"/);
 assert.match(runner, /migrationSummary\.migrationMode === "APPLY_SUCCESSOR_EXACT"/);
 assert.match(runner, /migrationSummary\.serviceRoleColumnWritePrivilegesPresent !== false/);
@@ -1559,7 +1562,9 @@ assert.match(browserConfig, /dealflow-os-rebuild-selfserve-clean-partner-two-qib
 assert.match(runner, /staging app alias does not target the exact candidate deployment/);
 
 assert.equal(
-  (runner.match(/runSeed\(partnerOneAlias\.aliasUrl, secondPartnerAlias\.aliasUrl\)/g) ?? []).length,
+  (runner.match(
+    /runSeed\(\s*partnerOneAlias\.aliasUrl,\s*secondPartnerAlias\.aliasUrl,\s*ghlEmbedAuthExchangePreflightCount,\s*\)/g,
+  ) ?? []).length,
   2,
 );
 assert.match(runner, /function proveClosedPreDeployAppAliasSurface/);
@@ -2186,6 +2191,17 @@ assert.match(providerIndependentProof, /successorServiceOnlyFinal/);
 assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 18/);
 assert.match(runner, /parsed\.successorProviderIndependent\?\.postAuditServiceOnlyTableCount !== 7/);
 assert.match(runner, /parsed\.successorProviderIndependent\?\.authenticatedDenialCount !== 18/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceRoleDirectDenialCount !== 1/);
+assert.match(
+  runner,
+  /parsed\.successorProviderIndependent\?\.ghlEmbedAuthExchangeCountSource !==/,
+);
+assert.match(successorProviderIndependentContract, /SERVICE_ROLE_DIRECT_READ_DENIED_TABLES/);
+assert.match(successorProviderIndependentContract, /assertServiceRoleDirectTableDenied/);
+assert.match(
+  successorProviderIndependentContract,
+  /ghlEmbedAuthExchangeCountSource: "direct_postgres_preseed_read_only"/,
+);
 assert.match(runner, /BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED/);
 assert.match(runner, /BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY/);
 assert.match(runner, /BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY/);

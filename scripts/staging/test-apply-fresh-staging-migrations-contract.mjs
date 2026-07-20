@@ -94,6 +94,7 @@ for (const stage of [
   "REMOTE_STRUCTURAL_STATE",
   "MIGRATION_HISTORY",
   "STORAGE_SURFACE",
+  "GHL_EMBED_AUTH_EXCHANGE_SURFACE",
   "AUTH_SURFACE",
   "AUTH_COUNT_CONSISTENCY",
   "STRUCTURAL_CATALOG_BINDING",
@@ -121,7 +122,7 @@ assert.ok(existingFailureCodeMapBody, "Existing-verification failure-code map mu
 const existingFailureCodes = [
   ...existingFailureCodeMapBody.matchAll(/^[ ]{2}[A-Z_]+: "([a-z0-9_]+)",$/gm),
 ].map((match) => match[1]);
-assert.equal(existingFailureCodes.length, 17, "Every existing-verification stage needs one code");
+assert.equal(existingFailureCodes.length, 18, "Every existing-verification stage needs one code");
 assert.equal(
   new Set(existingFailureCodes).size,
   existingFailureCodes.length,
@@ -138,6 +139,11 @@ requireMarker(/\[RELEASE_REPO\]/, "release-repository path normalization");
 requireMarker(
   /function captureRemoteStructuralState\(labelPrefix, attributeStage = null\)/,
   "query-level structural-state stage attribution",
+);
+requireMarker(/ghlEmbedAuthExchangeCount/, "direct PostgreSQL GHL embed auth-exchange count");
+requireMarker(
+  /ghlEmbedAuthExchangeCountAtVerification/,
+  "sealed GHL embed auth-exchange pre-seed count",
 );
 requireMarker(/captureAndAssertStagingAuthSurface/, "empty-or-exact-synthetic auth-surface verifier");
 requireMarker(

@@ -889,6 +889,9 @@ async function main() {
   const partnerAttributionSigningSecret = requireEnvironment(
     "PARTNER_ATTRIBUTION_SIGNING_SECRET",
   );
+  const preflightGhlEmbedAuthExchangeCount = Number(
+    requireEnvironment("DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT"),
+  );
   if (qaEmail !== EXPECTED_QA_EMAIL) {
     throw new Error("QA_EMAIL must match the exact synthetic staging fixture identity");
   }
@@ -897,6 +900,9 @@ async function main() {
     /^(?:test|example|placeholder|changeme|secret)/i.test(partnerAttributionSigningSecret)
   ) {
     throw new Error("PARTNER_ATTRIBUTION_SIGNING_SECRET must be a strong staging-only secret");
+  }
+  if (preflightGhlEmbedAuthExchangeCount !== 0) {
+    throw new Error("The direct PostgreSQL GHL embed auth-exchange preflight count must be zero");
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -1793,6 +1799,7 @@ async function main() {
   const successorServiceOnlySchema = await assertSuccessorServiceOnlySchemaReadback({
     serviceClient: admin,
     authenticatedClient: qaClient,
+    preflightGhlEmbedAuthExchangeCount,
   });
 
   const campaignPlan = {
