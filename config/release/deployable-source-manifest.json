@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1108,
-  "deployableSourceSha256": "0b69a5e019facdea8c55ae81cd3835867ad4a62e33920b570adcf8ad0d99aa02",
+  "deployableSourceSha256": "c4f373914f6ee06ad5f3a4c13de6ea57bd4c6a8d78c8eb471ebd0b39e494b726",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -804,9 +804,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 108535,
+      "size": 108596,
       "mode": 33188,
-      "sha256": "cfdae1dd91d5cb5e6c4846cd0aeef23cf48721ea6f55f5ba8b6bc89894a708a6"
+      "sha256": "cc09ba11caec39759cbf70223f21e682770ad51dcda48994055c96d3771cc534"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -954,9 +954,9 @@
     },
     {
       "path": "scripts/schema/check-forward-reconstruction.mjs",
-      "size": 21270,
+      "size": 21331,
       "mode": 33188,
-      "sha256": "745c321a9f0dd513e383a3e24dd3c93829f7b8a225f0f7781f1637b1227e80f9"
+      "sha256": "9e24f396fab302bdf7c34dc3c71dfcbf5935225ce06a36658d6452b30dac9238"
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
@@ -6476,7 +6476,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "5e8d0f050622039166c773948cb2b3742d617aff19f59fa6ce3d7b9bb6a79e15"
+      "sha256": "3952118e56f4a6265c549693b63aaa95f48ff4d9e138a3a348322a9beff02f54"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
