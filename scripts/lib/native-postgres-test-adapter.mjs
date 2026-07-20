@@ -639,7 +639,12 @@ class NativePostgresTestAdapter {
        create schema if not exists extensions authorization ${this.#user};
        create extension if not exists pgcrypto with schema extensions;
        create table if not exists auth.users (
-         id uuid primary key
+         id uuid primary key,
+         email text,
+         email_confirmed_at timestamptz,
+         deleted_at timestamptz,
+         is_anonymous boolean not null default false,
+         banned_until timestamptz
        );
 
        create or replace function auth.uid()

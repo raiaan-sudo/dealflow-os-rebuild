@@ -169,6 +169,18 @@ async function main() {
       );
       assert.equal(extension, "pgcrypto|extensions");
 
+      const authUserColumns = database.psql(
+        `select string_agg(column_name, ',' order by ordinal_position)
+           from information_schema.columns
+          where table_schema = 'auth'
+            and table_name = 'users';`,
+        { label: "Verify Supabase auth.users compatibility surface" },
+      );
+      assert.equal(
+        authUserColumns,
+        "id,email,email_confirmed_at,deleted_at,is_anonymous,banned_until",
+      );
+
       const claims = database.psql(
         `with configured as (
          select

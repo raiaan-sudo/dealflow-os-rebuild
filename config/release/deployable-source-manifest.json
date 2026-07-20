@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1108,
-  "deployableSourceSha256": "8b850ca378647a1935d0814bfcf8747e2a01f1928d0b2d9065bf12b58c89ec9e",
+  "deployableSourceSha256": "0b69a5e019facdea8c55ae81cd3835867ad4a62e33920b570adcf8ad0d99aa02",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -864,9 +864,9 @@
     },
     {
       "path": "scripts/lib/native-postgres-test-adapter.mjs",
-      "size": 32069,
+      "size": 32253,
       "mode": 33188,
-      "sha256": "8c5b3b82ade7f455fea47c8340560bd45a38e840908f3f5b304da6e4f41a10a3"
+      "sha256": "3dbc70170313e2fecb6ebab3dbe60dba9eeed1fdf37ae8269ccb273aedc924b2"
     },
     {
       "path": "scripts/lib/rls-fixture-contract.mjs",
@@ -1920,9 +1920,9 @@
     },
     {
       "path": "scripts/test-native-postgres-test-adapter.mjs",
-      "size": 11065,
+      "size": 11513,
       "mode": 33188,
-      "sha256": "d209b259a4b761eaed2aa2725766cbd9f56b76ad4fe737228fa06bcd2ac6f43b"
+      "sha256": "e05b48a473d55731fe5ac5a310de184400594441d2e97dbd28c8b7494f8b288e"
     },
     {
       "path": "scripts/test-onboarding-activation-billing-contract.mjs",
