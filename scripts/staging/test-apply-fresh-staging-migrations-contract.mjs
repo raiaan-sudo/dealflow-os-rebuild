@@ -1055,6 +1055,19 @@ assert.equal(
   "application",
   "The exact 104-to-120 forward application proof must be accepted for read-only resume",
 );
+const successor121Fixture = exactEvidenceFixture({ count: 121, kind: "application" });
+successor121Fixture.proof.remoteStateVerification.status =
+  "EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO";
+successor121Fixture.summary.remoteStateVerificationStatus =
+  "EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO";
+assert.equal(
+  classifyPriorMigrationEvidence({
+    ...successor121Fixture,
+    expectedMigrationCount: 121,
+  }).evidenceKind,
+  "application",
+  "The exact 120-to-121 successor application proof must be accepted for read-only resume",
+);
 assert.throws(
   () => classifyPriorMigrationEvidence({
     ...exactEvidenceFixture({ count: 103, kind: "application" }),
