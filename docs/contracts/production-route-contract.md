@@ -77,9 +77,22 @@ ClickToScale app hosts. Every other route, including all admin routes, retains
 
 Embedding does not grant access. Supabase authentication, workspace membership,
 RLS, RPC tenant checks, and ordinary route authorization remain mandatory.
-`GHL_IFRAME_ALLOWED_FRAME_ANCESTORS` must contain exact HTTPS origins; shared
-GoHighLevel/LeadConnector origins, wildcards, paths, credentials, HTTP origins,
-and empty configuration are rejected.
+`GHL_IFRAME_EMBED_ENABLED` and a strong server-only `GHL_APP_SHARED_SECRET`
+enable the bridge. Official shared GoHighLevel/LeadConnector parents require
+the separate `GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS=true` gate. Any custom
+CRM desktop parent must be assigned to one exact verified partner host through
+`GHL_IFRAME_PARTNER_PARENT_ORIGINS_JSON`; wildcards, paths, credentials, HTTP
+origins, cross-partner assignments, and empty authority are rejected.
+
+An unauthenticated signed GHL user is never auto-created or matched by email
+alone. One active `workspace_ghl_users.dealflow_user_id` binding must match the
+signed location, GHL user, partner, public user, auth user, and organization
+membership. Platform operators, internal admins, banned/deleted auth users,
+and deletion-suspended users are denied passwordless SSO. The server persists
+only a keyed digest and a two-minute service-only receipt, consumes the receipt
+once, generates a non-delivering Supabase magic link, verifies it server-side,
+and returns secure partitioned auth cookies. Storage Access recovery reuses the
+signed handoff token but cannot reopen or retry a consumed receipt.
 
 `Campaign Setup` can appear only as ordinary step naming in the current
 onboarding flow. It must not appear inside a standalone legacy builder route.

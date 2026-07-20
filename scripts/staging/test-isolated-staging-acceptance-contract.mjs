@@ -209,6 +209,10 @@ const forward104To120Contract = readFileSync(
   join(root, "scripts", "staging", "forward-104-to-120-contract.mjs"),
   "utf8",
 );
+const forward120To121Contract = readFileSync(
+  join(root, "scripts", "staging", "forward-120-to-121-contract.mjs"),
+  "utf8",
+);
 const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
 const seedContract = readFileSync(join(root, "scripts", "test-isolated-staging-seed-contract.mjs"), "utf8");
 const providerIndependentProof = readFileSync(
@@ -691,13 +695,13 @@ assert.match(hostedEnvironmentSource, /DEALFLOW_RUNTIME_MIGRATION_PORTFOLIO_SHA2
 assert.match(hostedEnvironmentSource, /migrationIdentity\.migrationPortfolioSha256/);
 assert.match(hostedEnvironmentSource, /DEALFLOW_RUNTIME_MIGRATION_COUNT/);
 assert.match(hostedEnvironmentSource, /String\(migrationIdentity\.migrationCount\)/);
-assert.match(runner, /hostedEnvironmentNames\.length !== 91/);
-assert.match(runner, /exact 91-variable isolated staging environment portfolio/);
+assert.match(runner, /hostedEnvironmentNames\.length !== 95/);
+assert.match(runner, /exact 95-variable isolated staging environment portfolio/);
 assert.match(runner, /EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256/);
-assert.match(runner, /finalExactStructureCount !== 91/);
+assert.match(runner, /finalExactStructureCount !== 95/);
 assert.match(runner, /finalReadableValueDigestMatchCount !== expectedReadableCount/);
 assert.match(runner, /finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount/);
-assert.match(runner, /finalExpectedValueDispositionCount !== 91/);
+assert.match(runner, /finalExpectedValueDispositionCount !== 95/);
 assert.match(runner, /finalUnexpectedEnvironmentCount !== 0/);
 assert.match(runner, /assertExactHostedEnvironmentProof\(hostedEnvironmentProof\)/);
 const hostedSecretNameSource = runner.slice(
@@ -862,8 +866,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 120/);
-assert.match(runner, /20260717090000_create_canonical_lead_outcome_ledger\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 121/);
+assert.match(runner, /20260720010000_add_ghl_embed_sso_authority\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -918,17 +922,19 @@ const releaseCapture = runner.indexOf("const identity = captureExactReleaseIdent
 assert.ok(flagGate >= 0 && releaseCapture > flagGate, "all execution flags must gate any release or remote work");
 assert.match(
   runner,
-  /Number\(options\.applyMigrations\) \+[\s\S]+Number\(options\.applyForwardMigration\) \+[\s\S]+Number\(options\.verifyExistingMigrations\)/,
+  /Number\(options\.applyMigrations\) \+[\s\S]+Number\(options\.applyForwardMigration\) \+[\s\S]+Number\(options\.applySuccessorMigration\) \+[\s\S]+Number\(options\.verifyExistingMigrations\)/,
 );
 assert.match(runner, /migrationModeCount !== 1/);
 assert.match(runner, /Read-only resume and exact forward mode require --prior-migration-proof-dir/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--verify-existing-exact"/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--apply-forward-exact"/);
+assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--apply-successor-exact"/);
 assert.match(runner, /migrationSummary\.migrationMode === "VERIFY_EXISTING_EXACT"/);
 assert.match(runner, /isExactSafeStagingAuthSurfaceProof/);
 assert.match(runner, /migrationSummary\.authUserSurfaceAtVerification/);
 assert.match(runner, /migrationSummary\.authUserCountAtVerification/);
 assert.match(runner, /migrationSummary\.migrationMode === "APPLY_FORWARD_EXACT"/);
+assert.match(runner, /migrationSummary\.migrationMode === "APPLY_SUCCESSOR_EXACT"/);
 assert.match(runner, /migrationSummary\.serviceRoleColumnWritePrivilegesPresent !== false/);
 assert.match(runner, /migrationSummary\.anonColumnPrivilegesPresent !== false/);
 assert.match(runner, /migrationSummary\.authenticatedColumnPrivilegesPresent !== false/);
@@ -943,8 +949,8 @@ assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
 assert.match(
   runner,
-  /\[\s*"EXACT_COMMITTED_PORTFOLIO",\s*"EXACT_EXISTING_COMMITTED_PORTFOLIO",\s*"EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",\s*\]\.includes\(migrationSummary\.remoteStateVerificationStatus\)/,
-  "the common final gate must accept exact fresh, read-only resume, or exact 104-to-120 forward status",
+  /"EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO"/,
+  "the common final gate must accept the exact 120-to-121 successor status",
 );
 assert.match(runner, /verify retained prior migration application tree/);
 assert.match(runner, /verify prior migration application ancestry/);
@@ -982,6 +988,8 @@ assert.match(pinnedForwardGate, /rawValuesPersisted === false/);
 assert.match(forward104To120Contract, /forwardMigrations: Object\.freeze\(\[/);
 assert.match(forward104To120Contract, /migrationCount: 104/);
 assert.match(forward104To120Contract, /migrationCount: 120/);
+assert.match(forward120To121Contract, /migrationCount: 121/);
+assert.match(forward120To121Contract, /20260720010000_add_ghl_embed_sso_authority\.sql/);
 assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
 assert.match(runner, /Staging acceptance requires Node 24/);
 assert.match(runner, /!\/\^v24\\\.\/.+parsed\.runtime/s);
@@ -1437,7 +1445,7 @@ assert.match(runner, /record\.fileCount > 0/);
 assert.match(runner, /record\.evidenceSha256/);
 assert.match(runner, /record\.summarySha256/);
 assert.match(runner, /synchronizeExactVercelEnvironment/);
-assert.match(runner, /expectedCount: 91/);
+assert.match(runner, /expectedCount: 95/);
 assert.match(runner, /batchSize: 20/);
 const hostedEnvironmentConfigurationSource = runner.slice(
   runner.indexOf("async function configureHostedStagingEnvironment("),
@@ -2175,13 +2183,13 @@ assert.match(providerIndependentProof, /serviceOnlyStateUnchanged: true/);
 assert.match(providerIndependentProof, /postAuditServiceOnlyTableCount:\s*successorServiceOnlyFinal\.postAuditServiceOnlyTableCount/);
 assert.match(providerIndependentProof, /successorServiceOnlyBefore/);
 assert.match(providerIndependentProof, /successorServiceOnlyFinal/);
-assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 17/);
-assert.match(runner, /parsed\.successorProviderIndependent\?\.postAuditServiceOnlyTableCount !== 6/);
-assert.match(runner, /parsed\.successorProviderIndependent\?\.authenticatedDenialCount !== 17/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.serviceOnlyTableCount !== 18/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.postAuditServiceOnlyTableCount !== 7/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.authenticatedDenialCount !== 18/);
 assert.match(runner, /BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED/);
 assert.match(runner, /BLOCKED_EXTERNAL_GHL_SANDBOX_AUTHORITY/);
 assert.match(runner, /BLOCKED_EXTERNAL_STRIPE_TEST_AUTHORITY/);
-assert.match(successorProviderIndependentContract, /SUCCESSOR_SCHEMA_VERSION = "20260717090000"/);
+assert.match(successorProviderIndependentContract, /SUCCESSOR_SCHEMA_VERSION = "20260720010000"/);
 assert.match(successorProviderIndependentContract, /SUCCESSOR_GHL_SERVICE_ONLY_TABLES/);
 assert.match(successorProviderIndependentContract, /SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES/);
 assert.match(successorProviderIndependentContract, /result\.error\.code !== "42501"/);
@@ -2520,10 +2528,16 @@ assert.equal(help.status, 0, help.stderr);
 assert.match(help.stdout, /Exactly one migration mode is required/);
 assert.match(help.stdout, /--verify-existing-migrations --deploy/);
 assert.match(help.stdout, /--apply-forward-migration --deploy/);
+assert.match(help.stdout, /--apply-successor-migration --deploy/);
 assert.match(
   help.stdout,
-  /Exact bounded forward transition from the pinned read-only-proven 104-migration[\s\S]*\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-104\/migration-proof/s,
-  "forward-mode help must preserve executable multiline shell continuations",
+  /Historical bounded forward transition from the pinned read-only-proven[\s\S]*\n  node[^\n]* \\\n    --execute --apply-forward-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-104\/migration-proof/s,
+  "historical forward-mode help must preserve executable multiline shell continuations",
+);
+assert.match(
+  help.stdout,
+  /Exact bounded successor transition from the sealed 120-migration predecessor[\s\S]*\n  node[^\n]* \\\n    --execute --apply-successor-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-120\/migration-proof/s,
+  "successor-mode help must preserve executable multiline shell continuations",
 );
 
 const refused = spawnSync(process.execPath, [runnerPath], {
@@ -2536,5 +2550,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 104-to-120 forward, or read-only-resume authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 120-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 120-to-121 successor, or read-only-resume authorization gate; immutable historical 104-to-120 proof; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 121-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const FOUNDATION_LAST =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 120;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 121;
 const TRANSACTION_OWNING_MIGRATION =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const REQUIRED_EXTENSIONS = [
@@ -59,7 +59,7 @@ const REQUIRED_EXTENSIONS = [
   "20260717080000_harden_support_delivery_lifecycle.sql",
   "20260717081000_expand_campaign_lifecycle_authority.sql",
   "20260717082000_provider_aware_funnel_publication.sql",
-  "20260717090000_create_canonical_lead_outcome_ledger.sql",
+  "20260720010000_add_ghl_embed_sso_authority.sql",
 ];
 const config = Object.freeze({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,
@@ -136,6 +136,12 @@ function applyMigrationSource(session, { file, version, source }) {
 
 function installRemoteEquivalentDefaults(session) {
   session.psql(`
+    alter table auth.users
+      add column if not exists email text,
+      add column if not exists email_confirmed_at timestamptz,
+      add column if not exists banned_until timestamptz,
+      add column if not exists deleted_at timestamptz,
+      add column if not exists is_anonymous boolean default false;
     alter default privileges in schema public
       grant all privileges on tables to postgres;
     alter default privileges in schema public
@@ -545,6 +551,7 @@ function verifyIntegratedObjects(session) {
     "lead_outcome_definitions",
     "lead_outcome_events",
     "lead_outcome_current",
+    "ghl_embed_auth_exchanges",
   ];
   assert.equal(
     session.psql(`
@@ -567,7 +574,7 @@ function verifyIntegratedObjects(session) {
     session.psql("select value from public.app_schema_metadata where key='schema_version';", {
       label: "Verify post-audit terminal schema version",
     }),
-    "20260717090000",
+    "20260720010000",
   );
   for (const signature of [
     "public.prepare_account_deletion_completion_v2(uuid,uuid,bigint,integer,integer)",
@@ -576,6 +583,9 @@ function verifyIntegratedObjects(session) {
     "public.finalize_ghl_funnel_publication_v1(uuid)",
     "public.resolve_ghl_ready_campaign_destination_v3(uuid,uuid,text)",
     "public.record_lead_outcome_event_v1(uuid,uuid,uuid,uuid,text,text,text,text,uuid,text,text,text,text,text,text,timestamp with time zone,uuid,text,text)",
+    "public.bind_workspace_ghl_dealflow_user_v1(uuid,uuid,text,text,text)",
+    "public.begin_ghl_embed_auth_exchange_v1(text,uuid,uuid,text,text,uuid)",
+    "public.consume_ghl_embed_auth_exchange_v1(uuid,text,uuid)",
   ]) {
     assertFunctionPrivilegeMatrix(session, signature, "false|false|true");
   }
@@ -970,7 +980,7 @@ async function proveFoundationThenExtensions() {
   });
 }
 
-async function proveExact104ThenForward120() {
+async function proveExact104ThenForward120Then121() {
   return adapter.withDisposableDatabase(async (session) => {
     installRemoteEquivalentDefaults(session);
     const prior = applyMigrations(session, migrations.slice(0, 104));
@@ -983,7 +993,7 @@ async function proveExact104ThenForward120() {
       ),
       "104|20260715010000",
     );
-    const forward = applyMigrations(session, migrations.slice(104));
+    const forward = applyMigrations(session, migrations.slice(104, 120));
     assert.equal(forward.applied.length, 16);
     assert.equal(forward.skipped.length, 0);
     assert.equal(
@@ -993,6 +1003,16 @@ async function proveExact104ThenForward120() {
       ),
       "120|20260717090000",
     );
+    const successor = applyMigrations(session, migrations.slice(120));
+    assert.equal(successor.applied.length, 1);
+    assert.equal(successor.skipped.length, 0);
+    assert.equal(
+      session.psql(
+        "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;",
+        { label: "Verify exact post-successor-121 migration history" },
+      ),
+      "121|20260720010000",
+    );
     verifyIntegratedObjects(session);
     const beforeReplay = {
       schema: normalizedSchemaDump(session),
@@ -1001,7 +1021,7 @@ async function proveExact104ThenForward120() {
     };
     const replay = applyMigrations(session, migrations.slice(104));
     assert.equal(replay.applied.length, 0);
-    assert.equal(replay.skipped.length, 16);
+    assert.equal(replay.skipped.length, 17);
     assert.deepEqual(
       {
         schema: normalizedSchemaDump(session),
@@ -1069,14 +1089,14 @@ try {
   }
   const fresh = await proveFreshAndReplay();
   const staged = await proveFoundationThenExtensions();
-  const forward104To120 = await proveExact104ThenForward120();
+  const forward104To121 = await proveExact104ThenForward120Then121();
   await provePerFileAtomicFailure();
   assert.deepEqual(staged, fresh);
-  assert.deepEqual(forward104To120, fresh);
+  assert.deepEqual(forward104To121, fresh);
   assert.deepEqual(adapter.listDisposableDatabases(), []);
   console.log(
     `Integrated migration chain PASS: ${migrations.length} migrations, ` +
-      `fresh/replay/foundation-extension/forward-104-to-120 schema=${fresh.schema.digest}, ` +
+      `fresh/replay/foundation-extension/forward-104-to-120-to-121 schema=${fresh.schema.digest}, ` +
       `schemaBytes=${fresh.schema.bytes}, catalog=${fresh.catalog.digest}, ` +
       `catalogRecords=${fresh.catalog.records}, security=${fresh.security.digest}, ` +
       `securityBytes=${fresh.security.bytes}`,

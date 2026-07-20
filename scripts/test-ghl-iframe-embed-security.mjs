@@ -276,7 +276,9 @@ for (const marker of [
   'fetch("/api/integrations/ghl/embed-context"',
   "Enable embedded access",
   "document.requestStorageAccess",
-  "cookieProbe",
+  "cookieAvailable",
+  "finalizationAttemptedRef",
+  "finalizeHandoff",
   'target="_blank"',
 ]) {
   if (!bootstrapSource.includes(marker)) failures.push(`Embed bootstrap is missing: ${marker}`);

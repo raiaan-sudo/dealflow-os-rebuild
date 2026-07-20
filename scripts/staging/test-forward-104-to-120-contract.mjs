@@ -42,6 +42,7 @@ const priorProofContractSource = readFileSync(
 const records = readdirSync(migrationDir)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))
   .sort()
+  .slice(0, FORWARD_104_TO_120_AUTHORITY.current.migrationCount)
   .map((name) => ({ name }));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const canonicalizeManagedCatalogMaterial = (material) => String(material ?? "")
@@ -189,11 +190,16 @@ assert.ok(
 );
 
 const activeStart = brokerSource.indexOf('if (migrationMode === "APPLY_FORWARD_EXACT") {');
-const legacyStart = brokerSource.indexOf(
-  'if (migrationMode === "APPLY_LEGACY_FORWARD_EXACT_DISABLED") {',
+const successorStart = brokerSource.indexOf(
+  'if (migrationMode === "APPLY_SUCCESSOR_EXACT") {',
 );
-assert.ok(activeStart >= 0 && legacyStart > activeStart);
-const activeBranch = brokerSource.slice(activeStart, legacyStart);
+assert.ok(activeStart >= 0 && successorStart > activeStart);
+const activeBranch = brokerSource.slice(activeStart, successorStart);
+assert.match(
+  activeBranch,
+  /cannot qualify the current 121 portfolio/,
+  "Historical 104-to-120 execution must remain fail-closed in a 121-candidate checkout",
+);
 assert.doesNotMatch(
   activeBranch,
   /executeAtomicMigrationTransaction\s*\(/,

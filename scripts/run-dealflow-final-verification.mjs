@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 120;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 121;
 const REQUIRED_FINAL_MIGRATION =
-  "20260717090000_create_canonical_lead_outcome_ledger.sql";
+  "20260720010000_add_ghl_embed_sso_authority.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",

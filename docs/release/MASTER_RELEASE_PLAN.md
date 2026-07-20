@@ -18,12 +18,15 @@ controlling current-status overlay.
 
 Current implementation truth:
 
-- The working candidate now contains exactly 120 ordered migrations, ending at
-  `20260717090000_create_canonical_lead_outcome_ledger.sql`.
-- The five planned successor tranches are implemented and connected to runtime:
+- The working candidate now contains exactly 121 ordered migrations, ending at
+  `20260720010000_add_ghl_embed_sso_authority.sql`. The sealed 104-to-120
+  authority remains immutable historical proof; a separate exact 120-to-121
+  authority covers the additive GHL embed SSO migration.
+- The six successor tranches are implemented and connected to runtime:
   dynamic deletion and anti-resurrection, signed support-delivery lifecycle,
   canonical campaign lifecycle authority, provider-aware GHL publication, and
-  canonical lead outcome/reporting truth.
+  canonical lead outcome/reporting truth, plus explicit one-time GHL embed SSO
+  identity binding and fail-closed passwordless session handoff.
 - Usable MFA enrollment/challenge/settings flows are implemented for the direct
   and localized auth surfaces. High-risk actions remain AAL2-gated.
 - The final proof runner remains one exact 91-command portfolio and now exposes
@@ -32,10 +35,12 @@ Current implementation truth:
 - `npm ci` installed 434 packages and `npm audit --omit=dev` reported zero
   vulnerabilities.
 - Formatting, lint, typecheck, the optimized Next.js production build, release
-  secret scan, release-evidence contract, 104-to-120 forward reconstruction,
+  secret scan, release-evidence contract, immutable 104-to-120 reconstruction,
+  exact 120-to-121 successor reconstruction,
   and the complete 77-component DealFlow suite pass.
 - The integrated database proofs pass on isolated PostgreSQL 17.6: fresh,
-  replay, foundation, exact 104-to-120 forward, failure atomicity, RLS/ACL,
+  replay, foundation, exact 104-to-120 forward, exact 120-to-121 successor,
+  failure atomicity, RLS/ACL,
   cross-tenant, privacy/deletion, provider lifecycle, financial-integrity, and
   concurrency contracts.
 - The local browser proof passes 40/40 executable checks across desktop

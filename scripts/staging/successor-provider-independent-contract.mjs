@@ -1,4 +1,4 @@
-export const SUCCESSOR_SCHEMA_VERSION = "20260717090000";
+export const SUCCESSOR_SCHEMA_VERSION = "20260720010000";
 
 export const SUCCESSOR_GHL_SERVICE_ONLY_TABLES = Object.freeze([
   "ghl_marketplace_oauth_states",
@@ -24,6 +24,7 @@ export const SUCCESSOR_POST_AUDIT_SERVICE_ONLY_TABLES = Object.freeze([
   "support_delivery_lifecycle_state",
   "ghl_funnel_publications",
   "ghl_funnel_publication_receipts",
+  "ghl_embed_auth_exchanges",
 ]);
 
 export const SUCCESSOR_SERVICE_ONLY_TABLES = Object.freeze([
@@ -50,6 +51,7 @@ const EXPECTED_SYNTHETIC_COUNTS = Object.freeze({
   support_delivery_lifecycle_state: 0,
   ghl_funnel_publications: 0,
   ghl_funnel_publication_receipts: 0,
+  ghl_embed_auth_exchanges: 0,
 });
 
 function firstRow(value) {

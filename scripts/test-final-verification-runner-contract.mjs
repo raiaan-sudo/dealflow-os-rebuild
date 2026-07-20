@@ -533,7 +533,7 @@ const exactSummaryIdentity = Object.freeze({
   trackedWorktreeSha256: "c".repeat(64),
   trackedFileCount: 900,
   dependencyLockSha256: "d".repeat(64),
-  migrationCount: 120,
+  migrationCount: 121,
   migrationPortfolioSha256: "e".repeat(64),
 });
 const exactRecords = exactCommandPortfolio.map((command, index) => ({
@@ -749,8 +749,8 @@ assert.throws(
 );
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 120",
-  "20260717090000_create_canonical_lead_outcome_ledger.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 121",
+  "20260720010000_add_ghl_embed_sso_authority.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["npm", ["run", "format:check"]]',
@@ -849,5 +849,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (exclusive worktree lock, migration 120, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 121, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

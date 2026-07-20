@@ -96,6 +96,7 @@ import {
 } from "./vercel-cli-selection-contract.mjs";
 import { synchronizeExactVercelEnvironment } from "./vercel-environment-sync-contract.mjs";
 import { FORWARD_104_TO_120_AUTHORITY } from "./forward-104-to-120-contract.mjs";
+import { FORWARD_120_TO_121_AUTHORITY } from "./forward-120-to-121-contract.mjs";
 
 const EXPECTED_REPO = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
@@ -124,11 +125,11 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 120;
+const EXPECTED_MIGRATION_COUNT = 121;
 const EXPECTED_FINAL_MIGRATION =
-  "20260717090000_create_canonical_lead_outcome_ledger.sql";
+  "20260720010000_add_ghl_embed_sso_authority.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
-  "14f8d5a4ab0ad9f2b4063a398157df8445b7f3ac495a5c8f0b0297233a061db3";
+  "92e1e9b756b7a9aca9a7db5daaf68d7ae93d68368f33fc1fd787024a1a099802";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -457,6 +458,7 @@ const HOSTED_SECRET_ENV_NAMES = new Set([
   "INTERNAL_SYSTEM_JOBS_SECRET",
   "STAGING_ACCESS_GATE_SECRET",
   "TURNSTILE_SECRET_KEY",
+  "GHL_APP_SHARED_SECRET",
 ]);
 const PRODUCTION_OR_SHARED_HOSTS = new Set([
   "agentdealflow.io",
@@ -483,11 +485,20 @@ Safe resume after a previously sealed atomic application:
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
-Exact bounded forward transition from the pinned read-only-proven 104-migration
-staging seal to the current 120-migration portfolio:
+Historical bounded forward transition from the pinned read-only-proven
+104-migration staging seal to the sealed 120-migration predecessor:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-forward-migration --deploy \\
     --prior-migration-proof-dir /absolute/path/pinned-104/migration-proof \\
+    --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \\
+    --round-one /absolute/path/final-verification-round-1.json \\
+    --round-two /absolute/path/final-verification-round-2.json
+
+Exact bounded successor transition from the sealed 120-migration predecessor
+to the current 121-migration portfolio:
+  node scripts/staging/run-isolated-staging-acceptance.mjs \\
+    --execute --apply-successor-migration --deploy \\
+    --prior-migration-proof-dir /absolute/path/pinned-120/migration-proof \\
     --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
@@ -501,8 +512,10 @@ Required execution environment:
   DEALFLOW_STAGING_PROJECT_RECORD=/absolute/external/owner-only-qibh-project-record.json
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
-Exactly one migration mode is required. Resume mode is read-only. Forward mode
-is restricted to the exact pinned 104-to-120 transition authority.`;
+Exactly one migration mode is required. Resume mode is read-only. The current
+successor mode is restricted to exact 120-to-121 authority. The pinned
+104-to-120 transition remains immutable historical proof and cannot be run
+from a 121-candidate checkout.`;
 }
 
 function parseArguments(argv) {
@@ -510,6 +523,7 @@ function parseArguments(argv) {
     execute: false,
     applyMigrations: false,
     applyForwardMigration: false,
+    applySuccessorMigration: false,
     verifyExistingMigrations: false,
     deploy: false,
     evidenceDir: null,
@@ -523,6 +537,7 @@ function parseArguments(argv) {
     if (arg === "--execute") options.execute = true;
     else if (arg === "--apply-migrations") options.applyMigrations = true;
     else if (arg === "--apply-forward-migration") options.applyForwardMigration = true;
+    else if (arg === "--apply-successor-migration") options.applySuccessorMigration = true;
     else if (arg === "--verify-existing-migrations") options.verifyExistingMigrations = true;
     else if (arg === "--deploy") options.deploy = true;
     else if (
@@ -1218,6 +1233,10 @@ function hostedStagingEnvironment(
     PARTNER_ATTRIBUTION_SIGNING_SECRET: process.env.PARTNER_ATTRIBUTION_SIGNING_SECRET,
     INTERNAL_SYSTEM_JOBS_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
     STAGING_ACCESS_GATE_SECRET: stagingAccessGateSecret,
+    GHL_IFRAME_EMBED_ENABLED: "true",
+    GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS: "true",
+    GHL_IFRAME_PARTNER_PARENT_ORIGINS_JSON: "{}",
+    GHL_APP_SHARED_SECRET: process.env.GHL_APP_SHARED_SECRET,
     NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT: identity.commit,
     NEXT_PUBLIC_DEALFLOW_RELEASE_TREE: identity.tree,
     NEXT_PUBLIC_DEALFLOW_TRACKED_WORKTREE_SHA256:
@@ -1576,9 +1595,9 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 120 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 121 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260717090000_create_canonical_lead_outcome_ledger.sql" ||
+      "20260720010000_add_ghl_embed_sso_authority.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
@@ -1586,12 +1605,12 @@ async function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
     parsed.successorProviderIndependent?.financialFixture?.pendingPaymentCreditLedgerRows !== 0 ||
     parsed.successorProviderIndependent?.financialFixture?.providerMutationPerformed !== false ||
     parsed.successorProviderIndependent?.financialFixture?.financialEffectPerformed !== false ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.schemaVersion !== "20260717090000" ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.serviceOnlyTableCount !== 17 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.schemaVersion !== "20260720010000" ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.serviceOnlyTableCount !== 18 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.ghlMarketplaceTableCount !== 7 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.stripeLifecycleTableCount !== 4 ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.postAuditServiceOnlyTableCount !== 6 ||
-    parsed.successorProviderIndependent?.serviceOnlySchema?.authenticatedDenialCount !== 17 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.postAuditServiceOnlyTableCount !== 7 ||
+    parsed.successorProviderIndependent?.serviceOnlySchema?.authenticatedDenialCount !== 18 ||
     parsed.successorProviderIndependent?.serviceOnlySchema?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.hostedGates?.optimizerMinimumSampleActiveReceiptProof !==
       "BLOCKED_PROVIDER_INDEPENDENT_ACTIVE_META_RECEIPT_REQUIRED" ||
@@ -1752,10 +1771,10 @@ async function runProviderIndependentStagingProof(
     parsed.accountDeletion?.providerReceiptCount !== 0 ||
     parsed.accountDeletion?.hostedWorkerFailClosed !== true ||
     parsed.accountDeletion?.fullProviderOffboardingPerformed !== false ||
-    parsed.successorProviderIndependent?.schemaVersion !== "20260717090000" ||
-    parsed.successorProviderIndependent?.serviceOnlyTableCount !== 17 ||
-    parsed.successorProviderIndependent?.postAuditServiceOnlyTableCount !== 6 ||
-    parsed.successorProviderIndependent?.authenticatedDenialCount !== 17 ||
+    parsed.successorProviderIndependent?.schemaVersion !== "20260720010000" ||
+    parsed.successorProviderIndependent?.serviceOnlyTableCount !== 18 ||
+    parsed.successorProviderIndependent?.postAuditServiceOnlyTableCount !== 7 ||
+    parsed.successorProviderIndependent?.authenticatedDenialCount !== 18 ||
     parsed.successorProviderIndependent?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.serviceOnlyStateUnchanged !== true ||
     parsed.successorProviderIndependent?.pendingCreditTopUpIntentId !==
@@ -1925,7 +1944,7 @@ async function configureHostedStagingEnvironment(
     expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
     environment,
     sensitiveKeys: HOSTED_SECRET_ENV_NAMES,
-    expectedCount: 91,
+    expectedCount: 95,
     providerSensitiveNames: PROVIDER_SENSITIVE_ENV_NAMES,
     fetchImpl: fetch,
     delayImpl: abortableDelay,
@@ -1938,16 +1957,16 @@ async function configureHostedStagingEnvironment(
 
 function assertExactHostedEnvironmentProof(proof) {
   const expectedSensitiveCount = HOSTED_SECRET_ENV_NAMES.size;
-  const expectedReadableCount = 91 - expectedSensitiveCount;
+  const expectedReadableCount = 95 - expectedSensitiveCount;
   if (
     proof?.status !== "PASS" ||
     proof.synchronizationMode !== "bounded_idempotent_missing_or_drifted_only" ||
-    proof.environmentVariableCount !== 91 ||
+    proof.environmentVariableCount !== 95 ||
     proof.environmentNameSetSha256 !== EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 ||
-    proof.finalExactStructureCount !== 91 ||
+    proof.finalExactStructureCount !== 95 ||
     proof.finalReadableValueDigestMatchCount !== expectedReadableCount ||
     proof.finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount ||
-    proof.finalExpectedValueDispositionCount !== 91 ||
+    proof.finalExpectedValueDispositionCount !== 95 ||
     proof.finalUnexpectedEnvironmentCount !== 0 ||
     proof.exactTarget !== "production" ||
     proof.exactTypePortfolioProven !== true ||
@@ -1957,9 +1976,9 @@ function assertExactHostedEnvironmentProof(proof) {
     proof.valueDigestsPersistedToEvidence !== false ||
     proof.providerCredentialNamesPresent !== false ||
     !Array.isArray(proof.variables) ||
-    proof.variables.length !== 91
+    proof.variables.length !== 95
   ) {
-    throw new Error("The exact 91-variable isolated staging environment proof is incomplete");
+    throw new Error("The exact 95-variable isolated staging environment proof is incomplete");
   }
   const seen = new Set();
   for (const variable of proof.variables) {
@@ -5755,6 +5774,7 @@ async function main() {
   const migrationModeCount =
     Number(options.applyMigrations) +
     Number(options.applyForwardMigration) +
+    Number(options.applySuccessorMigration) +
     Number(options.verifyExistingMigrations);
   if (!options.execute || !options.deploy || migrationModeCount !== 1) {
     throw new Error(
@@ -5765,11 +5785,17 @@ async function main() {
     throw new Error("Evidence directory and both exact final-verification summaries are required");
   }
   if (
-    (options.verifyExistingMigrations || options.applyForwardMigration) !==
+    (options.verifyExistingMigrations || options.applyForwardMigration ||
+      options.applySuccessorMigration) !==
       Boolean(options.priorMigrationProofDir)
   ) {
     throw new Error(
       "Read-only resume and exact forward mode require --prior-migration-proof-dir; fresh apply forbids it",
+    );
+  }
+  if (options.applyForwardMigration) {
+    throw new Error(
+      "The current 121 candidate cannot execute historical 104-to-120 forward mode; use --apply-successor-migration with an exact sealed 120 proof",
     );
   }
   approvedStagingEvidenceParent =
@@ -5802,8 +5828,8 @@ async function main() {
     stagingAccessGateSecret,
   );
   const hostedEnvironmentNames = Object.keys(hostedEnvironment).sort();
-  if (hostedEnvironmentNames.length !== 91) {
-    throw new Error("The exact 91-variable isolated staging environment portfolio is required");
+  if (hostedEnvironmentNames.length !== 95) {
+    throw new Error("The exact 95-variable isolated staging environment portfolio is required");
   }
   const roundOne = readValidatedRound(
     options.roundOne,
@@ -5857,6 +5883,7 @@ async function main() {
       execute: options.execute,
       applyMigrations: options.applyMigrations,
       applyForwardMigration: options.applyForwardMigration,
+      applySuccessorMigration: options.applySuccessorMigration,
       verifyExistingMigrations: options.verifyExistingMigrations,
       deploy: options.deploy,
     },
@@ -5914,6 +5941,11 @@ async function main() {
       "--apply-forward-exact",
       options.priorMigrationProofDir,
     );
+  } else if (options.applySuccessorMigration) {
+    migrationBrokerArgs.push(
+      "--apply-successor-exact",
+      options.priorMigrationProofDir,
+    );
   }
   await runInterruptible(
     EXECUTABLE,
@@ -5923,7 +5955,9 @@ async function main() {
         ? "read-only exact existing isolated-staging migration verifier"
         : options.applyForwardMigration
           ? "exact forward-only isolated-staging migration broker"
-          : "atomic fresh isolated-staging migration broker",
+          : options.applySuccessorMigration
+            ? "exact 120-to-121 successor isolated-staging migration broker"
+            : "atomic fresh isolated-staging migration broker",
       env: {
         ...childBaseEnvironment(),
         PATH: process.env.PATH,
@@ -5938,7 +5972,11 @@ async function main() {
     readFileSync(join(migrationEvidenceDir, "staging-migration-summary.json"), "utf8"),
   );
   let priorApplicationRetainedHistory = false;
-  if (options.verifyExistingMigrations || options.applyForwardMigration) {
+  if (
+    options.verifyExistingMigrations ||
+    options.applyForwardMigration ||
+    options.applySuccessorMigration
+  ) {
     const priorCommit = migrationSummary.priorApplication?.applicationCommit;
     const priorTree = migrationSummary.priorApplication?.applicationTree;
     if (/^[a-f0-9]{40}$/.test(priorCommit ?? "") && /^[a-f0-9]{40}$/.test(priorTree ?? "")) {
@@ -6030,15 +6068,49 @@ async function main() {
     migrationSummary.priorApplication?.rawValuesPersisted === false &&
     JSON.stringify(migrationSummary.priorApplication?.authSurface) ===
       JSON.stringify(FORWARD_104_TO_120_AUTHORITY.prior.authSurface);
+  const exactSuccessorApplication =
+    options.applySuccessorMigration &&
+    migrationSummary.migrationMode === "APPLY_SUCCESSOR_EXACT" &&
+    migrationSummary.transition === "EXACT_120_TO_121" &&
+    migrationSummary.forwardOnly === true &&
+    migrationSummary.priorMigrationCount ===
+      FORWARD_120_TO_121_AUTHORITY.prior.migrationCount &&
+    migrationSummary.forwardMigrationCount === 1 &&
+    JSON.stringify(migrationSummary.forwardMigration) === JSON.stringify({
+      version: FORWARD_120_TO_121_AUTHORITY.forwardMigration.version,
+      file: FORWARD_120_TO_121_AUTHORITY.forwardMigration.file,
+      sha256: FORWARD_120_TO_121_AUTHORITY.forwardMigration.sha256,
+    }) &&
+    migrationSummary.migrationPortfolioSha256 ===
+      FORWARD_120_TO_121_AUTHORITY.current.migrationPortfolioSha256 &&
+    migrationSummary.remoteMutationStarted === true &&
+    migrationSummary.remoteMutationCompleted === true &&
+    migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.remoteStateVerificationStatus ===
+      "EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO" &&
+    priorApplicationRetainedHistory &&
+    migrationSummary.priorApplication?.migrationCount ===
+      FORWARD_120_TO_121_AUTHORITY.prior.migrationCount &&
+    migrationSummary.priorApplication?.migrationPortfolioSha256 ===
+      FORWARD_120_TO_121_AUTHORITY.prior.migrationPortfolioSha256 &&
+    migrationSummary.priorApplication?.lastCommittedVersion ===
+      FORWARD_120_TO_121_AUTHORITY.prior.finalMigration.slice(0, 14) &&
+    JSON.stringify(migrationSummary.priorApplication?.migrationFiles) ===
+      JSON.stringify(migrations.migrationFiles.slice(
+        0,
+        FORWARD_120_TO_121_AUTHORITY.prior.migrationCount,
+      ));
   if (
     migrationSummary.status !== "PASS" ||
-    (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication) ||
+    (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication &&
+      !exactSuccessorApplication) ||
     migrationSummary.singleOuterTransaction !== true ||
     migrationSummary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
     ![
       "EXACT_COMMITTED_PORTFOLIO",
       "EXACT_EXISTING_COMMITTED_PORTFOLIO",
       "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",
+      "EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO",
     ].includes(migrationSummary.remoteStateVerificationStatus) ||
     migrationSummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.migrationHistoryCount !== EXPECTED_MIGRATION_COUNT ||

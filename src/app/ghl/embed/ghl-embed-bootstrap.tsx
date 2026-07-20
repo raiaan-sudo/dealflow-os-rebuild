@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type ExchangeResult = {
-  status?: "ready" | "authentication_required";
+  status?: "ready" | "storage_check_required";
   nextPath?: string;
+  handoffToken?: string;
 };
 
 type SignedEmbedContext = {
@@ -12,13 +13,46 @@ type SignedEmbedContext = {
   parentOrigin: string;
 };
 
+type PendingHandoff = {
+  context: SignedEmbedContext;
+  handoffToken: string;
+};
+
 export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
   const [status, setStatus] = useState("Verifying your CRM workspace…");
   const [blocked, setBlocked] = useState(false);
   const [needsStorageAccess, setNeedsStorageAccess] = useState(false);
-  const pendingContextRef = useRef<SignedEmbedContext | null>(null);
+  const pendingHandoffRef = useRef<PendingHandoff | null>(null);
+  const finalizationAttemptedRef = useRef(false);
 
-  async function exchangeContext(context: SignedEmbedContext) {
+  const cookieAvailable = useCallback(async () => {
+    const response = await fetch("/api/integrations/ghl/embed-context", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    return response.ok;
+  }, []);
+
+  const finalizeHandoff = useCallback(async (handoff: PendingHandoff) => {
+    if (finalizationAttemptedRef.current) throw new Error("handoff_already_attempted");
+    finalizationAttemptedRef.current = true;
+    pendingHandoffRef.current = null;
+    const response = await fetch("/api/integrations/ghl/embed-context", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...handoff.context, handoffToken: handoff.handoffToken }),
+    });
+    const result = await response.json().catch(() => ({})) as ExchangeResult;
+    if (!response.ok || result.status !== "ready" || !result.nextPath) {
+      throw new Error("embed_handoff_rejected");
+    }
+    if (!await cookieAvailable()) throw new Error("embed_session_cookie_unavailable");
+    window.location.assign(result.nextPath);
+  }, [cookieAvailable]);
+
+  const exchangeContext = useCallback(async (context: SignedEmbedContext) => {
     const response = await fetch("/api/integrations/ghl/embed-context", {
       method: "POST",
       credentials: "include",
@@ -26,27 +60,29 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
       body: JSON.stringify(context),
     });
     const result = await response.json().catch(() => ({})) as ExchangeResult;
-    if (!response.ok || !result.nextPath) throw new Error("embed_context_rejected");
+    if (!response.ok) throw new Error("embed_context_rejected");
 
-    const cookieProbe = await fetch("/api/integrations/ghl/embed-context", {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    });
-    if (!cookieProbe.ok) {
-      pendingContextRef.current = context;
+    if (result.status === "ready" && result.nextPath) {
+      if (!await cookieAvailable()) throw new Error("embed_session_cookie_unavailable");
+      window.location.assign(result.nextPath);
+      return;
+    }
+    if (result.status !== "storage_check_required" || !result.handoffToken) {
+      throw new Error("embed_handoff_missing");
+    }
+    const handoff = { context, handoffToken: result.handoffToken };
+    if (!await cookieAvailable()) {
+      pendingHandoffRef.current = handoff;
       setStatus("Your browser needs permission to use DealFlow securely inside this CRM tab.");
       setNeedsStorageAccess(true);
       return;
     }
-
-    pendingContextRef.current = null;
-    window.location.assign(result.nextPath);
-  }
+    await finalizeHandoff(handoff);
+  }, [cookieAvailable, finalizeHandoff]);
 
   async function enableEmbeddedStorage() {
-    const context = pendingContextRef.current;
-    if (!context) return;
+    const handoff = pendingHandoffRef.current;
+    if (!handoff) return;
     setBlocked(false);
     setStatus("Enabling secure embedded access…");
     try {
@@ -54,7 +90,7 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
         throw new Error("storage_access_api_unavailable");
       }
       await document.requestStorageAccess();
-      await exchangeContext(context);
+      await finalizeHandoff(handoff);
     } catch {
       setNeedsStorageAccess(false);
       setStatus("Embedded browser storage is blocked. Continue in a new tab, then reopen DealFlow from your CRM menu.");
@@ -109,7 +145,7 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
       window.clearTimeout(timeout);
       window.removeEventListener("message", onMessage);
     };
-  }, [props.allowedParentOrigins]);
+  }, [exchangeContext, props.allowedParentOrigins]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12 text-slate-950">

@@ -5,8 +5,10 @@ export const GHL_EMBED_SESSION_COOKIE = "df_ghl_embed_session";
 export const GHL_EMBED_BOOTSTRAP_PATH = "/ghl/embed";
 
 const CAPABILITY_VERSION = 1;
+const AUTH_HANDOFF_VERSION = 1;
 const PREAUTH_TTL_SECONDS = 2 * 60;
 const AUTHENTICATED_TTL_SECONDS = 5 * 60;
+const AUTH_HANDOFF_TTL_SECONDS = 2 * 60;
 const SESSION_MARKER_TTL_SECONDS = 12 * 60 * 60;
 const OFFICIAL_HIGHLEVEL_PARENT_ORIGINS = Object.freeze([
   "https://app.gohighlevel.com",
@@ -40,6 +42,22 @@ export type GhlEmbedSessionMarker = {
   exp: number;
 };
 
+export type GhlEmbedAuthHandoff = {
+  v: number;
+  receiptId: string;
+  payloadDigest: string;
+  partnerId: string;
+  domain: string;
+  organizationId: string;
+  locationId: string;
+  companyId: string;
+  ghlUserId: string;
+  dealflowUserId: string;
+  parentOrigin: string;
+  iat: number;
+  exp: number;
+};
+
 function isUuid(value: unknown): value is string {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -47,6 +65,10 @@ function isUuid(value: unknown): value is string {
 
 function isProviderId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_-]{3,160}$/.test(value);
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 }
 
 function isEmail(value: unknown): value is string {
@@ -159,6 +181,117 @@ function capabilitySigningInput(encodedPayload: string) {
 
 function sessionMarkerSigningInput(encodedPayload: string) {
   return new TextEncoder().encode(`dealflow-ghl-embed-session-v1.${encodedPayload}`);
+}
+
+function authHandoffSigningInput(encodedPayload: string) {
+  return new TextEncoder().encode(`dealflow-ghl-embed-auth-handoff-v1.${encodedPayload}`);
+}
+
+export async function createGhlEmbedSignedContextDigest(encryptedData: string) {
+  const secret = getGhlAppSharedSecret();
+  if (!secret || encryptedData.length < 24 || encryptedData.length > 32_768) return null;
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await getHmacKey(secret, ["sign"]),
+    new TextEncoder().encode(`dealflow-ghl-signed-context-v1.${encryptedData}`),
+  );
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function createGhlEmbedAuthHandoff(
+  input: Omit<GhlEmbedAuthHandoff, "v" | "iat" | "exp">,
+  nowSeconds = Math.floor(Date.now() / 1_000),
+) {
+  const secret = getGhlAppSharedSecret();
+  const domain = normalizePartnerDomainHost(input.domain);
+  const parentOrigin = domain
+    ? resolveAllowedGhlParentOrigin({ candidate: input.parentOrigin, partnerHost: domain })
+    : null;
+  if (
+    !secret ||
+    !domain ||
+    !parentOrigin ||
+    !isUuid(input.receiptId) ||
+    !isSha256(input.payloadDigest) ||
+    !isUuid(input.partnerId) ||
+    !isUuid(input.organizationId) ||
+    !isProviderId(input.locationId) ||
+    !isProviderId(input.companyId) ||
+    !isProviderId(input.ghlUserId) ||
+    !isUuid(input.dealflowUserId)
+  ) {
+    return null;
+  }
+  const payload: GhlEmbedAuthHandoff = {
+    ...input,
+    v: AUTH_HANDOFF_VERSION,
+    domain,
+    parentOrigin,
+    iat: nowSeconds,
+    exp: nowSeconds + AUTH_HANDOFF_TTL_SECONDS,
+  };
+  const encodedPayload = encodeBase64Url(JSON.stringify(payload));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await getHmacKey(secret, ["sign"]),
+    authHandoffSigningInput(encodedPayload),
+  );
+  return `${encodedPayload}.${encodeBase64Url(new Uint8Array(signature))}`;
+}
+
+export async function verifyGhlEmbedAuthHandoff(
+  token: string | null | undefined,
+  options: { expectedHost: string; nowSeconds?: number },
+): Promise<GhlEmbedAuthHandoff | null> {
+  const secret = getGhlAppSharedSecret();
+  const [encodedPayload, encodedSignature, extra] = token?.split(".") ?? [];
+  if (!secret || !encodedPayload || !encodedSignature || extra || token!.length > 8_192) return null;
+  try {
+    const signatureBytes = decodeBase64Url(encodedSignature);
+    const payloadBytes = decodeBase64Url(encodedPayload);
+    if (
+      encodeBase64Url(signatureBytes) !== encodedSignature ||
+      encodeBase64Url(payloadBytes) !== encodedPayload ||
+      !await crypto.subtle.verify(
+        "HMAC",
+        await getHmacKey(secret, ["verify"]),
+        signatureBytes,
+        authHandoffSigningInput(encodedPayload),
+      )
+    ) {
+      return null;
+    }
+    const payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as GhlEmbedAuthHandoff;
+    const nowSeconds = options.nowSeconds ?? Math.floor(Date.now() / 1_000);
+    const expectedHost = normalizePartnerDomainHost(options.expectedHost);
+    if (
+      payload.v !== AUTH_HANDOFF_VERSION ||
+      !isUuid(payload.receiptId) ||
+      !isSha256(payload.payloadDigest) ||
+      !isUuid(payload.partnerId) ||
+      !isUuid(payload.organizationId) ||
+      !isProviderId(payload.locationId) ||
+      !isProviderId(payload.companyId) ||
+      !isProviderId(payload.ghlUserId) ||
+      !isUuid(payload.dealflowUserId) ||
+      !Number.isSafeInteger(payload.iat) ||
+      !Number.isSafeInteger(payload.exp) ||
+      payload.iat > nowSeconds + 30 ||
+      payload.exp <= nowSeconds ||
+      payload.exp - payload.iat !== AUTH_HANDOFF_TTL_SECONDS ||
+      !expectedHost ||
+      normalizePartnerDomainHost(payload.domain) !== expectedHost ||
+      !resolveAllowedGhlParentOrigin({
+        candidate: payload.parentOrigin,
+        partnerHost: expectedHost,
+      })
+    ) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 export async function createGhlEmbedCapability(

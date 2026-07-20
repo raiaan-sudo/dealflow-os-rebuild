@@ -117,7 +117,7 @@ try {
     applyAllMigrations(session);
     assert.equal(
       session.psql("select value from public.app_schema_metadata where key='schema_version';"),
-      "20260717090000",
+      "20260720010000",
     );
     assert.equal(
       session.psql(`select count(*) from information_schema.tables where table_schema='public'

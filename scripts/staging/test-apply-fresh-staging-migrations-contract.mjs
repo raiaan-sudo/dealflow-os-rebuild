@@ -41,7 +41,7 @@ function requireMarker(pattern, label) {
   assert.match(source, pattern, `Tracked staging broker is missing ${label}`);
 }
 
-requireMarker(/const exactMigrationCount = 120/, "the exact 120-migration gate");
+requireMarker(/const exactMigrationCount = 121/, "the exact 121-migration gate");
 requireMarker(/codex\/dealflow-release-closure-plan/, "the exact isolated release branch gate");
 requireMarker(
   /assertExactForward104To120Portfolio/,
@@ -57,7 +57,7 @@ requireMarker(/--verify-existing-exact/, "explicit existing-portfolio verificati
 requireMarker(/--apply-forward-exact/, "explicit exact forward-only migration mode");
 requireMarker(/PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=300000"/, "database-enforced read-only resume mode");
 requireMarker(
-  /function loadAndValidatePriorMigrationProof\(\{ requirePinnedPrior103 \}\)/,
+  /function loadAndValidatePriorMigrationProof\(\{[\s\S]*requirePinnedPrior103,[\s\S]*requireExactPrior120 = false,[\s\S]*\}\)/,
   "prior atomic proof validator",
 );
 requireMarker(/Prior migration proof artifact does not match its sealed digest/, "prior artifact digest verification");
@@ -202,7 +202,10 @@ requireMarker(/retentionConfigurationRowSecurityForced: true/, "retention forced
 requireMarker(/serviceRoleColumnWritePrivilegesPresent: false/, "sealed service_role column-write result");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
 requireMarker(/expectedPriorFinalMigration[\s\S]+20260713028000_harden_account_deletion_retention_authority\.sql/, "the prior final migration pin");
-requireMarker(/requiredFinalMigration[\s\S]+20260717090000_create_canonical_lead_outcome_ledger\.sql/, "the final migration 120 pin");
+requireMarker(/requiredFinalMigration[\s\S]+20260720010000_add_ghl_embed_sso_authority\.sql/, "the final migration 121 pin");
+requireMarker(/--apply-successor-exact/, "the exact 120-to-121 successor mode");
+requireMarker(/APPLY_SUCCESSOR_EXACT/, "the exact successor execution classification");
+requireMarker(/EXACT_120_TO_121/, "the exact successor transition identity");
 requireMarker(/Two distinct final-verification summaries are required/, "two distinct verification rounds");
 requireMarker(
   /verificationRounds\[0\]\.resolvedCommandPortfolioSha256 !==\s*verificationRounds\[1\]\.resolvedCommandPortfolioSha256/,
@@ -634,10 +637,10 @@ assert.doesNotMatch(
 );
 assert.match(resumeBranch, /process\.exit\(0\)/, "Successful resume verification must not fall through into fresh apply");
 
-const legacyForwardStart = source.indexOf(
-  'if (migrationMode === "APPLY_LEGACY_FORWARD_EXACT_DISABLED") {',
+const successorForwardStart = source.indexOf(
+  'if (migrationMode === "APPLY_SUCCESSOR_EXACT") {',
 );
-assert.ok(legacyForwardStart > forwardStart && freshStart > legacyForwardStart);
+assert.ok(successorForwardStart > forwardStart && freshStart > successorForwardStart);
 const successorPortfolioBindingStart = source.indexOf(
   "const successorForwardPortfolio = assertExactForward104To120Portfolio(",
 );
@@ -645,7 +648,7 @@ assert.ok(
   successorPortfolioBindingStart >= 0 && successorPortfolioBindingStart < forwardStart,
   "Exact successor portfolio authority must be bound before the active branch",
 );
-const forwardBranch = source.slice(forwardStart, legacyForwardStart);
+const forwardBranch = source.slice(forwardStart, successorForwardStart);
 for (const marker of [
   "loadExactPrior104StagingSeal(priorMigrationProofDir)",
   "loadExactPrior104SyntheticSurfaceSeal(",
@@ -694,6 +697,22 @@ assert.doesNotMatch(
   forwardBranch.slice(forwardMutationMarker, forwardRemoteWrite),
   /\bsql\s*\(|runPostgresCommand\s*\(/,
   "No remote operation may occur between the successor mutation marker and migrations 105-120",
+);
+
+const successorForwardBranch = source.slice(successorForwardStart, freshStart);
+for (const marker of [
+  "requireExactPrior120: true",
+  "EXACT_120_TO_121",
+  "EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO",
+  "ROLLED_BACK_EXACT_PRIOR_120",
+  "executeEmbedSsoSuccessorMigrationTransaction()",
+]) {
+  assert.ok(successorForwardBranch.includes(marker), `Migration 121 branch is missing ${marker}`);
+}
+assert.equal(
+  (successorForwardBranch.match(/executeEmbedSsoSuccessorMigrationTransaction\(\)/g) ?? []).length,
+  1,
+  "Migration 121 successor mode must contain exactly one bounded remote mutation call",
 );
 
 const freshBranch = source.slice(freshStart);
@@ -1249,5 +1268,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer fresh 120-migration transaction, fail-closed read-only exact-existing resume, exact 104-to-120 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 120 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer fresh 121-migration transaction, fail-closed read-only exact-existing resume, immutable historical 104-to-120 proof, exact 120-to-121 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 121 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
 );
