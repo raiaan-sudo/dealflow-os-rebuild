@@ -79,7 +79,12 @@ check("campaign, funnel, creative, and launch inputs retain versioned provenance
 
 check("browser serializes saves, submits exact revision and digest, and deletes on reset", () => {
   assert.match(page, /saveQueueRef/);
-  assert.match(page, /expectedRevision: serverRevisionRef\.current/);
+  assert.match(page, /writeAtRevision\(serverRevisionRef\.current\)/);
+  assert.match(page, /result\.response\.status === 409/);
+  assert.match(page, /cache: "no-store"/);
+  assert.match(page, /writeAtRevision\(authoritativeRevision\)/);
+  assert.match(page, /await enqueueDraftSave\(\{[\s\S]*currentStep: step/);
+  assert.match(page, /await goToStep\(visibleSteps\[nextIndex\]\.key, preparedDraft\)/);
   assert.match(page, /draftPayloadDigest: savedDraft\.draftPayloadDigest/);
   assert.match(page, /await enqueueDraftSave/);
   assert.match(page, /method: "DELETE"/);

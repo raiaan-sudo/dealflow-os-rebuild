@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1108,
-  "deployableSourceSha256": "4e0283b14b1fc89a7f9eb7e9ce49021f1d4978fe02e42d9b65e521875d57608b",
+  "deployableSourceSha256": "20a8a40cebdebad94918d4dfbbd13a62c45dd87a2acd1c4d7cb0e3b264a74afd",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1932,9 +1932,9 @@
     },
     {
       "path": "scripts/test-onboarding-draft-integrity-contract.mjs",
-      "size": 5415,
+      "size": 5748,
       "mode": 33188,
-      "sha256": "daeffb6526972cf9c193bd3c8426554bb6c57f64e8b625231c9ba7cb6f6ac29b"
+      "sha256": "c1d9c54615ac89bbcdb29208358ee2c30a77eced552ae3fb82d301416a5bc291"
     },
     {
       "path": "scripts/test-onboarding-draft-integrity-disposable-db.mjs",
@@ -2382,9 +2382,9 @@
     },
     {
       "path": "src/app/(app)/onboarding/page.tsx",
-      "size": 73794,
+      "size": 75985,
       "mode": 33188,
-      "sha256": "1510beae382c76dd108df2cbfda284201d5f6afd09fe8dd6f406a4d8e57302a4"
+      "sha256": "21cb66b6a0858a8847a46b849247c94548aaff14260a7a752cea7114f4ebae9c"
     },
     {
       "path": "src/app/(app)/paywall/page.tsx",

@@ -361,7 +361,7 @@ function StepProgress({
   currentStep: OnboardingStepKey;
   furthestStepIndex: number;
   steps: typeof STEPS;
-  onSelect: (step: OnboardingStepKey) => void;
+  onSelect: (step: OnboardingStepKey) => void | Promise<void>;
 }) {
   const { t } = useProductI18n();
   const currentIndex = Math.max(steps.findIndex((step) => step.key === currentStep), 0);
@@ -386,7 +386,7 @@ function StepProgress({
               key={step.key}
               type="button"
               aria-current={active ? "step" : undefined}
-              onClick={() => available && onSelect(step.key)}
+              onClick={() => { if (available) void onSelect(step.key); }}
               disabled={!available}
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
@@ -590,6 +590,8 @@ export default function OnboardingPage() {
   const serverDigestRef = useRef<string | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const draftConflictRef = useRef(false);
+  const skipNextDebouncedSaveRef = useRef(false);
+  const stepTransitionRef = useRef(false);
   const canUseExistingLaunchAccess =
     billingStatus?.canUseExistingLaunchAccess === true &&
     (!isNewCampaignFlow || billingStatus.canCreateAdditionalCampaign);
@@ -638,16 +640,48 @@ export default function OnboardingPage() {
   }) {
     const operation = saveQueueRef.current.then(async () => {
       const envelope = buildOnboardingDraftEnvelope(params);
-      const response = await fetch("/api/onboarding/plan", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...envelope, expectedRevision: serverRevisionRef.current }),
-      });
-      const data = (await response.json().catch(() => null)) as
-        | { revision?: number; draftPayloadDigest?: string }
-        | null;
+      const writeAtRevision = async (expectedRevision: number) => {
+        const response = await fetch("/api/onboarding/plan", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...envelope, expectedRevision }),
+        });
+        const data = (await response.json().catch(() => null)) as
+          | { revision?: number; draftPayloadDigest?: string }
+          | null;
+        return { response, data };
+      };
+
+      let result = await writeAtRevision(serverRevisionRef.current);
+      if (result.response.status === 409) {
+        const authoritativeResponse = await fetch("/api/onboarding/plan", {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        const authoritative = (await authoritativeResponse.json().catch(() => null)) as
+          | { found?: boolean; revision?: unknown; draftPayloadDigest?: unknown }
+          | null;
+        const authoritativeRevision = authoritative?.found === false
+          ? 0
+          : Number(authoritative?.revision);
+        if (
+          !authoritativeResponse.ok ||
+          !Number.isInteger(authoritativeRevision) ||
+          authoritativeRevision < 0
+        ) {
+          draftConflictRef.current = true;
+          throw new Error("onboarding_draft_conflict_read_failed");
+        }
+        serverRevisionRef.current = authoritativeRevision;
+        serverDigestRef.current = typeof authoritative?.draftPayloadDigest === "string"
+          ? authoritative.draftPayloadDigest
+          : null;
+        result = await writeAtRevision(authoritativeRevision);
+      }
+
+      const { response, data } = result;
       if (!response.ok || !Number.isInteger(data?.revision) || typeof data?.draftPayloadDigest !== "string") {
-        if (response.status === 409) draftConflictRef.current = true;
+        draftConflictRef.current = true;
         throw new Error("onboarding_draft_save_failed");
       }
       serverRevisionRef.current = data.revision as number;
@@ -799,7 +833,12 @@ export default function OnboardingPage() {
     // Hydration, billing reads, and automatic routing are observational. A
     // durable draft write begins only after an explicit user interaction has
     // incremented the revision.
-    if (!hydrated || persistenceRevision === 0 || submitting || draftConflictRef.current) return;
+    if (!hydrated || submitting) return;
+    if (skipNextDebouncedSaveRef.current) {
+      skipNextDebouncedSaveRef.current = false;
+      return;
+    }
+    if (persistenceRevision === 0 || draftConflictRef.current) return;
 
     const saveTimer = window.setTimeout(() => {
       let envelope: ReturnType<typeof buildOnboardingDraftEnvelope>;
@@ -872,15 +911,35 @@ export default function OnboardingPage() {
     updateDraft({ leadFormQuestions: [...draft.leadFormQuestions, normalizedQuestion] });
   }
 
-  function goToStep(step: OnboardingStepKey) {
-    setCurrentStep(step);
-    setPersistenceRevision((current) => current + 1);
-    setErrors({});
+  async function goToStep(step: OnboardingStepKey, nextDraft: DraftState = draft) {
+    if (stepTransitionRef.current) return;
+    const nextStepIndex = Math.max(visibleSteps.findIndex((candidate) => candidate.key === step), 0);
+    const nextFurthestStepIndex = Math.max(furthestStepIndex, nextStepIndex);
+    stepTransitionRef.current = true;
+    try {
+      await enqueueDraftSave({
+        draft: nextDraft,
+        currentStep: step,
+        furthestStepIndex: nextFurthestStepIndex,
+      });
+      skipNextDebouncedSaveRef.current = true;
+      setDraft(nextDraft);
+      setCurrentStep(step);
+      setFurthestStepIndex(nextFurthestStepIndex);
+      setErrors({});
+    } catch {
+      setErrors((current) => ({
+        ...current,
+        submit: t("onboarding.error.create"),
+      }));
+    } finally {
+      stepTransitionRef.current = false;
+    }
   }
 
   function goBack() {
     if (currentStepIndex > 0) {
-      goToStep(visibleSteps[currentStepIndex - 1].key);
+      void goToStep(visibleSteps[currentStepIndex - 1].key);
     }
   }
 
@@ -953,7 +1012,7 @@ export default function OnboardingPage() {
     }
   }
 
-  function continueFlow() {
+  async function continueFlow() {
     const preparedDraft =
       currentStep === "offer" || currentStep === "review"
         ? { ...draft, offer: normalizeOfferForLocale(draft.offer, draft.campaignMode, locale).normalizedOffer }
@@ -973,7 +1032,6 @@ export default function OnboardingPage() {
     }
 
     const nextIndex = currentStepIndex + 1;
-    setFurthestStepIndex((current) => Math.max(current, nextIndex));
     void recordActivationEvent({
       eventName: "onboarding_step_completed",
       idempotencyKey: `onboarding_step_completed:${draft.idempotencySeed}:${currentStep}`,
@@ -983,7 +1041,7 @@ export default function OnboardingPage() {
         planTier: draft.planTier,
       },
     });
-    goToStep(visibleSteps[nextIndex].key);
+    await goToStep(visibleSteps[nextIndex].key, preparedDraft);
   }
 
   function resetDraft() {
