@@ -14,6 +14,7 @@ import {
   ZERO_EXTERNAL_EFFECTS_ATTESTATION,
   assertZeroExternalEffectsEnvironment,
 } from "../../src/lib/safety/zero-external-effects";
+import type { OnboardingStepKey } from "../../src/lib/onboarding-contract";
 import {
   browserCookiesForOrigin,
   isAllowedStagingTurnstileRequest,
@@ -849,23 +850,7 @@ async function clearExactQaAuthCookies(page: Page) {
   });
 }
 
-async function waitForSuccessfulDraftWrite(
-  page: Page,
-  action: () => Promise<unknown>,
-) {
-  const responsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "PUT" &&
-      new URL(response.url()).pathname === "/api/onboarding/plan",
-    { timeout: 10_000 },
-  );
-  await action();
-  const response = await responsePromise;
-  expect(response.status(), "Synthetic staging onboarding draft write failed.").toBeLessThan(300);
-  return response;
-}
-
-async function readPersistedDraftDestination(page: Page) {
+async function readPersistedDraftState(page: Page) {
   const response = await page.request.get("/api/onboarding/plan", {
     failOnStatusCode: false,
     maxRedirects: 0,
@@ -873,12 +858,34 @@ async function readPersistedDraftDestination(page: Page) {
   });
   if (response.status() !== 200) return `http_${response.status()}`;
   const payload = (await response.json().catch(() => null)) as
-    | { found?: boolean; draft?: { adDestination?: unknown } }
+    | {
+        found?: boolean;
+        currentStep?: unknown;
+        draft?: { adDestination?: unknown };
+      }
     | null;
-  if (payload?.found !== true || typeof payload.draft?.adDestination !== "string") {
+  if (
+    payload?.found !== true ||
+    typeof payload.currentStep !== "string" ||
+    typeof payload.draft?.adDestination !== "string"
+  ) {
     return "missing";
   }
-  return payload.draft.adDestination;
+  return `${payload.currentStep}:${payload.draft.adDestination}`;
+}
+
+async function waitForPersistedDraftState(
+  page: Page,
+  expectedStep: OnboardingStepKey,
+  expectedDestination: "website" | "meta_instant_form",
+) {
+  await expect
+    .poll(() => readPersistedDraftState(page), {
+      message: `The onboarding draft did not durably persist ${expectedStep}:${expectedDestination}.`,
+      timeout: 15_000,
+      intervals: [250, 500, 1_000],
+    })
+    .toBe(`${expectedStep}:${expectedDestination}`);
 }
 
 async function chooseDestination(page: Page, destination: "Website funnel" | "Meta Instant Form") {
@@ -886,28 +893,27 @@ async function chooseDestination(page: Page, destination: "Website funnel" | "Me
   await expect(destinationButton).toBeVisible();
   await destinationButton.click();
   await expect(destinationButton).toHaveAttribute("aria-pressed", "true");
-  const expectedPersistedValue =
-    destination === "Meta Instant Form" ? "meta_instant_form" : "website";
-  await expect
-    .poll(() => readPersistedDraftDestination(page), {
-      message: `The ${destination} selection was not durably persisted before navigation.`,
-      timeout: 15_000,
-      intervals: [250, 500, 1_000],
-    })
-    .toBe(expectedPersistedValue);
 }
 
-async function goToReviewFromBudget(page: Page) {
+async function goToReviewFromBudget(
+  page: Page,
+  destination: "website" | "meta_instant_form",
+) {
   const reviewProgressButton = page.getByRole("button", { name: /Review/i }).first();
   await expect(reviewProgressButton).toBeEnabled();
-  await waitForSuccessfulDraftWrite(page, () => reviewProgressButton.click());
+  await reviewProgressButton.click();
+  await waitForPersistedDraftState(page, "review", destination);
   await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
 }
 
-async function returnToBudget(page: Page) {
+async function returnToBudget(
+  page: Page,
+  destination: "website" | "meta_instant_form",
+) {
   const budgetProgressButton = page.getByRole("button", { name: /Budget/i }).first();
   await expect(budgetProgressButton).toBeEnabled();
-  await waitForSuccessfulDraftWrite(page, () => budgetProgressButton.click());
+  await budgetProgressButton.click();
+  await waitForPersistedDraftState(page, "budget", destination);
   await expect(page.getByRole("heading", { name: "Set budget and capture style" })).toBeVisible();
 }
 
@@ -966,6 +972,7 @@ async function progressFreshOnboardingToReview(page: Page) {
   await expect(page.getByText("Estimated 30-day media spend:", { exact: false })).toContainText("$900");
 
   await chooseDestination(page, "Meta Instant Form");
+  await waitForPersistedDraftState(page, "budget", "meta_instant_form");
   await gotoAndSettle(page, "/onboarding?resume=1");
   await expect(page.getByRole("heading", { name: "Set budget and capture style" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Meta Instant Form/i }).first()).toHaveAttribute("aria-pressed", "true");
@@ -990,16 +997,12 @@ async function progressFreshOnboardingToReview(page: Page) {
 
   if (await page.getByRole("heading", { name: "Confirm launch plan" }).isVisible().catch(() => false)) {
     await expect(page.getByText("$297/mo", { exact: false }).first()).toBeVisible();
-    await waitForSuccessfulDraftWrite(page, () =>
-      page.getByRole("button", { name: /Continue to review/i }).click(),
-    );
+    await page.getByRole("button", { name: /Continue to review/i }).click();
   } else {
     await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
-    await waitForSuccessfulDraftWrite(page, async () => {
-      await page.getByRole("button", { name: /Review/i }).first().click();
-    });
   }
 
+  await waitForPersistedDraftState(page, "review", "meta_instant_form");
   await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
   await expect(
     page.getByTestId("onboarding-current-step-panel").getByText("Safe Browserproof", { exact: true }),
@@ -1156,17 +1159,17 @@ test.describe("authenticated isolated-staging product proof", () => {
     await progressFreshOnboardingToReview(page);
     await assertReviewDestination(page, "Meta Instant Form");
 
-    await returnToBudget(page);
+    await returnToBudget(page, "meta_instant_form");
     await chooseDestination(page, "Website funnel");
-    await goToReviewFromBudget(page);
+    await goToReviewFromBudget(page, "website");
     await assertReviewDestination(page, "Website funnel");
     await gotoAndSettle(page, "/onboarding?resume=1");
     await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
     await assertReviewDestination(page, "Website funnel");
 
-    await returnToBudget(page);
+    await returnToBudget(page, "website");
     await chooseDestination(page, "Meta Instant Form");
-    await goToReviewFromBudget(page);
+    await goToReviewFromBudget(page, "meta_instant_form");
     await assertReviewDestination(page, "Meta Instant Form");
     await gotoAndSettle(page, "/onboarding?resume=1");
     await expect(page.getByRole("heading", { name: "Confirm and build" })).toBeVisible();
