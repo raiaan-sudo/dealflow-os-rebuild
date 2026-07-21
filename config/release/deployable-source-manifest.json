@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1110,
-  "deployableSourceSha256": "06e77773214e830062d5864a7b76ec45ef32d1e638d9d153b2060ea2febfa96b",
+  "deployableSourceSha256": "d6b2df9301494d25e4d634d7b7aea73083d03264f126f05207bd8ca167e0dc7e",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -2162,7 +2162,7 @@
       "path": "scripts/test-supply-chain-contract.mjs",
       "size": 2458,
       "mode": 33188,
-      "sha256": "ad5440d77222d97bbd3d22cf3a081983998d78bcc61cff884c17fbbd12ef7c4b"
+      "sha256": "b6de4fe59f9cbb45899d758f6559f5b165c7f8e034a5bb63481094ae51d5d5e4"
     },
     {
       "path": "scripts/test-support-external-delivery.mjs",
