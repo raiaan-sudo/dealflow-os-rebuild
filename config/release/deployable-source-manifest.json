@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1110,
-  "deployableSourceSha256": "75ec66a408d667e481034c967f5adae518345ab94126c09f7df52f03e0a2a4b0",
+  "deployableSourceSha256": "06e77773214e830062d5864a7b76ec45ef32d1e638d9d153b2060ea2febfa96b",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -636,15 +636,15 @@
     },
     {
       "path": "package-lock.json",
-      "size": 268851,
+      "size": 270485,
       "mode": 33188,
-      "sha256": "c95f4be2a2fb44f87a401138ba6b2ec4085b6994a96d76ad2b0928945bee1d9b"
+      "sha256": "db652fbbc5ffb6ac4d481eecb774605360744cb7f38b0a4f0a8d70005b50f89d"
     },
     {
       "path": "package.json",
-      "size": 18295,
+      "size": 18318,
       "mode": 33188,
-      "sha256": "0a14602b61fa1b90d00c1601ebf42f91a1b266b7baeca0a18fa5e9c2fd1617c7"
+      "sha256": "6fa94aff4e4b16730ff5cc4a84fe518c08dce7c4bbc2b9f8bd13895f74c62a5b"
     },
     {
       "path": "playwright.safe.config.ts",
