@@ -907,6 +907,42 @@ export default function OnboardingPage() {
     });
   }
 
+  function selectAdDestination(destination: CampaignAdDestination) {
+    if (draft.adDestination === destination) return;
+    const nextDraft = { ...draft, adDestination: destination };
+    const destinationNavigationEpoch = draftNavigationEpochRef.current + 1;
+    draftNavigationEpochRef.current = destinationNavigationEpoch;
+    // The explicit selection is persisted directly. Suppress only the passive
+    // effect for this exact render; any newer edit changes the revision and
+    // remains eligible for its own ordered save.
+    directlyPersistedRevisionRef.current = persistenceRevision;
+    setDraft(nextDraft);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.adDestination;
+      delete next.submit;
+      return next;
+    });
+    void enqueueDraftSave({
+      draft: nextDraft,
+      currentStep,
+      furthestStepIndex,
+      navigationEpoch: destinationNavigationEpoch,
+    })
+      .then((savedDraft) => {
+        if (!savedDraft && draftNavigationEpochRef.current === destinationNavigationEpoch) {
+          throw new Error("onboarding_destination_save_superseded");
+        }
+      })
+      .catch(() => {
+        if (draftNavigationEpochRef.current !== destinationNavigationEpoch) return;
+        setErrors((current) => ({
+          ...current,
+          submit: t("onboarding.error.create"),
+        }));
+      });
+  }
+
   function selectMode(campaignMode: CampaignMode) {
     const defaults = optionCatalog.modes[campaignMode];
     updateDraft({
@@ -1397,7 +1433,7 @@ export default function OnboardingPage() {
                             key={destination}
                             type="button"
                             aria-pressed={selected}
-                            onClick={() => updateDraft({ adDestination: destination })}
+                            onClick={() => selectAdDestination(destination)}
                             className={cn(
                               "rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5",
                               selected

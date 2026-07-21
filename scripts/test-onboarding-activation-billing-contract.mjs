@@ -454,6 +454,9 @@ check("browser render stores no draft or navigation and removes the legacy PII k
   assert.match(pageSource, /currentNavigationEpoch: draftNavigationEpochRef\.current/);
   assert.match(pageSource, /await enqueueDraftSave\(\{[\s\S]*currentStep: step/);
   assert.match(pageSource, /setPersistenceRevision\(\(current\) => current \+ 1\)/);
+  assert.match(pageSource, /function selectAdDestination\(destination: CampaignAdDestination\)/);
+  assert.match(pageSource, /navigationEpoch: destinationNavigationEpoch/);
+  assert.match(pageSource, /onClick=\{\(\) => selectAdDestination\(destination\)\}/);
 });
 
 check("queued debounce writes cannot regress a newer onboarding navigation", () => {
