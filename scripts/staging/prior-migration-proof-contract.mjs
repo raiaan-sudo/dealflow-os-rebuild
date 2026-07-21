@@ -483,6 +483,19 @@ export function classifyPriorMigrationEvidence({
   if (requireApplicationEvidence) {
     throw new Error("Pinned forward mode requires an exact mutation-complete application proof");
   }
+  const exactFullCatalog =
+    proof.remoteStateVerification?.exactStructuralCatalog === true;
+  const exactManagedCatalog =
+    proof.remoteStateVerification?.exactManagedStructuralCatalog === true &&
+    proof.remoteStateVerification?.platformStructuralCatalogStable === true &&
+    typeof proof.remoteStateVerification?.state?.managedStructuralCatalogSha256 === "string" &&
+    /^[a-f0-9]{64}$/.test(
+      proof.remoteStateVerification.state.managedStructuralCatalogSha256,
+    ) &&
+    Number.isInteger(
+      proof.remoteStateVerification?.state?.managedStructuralCatalogRecordCount,
+    ) &&
+    proof.remoteStateVerification.state.managedStructuralCatalogRecordCount > 0;
   if (
     manifest.migrationMode !== "VERIFY_EXISTING_EXACT" ||
     manifest.verificationReadOnly !== true ||
@@ -502,7 +515,7 @@ export function classifyPriorMigrationEvidence({
     proof.remoteStateVerification?.status !== "EXACT_EXISTING_COMMITTED_PORTFOLIO" ||
     proof.remoteStateVerification?.readOnly !== true ||
     proof.remoteStateVerification?.exactMigrationHistory !== true ||
-    proof.remoteStateVerification?.exactStructuralCatalog !== true ||
+    (!exactFullCatalog && !exactManagedCatalog) ||
     proof.remoteStateVerification?.exactNormalizedSchema !== true ||
     summary.remoteStateVerificationStatus !== "EXACT_EXISTING_COMMITTED_PORTFOLIO"
   ) {

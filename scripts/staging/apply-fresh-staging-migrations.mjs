@@ -129,6 +129,8 @@ const existingExactVerificationFailureCodes = Object.freeze({
   AUTH_COUNT_CONSISTENCY: "existing_auth_count_consistency_not_proven",
   STRUCTURAL_CATALOG_BINDING: "existing_structural_catalog_binding_not_proven",
   STRUCTURAL_CATALOG_STABILITY: "existing_structural_catalog_stability_not_proven",
+  MANAGED_STRUCTURAL_CATALOG_BINDING: "existing_managed_structural_catalog_binding_not_proven",
+  MANAGED_STRUCTURAL_CATALOG_STABILITY: "existing_managed_structural_catalog_stability_not_proven",
   NORMALIZED_SCHEMA_FIRST_CAPTURE: "existing_normalized_schema_first_capture_not_proven",
   NORMALIZED_SCHEMA_REPEAT_CAPTURE: "existing_normalized_schema_repeat_capture_not_proven",
   NORMALIZED_SCHEMA_BINDING: "existing_normalized_schema_binding_not_proven",
@@ -2318,9 +2320,8 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       throw new Error("Existing staging auth-surface count did not match structural-state capture");
     }
     verificationStage = "STRUCTURAL_CATALOG_BINDING";
-    if (existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256) {
-      throw new Error("Existing staging structural catalog drifted from the sealed application proof");
-    }
+    const platformCatalogDriftObserved =
+      existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256;
     verificationStage = "STRUCTURAL_CATALOG_STABILITY";
     const existingCatalogRepeat = captureRemoteCatalogIdentity(
       "Repeat existing staging structural-catalog identity",
@@ -2330,6 +2331,30 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       existingState.structuralCatalogSha256
     ) {
       throw new Error("Existing staging structural catalog was not stable across repeated capture");
+    }
+    verificationStage = "MANAGED_STRUCTURAL_CATALOG_BINDING";
+    const existingManagedCatalog = captureManagedCatalogIdentity(
+      "Existing staging managed structural-catalog identity",
+    );
+    if (
+      existingManagedCatalog.managedStructuralCatalogSha256 !==
+        FORWARD_120_TO_121_AUTHORITY.current.managedStructuralCatalogSha256 ||
+      existingManagedCatalog.managedStructuralCatalogRecordCount !==
+        FORWARD_120_TO_121_AUTHORITY.current.managedStructuralCatalogRecordCount
+    ) {
+      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 121 authority");
+    }
+    verificationStage = "MANAGED_STRUCTURAL_CATALOG_STABILITY";
+    const existingManagedCatalogRepeat = captureManagedCatalogIdentity(
+      "Repeat existing staging managed structural-catalog identity",
+    );
+    if (
+      existingManagedCatalogRepeat.managedStructuralCatalogSha256 !==
+        existingManagedCatalog.managedStructuralCatalogSha256 ||
+      existingManagedCatalogRepeat.managedStructuralCatalogRecordCount !==
+        existingManagedCatalog.managedStructuralCatalogRecordCount
+    ) {
+      throw new Error("Existing staging DealFlow-managed structural catalog was not stable across repeated capture");
     }
     verificationStage = "NORMALIZED_SCHEMA_FIRST_CAPTURE";
     const existingDump = captureNormalizedSchemaDump();
@@ -2409,9 +2434,15 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
         status: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
         readOnly: true,
         exactMigrationHistory: true,
-        exactStructuralCatalog: true,
+        exactStructuralCatalog: !platformCatalogDriftObserved,
+        exactManagedStructuralCatalog: true,
+        platformStructuralCatalogStable: true,
+        platformCatalogDriftObserved,
         exactNormalizedSchema: true,
-        state: existingState,
+        state: {
+          ...existingState,
+          ...existingManagedCatalog,
+        },
       },
       applied,
     };
@@ -2432,6 +2463,9 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       lastAppliedVersion: requiredFinalMigration.slice(0, 14),
       lastCommittedVersion: requiredFinalMigration.slice(0, 14),
       remoteStateVerificationStatus: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+      exactManagedStructuralCatalog: true,
+      platformStructuralCatalogStable: true,
+      platformCatalogDriftObserved,
       authUserCountAtVerification: authSurface.userCount,
       authUserSurfaceAtVerification: authSurface,
       ghlEmbedAuthExchangeCountAtVerification:

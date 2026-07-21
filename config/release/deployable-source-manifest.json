@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1110,
-  "deployableSourceSha256": "76a42bad78fbb1f6f344a4b48f1ce6a93aa6f046d6632f795200bd9cb7092b4f",
+  "deployableSourceSha256": "75ec66a408d667e481034c967f5adae518345ab94126c09f7df52f03e0a2a4b0",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -984,9 +984,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 184105,
+      "size": 185829,
       "mode": 33188,
-      "sha256": "7e01876d9f8d40424133d08b475bb5f4256d6dc5b9b89917c4a9520d9d890ead"
+      "sha256": "7c0653008f33e673a8dbc7907f8c5f2ef2f97ffc4f59dffa74abf5f2feda9ee8"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1026,9 +1026,9 @@
     },
     {
       "path": "scripts/staging/forward-120-to-121-contract.mjs",
-      "size": 3775,
+      "size": 3932,
       "mode": 33188,
-      "sha256": "8eada3a5e43eba6109e374b9c1fd92932077ea1fad03d71d34293e90027e27b4"
+      "sha256": "3d7a0b7b5d41ad42761abc61c994ee72d2f2427e73cf1478ff06e9b58d5f3344"
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
@@ -1062,9 +1062,9 @@
     },
     {
       "path": "scripts/staging/prior-migration-proof-contract.mjs",
-      "size": 25399,
+      "size": 26060,
       "mode": 33188,
-      "sha256": "4cfdf8d2d0dc8b20121db364cc21d945fc6887d8a8ce2ad765bde26a9c8a4845"
+      "sha256": "4c327c4cacd09d65447741ab91d2de43005afef4a29d5093e32800dfb7e3bcb4"
     },
     {
       "path": "scripts/staging/provider-session-bundle-contract.mjs",
@@ -1134,9 +1134,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 60547,
+      "size": 61690,
       "mode": 33188,
-      "sha256": "f7d7b342d20fbce9f814899a63def85da6bf018420333520901493423c611796"
+      "sha256": "84cc23824999875016616ee580125b35f0dce108c688c8ba7aa19b36ad19b855"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1176,9 +1176,9 @@
     },
     {
       "path": "scripts/staging/test-forward-120-to-121-contract.mjs",
-      "size": 1703,
+      "size": 1962,
       "mode": 33188,
-      "sha256": "76fc04a9ded1cf33929c75ba2563d48fece1c5a10e5f4079baccd4324ff69958"
+      "sha256": "5dda1dd29b4817b8089b7d08b53cabc12c988bb370d168c5194f3442748a5627"
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",

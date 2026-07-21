@@ -29,6 +29,14 @@ assert.equal(result.priorRecords.length, 120);
 assert.equal(result.forwardRecord.name, FORWARD_120_TO_121_AUTHORITY.forwardMigration.file);
 assert.equal(FORWARD_120_TO_121_AUTHORITY.prior.migrationCount, 120);
 assert.equal(FORWARD_120_TO_121_AUTHORITY.current.migrationCount, 121);
+assert.equal(
+  FORWARD_120_TO_121_AUTHORITY.current.managedStructuralCatalogSha256,
+  "afd3b0d494dc85a2d4862e676e39170dec6fa270f516e4f8213603c86d01c250",
+);
+assert.equal(
+  FORWARD_120_TO_121_AUTHORITY.current.managedStructuralCatalogRecordCount,
+  8405,
+);
 assert.throws(
   () => assertExactForward120To121Portfolio(records.slice(1), migrationDirectory),
   /exact 121-migration portfolio/,

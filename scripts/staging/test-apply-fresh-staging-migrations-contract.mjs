@@ -99,6 +99,8 @@ for (const stage of [
   "AUTH_COUNT_CONSISTENCY",
   "STRUCTURAL_CATALOG_BINDING",
   "STRUCTURAL_CATALOG_STABILITY",
+  "MANAGED_STRUCTURAL_CATALOG_BINDING",
+  "MANAGED_STRUCTURAL_CATALOG_STABILITY",
   "NORMALIZED_SCHEMA_FIRST_CAPTURE",
   "NORMALIZED_SCHEMA_REPEAT_CAPTURE",
   "NORMALIZED_SCHEMA_BINDING",
@@ -122,7 +124,7 @@ assert.ok(existingFailureCodeMapBody, "Existing-verification failure-code map mu
 const existingFailureCodes = [
   ...existingFailureCodeMapBody.matchAll(/^[ ]{2}[A-Z_]+: "([a-z0-9_]+)",$/gm),
 ].map((match) => match[1]);
-assert.equal(existingFailureCodes.length, 18, "Every existing-verification stage needs one code");
+assert.equal(existingFailureCodes.length, 20, "Every existing-verification stage needs one code");
 assert.equal(
   new Set(existingFailureCodes).size,
   existingFailureCodes.length,
@@ -571,6 +573,8 @@ for (const stage of Object.keys({
   AUTH_COUNT_CONSISTENCY: true,
   STRUCTURAL_CATALOG_BINDING: true,
   STRUCTURAL_CATALOG_STABILITY: true,
+  MANAGED_STRUCTURAL_CATALOG_BINDING: true,
+  MANAGED_STRUCTURAL_CATALOG_STABILITY: true,
   NORMALIZED_SCHEMA_FIRST_CAPTURE: true,
   NORMALIZED_SCHEMA_REPEAT_CAPTURE: true,
   NORMALIZED_SCHEMA_BINDING: true,
@@ -596,6 +600,21 @@ assert.match(
   resumeBranch,
   /captureRemoteStructuralState\([\s\S]*?\(stage\) => \{[\s\S]*?verificationStage = stage;[\s\S]*?\}\s*,?\s*\)/,
   "Composite structural capture must attribute each query to its exact stage",
+);
+assert.match(
+  resumeBranch,
+  /platformCatalogDriftObserved[\s\S]*captureManagedCatalogIdentity\([\s\S]*FORWARD_120_TO_121_AUTHORITY\.current\.managedStructuralCatalogSha256[\s\S]*FORWARD_120_TO_121_AUTHORITY\.current\.managedStructuralCatalogRecordCount/,
+  "Resume verifier must tolerate only stable platform drift while binding the exact DealFlow-managed 121 catalog",
+);
+assert.match(
+  resumeBranch,
+  /exactManagedStructuralCatalog: true[\s\S]*platformStructuralCatalogStable: true[\s\S]*platformCatalogDriftObserved[\s\S]*exactNormalizedSchema: true/,
+  "Resume evidence must distinguish platform drift from exact managed schema truth",
+);
+assert.match(
+  priorProofContractSource,
+  /exactFullCatalog[\s\S]*exactManagedCatalog[\s\S]*platformStructuralCatalogStable[\s\S]*managedStructuralCatalogSha256[\s\S]*managedStructuralCatalogRecordCount/,
+  "Prior-proof classification must accept only exact full-catalog or exact managed-catalog read-only evidence",
 );
 const structuralCaptureBody =
   /function captureRemoteStructuralState\(labelPrefix, attributeStage = null\) \{([\s\S]*?)\n\}/.exec(
