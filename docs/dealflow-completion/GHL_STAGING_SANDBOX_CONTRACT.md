@@ -114,6 +114,14 @@ HighLevel account and set
 The app/client configuration, exact callback/install URLs, scope set, and
 AES-256-GCM key/version come from secret-managed `GHL_MARKETPLACE_*` values in
 `.env.example`; credential plaintext must never be persisted or captured.
+New white-label Marketplace configuration must use the neutral callback path
+`/api/integrations/crm/marketplace/callback`; the legacy path containing `ghl`
+is retained only for compatibility because HighLevel rejects branding
+references in new white-label redirect URLs.
+The custom-page live and testing URL is the neutral bootstrap path
+`/crm/embed`. The legacy `/ghl/embed` bootstrap remains a compatibility alias;
+both paths use the same signed-context exchange, verified partner-host binding,
+and capability-scoped frame policy.
 
 The installation row must reference the secret as
 `env:GHL_SANDBOX_AGENCY_TOKEN`. Never put the token in SQL, source, logs,

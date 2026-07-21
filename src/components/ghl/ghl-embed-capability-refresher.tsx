@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { GHL_EMBED_BOOTSTRAP_PATH } from "@/lib/white-label/ghl-embed-capability";
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 1_000;
 
@@ -40,7 +41,7 @@ export function GhlEmbedCapabilityRefresher(props: { parentOrigin: string | null
               parentOrigin: event.origin,
             }),
           });
-          if (!response.ok) window.location.assign("/ghl/embed");
+          if (!response.ok) window.location.assign(GHL_EMBED_BOOTSTRAP_PATH);
         } catch {
           // The signed capability remains valid until its short expiry. A later
           // interval/visibility event retries; navigation then fails closed to

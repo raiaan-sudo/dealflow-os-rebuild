@@ -67,6 +67,11 @@ The following legacy markers must not appear in production source:
 
 ## GoHighLevel Embed Contract
 
+The white-label-safe Marketplace bootstrap is `/crm/embed`; `/ghl/embed` is a
+legacy compatibility alias. Both are inert before signed GHL context exchange
+and resolve the exact verified partner domain before their frame policy is
+opened.
+
 The only embeddable paths are `/onboarding`, `/campaign-built`, `/paywall`,
 `/build/funnel`, `/build/creatives`, `/preview`, `/launch`, `/launching`,
 `/launch-success`, `/unlock`, `/results`, `/dashboard`, `/settings`, and
@@ -96,6 +101,12 @@ signed handoff token but cannot reopen or retry a consumed receipt.
 
 `Campaign Setup` can appear only as ordinary step naming in the current
 onboarding flow. It must not appear inside a standalone legacy builder route.
+
+New white-label Marketplace installations use the neutral OAuth callback
+`/api/integrations/crm/marketplace/callback`. The legacy
+`/api/integrations/ghl/marketplace/callback` remains an authenticated,
+one-time-state-bound compatibility route for existing installations. Both
+routes execute the same tenant-fenced callback contract; neither is public.
 
 ## Release Gate
 

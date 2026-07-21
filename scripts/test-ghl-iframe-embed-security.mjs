@@ -23,6 +23,10 @@ const bootstrapSource = fs.readFileSync(
   "src/app/ghl/embed/ghl-embed-bootstrap.tsx",
   "utf8",
 );
+const neutralBootstrapSource = fs.readFileSync(
+  "src/app/crm/embed/page.tsx",
+  "utf8",
+);
 const refresherSource = fs.readFileSync(
   "src/components/ghl/ghl-embed-capability-refresher.tsx",
   "utf8",
@@ -182,7 +186,7 @@ for (const marker of [
   "verifyGhlEmbedSessionMarker",
   "verifyGhlEmbedCapability",
   "x-dealflow-ghl-embed-organization",
-  '"/ghl/embed"',
+  '"/crm/embed"',
   "shouldResolvePartnerDomainContext(request)",
   '"/builder"',
   "frame-ancestors ${frameAncestors}",
@@ -263,7 +267,7 @@ for (const marker of [
   "event.origin !== parentOrigin",
   'window.parent.postMessage(',
   'parentOrigin,',
-  'window.location.assign("/ghl/embed")',
+  "window.location.assign(GHL_EMBED_BOOTSTRAP_PATH)",
   'document.addEventListener("visibilitychange"',
 ]) {
   if (!refresherSource.includes(marker)) failures.push(`Embed refresher is missing: ${marker}`);
@@ -282,6 +286,15 @@ for (const marker of [
   'target="_blank"',
 ]) {
   if (!bootstrapSource.includes(marker)) failures.push(`Embed bootstrap is missing: ${marker}`);
+}
+for (const marker of [
+  "GhlEmbedBootstrap",
+  "getAllowedGhlParentOrigins",
+  'headerStore.get("x-dealflow-verified-partner-domain")',
+]) {
+  if (!neutralBootstrapSource.includes(marker)) {
+    failures.push(`Neutral CRM bootstrap is missing: ${marker}`);
+  }
 }
 if (!supportPageSource.includes("SupportTicketForm") ||
     !supportFormSource.includes('fetchWithRetry("/api/feedback",')) {
@@ -419,20 +432,25 @@ const request = (hostname, pathname, search = "") => {
 };
 
 assert.equal(
-  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/ghl/embed")),
+  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/crm/embed")),
   true,
-  "the inert bootstrap must resolve verified partner context before CSP and header injection",
+  "the neutral inert bootstrap must resolve verified partner context before CSP and header injection",
 );
 assert.equal(
-  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/fr/ghl/embed")),
+  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/fr/crm/embed")),
   true,
-  "locale-prefixed bootstrap routes must resolve the same verified partner context",
+  "locale-prefixed neutral bootstrap routes must resolve the same verified partner context",
+);
+assert.equal(
+  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/ghl/embed")),
+  true,
+  "the legacy bootstrap must remain a safe compatibility alias",
 );
 assert.equal(
   requestOriginHelpers.isExactVerifiedPartnerRequestOrigin({
     requestUrl: "https://partner.example/api/integrations/ghl/embed-context",
     origin: "https://partner.example",
-    referer: "https://partner.example/ghl/embed",
+    referer: "https://partner.example/crm/embed",
     fetchSite: "same-origin",
     partnerDomain: "partner.example",
     requireHttps: true,
@@ -452,7 +470,7 @@ for (const invalid of [
     requestOriginHelpers.isExactVerifiedPartnerRequestOrigin({
       requestUrl: "https://partner.example/api/integrations/ghl/embed-context",
       origin: "https://partner.example",
-      referer: "https://partner.example/ghl/embed",
+      referer: "https://partner.example/crm/embed",
       fetchSite: "same-origin",
       partnerDomain: "partner.example",
       requireHttps: true,
@@ -464,13 +482,13 @@ for (const invalid of [
 }
 
 assert.equal(
-  proxyHelpers.getFrameAncestors(request("partner.example", "/ghl/embed"), "partner.example", null),
+  proxyHelpers.getFrameAncestors(request("partner.example", "/crm/embed"), "partner.example", null),
   "https://app.gohighlevel.com https://app.leadconnectorhq.com https://crm.partner.example",
   "only the inert bootstrap may be framed before signed context exchange",
 );
 assert.equal(
   proxyHelpers.getFrameAncestors(
-    request("partner.example", "/fr/ghl/embed"),
+    request("partner.example", "/fr/crm/embed"),
     "partner.example",
     null,
   ),
@@ -484,7 +502,7 @@ assert.equal(
 );
 assert.equal(
   proxyHelpers.getFrameAncestors(
-    request("partner.example", "/login", "?embed=ghl&redirectedFrom=%2Fghl%2Fembed"),
+    request("partner.example", "/login", "?embed=ghl&redirectedFrom=%2Fcrm%2Fembed"),
     "partner.example",
     preauthCapability,
   ),

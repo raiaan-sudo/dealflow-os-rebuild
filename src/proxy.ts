@@ -21,6 +21,7 @@ import {
 import {
   getAllowedGhlParentOrigins,
   GHL_EMBED_BOOTSTRAP_PATH,
+  GHL_EMBED_LEGACY_BOOTSTRAP_PATH,
   GHL_EMBED_CAPABILITY_COOKIE,
   GHL_EMBED_SESSION_COOKIE,
   type GhlEmbedCapability,
@@ -36,6 +37,7 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
+  "/crm/embed",
   "/ghl/embed",
   "/access/checkout",
   "/access-key/success",
@@ -270,6 +272,10 @@ const GHL_EMBEDDABLE_PATHS = new Set([
   "/support",
   "/builder",
 ]);
+const GHL_EMBED_BOOTSTRAP_PATHS = new Set([
+  GHL_EMBED_BOOTSTRAP_PATH,
+  GHL_EMBED_LEGACY_BOOTSTRAP_PATH,
+]);
 function hasEmbeddedAppReturn(request: NextRequest) {
   if (
     getEffectiveProductPathname(request) !== "/login" ||
@@ -329,7 +335,7 @@ function shouldResolvePartnerDomainContext(request: NextRequest) {
   return (
     pathname === "/" ||
     pathname === "/login" ||
-    pathname === GHL_EMBED_BOOTSTRAP_PATH ||
+    GHL_EMBED_BOOTSTRAP_PATHS.has(pathname) ||
     isGhlEmbeddableSurface(request)
   );
 }
@@ -349,7 +355,7 @@ function getFrameAncestors(
     return "'none'";
   }
 
-  if (getEffectiveProductPathname(request) === GHL_EMBED_BOOTSTRAP_PATH) {
+  if (GHL_EMBED_BOOTSTRAP_PATHS.has(getEffectiveProductPathname(request))) {
     const bootstrapParents = getAllowedGhlParentOrigins(host);
     return bootstrapParents.length > 0 ? bootstrapParents.join(" ") : "'none'";
   }
@@ -357,7 +363,7 @@ function getFrameAncestors(
   if (!embedCapability || embedCapability.domain !== host) return "'none'";
   const embedReturnPath = getGhlEmbedReturnPath(request);
   if (
-    embedReturnPath === GHL_EMBED_BOOTSTRAP_PATH ||
+    (embedReturnPath !== null && GHL_EMBED_BOOTSTRAP_PATHS.has(embedReturnPath)) ||
     (embedCapability.stage === "authenticated" &&
       embedReturnPath &&
       GHL_EMBEDDABLE_PATHS.has(embedReturnPath))
@@ -714,7 +720,7 @@ export async function proxy(request: NextRequest) {
   if (
     embedSessionMarker &&
     !embedCapability &&
-    pathname !== GHL_EMBED_BOOTSTRAP_PATH &&
+    !GHL_EMBED_BOOTSTRAP_PATHS.has(pathname) &&
     pathname !== "/api/integrations/ghl/embed-context"
   ) {
     if (pathname.startsWith("/api/")) {

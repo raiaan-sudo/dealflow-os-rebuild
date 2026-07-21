@@ -2,7 +2,8 @@ import { normalizePartnerDomainHost } from "./verified-partner-domain";
 
 export const GHL_EMBED_CAPABILITY_COOKIE = "df_ghl_embed_capability";
 export const GHL_EMBED_SESSION_COOKIE = "df_ghl_embed_session";
-export const GHL_EMBED_BOOTSTRAP_PATH = "/ghl/embed";
+export const GHL_EMBED_BOOTSTRAP_PATH = "/crm/embed";
+export const GHL_EMBED_LEGACY_BOOTSTRAP_PATH = "/ghl/embed";
 
 const CAPABILITY_VERSION = 1;
 const AUTH_HANDOFF_VERSION = 1;

@@ -54,6 +54,11 @@ const expectedPrivateGetApiRoutes = new Map([
     requiredCalls: ["getAuthenticatedContext", "completeGhlMarketplaceOAuthCallback"],
     requiredIdentifiers: ["GHL_MARKETPLACE_STATE_COOKIE"],
   }],
+  ["/api/integrations/crm/marketplace/callback", {
+    methods: new Set(["GET"]),
+    requiredCalls: ["getAuthenticatedContext", "completeGhlMarketplaceOAuthCallback"],
+    requiredIdentifiers: ["GHL_MARKETPLACE_STATE_COOKIE"],
+  }],
 ]);
 
 const expectedInternalApiRoutes = new Map([

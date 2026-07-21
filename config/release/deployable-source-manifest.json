@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1108,
-  "deployableSourceSha256": "a9367812a1ca5b5ceab011511584e88906ce26c2ee2106e24ace5cc6d91cdaed",
+  "entryCount": 1110,
+  "deployableSourceSha256": "43edc22ae88979471be0ab5542100a9a4549d1f894d614364916a56dd8fbda33",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -102,9 +102,9 @@
     },
     {
       "path": "docs/contracts/production-route-contract.md",
-      "size": 6463,
+      "size": 7055,
       "mode": 33188,
-      "sha256": "3394899f5a5f420afb3cf0de995e2708d7d42464867a6642365137a8f8a39835"
+      "sha256": "409b963902113e5ed4bfc9c8a908bc9fe8b1e40da31497826534413d46fd01d0"
     },
     {
       "path": "docs/dealflow-completion/ACCESSIBILITY_TRUTH_TRANCHE.md",
@@ -186,9 +186,9 @@
     },
     {
       "path": "docs/dealflow-completion/GHL_STAGING_SANDBOX_CONTRACT.md",
-      "size": 7655,
+      "size": 8188,
       "mode": 33188,
-      "sha256": "06c691e468d41009b7141c0fb04802afba46286d87af4d9e1481f5409db935ed"
+      "sha256": "edbef0b1dceca944597e22de40495dba155bd78e8d43b460671d07710b0eb12b"
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
@@ -762,9 +762,9 @@
     },
     {
       "path": "scripts/check-route-security.mjs",
-      "size": 18714,
+      "size": 18948,
       "mode": 33188,
-      "sha256": "14293c9da3cdc61c2365b2fb0bd69706f7ad6672fb965a34b115a4207cef2015"
+      "sha256": "b5326128eaa36b5623bc6c38f61be4d22a3035dbb76a9bd2ba4dbc20f096fc21"
     },
     {
       "path": "scripts/check-tenant-isolation.mjs",
@@ -1614,9 +1614,9 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 19724,
+      "size": 20291,
       "mode": 33188,
-      "sha256": "79d44df73a5c73ea2c9cf2c1279413a0390850ef1a4771382b461c85d03a5b29"
+      "sha256": "068cdf03a1dbfc95b6274ed0cd4df5a6327f05e348389f693f31f8cc93f2e740"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
@@ -2861,6 +2861,12 @@
       "sha256": "27c91ee80c214ec8f503ed6d1a573aca1afdd63d13239b2faf367ae8952e4eb7"
     },
     {
+      "path": "src/app/api/integrations/crm/marketplace/callback/route.ts",
+      "size": 1898,
+      "mode": 33188,
+      "sha256": "6f2d1c900f9871f292d3b963429abfec8472f94406c865ece8bef47d941d9a66"
+    },
+    {
       "path": "src/app/api/integrations/ghl/embed-context/route.ts",
       "size": 20055,
       "mode": 33188,
@@ -3057,6 +3063,12 @@
       "size": 2842,
       "mode": 33188,
       "sha256": "3ce954a4705ef85a767398d90e01825636193ca1168d7551314acfd3dac76665"
+    },
+    {
+      "path": "src/app/crm/embed/page.tsx",
+      "size": 492,
+      "mode": 33188,
+      "sha256": "1d2f31f3b79084b03cf5633cf9221c835b6edeccee41da803548d6266cc1a9ce"
     },
     {
       "path": "src/app/data-deletion/page.tsx",
@@ -3414,9 +3426,9 @@
     },
     {
       "path": "src/components/ghl/ghl-embed-capability-refresher.tsx",
-      "size": 2411,
+      "size": 2506,
       "mode": 33188,
-      "sha256": "31ae76bdcb4890002c870152931a99fb27b35db8c2d4ec2b9a5a1d408ca3216c"
+      "sha256": "2380dff8f1fe5542ef43bb1b90390a397fb5bd8b4b21e3263971f8671c5b82e6"
     },
     {
       "path": "src/components/i18n/locale-link.tsx",
@@ -5442,9 +5454,9 @@
     },
     {
       "path": "src/lib/white-label/ghl-embed-capability.ts",
-      "size": 16661,
+      "size": 16722,
       "mode": 33188,
-      "sha256": "077866f59d0a7d3860ac1e6d138c3b9976ec129baa2673030194cdc85d590698"
+      "sha256": "c88c2b1818183d4d54356b24228f5d931b81ef02eae1517b9b1c07d95f0fa376"
     },
     {
       "path": "src/lib/white-label/ghl-embed-request-origin.ts",
@@ -5478,9 +5490,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 27631,
+      "size": 27832,
       "mode": 33188,
-      "sha256": "479ac38db7822e4ae64b69cfa2dab7afe7e8ad273183bcf9e3adf0108a9dc247"
+      "sha256": "842bfc01dc40cb9a5f015236a9602c0e617fb4c2c0b2ca80e80bba99ed99a659"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",
