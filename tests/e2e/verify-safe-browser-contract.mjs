@@ -29,6 +29,7 @@ function requireAll(source, markers, label) {
 const config = read("playwright.safe.config.ts");
 const safeEnvironment = read("tests/e2e/safe-browser-environment.ts");
 const spec = read("tests/e2e/dealflow-safe.spec.ts");
+const stagingAcceptanceSpec = read("tests/e2e/dealflow-staging-acceptance.spec.ts");
 const canceledHomepagePrefetch = read("tests/e2e/expected-next-prefetch-abort.mjs");
 const onboarding = read("src/app/(app)/onboarding/page.tsx");
 const paywall = read("src/app/(app)/paywall/page.tsx");
@@ -355,6 +356,17 @@ for (const unsafeOverride of [
   );
 }
 
+requireAll(
+  stagingAcceptanceSpec,
+  [
+    "EXACT_HARMLESS_PARTNER_ROUTE_READ_TARGETS",
+    "PARTNER_CORE_ROUTES_TEST_TITLES.has(testTitle)",
+    "EXACT_HARMLESS_PARTNER_ROUTE_READ_TARGETS.has(requestTargetFingerprint)",
+    "isHarmlessSupersededApplicationRead({",
+  ],
+  "Superseded partner-route read classifier boundary",
+);
+
 const exactSupersededApplicationRead = Object.freeze({
   errorText: "net::ERR_ABORTED",
   method: "GET",
@@ -375,6 +387,13 @@ assert.equal(
   isHarmlessSupersededApplicationRead(exactSupersededApplicationRead),
   true,
 );
+assert.equal(
+  isHarmlessSupersededApplicationRead({
+    ...exactSupersededApplicationRead,
+    mainFrameNavigationSequenceAtFailure: 4,
+  }),
+  true,
+);
 for (const unsafeOverride of [
   { errorText: "network failed" },
   { method: "POST" },
@@ -388,7 +407,7 @@ for (const unsafeOverride of [
   { responseStatus: 200 },
   { requestSequence: 0 },
   { mainFrameNavigationSequenceAtStart: 0 },
-  { mainFrameNavigationSequenceAtFailure: 4 },
+  { mainFrameNavigationSequenceAtFailure: 3 },
   { mainFrameNavigationSequenceAtFailure: 6 },
   { elapsedMs: -1 },
   { elapsedMs: 5_001 },

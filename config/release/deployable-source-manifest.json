@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1108,
-  "deployableSourceSha256": "9ae296ad2de707d8741b1e8066bb229d808fc20443ad1daf2fce512249c8ce1d",
+  "deployableSourceSha256": "740d509fd892781c000646b2f1ba51451bd66ebc3788a2424d4495bfd5c5a3d3",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -6516,15 +6516,15 @@
     },
     {
       "path": "tests/e2e/dealflow-staging-acceptance.spec.ts",
-      "size": 57314,
+      "size": 57599,
       "mode": 33188,
-      "sha256": "247ca1e7520d0254c19520e0156d9538c35d3c53421d6efd4767054055ed3f3f"
+      "sha256": "fdae1876477b37b2b4ae5ebc8e1036e13edbb80946450de9c089af6e95322881"
     },
     {
       "path": "tests/e2e/expected-navigation-abort.mjs",
-      "size": 8233,
+      "size": 8328,
       "mode": 33188,
-      "sha256": "beeefbfef7df9f79bf67b709b7749bd3db20e6fb784675abafc38218212e54d2"
+      "sha256": "1334394a2f94fe8ae3d8e73f1e419b68bd4c1914bac5ad9955f773d6d4c996d5"
     },
     {
       "path": "tests/e2e/expected-next-prefetch-abort.mjs",
@@ -6558,9 +6558,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 26605,
+      "size": 27177,
       "mode": 33188,
-      "sha256": "7c9effe8155714247e8236e040d09b8d24f1e76917cd5d4405d1886c32ba63b2"
+      "sha256": "6aabfa835cfc73cff723a7bc6a2bda568c6939ab9f1b7528d793edd873fb3088"
     },
     {
       "path": "tests/performance/README.md",

@@ -126,8 +126,10 @@ export function isHarmlessSupersededApplicationRead({
     requestSequence > 0 &&
     Number.isSafeInteger(mainFrameNavigationSequenceAtStart) &&
     mainFrameNavigationSequenceAtStart > 0 &&
-    mainFrameNavigationSequenceAtFailure ===
-      mainFrameNavigationSequenceAtStart + 1 &&
+    (mainFrameNavigationSequenceAtFailure ===
+      mainFrameNavigationSequenceAtStart ||
+      mainFrameNavigationSequenceAtFailure ===
+        mainFrameNavigationSequenceAtStart + 1) &&
     Number.isSafeInteger(elapsedMs) &&
     elapsedMs >= 0 &&
     elapsedMs <= 5_000

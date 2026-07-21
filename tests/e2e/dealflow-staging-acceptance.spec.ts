@@ -68,6 +68,9 @@ const PARTNER_CORE_ROUTES_TEST_TITLES = new Set([
   PARTNER_ONE_CORE_ROUTES_TEST_TITLE,
   PARTNER_TWO_CORE_ROUTES_TEST_TITLE,
 ]);
+const EXACT_HARMLESS_PARTNER_ROUTE_READ_TARGETS = new Set([
+  "sha256:43cc0bb132fdfdcdede8cd25f1a2e5a8b0edda4d7623b2870a178f37430666cc",
+]);
 const LOCALIZED_PRODUCT_COPY = Object.freeze({
   en: Object.freeze({ signIn: "Sign in", dashboard: "Dashboard" }),
   fr: Object.freeze({ signIn: "Se connecter", dashboard: "Tableau de bord" }),
@@ -647,7 +650,8 @@ async function installFailClosedNetworkBoundary(
       failureRecordRawUrlRetained: false,
       failureRecordRawHostRetained: false,
     };
-    const failure = `${request.method()} ${sanitizedRequestTargetFingerprint(request.url())} ${sanitizedRequestFailureDiagnostic(
+    const requestTargetFingerprint = sanitizedRequestTargetFingerprint(request.url());
+    const failure = `${request.method()} ${requestTargetFingerprint} ${sanitizedRequestFailureDiagnostic(
       errorText,
     )} lifecycle=${JSON.stringify(sanitizedLifecycle)}`;
     const expectedNavigationAbort =
@@ -660,6 +664,7 @@ async function installFailClosedNetworkBoundary(
       });
     const harmlessSupersededApplicationRead =
       PARTNER_CORE_ROUTES_TEST_TITLES.has(testTitle) &&
+      EXACT_HARMLESS_PARTNER_ROUTE_READ_TARGETS.has(requestTargetFingerprint) &&
       isHarmlessSupersededApplicationRead({
         errorText,
         method: request.method(),
