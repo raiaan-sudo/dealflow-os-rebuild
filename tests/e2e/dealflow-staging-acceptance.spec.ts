@@ -70,6 +70,7 @@ const PARTNER_CORE_ROUTES_TEST_TITLES = new Set([
 ]);
 const EXACT_HARMLESS_PARTNER_ROUTE_READ_TARGETS = new Set([
   "sha256:43cc0bb132fdfdcdede8cd25f1a2e5a8b0edda4d7623b2870a178f37430666cc",
+  "sha256:626374affa34db1373506a684e574e9edc5ae916924f25930094f24bfecd366c",
 ]);
 const LOCALIZED_PRODUCT_COPY = Object.freeze({
   en: Object.freeze({ signIn: "Sign in", dashboard: "Dashboard" }),
