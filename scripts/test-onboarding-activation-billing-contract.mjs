@@ -449,8 +449,25 @@ check("browser render stores no draft or navigation and removes the legacy PII k
   assert.match(pageSource, /if \(!hydrated \|\| submitting\) return/);
   assert.match(pageSource, /if \(persistenceRevision === 0 \|\| draftConflictRef\.current\) return/);
   assert.match(pageSource, /skipNextDebouncedSaveRef\.current/);
+  assert.match(pageSource, /draftNavigationEpochRef\.current \+= 1/);
+  assert.match(pageSource, /queuedNavigationEpoch: params\.navigationEpoch/);
+  assert.match(pageSource, /currentNavigationEpoch: draftNavigationEpochRef\.current/);
   assert.match(pageSource, /await enqueueDraftSave\(\{[\s\S]*currentStep: step/);
   assert.match(pageSource, /setPersistenceRevision\(\(current\) => current \+ 1\)/);
+});
+
+check("queued debounce writes cannot regress a newer onboarding navigation", () => {
+  assert.equal(onboarding.queuedOnboardingDraftSaveIsCurrent({
+    currentNavigationEpoch: 4,
+  }), true);
+  assert.equal(onboarding.queuedOnboardingDraftSaveIsCurrent({
+    queuedNavigationEpoch: 4,
+    currentNavigationEpoch: 4,
+  }), true);
+  assert.equal(onboarding.queuedOnboardingDraftSaveIsCurrent({
+    queuedNavigationEpoch: 3,
+    currentNavigationEpoch: 4,
+  }), false);
 });
 
 check("passive onboarding render does not write activation telemetry", () => {

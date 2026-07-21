@@ -31,6 +31,7 @@ import {
   buildOnboardingDraftEnvelope,
   buildOnboardingSubmission,
   onboardingDraftSchema,
+  queuedOnboardingDraftSaveIsCurrent,
   type CampaignAdDestination,
   type CampaignMode,
   type FunnelLanguage,
@@ -592,6 +593,7 @@ export default function OnboardingPage() {
   const draftConflictRef = useRef(false);
   const skipNextDebouncedSaveRef = useRef(false);
   const stepTransitionRef = useRef(false);
+  const draftNavigationEpochRef = useRef(0);
   const canUseExistingLaunchAccess =
     billingStatus?.canUseExistingLaunchAccess === true &&
     (!isNewCampaignFlow || billingStatus.canCreateAdditionalCampaign);
@@ -637,8 +639,15 @@ export default function OnboardingPage() {
     draft: DraftState;
     currentStep: OnboardingStepKey;
     furthestStepIndex: number;
+    navigationEpoch?: number;
   }) {
     const operation = saveQueueRef.current.then(async () => {
+      if (!queuedOnboardingDraftSaveIsCurrent({
+        queuedNavigationEpoch: params.navigationEpoch,
+        currentNavigationEpoch: draftNavigationEpochRef.current,
+      })) {
+        return null;
+      }
       const envelope = buildOnboardingDraftEnvelope(params);
       const writeAtRevision = async (expectedRevision: number) => {
         const response = await fetch("/api/onboarding/plan", {
@@ -694,6 +703,7 @@ export default function OnboardingPage() {
   }
 
   function deleteServerDraft() {
+    draftNavigationEpochRef.current += 1;
     const operation = saveQueueRef.current.then(async () => {
       const response = await fetch("/api/onboarding/plan", { method: "DELETE" });
       if (!response.ok) throw new Error("onboarding_draft_delete_failed");
@@ -824,10 +834,26 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (canUseExistingLaunchAccess && currentStep === "plan") {
       const reviewIndex = visibleSteps.findIndex((step) => step.key === "review");
-      setCurrentStep("review");
-      setFurthestStepIndex((current) => Math.max(current, reviewIndex));
+      const nextFurthestStepIndex = Math.max(furthestStepIndex, reviewIndex);
+      draftNavigationEpochRef.current += 1;
+      void enqueueDraftSave({
+        draft,
+        currentStep: "review",
+        furthestStepIndex: nextFurthestStepIndex,
+      })
+        .then(() => {
+          skipNextDebouncedSaveRef.current = true;
+          setCurrentStep("review");
+          setFurthestStepIndex(nextFurthestStepIndex);
+        })
+        .catch(() => {
+          setErrors((current) => ({
+            ...current,
+            submit: t("onboarding.error.create"),
+          }));
+        });
     }
-  }, [canUseExistingLaunchAccess, currentStep, visibleSteps]);
+  }, [canUseExistingLaunchAccess, currentStep, draft, furthestStepIndex, t, visibleSteps]);
 
   useEffect(() => {
     // Hydration, billing reads, and automatic routing are observational. A
@@ -839,6 +865,7 @@ export default function OnboardingPage() {
       return;
     }
     if (persistenceRevision === 0 || draftConflictRef.current) return;
+    const navigationEpoch = draftNavigationEpochRef.current;
 
     const saveTimer = window.setTimeout(() => {
       let envelope: ReturnType<typeof buildOnboardingDraftEnvelope>;
@@ -853,7 +880,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      void enqueueDraftSave(envelope).catch(() => undefined);
+      void enqueueDraftSave({ ...envelope, navigationEpoch }).catch(() => undefined);
     }, 800);
 
     return () => window.clearTimeout(saveTimer);
@@ -916,6 +943,7 @@ export default function OnboardingPage() {
     const nextStepIndex = Math.max(visibleSteps.findIndex((candidate) => candidate.key === step), 0);
     const nextFurthestStepIndex = Math.max(furthestStepIndex, nextStepIndex);
     stepTransitionRef.current = true;
+    draftNavigationEpochRef.current += 1;
     try {
       await enqueueDraftSave({
         draft: nextDraft,
@@ -955,12 +983,14 @@ export default function OnboardingPage() {
     let failureKey: ProductMessageKey = "onboarding.error.create";
 
     try {
+      draftNavigationEpochRef.current += 1;
       const submission = buildOnboardingSubmission(preparedDraft);
       const savedDraft = await enqueueDraftSave({
         draft: preparedDraft,
         currentStep: "review",
         furthestStepIndex: 9,
       });
+      if (!savedDraft) throw new Error("onboarding_draft_save_superseded");
       const response = await fetch("/api/onboarding/plan", {
         method: "POST",
         headers: {

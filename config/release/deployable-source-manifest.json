@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1108,
-  "deployableSourceSha256": "8618fe7973efa225fd447dde77b6ef97eb2c0e1dc192012e5e3a46dc2d4b711c",
+  "deployableSourceSha256": "82fb42e17d88b4e1c835c6bd52fc3d6088a6c5e4b645681fc767df2aab2bce4c",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1926,9 +1926,9 @@
     },
     {
       "path": "scripts/test-onboarding-activation-billing-contract.mjs",
-      "size": 19644,
+      "size": 20352,
       "mode": 33188,
-      "sha256": "3d2b2529c9197c3788e9873cbd834b498cfc07fe05b3e860af00c7ba6f4c7b14"
+      "sha256": "b172735d5090c762f9a6fa66bd2890eebd29d5c58cad151e34e644d3f6ce5070"
     },
     {
       "path": "scripts/test-onboarding-draft-integrity-contract.mjs",
@@ -2382,9 +2382,9 @@
     },
     {
       "path": "src/app/(app)/onboarding/page.tsx",
-      "size": 75985,
+      "size": 77112,
       "mode": 33188,
-      "sha256": "21cb66b6a0858a8847a46b849247c94548aaff14260a7a752cea7114f4ebae9c"
+      "sha256": "b0c6507efab4a9c15100c87ca773f73e6549a6c6d4b60b6a0385c3b7048645f6"
     },
     {
       "path": "src/app/(app)/paywall/page.tsx",
@@ -4560,9 +4560,9 @@
     },
     {
       "path": "src/lib/onboarding-contract.ts",
-      "size": 8865,
+      "size": 9121,
       "mode": 33188,
-      "sha256": "acc35e1058ba6c64cced2037d67f5ac6e1b7b4b0d00318b7050ac36efdb244db"
+      "sha256": "896158cc7782334f5a169399d0b365aad8143100801bc53b8e0c49c0956a9e46"
     },
     {
       "path": "src/lib/onboarding-provenance.ts",

@@ -231,6 +231,14 @@ export function buildOnboardingDraftEnvelope(params: {
   });
 }
 
+export function queuedOnboardingDraftSaveIsCurrent(input: {
+  queuedNavigationEpoch?: number;
+  currentNavigationEpoch: number;
+}) {
+  return input.queuedNavigationEpoch === undefined ||
+    input.queuedNavigationEpoch === input.currentNavigationEpoch;
+}
+
 export function isUnexpiredNavigationState(
   value: unknown,
   now = Date.now(),
