@@ -446,7 +446,10 @@ check("browser render stores no draft or navigation and removes the legacy PII k
   assert.match(pageSource, /dealflow-guided-onboarding-v3/);
   assert.doesNotMatch(pageSource, /localStorage\.(?:setItem|getItem)/);
   assert.match(pageSource, /method: "PUT"/);
-  assert.match(pageSource, /if \(!hydrated \|\| persistenceRevision === 0 \|\| submitting/);
+  assert.match(pageSource, /if \(!hydrated \|\| submitting\) return/);
+  assert.match(pageSource, /if \(persistenceRevision === 0 \|\| draftConflictRef\.current\) return/);
+  assert.match(pageSource, /skipNextDebouncedSaveRef\.current/);
+  assert.match(pageSource, /await enqueueDraftSave\(\{[\s\S]*currentStep: step/);
   assert.match(pageSource, /setPersistenceRevision\(\(current\) => current \+ 1\)/);
 });
 

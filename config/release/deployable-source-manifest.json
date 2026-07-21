@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1108,
-  "deployableSourceSha256": "20a8a40cebdebad94918d4dfbbd13a62c45dd87a2acd1c4d7cb0e3b264a74afd",
+  "deployableSourceSha256": "aeda919bc4dd5f33679fdad83ee1929d0724075faa35307f7e126c7367778a5c",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1926,9 +1926,9 @@
     },
     {
       "path": "scripts/test-onboarding-activation-billing-contract.mjs",
-      "size": 19417,
+      "size": 19644,
       "mode": 33188,
-      "sha256": "37dc15e94812662500149139ba264a9f0fed2b5659719ed97fd9a8ae81d1c731"
+      "sha256": "3d2b2529c9197c3788e9873cbd834b498cfc07fe05b3e860af00c7ba6f4c7b14"
     },
     {
       "path": "scripts/test-onboarding-draft-integrity-contract.mjs",
