@@ -28,6 +28,7 @@ import {
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
 import {
   isHarmlessAbortedApplicationRscPrefetch,
+  isHarmlessSupersededApplicationRead,
   isExpectedNavigationAbort,
   sanitizedRequestFailureDiagnostic,
   sanitizedRequestTargetFingerprint,
@@ -59,6 +60,14 @@ const PARTNER_BRAND_NAME = "DF-STAGING-20260712 Partner Realty OS";
 const PARTNER_TWO_BRAND_NAME = "DF-STAGING-20260712 Partner Two Realty OS";
 const TURNSTILE_TEST_TITLE =
   "public funnel renders the official staging Turnstile test widget without submitting a lead";
+const PARTNER_ONE_CORE_ROUTES_TEST_TITLE =
+  "white-label child receives attributed branding across core product routes";
+const PARTNER_TWO_CORE_ROUTES_TEST_TITLE =
+  "second white-label child receives only partner-two branding and tenant data";
+const PARTNER_CORE_ROUTES_TEST_TITLES = new Set([
+  PARTNER_ONE_CORE_ROUTES_TEST_TITLE,
+  PARTNER_TWO_CORE_ROUTES_TEST_TITLE,
+]);
 const LOCALIZED_PRODUCT_COPY = Object.freeze({
   en: Object.freeze({ signIn: "Sign in", dashboard: "Dashboard" }),
   fr: Object.freeze({ signIn: "Se connecter", dashboard: "Tableau de bord" }),
@@ -649,6 +658,13 @@ async function installFailClosedNetworkBoundary(
         method: request.method(),
         ...sanitizedLifecycle,
       });
+    const harmlessSupersededApplicationRead =
+      PARTNER_CORE_ROUTES_TEST_TITLES.has(testTitle) &&
+      isHarmlessSupersededApplicationRead({
+        errorText,
+        method: request.method(),
+        ...sanitizedLifecycle,
+      });
     const expectedInterceptedWebKitTurnstileBlobFailure =
       browserName === "webkit" &&
       testTitle === TURNSTILE_TEST_TITLE &&
@@ -662,6 +678,7 @@ async function installFailClosedNetworkBoundary(
     if (
       !expectedNavigationAbort &&
       !harmlessAbortedApplicationRscPrefetch &&
+      !harmlessSupersededApplicationRead &&
       !expectedInterceptedWebKitTurnstileBlobFailure
     ) {
       diagnostics.requestFailures.push(failure);

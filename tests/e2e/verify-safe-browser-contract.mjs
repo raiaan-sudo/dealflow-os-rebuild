@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   classifyAbortedInterceptedTelemetry,
   isHarmlessAbortedApplicationRscPrefetch,
+  isHarmlessSupersededApplicationRead,
   sanitizedTelemetryPurposeFingerprint,
 } from "./expected-navigation-abort.mjs";
 
@@ -348,6 +349,53 @@ for (const unsafeOverride of [
   assert.equal(
     isHarmlessAbortedApplicationRscPrefetch({
       ...exactAbortedRscPrefetch,
+      ...unsafeOverride,
+    }),
+    false,
+  );
+}
+
+const exactSupersededApplicationRead = Object.freeze({
+  errorText: "net::ERR_ABORTED",
+  method: "GET",
+  resourceType: "fetch",
+  isNavigationRequest: false,
+  sameActiveApplicationOrigin: true,
+  frameMatchesActiveApplicationOrigin: true,
+  httpsTransport: true,
+  hasCredentials: false,
+  hasFragment: false,
+  responseStatus: null,
+  requestSequence: 75,
+  mainFrameNavigationSequenceAtStart: 4,
+  mainFrameNavigationSequenceAtFailure: 5,
+  elapsedMs: 2_100,
+});
+assert.equal(
+  isHarmlessSupersededApplicationRead(exactSupersededApplicationRead),
+  true,
+);
+for (const unsafeOverride of [
+  { errorText: "network failed" },
+  { method: "POST" },
+  { resourceType: "xhr" },
+  { isNavigationRequest: true },
+  { sameActiveApplicationOrigin: false },
+  { frameMatchesActiveApplicationOrigin: false },
+  { httpsTransport: false },
+  { hasCredentials: true },
+  { hasFragment: true },
+  { responseStatus: 200 },
+  { requestSequence: 0 },
+  { mainFrameNavigationSequenceAtStart: 0 },
+  { mainFrameNavigationSequenceAtFailure: 4 },
+  { mainFrameNavigationSequenceAtFailure: 6 },
+  { elapsedMs: -1 },
+  { elapsedMs: 5_001 },
+]) {
+  assert.equal(
+    isHarmlessSupersededApplicationRead({
+      ...exactSupersededApplicationRead,
       ...unsafeOverride,
     }),
     false,

@@ -88,6 +88,52 @@ export function isHarmlessAbortedApplicationRscPrefetch({
   );
 }
 
+/**
+ * Classify one same-origin GET read that the browser cancels only after a
+ * newer full-page application navigation starts. This is narrower than a
+ * generic request-abort waiver: the caller must also restrict it to a journey
+ * that proves the final route, authenticated state, visible content, and
+ * required reads after the superseding navigation.
+ */
+export function isHarmlessSupersededApplicationRead({
+  errorText,
+  method,
+  resourceType,
+  isNavigationRequest,
+  sameActiveApplicationOrigin,
+  frameMatchesActiveApplicationOrigin,
+  httpsTransport,
+  hasCredentials,
+  hasFragment,
+  responseStatus,
+  requestSequence,
+  mainFrameNavigationSequenceAtStart,
+  mainFrameNavigationSequenceAtFailure,
+  elapsedMs,
+}) {
+  return (
+    isExpectedNavigationAbort(errorText) &&
+    method === "GET" &&
+    resourceType === "fetch" &&
+    isNavigationRequest === false &&
+    sameActiveApplicationOrigin === true &&
+    frameMatchesActiveApplicationOrigin === true &&
+    httpsTransport === true &&
+    hasCredentials === false &&
+    hasFragment === false &&
+    responseStatus === null &&
+    Number.isSafeInteger(requestSequence) &&
+    requestSequence > 0 &&
+    Number.isSafeInteger(mainFrameNavigationSequenceAtStart) &&
+    mainFrameNavigationSequenceAtStart > 0 &&
+    mainFrameNavigationSequenceAtFailure ===
+      mainFrameNavigationSequenceAtStart + 1 &&
+    Number.isSafeInteger(elapsedMs) &&
+    elapsedMs >= 0 &&
+    elapsedMs <= 5_000
+  );
+}
+
 const TELEMETRY_REQUEST_CLASS = "locally_intercepted_activation_telemetry";
 const PURPOSE_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
