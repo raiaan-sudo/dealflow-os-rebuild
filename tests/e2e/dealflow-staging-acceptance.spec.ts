@@ -27,6 +27,7 @@ import {
   STAGING_ACCESS_HEADER,
 } from "../../scripts/staging/browser-context-network-boundary.mjs";
 import {
+  isHarmlessAbortedApplicationRscPrefetch,
   isExpectedNavigationAbort,
   sanitizedRequestFailureDiagnostic,
   sanitizedRequestTargetFingerprint,
@@ -642,6 +643,12 @@ async function installFailClosedNetworkBoundary(
     )} lifecycle=${JSON.stringify(sanitizedLifecycle)}`;
     const expectedNavigationAbort =
       request.isNavigationRequest() && isExpectedNavigationAbort(errorText);
+    const harmlessAbortedApplicationRscPrefetch =
+      isHarmlessAbortedApplicationRscPrefetch({
+        errorText,
+        method: request.method(),
+        ...sanitizedLifecycle,
+      });
     const expectedInterceptedWebKitTurnstileBlobFailure =
       browserName === "webkit" &&
       testTitle === TURNSTILE_TEST_TITLE &&
@@ -652,7 +659,11 @@ async function installFailClosedNetworkBoundary(
       new URL(request.url()).protocol === "blob:" &&
       isAllowedStagingTurnstileRequest(request.url(), request.method(), true) &&
       errorText === "The operation couldn’t be completed. (WebKitBlobResource error 1.)";
-    if (!expectedNavigationAbort && !expectedInterceptedWebKitTurnstileBlobFailure) {
+    if (
+      !expectedNavigationAbort &&
+      !harmlessAbortedApplicationRscPrefetch &&
+      !expectedInterceptedWebKitTurnstileBlobFailure
+    ) {
       diagnostics.requestFailures.push(failure);
     }
   });

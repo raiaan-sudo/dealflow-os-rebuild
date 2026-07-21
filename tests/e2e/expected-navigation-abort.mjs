@@ -45,6 +45,49 @@ export function sanitizedRequestFailureDiagnostic(errorText) {
   return `${category} ${sanitizedRequestTargetFingerprint(normalized)}`;
 }
 
+/**
+ * Classify the exact speculative Next.js RSC prefetch cancellation observed
+ * after a fully loaded hosted route. A prefetch is not required for the
+ * current page, but this predicate remains deliberately strict so ordinary
+ * application reads, navigations, API failures, and ambiguous cancellations
+ * continue to fail closed.
+ */
+export function isHarmlessAbortedApplicationRscPrefetch({
+  errorText,
+  method,
+  resourceType,
+  isNavigationRequest,
+  sameActiveApplicationOrigin,
+  frameMatchesActiveApplicationOrigin,
+  httpsTransport,
+  hasCredentials,
+  hasFragment,
+  responseStatus,
+  rscHeader,
+  nextRouterPrefetchHeader,
+  rscQueryCount,
+  exactBoundedRscQuery,
+  queryKeyCount,
+}) {
+  return (
+    isExpectedNavigationAbort(errorText) &&
+    method === "GET" &&
+    resourceType === "fetch" &&
+    isNavigationRequest === false &&
+    sameActiveApplicationOrigin === true &&
+    frameMatchesActiveApplicationOrigin === true &&
+    httpsTransport === true &&
+    hasCredentials === false &&
+    hasFragment === false &&
+    responseStatus === null &&
+    rscHeader === true &&
+    nextRouterPrefetchHeader === true &&
+    rscQueryCount === 1 &&
+    exactBoundedRscQuery === true &&
+    queryKeyCount === 1
+  );
+}
+
 const TELEMETRY_REQUEST_CLASS = "locally_intercepted_activation_telemetry";
 const PURPOSE_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
 

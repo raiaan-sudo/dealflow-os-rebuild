@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   classifyAbortedInterceptedTelemetry,
+  isHarmlessAbortedApplicationRscPrefetch,
   sanitizedTelemetryPurposeFingerprint,
 } from "./expected-navigation-abort.mjs";
 
@@ -305,6 +306,53 @@ const unintercepted = classify({
 });
 assert.equal(unintercepted.classification, "unproven");
 assert.equal(unintercepted.duplicateApplicationEffects, null);
+
+const exactAbortedRscPrefetch = Object.freeze({
+  errorText: "NS_BINDING_ABORTED",
+  method: "GET",
+  resourceType: "fetch",
+  isNavigationRequest: false,
+  sameActiveApplicationOrigin: true,
+  frameMatchesActiveApplicationOrigin: true,
+  httpsTransport: true,
+  hasCredentials: false,
+  hasFragment: false,
+  responseStatus: null,
+  rscHeader: true,
+  nextRouterPrefetchHeader: true,
+  rscQueryCount: 1,
+  exactBoundedRscQuery: true,
+  queryKeyCount: 1,
+});
+assert.equal(
+  isHarmlessAbortedApplicationRscPrefetch(exactAbortedRscPrefetch),
+  true,
+);
+for (const unsafeOverride of [
+  { errorText: "network failed" },
+  { method: "POST" },
+  { resourceType: "xhr" },
+  { isNavigationRequest: true },
+  { sameActiveApplicationOrigin: false },
+  { frameMatchesActiveApplicationOrigin: false },
+  { httpsTransport: false },
+  { hasCredentials: true },
+  { hasFragment: true },
+  { responseStatus: 500 },
+  { rscHeader: false },
+  { nextRouterPrefetchHeader: false },
+  { rscQueryCount: 2 },
+  { exactBoundedRscQuery: false },
+  { queryKeyCount: 2 },
+]) {
+  assert.equal(
+    isHarmlessAbortedApplicationRscPrefetch({
+      ...exactAbortedRscPrefetch,
+      ...unsafeOverride,
+    }),
+    false,
+  );
+}
 
 requireAll(
   canceledHomepagePrefetch,
