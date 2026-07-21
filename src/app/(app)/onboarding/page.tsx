@@ -30,6 +30,7 @@ import { getPlanPresentation, SELECTABLE_PLAN_TIERS, type SelectablePlanTier } f
 import {
   buildOnboardingDraftEnvelope,
   buildOnboardingSubmission,
+  directlyPersistedOnboardingRevisionMatches,
   onboardingDraftSchema,
   queuedOnboardingDraftSaveIsCurrent,
   type CampaignAdDestination,
@@ -591,7 +592,7 @@ export default function OnboardingPage() {
   const serverDigestRef = useRef<string | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const draftConflictRef = useRef(false);
-  const skipNextDebouncedSaveRef = useRef(false);
+  const directlyPersistedRevisionRef = useRef<number | null>(null);
   const stepTransitionRef = useRef(false);
   const draftNavigationEpochRef = useRef(0);
   const canUseExistingLaunchAccess =
@@ -704,6 +705,7 @@ export default function OnboardingPage() {
 
   function deleteServerDraft() {
     draftNavigationEpochRef.current += 1;
+    directlyPersistedRevisionRef.current = null;
     const operation = saveQueueRef.current.then(async () => {
       const response = await fetch("/api/onboarding/plan", { method: "DELETE" });
       if (!response.ok) throw new Error("onboarding_draft_delete_failed");
@@ -842,7 +844,7 @@ export default function OnboardingPage() {
         furthestStepIndex: nextFurthestStepIndex,
       })
         .then(() => {
-          skipNextDebouncedSaveRef.current = true;
+          directlyPersistedRevisionRef.current = persistenceRevision;
           setCurrentStep("review");
           setFurthestStepIndex(nextFurthestStepIndex);
         })
@@ -853,16 +855,22 @@ export default function OnboardingPage() {
           }));
         });
     }
-  }, [canUseExistingLaunchAccess, currentStep, draft, furthestStepIndex, t, visibleSteps]);
+  }, [canUseExistingLaunchAccess, currentStep, draft, furthestStepIndex, persistenceRevision, t, visibleSteps]);
 
   useEffect(() => {
     // Hydration, billing reads, and automatic routing are observational. A
     // durable draft write begins only after an explicit user interaction has
     // incremented the revision.
     if (!hydrated || submitting) return;
-    if (skipNextDebouncedSaveRef.current) {
-      skipNextDebouncedSaveRef.current = false;
-      return;
+    if (directlyPersistedRevisionRef.current !== null) {
+      const directlyPersistedRevision = directlyPersistedRevisionRef.current;
+      directlyPersistedRevisionRef.current = null;
+      if (directlyPersistedOnboardingRevisionMatches({
+        directlyPersistedRevision,
+        currentPersistenceRevision: persistenceRevision,
+      })) {
+        return;
+      }
     }
     if (persistenceRevision === 0 || draftConflictRef.current) return;
     const navigationEpoch = draftNavigationEpochRef.current;
@@ -950,7 +958,7 @@ export default function OnboardingPage() {
         currentStep: step,
         furthestStepIndex: nextFurthestStepIndex,
       });
-      skipNextDebouncedSaveRef.current = true;
+      directlyPersistedRevisionRef.current = persistenceRevision;
       setDraft(nextDraft);
       setCurrentStep(step);
       setFurthestStepIndex(nextFurthestStepIndex);
@@ -1076,6 +1084,7 @@ export default function OnboardingPage() {
 
   function resetDraft() {
     const freshDraft = { ...createLocalizedDefaultDraft(locale), idempotencySeed: createIdempotencySeed() };
+    directlyPersistedRevisionRef.current = null;
     setIsNewCampaignFlow(true);
     setDraft(freshDraft);
     setCurrentStep("intent");

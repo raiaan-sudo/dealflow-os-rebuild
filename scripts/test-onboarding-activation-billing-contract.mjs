@@ -448,7 +448,7 @@ check("browser render stores no draft or navigation and removes the legacy PII k
   assert.match(pageSource, /method: "PUT"/);
   assert.match(pageSource, /if \(!hydrated \|\| submitting\) return/);
   assert.match(pageSource, /if \(persistenceRevision === 0 \|\| draftConflictRef\.current\) return/);
-  assert.match(pageSource, /skipNextDebouncedSaveRef\.current/);
+  assert.match(pageSource, /directlyPersistedRevisionRef\.current/);
   assert.match(pageSource, /draftNavigationEpochRef\.current \+= 1/);
   assert.match(pageSource, /queuedNavigationEpoch: params\.navigationEpoch/);
   assert.match(pageSource, /currentNavigationEpoch: draftNavigationEpochRef\.current/);
@@ -467,6 +467,21 @@ check("queued debounce writes cannot regress a newer onboarding navigation", () 
   assert.equal(onboarding.queuedOnboardingDraftSaveIsCurrent({
     queuedNavigationEpoch: 3,
     currentNavigationEpoch: 4,
+  }), false);
+});
+
+check("direct navigation suppression cannot swallow a newer onboarding edit", () => {
+  assert.equal(onboarding.directlyPersistedOnboardingRevisionMatches({
+    directlyPersistedRevision: 4,
+    currentPersistenceRevision: 4,
+  }), true);
+  assert.equal(onboarding.directlyPersistedOnboardingRevisionMatches({
+    directlyPersistedRevision: 4,
+    currentPersistenceRevision: 5,
+  }), false);
+  assert.equal(onboarding.directlyPersistedOnboardingRevisionMatches({
+    directlyPersistedRevision: null,
+    currentPersistenceRevision: 4,
   }), false);
 });
 

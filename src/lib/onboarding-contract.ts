@@ -239,6 +239,14 @@ export function queuedOnboardingDraftSaveIsCurrent(input: {
     input.queuedNavigationEpoch === input.currentNavigationEpoch;
 }
 
+export function directlyPersistedOnboardingRevisionMatches(input: {
+  directlyPersistedRevision: number | null;
+  currentPersistenceRevision: number;
+}) {
+  return input.directlyPersistedRevision !== null &&
+    input.directlyPersistedRevision === input.currentPersistenceRevision;
+}
+
 export function isUnexpiredNavigationState(
   value: unknown,
   now = Date.now(),
