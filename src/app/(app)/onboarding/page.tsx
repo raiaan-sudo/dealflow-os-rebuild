@@ -923,11 +923,14 @@ export default function OnboardingPage() {
       delete next.submit;
       return next;
     });
+    // Explicit user selections must never be discarded by the passive-write
+    // navigation epoch filter. The queue already serializes this write after
+    // any older operation, and any newer explicit selection is serialized
+    // after it, so the latest user choice remains authoritative.
     void enqueueDraftSave({
       draft: nextDraft,
       currentStep,
       furthestStepIndex,
-      navigationEpoch: destinationNavigationEpoch,
     })
       .then((savedDraft) => {
         if (!savedDraft && draftNavigationEpochRef.current === destinationNavigationEpoch) {
