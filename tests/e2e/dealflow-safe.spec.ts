@@ -865,11 +865,36 @@ async function waitForSuccessfulDraftWrite(
   return response;
 }
 
+async function readPersistedDraftDestination(page: Page) {
+  const response = await page.request.get("/api/onboarding/plan", {
+    failOnStatusCode: false,
+    maxRedirects: 0,
+    headers: appRequestHeaders("/api/onboarding/plan", { Accept: "application/json" }),
+  });
+  if (response.status() !== 200) return `http_${response.status()}`;
+  const payload = (await response.json().catch(() => null)) as
+    | { found?: boolean; draft?: { adDestination?: unknown } }
+    | null;
+  if (payload?.found !== true || typeof payload.draft?.adDestination !== "string") {
+    return "missing";
+  }
+  return payload.draft.adDestination;
+}
+
 async function chooseDestination(page: Page, destination: "Website funnel" | "Meta Instant Form") {
   const destinationButton = page.getByRole("button", { name: new RegExp(destination, "i") }).first();
   await expect(destinationButton).toBeVisible();
-  await waitForSuccessfulDraftWrite(page, () => destinationButton.click());
+  await destinationButton.click();
   await expect(destinationButton).toHaveAttribute("aria-pressed", "true");
+  const expectedPersistedValue =
+    destination === "Meta Instant Form" ? "meta_instant_form" : "website";
+  await expect
+    .poll(() => readPersistedDraftDestination(page), {
+      message: `The ${destination} selection was not durably persisted before navigation.`,
+      timeout: 15_000,
+      intervals: [250, 500, 1_000],
+    })
+    .toBe(expectedPersistedValue);
 }
 
 async function goToReviewFromBudget(page: Page) {
