@@ -35,6 +35,14 @@ export async function resolveGhlEmbedHostContext(
   const domain = normalizePartnerDomainHost(rawHost);
   if (!domain) return null;
 
+  // Resolve the one exact first-party application host without a database
+  // round trip. This keeps the embedded bootstrap and its static assets from
+  // depending on remote partner-domain availability before GHL can deliver
+  // its signed workspace context.
+  if (configuredDirectAppHost() === domain) {
+    return { domain, partnerId: null, tenantKind: "direct_realtor" };
+  }
+
   const partner = await loadVerifiedPartnerDomainContext(domain);
   if (partner) {
     return {
@@ -44,7 +52,5 @@ export async function resolveGhlEmbedHostContext(
     };
   }
 
-  return configuredDirectAppHost() === domain
-    ? { domain, partnerId: null, tenantKind: "direct_realtor" }
-    : null;
+  return null;
 }

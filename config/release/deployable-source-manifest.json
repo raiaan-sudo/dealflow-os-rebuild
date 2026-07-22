@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1119,
-  "deployableSourceSha256": "9464e63e7b585c58ca1ddab35e812b91f1d1a77d4d864d08f406b8f258db8b8b",
+  "deployableSourceSha256": "818b6c3913e5c7ee705ee32bf3a5a1cce95cf1fb9eee7b5cfcb549bd5a755a57",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1110,9 +1110,9 @@
     },
     {
       "path": "scripts/staging/staging-access-gate-scenario.ts",
-      "size": 8746,
+      "size": 13631,
       "mode": 33188,
-      "sha256": "3e41c16c654506ccf368553d99aaef5f2cc24862fffad816421a4bde72c387a2"
+      "sha256": "4261804e2d6ae5c7349baa43f6385ccef9d3c27dd054ea4c4d41f00f79b9a5a1"
     },
     {
       "path": "scripts/staging/staging-evidence-root-contract.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
-      "size": 14716,
+      "size": 15040,
       "mode": 33188,
-      "sha256": "a7f920ebc69d3ea2f20ad2b6fb5322bbc951d59cf6ec0cc923240f6c49cf145d"
+      "sha256": "b99f2d3fe82d2d08c1308db530c66b092fcc2ed0c1baf45fb1716491809d0d25"
     },
     {
       "path": "scripts/staging/test-next-static-chunk-path.mjs",
@@ -1644,9 +1644,9 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 21929,
+      "size": 22329,
       "mode": 33188,
-      "sha256": "1d0578877fa8b8a78c27f534c5f9f220403673c2c18d0b1b38f2c3a97e6d4803"
+      "sha256": "c1e0c9e392a7e2c0e7f64bfd6b1df07eab79b19f820ca21db384e0e9999655f3"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
@@ -5490,9 +5490,9 @@
     },
     {
       "path": "src/lib/white-label/ghl-embed-host-context.ts",
-      "size": 1508,
+      "size": 1786,
       "mode": 33188,
-      "sha256": "2cf0dea9c5beadd53a6c8fc9ebfdff56e7ef4cafbd745a73ddbf0f8903f134de"
+      "sha256": "78eff9a5531da3523567c54393c80ab6052aeb0cd86bba40d7e6123cdde42979"
     },
     {
       "path": "src/lib/white-label/ghl-embed-request-origin.ts",
@@ -5526,9 +5526,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 28179,
+      "size": 32146,
       "mode": 33188,
-      "sha256": "07d1af712898bf22c2903d44835bad7ee2340c83e93fe9568edb31b1bfdd2caa"
+      "sha256": "98820f5dac2fd5b56bbcdb49af1e527d5624297903ce17b468a9dc957acb3298"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",

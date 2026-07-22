@@ -192,6 +192,16 @@ for (const marker of [
   "frame-ancestors ${frameAncestors}",
   'response.headers.delete("X-Frame-Options")',
   'response.headers.set("X-Frame-Options", "DENY")',
+  "isAuthorizedIsolatedStagingGhlEmbedRequest",
+  "STAGING_GHL_EMBED_CONTEXT_PATH",
+  'fetchSite === "cross-site"',
+  'fetchDest === "iframe"',
+  'fetchSite === "same-origin"',
+  'fetchDest === "empty"',
+  'requiredStage: "authenticated"',
+  "capability.dealflowUserId === session.dealflowUserId",
+  "capability.partnerId === session.partnerId",
+  "capability.parentOrigin === session.parentOrigin",
 ]) {
   if (!proxySource.includes(marker)) failures.push(`src/proxy.ts is missing: ${marker}`);
 }

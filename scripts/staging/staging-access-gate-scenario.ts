@@ -21,11 +21,17 @@ Object.assign(process.env, {
     "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
   STAGING_ACCESS_GATE_SECRET: secret,
   NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT: releaseCommit,
+  NEXT_PUBLIC_APP_URL: "https://dealflow-isolated.example",
+  GHL_IFRAME_EMBED_ENABLED: "true",
+  GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS: "true",
+  GHL_APP_SHARED_SECRET: "S7!dealflow-ghl-shared-staging-sentinel-91Q",
 });
 
 let path = "/privacy";
+let method = "GET";
 let suppliedSecret: string | null = null;
 let suppliedCookieSecret: string | null = null;
+const scenarioHeaders = new Headers();
 if (scenario === "authorized") {
   suppliedSecret = secret;
 } else if (scenario === "authorized_static_header") {
@@ -113,13 +119,101 @@ if (scenario === "authorized") {
   path = "/api/stripe/webhook";
 } else if (scenario === "lead_capture_blocked") {
   path = "/api/lead-capture";
+} else if (scenario === "ghl_bootstrap_valid") {
+  path = "/crm/embed";
+  scenarioHeaders.set("referer", "https://app.gohighlevel.com/v2/location/example/custom-page-link/example");
+  scenarioHeaders.set("sec-fetch-site", "cross-site");
+  scenarioHeaders.set("sec-fetch-dest", "iframe");
+} else if (scenario === "ghl_bootstrap_wrong_parent") {
+  path = "/crm/embed";
+  scenarioHeaders.set("referer", "https://attacker.example/embed");
+  scenarioHeaders.set("sec-fetch-site", "cross-site");
+  scenarioHeaders.set("sec-fetch-dest", "iframe");
+} else if (scenario === "ghl_bootstrap_top_level") {
+  path = "/crm/embed";
+  scenarioHeaders.set("referer", "https://app.gohighlevel.com/v2/location/example");
+  scenarioHeaders.set("sec-fetch-site", "cross-site");
+  scenarioHeaders.set("sec-fetch-dest", "document");
+} else if (scenario === "ghl_bootstrap_static") {
+  path = "/_next/static/chunks/ghl-embed-bootstrap.js";
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/crm/embed");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "script");
+} else if (scenario === "ghl_bootstrap_context_get") {
+  path = "/api/integrations/ghl/embed-context";
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/crm/embed");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "empty");
+} else if (scenario === "ghl_bootstrap_context_post") {
+  path = "/api/integrations/ghl/embed-context";
+  method = "POST";
+  scenarioHeaders.set("origin", "https://dealflow-isolated.example");
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/crm/embed");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "empty");
+} else if (scenario === "ghl_bootstrap_missing_config") {
+  path = "/crm/embed";
+  delete process.env.STAGING_ACCESS_GATE_SECRET;
+  scenarioHeaders.set("referer", "https://app.gohighlevel.com/v2/location/example");
+  scenarioHeaders.set("sec-fetch-site", "cross-site");
+  scenarioHeaders.set("sec-fetch-dest", "iframe");
+} else if (
+  scenario === "ghl_authenticated_static" ||
+  scenario === "ghl_authenticated_static_mismatched_session"
+) {
+  path = "/_next/static/chunks/ghl-authenticated-app.js";
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/dashboard");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "script");
+} else if (scenario === "ghl_authenticated_admin_denied") {
+  path = "/admin";
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/dashboard");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "document");
 } else if (scenario !== "unauthorized") {
   throw new Error(`Unknown staging access gate scenario: ${scenario}`);
 }
 
 async function main() {
   const { proxy } = await import("../../src/proxy");
+  const authenticatedEmbedScenario = scenario.startsWith("ghl_authenticated_");
+  let authenticatedEmbedCookies: string | null = null;
+  if (authenticatedEmbedScenario) {
+    const {
+      createGhlEmbedCapability,
+      createGhlEmbedSessionMarker,
+      GHL_EMBED_CAPABILITY_COOKIE,
+      GHL_EMBED_SESSION_COOKIE,
+    } = await import("../../src/lib/white-label/ghl-embed-capability");
+    const dealflowUserId = "11111111-1111-4111-8111-111111111111";
+    const capability = await createGhlEmbedCapability({
+      stage: "authenticated",
+      partnerId: null,
+      domain: "dealflow-isolated.example",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      locationId: "location_test_1",
+      companyId: "company_test_1",
+      ghlUserId: "ghl_user_test_1",
+      ghlEmail: "synthetic@example.test",
+      parentOrigin: "https://app.gohighlevel.com",
+      dealflowUserId,
+    });
+    const sessionMarker = await createGhlEmbedSessionMarker({
+      domain: "dealflow-isolated.example",
+      partnerId: null,
+      parentOrigin: "https://app.gohighlevel.com",
+      dealflowUserId:
+        scenario === "ghl_authenticated_static_mismatched_session"
+          ? "33333333-3333-4333-8333-333333333333"
+          : dealflowUserId,
+    });
+    assert.ok(capability && sessionMarker);
+    authenticatedEmbedCookies =
+      `${GHL_EMBED_CAPABILITY_COOKIE}=${capability}; ` +
+      `${GHL_EMBED_SESSION_COOKIE}=${sessionMarker}`;
+  }
   const headers = new Headers();
+  for (const [name, value] of scenarioHeaders) headers.set(name, value);
   headers.set(
     "x-vercel-protection-bypass",
     "synthetic-vercel-bypass-must-not-reach-application",
@@ -130,7 +224,9 @@ async function main() {
   );
   headers.set(
     "cookie",
-    "_vercel_jwt=synthetic-vercel-jwt-must-not-reach-application",
+    `_vercel_jwt=synthetic-vercel-jwt-must-not-reach-application${
+      authenticatedEmbedCookies ? `; ${authenticatedEmbedCookies}` : ""
+    }`,
   );
   if (suppliedSecret) headers.set("x-dealflow-staging-access", suppliedSecret);
   if (suppliedCookieSecret) {
@@ -143,7 +239,7 @@ async function main() {
     );
   }
   const response = await proxy(
-    new NextRequest(`https://dealflow-isolated.example${path}`, { headers }),
+    new NextRequest(`https://dealflow-isolated.example${path}`, { headers, method }),
   );
   const serializedHeaders = JSON.stringify([...response.headers]).toLowerCase();
   assert.doesNotMatch(serializedHeaders, /dealflow-isolated-staging-access-only/);
@@ -175,6 +271,10 @@ async function main() {
       "wrong_next_internal_header",
     ].includes(scenario) ||
     scenario === "lead_capture_blocked"
+    || scenario === "ghl_bootstrap_wrong_parent"
+    || scenario === "ghl_bootstrap_top_level"
+    || scenario === "ghl_authenticated_static_mismatched_session"
+    || scenario === "ghl_authenticated_admin_denied"
   ) {
     assert.equal(response.status, 404);
   } else if (
@@ -183,6 +283,7 @@ async function main() {
     scenario === "wrong_project" ||
     scenario === "missing_project" ||
     scenario === "missing_attestation"
+    || scenario === "ghl_bootstrap_missing_config"
   ) {
     assert.equal(response.status, 503);
   } else {

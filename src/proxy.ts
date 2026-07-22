@@ -277,6 +277,124 @@ const GHL_EMBED_BOOTSTRAP_PATHS = new Set([
   GHL_EMBED_BOOTSTRAP_PATH,
   GHL_EMBED_LEGACY_BOOTSTRAP_PATH,
 ]);
+const STAGING_GHL_EMBED_CONTEXT_PATH = "/api/integrations/ghl/embed-context";
+const STAGING_GHL_BOOTSTRAP_PUBLIC_ASSETS = new Set([
+  "/favicon.ico",
+  "/logo-icon.svg",
+  "/logo.svg",
+]);
+const STAGING_GHL_EMBED_DENIED_PATHS = new Set([
+  "/admin",
+  "/api/internal",
+]);
+
+function parseHttpRequestUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function isStagingGhlEmbedDeniedPath(pathname: string) {
+  return Array.from(STAGING_GHL_EMBED_DENIED_PATHS).some(
+    (blocked) => pathname === blocked || pathname.startsWith(`${blocked}/`),
+  ) ||
+    pathname.startsWith(STAGING_PRIVATE_IMAGE_SOURCE_PATH_PREFIX) ||
+    pathname === STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH ||
+    pathname === DISABLED_STAGING_IMAGE_OPTIMIZER_PATH;
+}
+
+function isExactGhlBootstrapReferer(request: NextRequest) {
+  const referer = parseHttpRequestUrl(request.headers.get("referer"));
+  return Boolean(
+    referer &&
+    referer.origin === request.nextUrl.origin &&
+    GHL_EMBED_BOOTSTRAP_PATHS.has(
+      parseProductLocalePathname(referer.pathname).pathname,
+    ),
+  );
+}
+
+async function isAuthorizedIsolatedStagingGhlEmbedRequest(
+  request: NextRequest,
+) {
+  if (
+    process.env.GHL_IFRAME_EMBED_ENABLED !== "true" ||
+    isStagingGhlEmbedDeniedPath(request.nextUrl.pathname)
+  ) {
+    return false;
+  }
+
+  const hostContext = await resolveGhlEmbedHostContext(request.nextUrl.hostname);
+  if (!hostContext || hostContext.domain !== request.nextUrl.hostname.toLowerCase()) {
+    return false;
+  }
+
+  const pathname = getEffectiveProductPathname(request);
+  const method = request.method.toUpperCase();
+  const fetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase() ?? "";
+  const fetchDest = request.headers.get("sec-fetch-dest")?.trim().toLowerCase() ?? "";
+
+  if (
+    GHL_EMBED_BOOTSTRAP_PATHS.has(pathname) &&
+    ["GET", "HEAD"].includes(method) &&
+    fetchSite === "cross-site" &&
+    fetchDest === "iframe"
+  ) {
+    const referer = parseHttpRequestUrl(request.headers.get("referer"));
+    return Boolean(
+      referer &&
+      getAllowedGhlParentOrigins(hostContext.domain).includes(referer.origin),
+    );
+  }
+
+  if (
+    ["GET", "HEAD"].includes(method) &&
+    fetchSite === "same-origin" &&
+    isExactGhlBootstrapReferer(request) &&
+    (
+      request.nextUrl.pathname.startsWith("/_next/static/") ||
+      STAGING_GHL_BOOTSTRAP_PUBLIC_ASSETS.has(request.nextUrl.pathname)
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    request.nextUrl.pathname === STAGING_GHL_EMBED_CONTEXT_PATH &&
+    ["GET", "POST"].includes(method) &&
+    fetchSite === "same-origin" &&
+    fetchDest === "empty" &&
+    isExactGhlBootstrapReferer(request)
+  ) {
+    const origin = request.headers.get("origin")?.trim() ?? "";
+    return method === "GET" ? !origin || origin === request.nextUrl.origin : origin === request.nextUrl.origin;
+  }
+
+  const [capability, session] = await Promise.all([
+    verifyGhlEmbedCapability(
+      request.cookies.get(GHL_EMBED_CAPABILITY_COOKIE)?.value,
+      { expectedHost: hostContext.domain, requiredStage: "authenticated" },
+    ),
+    verifyGhlEmbedSessionMarker(
+      request.cookies.get(GHL_EMBED_SESSION_COOKIE)?.value,
+      { expectedHost: hostContext.domain },
+    ),
+  ]);
+  return Boolean(
+    capability &&
+    session &&
+    capability.stage === "authenticated" &&
+    capability.dealflowUserId &&
+    capability.dealflowUserId === session.dealflowUserId &&
+    capability.partnerId === session.partnerId &&
+    capability.parentOrigin === session.parentOrigin &&
+    getAllowedGhlParentOrigins(hostContext.domain).includes(capability.parentOrigin),
+  );
+}
 function hasEmbeddedAppReturn(request: NextRequest) {
   if (
     getEffectiveProductPathname(request) !== "/login" ||
@@ -582,7 +700,15 @@ export async function proxy(request: NextRequest) {
       startedAt,
     );
   }
-  if (stagingAccess.required && !stagingAccess.authorized) {
+  const stagingGhlEmbedAuthorized =
+    stagingAccess.required && stagingAccess.configured
+      ? await isAuthorizedIsolatedStagingGhlEmbedRequest(request)
+      : false;
+  if (
+    stagingAccess.required &&
+    !stagingAccess.authorized &&
+    !stagingGhlEmbedAuthorized
+  ) {
     return applySecurityHeaders(
       request,
       NextResponse.json(

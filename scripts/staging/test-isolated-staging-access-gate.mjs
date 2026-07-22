@@ -310,6 +310,16 @@ for (const scenario of [
   "production_image_ungated",
   "native_callback",
   "lead_capture_blocked",
+  "ghl_bootstrap_valid",
+  "ghl_bootstrap_wrong_parent",
+  "ghl_bootstrap_top_level",
+  "ghl_bootstrap_static",
+  "ghl_bootstrap_context_get",
+  "ghl_bootstrap_context_post",
+  "ghl_bootstrap_missing_config",
+  "ghl_authenticated_static",
+  "ghl_authenticated_static_mismatched_session",
+  "ghl_authenticated_admin_denied",
 ]) {
   const result = spawnSync(process.execPath, [tsxCli, scenarioPath, scenario], {
     cwd: root,
