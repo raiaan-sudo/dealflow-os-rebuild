@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1113,
-  "deployableSourceSha256": "9bf4925744e6e9ca1672f7466725d26eb87c978ded2aa262013c84757664e7a9",
+  "deployableSourceSha256": "10998535c1d684349fc02e815a312e750b4bbc77459fe75eb0c36ee52ce21fec",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -84,9 +84,9 @@
     },
     {
       "path": "config/security/privileged-tenancy-matrix.v1.json",
-      "size": 10034,
+      "size": 10045,
       "mode": 33188,
-      "sha256": "f097bbcb020f1d04e4b9bc1dcc790986c4aa583786953533410370ff3db5802f"
+      "sha256": "b7793553f2dbde62f8cde0b14ae3ea56a08be8af75a9151a66808c8f51ef4731"
     },
     {
       "path": "config/security/supabase-prod-ca-2021.crt",
