@@ -213,6 +213,10 @@ const forward120To121Contract = readFileSync(
   join(root, "scripts", "staging", "forward-120-to-121-contract.mjs"),
   "utf8",
 );
+const forward121To122Contract = readFileSync(
+  join(root, "scripts", "staging", "forward-121-to-122-contract.mjs"),
+  "utf8",
+);
 const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
 const seedContract = readFileSync(join(root, "scripts", "test-isolated-staging-seed-contract.mjs"), "utf8");
 const providerIndependentProof = readFileSync(
@@ -866,8 +870,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 121/);
-assert.match(runner, /20260720010000_add_ghl_embed_sso_authority\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 122/);
+assert.match(runner, /20260722010000_modernize_provider_service_role_claims\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -952,8 +956,8 @@ assert.match(runner, /portfolioApplicationRemoteMutationCompleted === true/);
 assert.match(runner, /EXACT_EXISTING_COMMITTED_PORTFOLIO/);
 assert.match(
   runner,
-  /"EXACT_FORWARD_120_TO_121_COMMITTED_PORTFOLIO"/,
-  "the common final gate must accept the exact 120-to-121 successor status",
+  /"EXACT_FORWARD_121_TO_122_COMMITTED_PORTFOLIO"/,
+  "the common final gate must accept the exact 121-to-122 successor status",
 );
 assert.match(runner, /verify retained prior migration application tree/);
 assert.match(runner, /verify prior migration application ancestry/);
@@ -975,7 +979,7 @@ assert.match(currentResumeGate, /exactCurrentResumePriorIdentity/);
 assert.doesNotMatch(
   currentResumeGate,
   /FORWARD_104_TO_120_AUTHORITY\.prior/,
-  "current-120 resume must validate its own retained prior application instead of the historical 104 transition authority",
+  "current-122 resume must validate its own retained prior application instead of the historical 104 transition authority",
 );
 const pinnedForwardGate = runner.slice(
   runner.indexOf("const exactForwardApplication ="),
@@ -993,6 +997,8 @@ assert.match(forward104To120Contract, /migrationCount: 104/);
 assert.match(forward104To120Contract, /migrationCount: 120/);
 assert.match(forward120To121Contract, /migrationCount: 121/);
 assert.match(forward120To121Contract, /20260720010000_add_ghl_embed_sso_authority\.sql/);
+assert.match(forward121To122Contract, /migrationCount: 122/);
+assert.match(forward121To122Contract, /20260722010000_modernize_provider_service_role_claims\.sql/);
 assert.match(runner, /DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION !== EXECUTION_AUTHORIZATION/);
 assert.match(runner, /Staging acceptance requires Node 24/);
 assert.match(runner, /!\/\^v24\\\.\/.+parsed\.runtime/s);
@@ -2552,7 +2558,7 @@ assert.match(
 );
 assert.match(
   help.stdout,
-  /Exact bounded successor transition from the sealed 120-migration predecessor[\s\S]*\n  node[^\n]* \\\n    --execute --apply-successor-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-120\/migration-proof/s,
+  /Exact bounded successor transition from the sealed 121-migration predecessor[\s\S]*\n  node[^\n]* \\\n    --execute --apply-successor-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-121\/migration-proof/s,
   "successor-mode help must preserve executable multiline shell continuations",
 );
 
@@ -2566,5 +2572,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 120-to-121 successor, or read-only-resume authorization gate; immutable historical 104-to-120 proof; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 121-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 121-to-122 successor, or read-only-resume authorization gate; immutable historical 104-to-120 and 120-to-121 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 122-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

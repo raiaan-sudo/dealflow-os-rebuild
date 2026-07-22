@@ -18,10 +18,11 @@ controlling current-status overlay.
 
 Current implementation truth:
 
-- The working candidate now contains exactly 121 ordered migrations, ending at
-  `20260720010000_add_ghl_embed_sso_authority.sql`. The sealed 104-to-120
-  authority remains immutable historical proof; a separate exact 120-to-121
-  authority covers the additive GHL embed SSO migration.
+- The working candidate now contains exactly 122 ordered migrations, ending at
+  `20260722010000_modernize_provider_service_role_claims.sql`. The sealed
+  104-to-120 and 120-to-121 authorities remain immutable historical proof; a
+  separate exact 121-to-122 authority covers the demonstrated PostgREST
+  service-role claim compatibility correction.
 - The six successor tranches are implemented and connected to runtime:
   dynamic deletion and anti-resurrection, signed support-delivery lifecycle,
   canonical campaign lifecycle authority, provider-aware GHL publication, and
@@ -36,7 +37,7 @@ Current implementation truth:
   vulnerabilities.
 - Formatting, lint, typecheck, the optimized Next.js production build, release
   secret scan, release-evidence contract, immutable 104-to-120 reconstruction,
-  exact 120-to-121 successor reconstruction,
+  exact 120-to-121 and 121-to-122 successor reconstruction,
   and the complete 77-component DealFlow suite pass.
 - The integrated database proofs pass on isolated PostgreSQL 17.6: fresh,
   replay, foundation, exact 104-to-120 forward, exact 120-to-121 successor,

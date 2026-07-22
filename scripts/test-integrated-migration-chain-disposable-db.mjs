@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const FOUNDATION_LAST =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 121;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 122;
 const TRANSACTION_OWNING_MIGRATION =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const REQUIRED_EXTENSIONS = [
@@ -60,6 +60,7 @@ const REQUIRED_EXTENSIONS = [
   "20260717081000_expand_campaign_lifecycle_authority.sql",
   "20260717082000_provider_aware_funnel_publication.sql",
   "20260720010000_add_ghl_embed_sso_authority.sql",
+  "20260722010000_modernize_provider_service_role_claims.sql",
 ];
 const config = Object.freeze({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,
@@ -980,7 +981,7 @@ async function proveFoundationThenExtensions() {
   });
 }
 
-async function proveExact104ThenForward120Then121() {
+async function proveExact104ThenForward120Then121Then122() {
   return adapter.withDisposableDatabase(async (session) => {
     installRemoteEquivalentDefaults(session);
     const prior = applyMigrations(session, migrations.slice(0, 104));
@@ -1003,15 +1004,25 @@ async function proveExact104ThenForward120Then121() {
       ),
       "120|20260717090000",
     );
-    const successor = applyMigrations(session, migrations.slice(120));
-    assert.equal(successor.applied.length, 1);
-    assert.equal(successor.skipped.length, 0);
+    const successor121 = applyMigrations(session, migrations.slice(120, 121));
+    assert.equal(successor121.applied.length, 1);
+    assert.equal(successor121.skipped.length, 0);
     assert.equal(
       session.psql(
         "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;",
         { label: "Verify exact post-successor-121 migration history" },
       ),
       "121|20260720010000",
+    );
+    const successor122 = applyMigrations(session, migrations.slice(121));
+    assert.equal(successor122.applied.length, 1);
+    assert.equal(successor122.skipped.length, 0);
+    assert.equal(
+      session.psql(
+        "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;",
+        { label: "Verify exact post-successor-122 migration history" },
+      ),
+      "122|20260722010000",
     );
     verifyIntegratedObjects(session);
     const beforeReplay = {
@@ -1021,7 +1032,7 @@ async function proveExact104ThenForward120Then121() {
     };
     const replay = applyMigrations(session, migrations.slice(104));
     assert.equal(replay.applied.length, 0);
-    assert.equal(replay.skipped.length, 17);
+    assert.equal(replay.skipped.length, 18);
     assert.deepEqual(
       {
         schema: normalizedSchemaDump(session),
@@ -1089,14 +1100,14 @@ try {
   }
   const fresh = await proveFreshAndReplay();
   const staged = await proveFoundationThenExtensions();
-  const forward104To121 = await proveExact104ThenForward120Then121();
+  const forward104To122 = await proveExact104ThenForward120Then121Then122();
   await provePerFileAtomicFailure();
   assert.deepEqual(staged, fresh);
-  assert.deepEqual(forward104To121, fresh);
+  assert.deepEqual(forward104To122, fresh);
   assert.deepEqual(adapter.listDisposableDatabases(), []);
   console.log(
     `Integrated migration chain PASS: ${migrations.length} migrations, ` +
-      `fresh/replay/foundation-extension/forward-104-to-120-to-121 schema=${fresh.schema.digest}, ` +
+      `fresh/replay/foundation-extension/forward-104-to-120-to-121-to-122 schema=${fresh.schema.digest}, ` +
       `schemaBytes=${fresh.schema.bytes}, catalog=${fresh.catalog.digest}, ` +
       `catalogRecords=${fresh.catalog.records}, security=${fresh.security.digest}, ` +
       `securityBytes=${fresh.security.bytes}`,

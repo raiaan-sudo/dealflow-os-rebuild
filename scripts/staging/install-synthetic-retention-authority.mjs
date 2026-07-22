@@ -56,9 +56,9 @@ const expectedProjectFingerprint =
 const expectedProjectSafeSuffix = "qibh";
 const expectedVercelProjectIdFingerprint =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
-const expectedMigrationCount = 121;
+const expectedMigrationCount = 122;
 const expectedFinalMigration =
-  "20260720010000_add_ghl_embed_sso_authority.sql";
+  "20260722010000_modernize_provider_service_role_claims.sql";
 const expectedLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedDeferrals = FINAL_VERIFICATION_HOSTED_DEFERRALS;
 const authorityMarker =
@@ -211,7 +211,7 @@ function captureMigrationIdentity() {
     files.at(-1) !== expectedFinalMigration ||
     new Set(files.map((name) => name.slice(0, 14))).size !== files.length
   ) {
-    throw new Error("The exact 121-migration authority-hardened portfolio is required");
+    throw new Error("The exact 122-migration authority-hardened portfolio is required");
   }
   const digest = createHash("sha256");
   const records = files.map((name) => {

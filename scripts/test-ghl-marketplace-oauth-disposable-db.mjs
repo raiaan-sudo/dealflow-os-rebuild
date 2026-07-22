@@ -99,6 +99,15 @@ function asRole(role, sql, userId = null) {
     reset role;`;
 }
 
+function asModernPostgrestRole(role, sql) {
+  const claims = JSON.stringify({ role }).replaceAll("'", "''");
+  return `set role ${role};
+    select set_config('request.jwt.claim.role','',false);
+    select set_config('request.jwt.claims','${claims}',false);
+    ${sql}
+    reset role;`;
+}
+
 function lastLine(output) {
   return output.trim().split("\n").at(-1) ?? "";
 }
@@ -209,6 +218,22 @@ try {
       );
       reset role;
     `, { label: "Create synthetic GHL Marketplace fixtures" });
+
+    assert.equal(lastLine(session.psql(asModernPostgrestRole("service_role", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','INSTALL','${sha("modern-claims-install-event")}', '${sha("modern-claims-install-payload")}',
+        '${APP_3}','${COMPANY}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), { label: "Accept modern PostgREST service-role claims" })), "pending_authority");
+    mustFail(session, asModernPostgrestRole("authenticated", `
+      select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(
+        'test','INSTALL','${sha("modern-authenticated-install-event")}', '${sha("modern-authenticated-install-payload")}',
+        '${APP_3}','${COMPANY}',null,'${COMPANY}',null,null,null,true,
+        timezone('utc',now()),timezone('utc',now())
+      );
+    `), /permission denied|ghl_marketplace_service_role_required/i,
+    "reject modern PostgREST authenticated claims");
 
     mustFail(session, asRole("authenticated", `
       select public.create_ghl_marketplace_oauth_state_v1(

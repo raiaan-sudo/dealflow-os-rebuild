@@ -16,6 +16,10 @@ const integrityMigration = fs.readFileSync(
   path.join(root, "supabase/migrations/20260713018000_harden_meta_reporting_and_leadgen_integrity.sql"),
   "utf8",
 );
+const claimCompatibilityMigration = fs.readFileSync(
+  path.join(root, "supabase/migrations/20260722010000_modernize_provider_service_role_claims.sql"),
+  "utf8",
+);
 const leadgenIntegritySql = integrityMigration.slice(
   integrityMigration.indexOf("-- BEGIN META LEADGEN GHL-ONLY SETTLEMENT"),
   integrityMigration.indexOf("-- END META LEADGEN GHL-ONLY SETTLEMENT") +
@@ -135,6 +139,12 @@ function asService(sql) {
   return `set request.jwt.claim.role = 'service_role';\n${sql}`;
 }
 
+function asModernPostgrestService(sql) {
+  return `select set_config('request.jwt.claim.role','',false);
+select set_config('request.jwt.claims','{"role":"service_role"}',false);
+${sql}`;
+}
+
 async function waitForPostgres() {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const init = docker(["exec", containerName, "cat", "/proc/1/comm"], { timeout: 5_000 });
@@ -152,13 +162,14 @@ async function waitForPostgres() {
   throw new Error("Disposable PostgreSQL did not become ready within 30 seconds.");
 }
 
-function acceptSql({ leadgenId, pageId, formId, adId, digest }) {
-  return asService(`
+function acceptSql({ leadgenId, pageId, formId, adId, digest, modernClaims = false }) {
+  const sql = `
     select * from public.accept_meta_leadgen_webhook_event(
       '${leadgenId}', '${pageId}', '${formId}', ${adId ? `'${adId}'` : "null"},
       '2026-07-11T00:00:00Z', '${digest}', 'offline-webhook', 60000
     );
-  `);
+  `;
+  return modernClaims ? asModernPostgrestService(sql) : asService(sql);
 }
 
 try {
@@ -355,6 +366,7 @@ try {
 
   psql(migration, "Meta leadgen migration");
   psql(leadgenIntegritySql, "Meta leadgen GHL-only integrity migration");
+  psql(claimCompatibilityMigration, "Provider service-role claim compatibility migration");
 
   psql(
     asService(`
@@ -479,8 +491,9 @@ try {
         formId: FORM_A,
         adId: AD_A,
         digest: DIGEST_A,
+        modernClaims: true,
       }),
-      "valid event accept",
+      "valid event accept with modern PostgREST claims",
     ),
   ).at(-1).split("|");
   assert.equal(accepted[1], "claimed");

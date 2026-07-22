@@ -147,5 +147,5 @@ assert.match(successorStatus, /114: `20260717050000_create_privacy_consent_dsar_
 assert.match(successorStatus, /115: `20260717060000_install_owner_decision_authority_grants\.sql`/);
 
 console.log(
-  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103/104/120 proof remain predecessor-only, and the unsealed 121-migration successor remains NO_GO pending exact seal, fresh isolated staging, drain, and production proof.",
+  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation and prior-103/104/120/121 proofs remain predecessor-only, and the unsealed 122-migration successor remains NO_GO pending exact seal, isolated staging, drain, and production proof.",
 );
