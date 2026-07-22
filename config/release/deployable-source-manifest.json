@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1119,
-  "deployableSourceSha256": "99ea44b7ef4fe120a024336b56b510b212121854bbfdb70606aa6ff5619a924d",
+  "deployableSourceSha256": "fc0e93e3783f5a26285a52591b4695bf476b8a1e07186f08fdd071b25fdf829a",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1740,9 +1740,9 @@
     },
     {
       "path": "scripts/test-ghl-signed-user-context.mjs",
-      "size": 2855,
+      "size": 3279,
       "mode": 33188,
-      "sha256": "4ab9b1d284190a92f096a48c42d2957edf4a0880e28e0db7654ffdcfb7326c9d"
+      "sha256": "e2434d811dea4033099db133ee3bd0a810b7b78cad7034bfcddd3250a9cb0b91"
     },
     {
       "path": "scripts/test-ghl-tenant-provisioning.mjs",
@@ -2898,9 +2898,9 @@
     },
     {
       "path": "src/app/api/integrations/ghl/embed-context/route.ts",
-      "size": 21144,
+      "size": 21257,
       "mode": 33188,
-      "sha256": "fecca2b3943cb0cb685fb31810c6cf80c407d3577162a3bb478bbf71e46c2853"
+      "sha256": "c55bff8600bdb153b7a97f0c6b4fe67ddf2e1974dfcb65eaa3937fcb21f07e65"
     },
     {
       "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
@@ -4338,9 +4338,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/signed-user-context.ts",
-      "size": 2622,
+      "size": 2760,
       "mode": 33188,
-      "sha256": "589398894917e0f711feae2fc249b6e3f0cb1614bf0f5a0ae9f907f20596b583"
+      "sha256": "25e760fa3114939c5fb54d61a449e70f8ccbe04a6133cc94976dc16429f65152"
     },
     {
       "path": "src/lib/integrations/gohighlevel/snapshot-create-contract.ts",

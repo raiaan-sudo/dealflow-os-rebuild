@@ -81,6 +81,21 @@ assert.equal(
   null,
   "non-live app context must fail closed",
 );
+assert.deepEqual(
+  decryptGhlSignedUserContext(
+    encryptCryptoJsEnvelope({ ...context, appStatus: "draft" }, secret),
+    secret,
+    { allowDraft: true },
+  ),
+  {
+    userId: context.userId,
+    companyId: context.companyId,
+    activeLocation: context.activeLocation,
+    email: "realtor@partner.example",
+    appStatus: "draft",
+  },
+  "an explicit isolated-staging caller may accept the provider draft context",
+);
 assert.equal(decryptGhlSignedUserContext("not-an-envelope", secret), null);
 assert.equal(
   decryptGhlSignedUserContext(`${encrypted.slice(0, -4)}AAAA`, secret),

@@ -7,7 +7,7 @@ export type GhlSignedUserContext = {
   companyId: string;
   activeLocation: string;
   email: string;
-  appStatus: "live";
+  appStatus: "live" | "draft";
 };
 
 function isProviderId(value: unknown): value is string {
@@ -41,6 +41,7 @@ function deriveCryptoJsKeyAndIv(passphrase: Buffer, salt: Buffer) {
 export function decryptGhlSignedUserContext(
   encryptedData: unknown,
   sharedSecret: string,
+  options: { allowDraft?: boolean } = {},
 ): GhlSignedUserContext | null {
   if (
     typeof encryptedData !== "string" ||
@@ -71,7 +72,8 @@ export function decryptGhlSignedUserContext(
       !isProviderId(parsed.companyId) ||
       !isProviderId(parsed.activeLocation) ||
       !isEmail(parsed.email) ||
-      parsed.appStatus !== "live"
+      (parsed.appStatus !== "live" &&
+        !(options.allowDraft === true && parsed.appStatus === "draft"))
     ) {
       return null;
     }
@@ -80,7 +82,7 @@ export function decryptGhlSignedUserContext(
       companyId: parsed.companyId,
       activeLocation: parsed.activeLocation,
       email: parsed.email.trim().toLowerCase(),
-      appStatus: "live",
+      appStatus: parsed.appStatus,
     };
   } catch {
     return null;

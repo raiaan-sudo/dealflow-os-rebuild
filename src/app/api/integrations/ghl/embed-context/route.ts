@@ -201,7 +201,10 @@ export async function POST(request: Request) {
       candidate: body.parentOrigin,
       partnerHost: hostContext.domain,
     });
-    const signedContext = decryptGhlSignedUserContext(body.encryptedData, sharedSecret);
+    const nonProductionDeployment = isExplicitNonProductionDeployment();
+    const signedContext = decryptGhlSignedUserContext(body.encryptedData, sharedSecret, {
+      allowDraft: nonProductionDeployment,
+    });
     if (!parentOrigin || !signedContext) {
       return deny("ghl_embed_context_invalid");
     }
@@ -211,7 +214,7 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
     if (!admin) return deny("ghl_embed_authority_unavailable", 503);
-    const allowedEnvironments = isExplicitNonProductionDeployment()
+    const allowedEnvironments = nonProductionDeployment
       ? ["sandbox", "test"]
       : ["production"];
 
