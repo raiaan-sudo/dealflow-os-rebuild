@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1113,
-  "deployableSourceSha256": "10998535c1d684349fc02e815a312e750b4bbc77459fe75eb0c36ee52ce21fec",
+  "deployableSourceSha256": "f42b2cd0d93cae94662d1e54d0c50e2a897c7e5b3965d84ca08960c1afab8491",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1680,9 +1680,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-runtime-contract.mjs",
-      "size": 11181,
+      "size": 11484,
       "mode": 33188,
-      "sha256": "45ace7455ae7b26bed940f0a2a07faae436617f722f309a861eb0990cf1b4172"
+      "sha256": "cc4563cc5d683d03cf8798a45362c75bf48d51cefc1ae00bf79037bb2cecae09"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
@@ -4278,9 +4278,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/marketplace-runtime-contract.ts",
-      "size": 17950,
+      "size": 18175,
       "mode": 33188,
-      "sha256": "d18fd51f98854db596be50ffc6e8f29ba12d71f69d4081810a091d2f7b5be9d9"
+      "sha256": "071d416dcbe0f6e826d1074b3d06d45a8b1acdd01b5cb355ea336488b95f07f6"
     },
     {
       "path": "src/lib/integrations/gohighlevel/memory-repository.ts",

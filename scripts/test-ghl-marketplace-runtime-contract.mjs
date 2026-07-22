@@ -104,7 +104,9 @@ try {
   const calls = [];
   const fetcher = async (url, init) => {
     calls.push({ url, init });
-    const parsedBody = JSON.parse(init.body);
+    const parsedBody = init.headers["Content-Type"] === "application/x-www-form-urlencoded"
+      ? Object.fromEntries(new URLSearchParams(init.body))
+      : JSON.parse(init.body);
     const requestUserType = parsedBody.userType ?? "Location";
     return new Response(JSON.stringify(requestUserType === "Company" ? companyTokenJson : locationTokenJson), {
       status: 200, headers: { "content-type": "application/json", "x-request-id": "synthetic-request-id" },
@@ -128,8 +130,8 @@ try {
   });
   assert.equal(calls.length, 3);
   assert.equal(calls[0].url, "https://services.leadconnectorhq.com/oauth/token");
-  assert.equal(calls[0].init.headers["Content-Type"], "application/json");
-  assert.deepEqual(JSON.parse(calls[0].init.body), {
+  assert.equal(calls[0].init.headers["Content-Type"], "application/x-www-form-urlencoded");
+  assert.deepEqual(Object.fromEntries(new URLSearchParams(calls[0].init.body)), {
     clientId: "synthetic_client",
     clientSecret: "synthetic-client-secret-long-value",
     grantType: "authorization_code",
@@ -137,7 +139,8 @@ try {
     userType: "Location",
     redirectUri: "https://staging.example.test/callback",
   });
-  assert.deepEqual(JSON.parse(calls[1].init.body), {
+  assert.equal(calls[1].init.headers["Content-Type"], "application/x-www-form-urlencoded");
+  assert.deepEqual(Object.fromEntries(new URLSearchParams(calls[1].init.body)), {
     clientId: "synthetic_client",
     clientSecret: "synthetic-client-secret-long-value",
     grantType: "refresh_token",

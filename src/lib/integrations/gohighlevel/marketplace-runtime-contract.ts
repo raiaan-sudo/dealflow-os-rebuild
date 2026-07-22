@@ -409,7 +409,10 @@ export class GhlMarketplaceOAuthClient {
   }) {
     return parseGhlMarketplaceTokenResponse(await this.post({
       url: GHL_MARKETPLACE_TOKEN_URL,
-      encoding: "json",
+      // HighLevel v3 accepts its documented camelCase field names here, but
+      // rejects a JSON body. Keep the provider wire contract explicit so the
+      // OAuth callback cannot silently drift away from the live API.
+      encoding: "form",
       body: {
         clientId: input.clientId,
         clientSecret: input.clientSecret,
@@ -430,7 +433,7 @@ export class GhlMarketplaceOAuthClient {
   }) {
     const response = await this.post({
       url: GHL_MARKETPLACE_TOKEN_URL,
-      encoding: "json",
+      encoding: "form",
       body: {
         clientId: input.clientId,
         clientSecret: input.clientSecret,
