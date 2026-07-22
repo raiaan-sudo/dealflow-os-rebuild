@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1120,
-  "deployableSourceSha256": "e12280c567e06869baf31b84f97cb1d62fa22b1b02e1206c75493a2f087711e9",
+  "deployableSourceSha256": "ef53e64fdda45c7a6ce6bf38e3b8b4afb2d92dd0f7c05bb45c967b778cb8aa77",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -636,15 +636,15 @@
     },
     {
       "path": "package-lock.json",
-      "size": 270485,
+      "size": 270647,
       "mode": 33188,
-      "sha256": "db652fbbc5ffb6ac4d481eecb774605360744cb7f38b0a4f0a8d70005b50f89d"
+      "sha256": "7c8ed4b23da2de8be79dd62155ac7ae26318641d1df3da1f9f3380227ec15899"
     },
     {
       "path": "package.json",
       "size": 18506,
       "mode": 33188,
-      "sha256": "132b4412ae4a5d1e616d7cc9f742cfb270b8055fdaeeeb67cdb9a113b776846f"
+      "sha256": "68e3bfe9d2209342023bd6554029c2ae93b1ae94b38bd1cadcd8930db9629aa6"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -1200,9 +1200,9 @@
     },
     {
       "path": "scripts/staging/test-forward-122-to-123-contract.mjs",
-      "size": 1688,
+      "size": 1832,
       "mode": 33188,
-      "sha256": "464e1389541919d70ddb000ab75cac6058a4c6186ad4a2b095f6f3c3a6c00e44"
+      "sha256": "ebaad34f00cb42264386fa143e8ec5999c19a87ebdc29554346f0734fc677a71"
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
