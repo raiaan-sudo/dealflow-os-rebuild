@@ -26,7 +26,7 @@ import {
   verifyGhlEmbedAuthHandoff,
   verifyGhlEmbedCapability,
 } from "@/lib/white-label/ghl-embed-capability";
-import { loadVerifiedPartnerDomainContext } from "@/lib/white-label/verified-partner-domain";
+import { resolveGhlEmbedHostContext } from "@/lib/white-label/ghl-embed-host-context";
 import { isExactVerifiedPartnerRequestOrigin } from "@/lib/white-label/ghl-embed-request-origin";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +46,10 @@ const BLOCKED_PASSWORDLESS_ROLES = new Set([
 
 function rows(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function bindPartnerId(query: any, partnerId: string | null) {
+  return partnerId === null ? query.is("partner_id", null) : query.eq("partner_id", partnerId);
 }
 
 function deny(code: string, status = 403) {
@@ -79,18 +83,19 @@ async function verifyPasswordlessEmbedAuthority(input: {
   admin: NonNullable<ReturnType<typeof createAdminClient>>;
   userId: string;
   email: string;
-  partnerId: string;
+  partnerId: string | null;
   organizationId: string;
 }) {
   if (isInternalAdminEmail(input.email)) return false;
   const [profileResult, membershipResult, operatorResult, suspensionResult, authResult] =
     await Promise.all([
-      (input.admin as any)
-        .from("users")
-        .select("id,email,partner_id")
-        .eq("id", input.userId)
-        .eq("partner_id", input.partnerId)
-        .limit(2),
+      bindPartnerId(
+        (input.admin as any)
+          .from("users")
+          .select("id,email,partner_id")
+          .eq("id", input.userId),
+        input.partnerId,
+      ).limit(2),
       (input.admin as any)
         .from("organization_memberships")
         .select("organization_id,user_id,role")
@@ -132,12 +137,12 @@ async function verifyPasswordlessEmbedAuthority(input: {
 export async function GET(request: NextRequest) {
   try {
     const requestUrl = new URL(request.url);
-    const partnerContext = await loadVerifiedPartnerDomainContext(requestUrl.hostname);
+    const hostContext = await resolveGhlEmbedHostContext(requestUrl.hostname);
     const referer = request.headers.get("referer")?.trim() ?? "";
     const fetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase() ?? "";
     if (
-      !partnerContext ||
-      requestUrl.hostname.toLowerCase() !== partnerContext.domain ||
+      !hostContext ||
+      requestUrl.hostname.toLowerCase() !== hostContext.domain ||
       (!isExplicitNonProductionDeployment() && requestUrl.protocol !== "https:") ||
       !referer ||
       new URL(referer).origin !== requestUrl.origin ||
@@ -147,7 +152,7 @@ export async function GET(request: NextRequest) {
     }
     const capability = await verifyGhlEmbedCapability(
       request.cookies.get(GHL_EMBED_CAPABILITY_COOKIE)?.value,
-      { expectedHost: partnerContext.domain },
+      { expectedHost: hostContext.domain },
     );
     if (!capability) return deny("ghl_embed_cookie_unavailable", 401);
     return NextResponse.json(
@@ -171,15 +176,15 @@ export async function POST(request: Request) {
     }
 
     const requestUrl = new URL(request.url);
-    const partnerContext = await loadVerifiedPartnerDomainContext(requestUrl.hostname);
+    const hostContext = await resolveGhlEmbedHostContext(requestUrl.hostname);
     if (
-      !partnerContext ||
+      !hostContext ||
       !isExactVerifiedPartnerRequestOrigin({
         requestUrl: request.url,
         origin: request.headers.get("origin"),
         referer: request.headers.get("referer"),
         fetchSite: request.headers.get("sec-fetch-site"),
-        partnerDomain: partnerContext.domain,
+        partnerDomain: hostContext.domain,
         requireHttps: !isExplicitNonProductionDeployment(),
       })
     ) {
@@ -192,12 +197,10 @@ export async function POST(request: Request) {
       return deny("ghl_embed_disabled", 503);
     }
 
-    const parentOrigin = partnerContext
-      ? resolveAllowedGhlParentOrigin({
-          candidate: body.parentOrigin,
-          partnerHost: partnerContext.domain,
-        })
-      : null;
+    const parentOrigin = resolveAllowedGhlParentOrigin({
+      candidate: body.parentOrigin,
+      partnerHost: hostContext.domain,
+    });
     const signedContext = decryptGhlSignedUserContext(body.encryptedData, sharedSecret);
     if (!parentOrigin || !signedContext) {
       return deny("ghl_embed_context_invalid");
@@ -212,14 +215,15 @@ export async function POST(request: Request) {
       ? ["sandbox", "test"]
       : ["production"];
 
-    const mappingResult = await (admin as any)
-      .from("ghl_location_mappings")
-      .select("id,organization_id,partner_id,installation_id,environment,provider_location_id,status")
-      .eq("provider_location_id", signedContext.activeLocation)
-      .eq("partner_id", partnerContext.partnerId)
-      .eq("status", "active")
-      .in("environment", allowedEnvironments)
-      .limit(2);
+    const mappingResult = await bindPartnerId(
+      (admin as any)
+        .from("ghl_location_mappings")
+        .select("id,organization_id,partner_id,installation_id,environment,provider_location_id,status")
+        .eq("provider_location_id", signedContext.activeLocation)
+        .eq("status", "active")
+        .in("environment", allowedEnvironments),
+      hostContext.partnerId,
+    ).limit(2);
     const mappings = rows(mappingResult.data);
     if (mappingResult.error || mappings.length !== 1) {
       return deny("ghl_embed_location_unbound");
@@ -234,29 +238,59 @@ export async function POST(request: Request) {
         .eq("environment", mapping.environment)
         .eq("status", "active")
         .limit(2),
-      (admin as any)
-        .from("ghl_workspace_tenants")
-        .select("organization_id,partner_id,tenant_kind,status")
-        .eq("organization_id", mapping.organization_id)
-        .eq("partner_id", partnerContext.partnerId)
-        .eq("tenant_kind", "partner_child")
-        .eq("status", "active")
-        .limit(2),
-      (admin as any)
-        .from("workspace_ghl_users")
-        .select("workspace_id,partner_id,ghl_location_id,ghl_user_id,email,invite_status,dealflow_user_id")
-        .eq("workspace_id", mapping.organization_id)
-        .eq("partner_id", partnerContext.partnerId)
-        .eq("ghl_location_id", signedContext.activeLocation)
-        .eq("ghl_user_id", signedContext.userId)
-        .ilike("email", signedContext.email)
-        .eq("invite_status", "active")
-        .limit(2),
+      bindPartnerId(
+        (admin as any)
+          .from("ghl_workspace_tenants")
+          .select("organization_id,partner_id,tenant_kind,status")
+          .eq("organization_id", mapping.organization_id)
+          .eq("tenant_kind", hostContext.tenantKind)
+          .eq("status", "active"),
+        hostContext.partnerId,
+      ).limit(2),
+      bindPartnerId(
+        (admin as any)
+          .from("workspace_ghl_users")
+          .select("workspace_id,partner_id,ghl_location_id,ghl_user_id,email,invite_status,dealflow_user_id")
+          .eq("workspace_id", mapping.organization_id)
+          .eq("ghl_location_id", signedContext.activeLocation)
+          .eq("ghl_user_id", signedContext.userId)
+          .ilike("email", signedContext.email)
+          .eq("invite_status", "active"),
+        hostContext.partnerId,
+      ).limit(2),
     ]);
     const installations = rows(installationResult.data);
     const tenants = rows(tenantResult.data);
-    const ghlUsers = rows(ghlUserResult.data);
+    let ghlUsers = rows(ghlUserResult.data);
     const installation = installations[0] as Record<string, unknown> | undefined;
+    if (
+      hostContext.tenantKind === "direct_realtor" &&
+      hostContext.partnerId === null &&
+      !installationResult.error &&
+      !tenantResult.error &&
+      !ghlUserResult.error &&
+      installations.length === 1 &&
+      tenants.length === 1 &&
+      ghlUsers.length === 0 &&
+      installation?.provider_agency_id === signedContext.companyId &&
+      installation?.partner_id === null
+    ) {
+      const directBindingResult = await (admin as any).rpc(
+        "bind_direct_workspace_ghl_user_v1",
+        {
+          p_workspace_id: String(mapping.organization_id),
+          p_ghl_location_id: signedContext.activeLocation,
+          p_ghl_user_id: signedContext.userId,
+          p_normalized_email: signedContext.email,
+        },
+      );
+      if (!directBindingResult.error && typeof directBindingResult.data === "string") {
+        ghlUsers = [{
+          email: signedContext.email,
+          dealflow_user_id: directBindingResult.data,
+        }];
+      }
+    }
     const ghlUser = ghlUsers[0] as Record<string, unknown> | undefined;
     let boundDealflowUserId = String(ghlUser?.dealflow_user_id ?? "");
     if (
@@ -268,7 +302,7 @@ export async function POST(request: Request) {
       ghlUsers.length !== 1 ||
       normalized(ghlUser?.email) !== signedContext.email ||
       installation?.provider_agency_id !== signedContext.companyId ||
-      installation?.partner_id !== partnerContext.partnerId
+      installation?.partner_id !== hostContext.partnerId
     ) {
       return deny("ghl_embed_tenant_context_mismatch");
     }
@@ -277,7 +311,7 @@ export async function POST(request: Request) {
     )) {
       const bindingResult = await (admin as any).rpc("bind_workspace_ghl_dealflow_user_v1", {
         p_workspace_id: String(mapping.organization_id),
-        p_partner_id: partnerContext.partnerId,
+        p_partner_id: hostContext.partnerId,
         p_ghl_location_id: signedContext.activeLocation,
         p_ghl_user_id: signedContext.userId,
         p_normalized_email: signedContext.email,
@@ -301,7 +335,7 @@ export async function POST(request: Request) {
     }
 
     const organizationId = String(mapping.organization_id);
-    const partnerId = partnerContext.partnerId;
+    const partnerId = hostContext.partnerId;
     const payloadDigest = await createGhlEmbedSignedContextDigest(body.encryptedData);
     if (!payloadDigest) return deny("ghl_embed_context_digest_unavailable", 503);
 
@@ -334,7 +368,7 @@ export async function POST(request: Request) {
         createGhlEmbedCapability({
           stage: "authenticated",
           partnerId,
-          domain: partnerContext.domain,
+          domain: hostContext.domain,
           organizationId,
           locationId: signedContext.activeLocation,
           companyId: signedContext.companyId,
@@ -344,7 +378,7 @@ export async function POST(request: Request) {
           dealflowUserId: dealflowUser.id,
         }),
         createGhlEmbedSessionMarker({
-          domain: partnerContext.domain,
+          domain: hostContext.domain,
           partnerId,
           parentOrigin,
           dealflowUserId: dealflowUser.id,
@@ -382,7 +416,7 @@ export async function POST(request: Request) {
           receiptId,
           payloadDigest,
           partnerId,
-          domain: partnerContext.domain,
+          domain: hostContext.domain,
           organizationId,
           locationId: signedContext.activeLocation,
           companyId: signedContext.companyId,
@@ -393,7 +427,7 @@ export async function POST(request: Request) {
         createGhlEmbedCapability({
           stage: "preauth",
           partnerId,
-          domain: partnerContext.domain,
+          domain: hostContext.domain,
           organizationId,
           locationId: signedContext.activeLocation,
           companyId: signedContext.companyId,
@@ -403,7 +437,7 @@ export async function POST(request: Request) {
           dealflowUserId: null,
         }),
         createGhlEmbedSessionMarker({
-          domain: partnerContext.domain,
+          domain: hostContext.domain,
           partnerId,
           parentOrigin,
           dealflowUserId: null,
@@ -431,7 +465,7 @@ export async function POST(request: Request) {
     }
 
     const handoff = await verifyGhlEmbedAuthHandoff(body.handoffToken, {
-      expectedHost: partnerContext.domain,
+      expectedHost: hostContext.domain,
     });
     if (
       !handoff ||
@@ -469,7 +503,7 @@ export async function POST(request: Request) {
       createGhlEmbedCapability({
         stage: "authenticated",
         partnerId,
-        domain: partnerContext.domain,
+        domain: hostContext.domain,
         organizationId,
         locationId: signedContext.activeLocation,
         companyId: signedContext.companyId,
@@ -479,7 +513,7 @@ export async function POST(request: Request) {
         dealflowUserId: boundDealflowUserId,
       }),
       createGhlEmbedSessionMarker({
-        domain: partnerContext.domain,
+        domain: hostContext.domain,
         partnerId,
         parentOrigin,
         dealflowUserId: boundDealflowUserId,

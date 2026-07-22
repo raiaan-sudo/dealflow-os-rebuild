@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const FOUNDATION_LAST =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 123;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 124;
 const TRANSACTION_OWNING_MIGRATION =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const REQUIRED_EXTENSIONS = [
@@ -62,6 +62,7 @@ const REQUIRED_EXTENSIONS = [
   "20260720010000_add_ghl_embed_sso_authority.sql",
   "20260722010000_modernize_provider_service_role_claims.sql",
   "20260722020000_persist_ghl_location_token_scope.sql",
+  "20260722030000_support_direct_ghl_embed_sso.sql",
 ];
 const config = Object.freeze({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,

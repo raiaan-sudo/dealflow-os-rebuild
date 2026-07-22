@@ -6,6 +6,6 @@ export const dynamic = "force-dynamic";
 
 export default async function GhlEmbedPage() {
   const headerStore = await headers();
-  const host = headerStore.get("x-dealflow-verified-partner-domain") ?? "";
+  const host = headerStore.get("x-dealflow-ghl-embed-host") ?? "";
   return <GhlEmbedBootstrap allowedParentOrigins={getAllowedGhlParentOrigins(host)} />;
 }

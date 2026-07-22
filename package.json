@@ -62,7 +62,7 @@
     "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
     "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs && node ./scripts/test-ghl-embed-auth-handoff.mjs",
     "test:ghl-embed-auth-handoff": "node ./scripts/test-ghl-embed-auth-handoff.mjs",
-    "test:ghl-embed-auth-handoff-db": "node ./scripts/test-ghl-embed-auth-handoff-disposable-db.mjs",
+    "test:ghl-embed-auth-handoff-db": "node ./scripts/test-ghl-embed-auth-handoff-disposable-db.mjs && node ./scripts/test-direct-ghl-embed-sso-disposable-db.mjs",
     "test:ghl-signed-user-context": "node ./scripts/test-ghl-signed-user-context.mjs",
     "test:ghl-lifecycle": "node ./scripts/test-ghl-lifecycle-contract.mjs",
     "test:ghl-inbound-reconciliation": "tsx ./scripts/test-ghl-inbound-form-reconciliation.ts",

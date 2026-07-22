@@ -290,7 +290,7 @@ for (const marker of [
 for (const marker of [
   "GhlEmbedBootstrap",
   "getAllowedGhlParentOrigins",
-  'headerStore.get("x-dealflow-verified-partner-domain")',
+  'headerStore.get("x-dealflow-ghl-embed-host")',
 ]) {
   if (!neutralBootstrapSource.includes(marker)) {
     failures.push(`Neutral CRM bootstrap is missing: ${marker}`);
@@ -374,6 +374,30 @@ const sessionToken = await capabilityHelpers.createGhlEmbedSessionMarker({
   dealflowUserId: authUserId,
 }, now);
 assert.ok(sessionToken);
+const directCapabilityToken = await capabilityHelpers.createGhlEmbedCapability({
+  ...baseCapability,
+  partnerId: null,
+  domain: "direct.example",
+  stage: "authenticated",
+  dealflowUserId: authUserId,
+}, now);
+const directSessionToken = await capabilityHelpers.createGhlEmbedSessionMarker({
+  domain: "direct.example",
+  partnerId: null,
+  parentOrigin: baseCapability.parentOrigin,
+  dealflowUserId: authUserId,
+}, now);
+assert.ok(directCapabilityToken && directSessionToken, "direct realtor capabilities must support an intentional null partner id");
+assert.ok(await capabilityHelpers.verifyGhlEmbedCapability(directCapabilityToken, {
+  expectedHost: "direct.example",
+  expectedDealflowUserId: authUserId,
+  requiredStage: "authenticated",
+  nowSeconds: now + 10,
+}), "a signed direct-realtor capability must verify on its exact host");
+assert.ok(await capabilityHelpers.verifyGhlEmbedSessionMarker(directSessionToken, {
+  expectedHost: "direct.example",
+  nowSeconds: now + 10,
+}), "a signed direct-realtor session marker must verify on its exact host");
 const preauthCapability = await capabilityHelpers.verifyGhlEmbedCapability(preauthToken, {
   expectedHost: "partner.example",
   requiredStage: "preauth",

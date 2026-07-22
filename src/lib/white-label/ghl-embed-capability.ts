@@ -19,7 +19,7 @@ const OFFICIAL_HIGHLEVEL_PARENT_ORIGINS = Object.freeze([
 export type GhlEmbedCapability = {
   v: number;
   stage: "preauth" | "authenticated";
-  partnerId: string;
+  partnerId: string | null;
   domain: string;
   organizationId: string;
   locationId: string;
@@ -36,7 +36,7 @@ export type GhlEmbedCapability = {
 export type GhlEmbedSessionMarker = {
   v: number;
   domain: string;
-  partnerId: string;
+  partnerId: string | null;
   parentOrigin: string;
   dealflowUserId: string | null;
   iat: number;
@@ -47,7 +47,7 @@ export type GhlEmbedAuthHandoff = {
   v: number;
   receiptId: string;
   payloadDigest: string;
-  partnerId: string;
+  partnerId: string | null;
   domain: string;
   organizationId: string;
   locationId: string;
@@ -62,6 +62,10 @@ export type GhlEmbedAuthHandoff = {
 function isUuid(value: unknown): value is string {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isNullableUuid(value: unknown): value is string | null {
+  return value === null || isUuid(value);
 }
 
 function isProviderId(value: unknown): value is string {
@@ -214,7 +218,7 @@ export async function createGhlEmbedAuthHandoff(
     !parentOrigin ||
     !isUuid(input.receiptId) ||
     !isSha256(input.payloadDigest) ||
-    !isUuid(input.partnerId) ||
+    !isNullableUuid(input.partnerId) ||
     !isUuid(input.organizationId) ||
     !isProviderId(input.locationId) ||
     !isProviderId(input.companyId) ||
@@ -269,7 +273,7 @@ export async function verifyGhlEmbedAuthHandoff(
       payload.v !== AUTH_HANDOFF_VERSION ||
       !isUuid(payload.receiptId) ||
       !isSha256(payload.payloadDigest) ||
-      !isUuid(payload.partnerId) ||
+      !isNullableUuid(payload.partnerId) ||
       !isUuid(payload.organizationId) ||
       !isProviderId(payload.locationId) ||
       !isProviderId(payload.companyId) ||
@@ -367,7 +371,7 @@ export async function verifyGhlEmbedCapability(
     if (
       payload.v !== CAPABILITY_VERSION ||
       !["preauth", "authenticated"].includes(payload.stage) ||
-      !isUuid(payload.partnerId) ||
+      !isNullableUuid(payload.partnerId) ||
       !isUuid(payload.organizationId) ||
       !isProviderId(payload.locationId) ||
       !isProviderId(payload.companyId) ||
@@ -408,7 +412,7 @@ export async function createGhlEmbedSessionMarker(
   const parentOrigin = domain
     ? resolveAllowedGhlParentOrigin({ candidate: input.parentOrigin, partnerHost: domain })
     : null;
-  if (!secret || !domain || !parentOrigin || !isUuid(input.partnerId)) return null;
+  if (!secret || !domain || !parentOrigin || !isNullableUuid(input.partnerId)) return null;
   if (input.dealflowUserId !== null && !isUuid(input.dealflowUserId)) return null;
   const payload: GhlEmbedSessionMarker = {
     ...input,
@@ -457,7 +461,7 @@ export async function verifyGhlEmbedSessionMarker(
       payload.v !== CAPABILITY_VERSION ||
       !expectedHost ||
       normalizePartnerDomainHost(payload.domain) !== expectedHost ||
-      !isUuid(payload.partnerId) ||
+      !isNullableUuid(payload.partnerId) ||
       (payload.dealflowUserId !== null && !isUuid(payload.dealflowUserId)) ||
       !Number.isSafeInteger(payload.iat) ||
       !Number.isSafeInteger(payload.exp) ||

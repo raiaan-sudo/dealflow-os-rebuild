@@ -28,6 +28,7 @@ import {
   verifyGhlEmbedCapability,
   verifyGhlEmbedSessionMarker,
 } from "@/lib/white-label/ghl-embed-capability";
+import { resolveGhlEmbedHostContext } from "@/lib/white-label/ghl-embed-host-context";
 
 const PUBLIC_PATHS = new Set([
   "/",
@@ -644,16 +645,20 @@ export async function proxy(request: NextRequest) {
     ? await loadVerifiedPartnerDomainContext(request.nextUrl.hostname)
     : null;
   const verifiedPartnerDomain = verifiedPartnerContext?.domain ?? null;
-  const embedCapability = verifiedPartnerDomain
+  const ghlEmbedHostContext = shouldResolvePartnerDomain
+    ? await resolveGhlEmbedHostContext(request.nextUrl.hostname)
+    : null;
+  const ghlEmbedHost = ghlEmbedHostContext?.domain ?? null;
+  const embedCapability = ghlEmbedHost
     ? await verifyGhlEmbedCapability(
         request.cookies.get(GHL_EMBED_CAPABILITY_COOKIE)?.value,
-        { expectedHost: verifiedPartnerDomain },
+        { expectedHost: ghlEmbedHost },
       )
     : null;
-  const embedSessionMarker = verifiedPartnerDomain
+  const embedSessionMarker = ghlEmbedHost
     ? await verifyGhlEmbedSessionMarker(
         request.cookies.get(GHL_EMBED_SESSION_COOKIE)?.value,
-        { expectedHost: verifiedPartnerDomain },
+        { expectedHost: ghlEmbedHost },
       )
     : null;
   const partnerAttributionToken = verifiedPartnerContext
@@ -674,7 +679,7 @@ export async function proxy(request: NextRequest) {
       request,
       nextResponse,
       nonce,
-      verifiedPartnerDomain,
+      ghlEmbedHost,
       effectiveEmbedCapability,
       startedAt,
     );
@@ -687,6 +692,7 @@ export async function proxy(request: NextRequest) {
   requestHeaders.delete("x-dealflow-partner-attribution");
   requestHeaders.delete("x-dealflow-ghl-embed-organization");
   requestHeaders.delete("x-dealflow-ghl-embed-parent-origin");
+  requestHeaders.delete("x-dealflow-ghl-embed-host");
   if (verifiedPartnerContext) {
     requestHeaders.set("x-dealflow-verified-partner-domain", verifiedPartnerContext.domain);
     requestHeaders.set("x-dealflow-verified-partner-id", verifiedPartnerContext.partnerId);
@@ -694,6 +700,9 @@ export async function proxy(request: NextRequest) {
   }
   if (partnerAttributionToken) {
     requestHeaders.set("x-dealflow-partner-attribution", partnerAttributionToken);
+  }
+  if (ghlEmbedHost) {
+    requestHeaders.set("x-dealflow-ghl-embed-host", ghlEmbedHost);
   }
   if (embedCapability?.stage === "authenticated") {
     requestHeaders.set(
@@ -709,7 +718,7 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set(
     "Content-Security-Policy",
-    buildContentSecurityPolicy(request, nonce, verifiedPartnerDomain, embedCapability),
+    buildContentSecurityPolicy(request, nonce, ghlEmbedHost, embedCapability),
   );
   let response = NextResponse.next({ request: { headers: requestHeaders } });
 
@@ -790,7 +799,7 @@ export async function proxy(request: NextRequest) {
       addEmbeddedAuthRedirectState(
         request,
         loginUrl,
-        verifiedPartnerDomain,
+        ghlEmbedHost,
         embedCapability,
       );
     }
@@ -860,7 +869,7 @@ export async function proxy(request: NextRequest) {
     if (
       embedCapability?.stage === "authenticated" &&
       embedCapability.dealflowUserId !== user.id &&
-      getFrameAncestors(request, verifiedPartnerDomain, embedCapability) !== "'none'"
+      getFrameAncestors(request, ghlEmbedHost, embedCapability) !== "'none'"
     ) {
       return finalize(
         NextResponse.json(
@@ -889,7 +898,7 @@ export async function proxy(request: NextRequest) {
   addEmbeddedAuthRedirectState(
     request,
     loginUrl,
-    verifiedPartnerDomain,
+    ghlEmbedHost,
     embedCapability,
   );
   return finalize(NextResponse.redirect(loginUrl));
