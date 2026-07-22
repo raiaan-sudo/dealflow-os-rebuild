@@ -24,7 +24,8 @@ const records = readdirSync(migrationDirectory)
     };
   });
 
-const result = assertExactForward121To122Portfolio(records, migrationDirectory);
+const historicalRecords = records.slice(0, 122);
+const result = assertExactForward121To122Portfolio(historicalRecords, migrationDirectory);
 assert.equal(result.priorRecords.length, 121);
 assert.equal(result.forwardRecord.name, FORWARD_121_TO_122_AUTHORITY.forwardMigration.file);
 assert.equal(FORWARD_121_TO_122_AUTHORITY.prior.migrationCount, 121);
@@ -35,10 +36,10 @@ assert.equal(
 );
 assert.equal(FORWARD_121_TO_122_AUTHORITY.current.managedStructuralCatalogRecordCount, 8405);
 assert.throws(
-  () => assertExactForward121To122Portfolio(records.slice(1), migrationDirectory),
+  () => assertExactForward121To122Portfolio(historicalRecords.slice(1), migrationDirectory),
   /exact 122-migration portfolio/,
 );
-const drifted = records.map((record, index) => index === records.length - 1
+const drifted = historicalRecords.map((record, index) => index === historicalRecords.length - 1
   ? { ...record, name: "20260722010000_drift.sql" }
   : record);
 assert.throws(

@@ -10,9 +10,9 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const EXPECTED_MIGRATION_COUNT = 122;
+const EXPECTED_MIGRATION_COUNT = 123;
 const TARGET_MIGRATION = "20260713022000_reconcile_native_ghl_form_submissions.sql";
-const REQUIRED_FINAL_MIGRATION = "20260722010000_modernize_provider_service_role_claims.sql";
+const REQUIRED_FINAL_MIGRATION = "20260722020000_persist_ghl_location_token_scope.sql";
 const TRANSACTION_OWNING_MIGRATION = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = readdirSync(MIGRATIONS)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))

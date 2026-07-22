@@ -96,7 +96,7 @@ import {
 } from "./vercel-cli-selection-contract.mjs";
 import { synchronizeExactVercelEnvironment } from "./vercel-environment-sync-contract.mjs";
 import { FORWARD_104_TO_120_AUTHORITY } from "./forward-104-to-120-contract.mjs";
-import { FORWARD_121_TO_122_AUTHORITY } from "./forward-121-to-122-contract.mjs";
+import { FORWARD_122_TO_123_AUTHORITY } from "./forward-122-to-123-contract.mjs";
 
 const EXPECTED_REPO = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
@@ -125,9 +125,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 122;
+const EXPECTED_MIGRATION_COUNT = 123;
 const EXPECTED_FINAL_MIGRATION =
-  "20260722010000_modernize_provider_service_role_claims.sql";
+  "20260722020000_persist_ghl_location_token_scope.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
   "92e1e9b756b7a9aca9a7db5daaf68d7ae93d68368f33fc1fd787024a1a099802";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
@@ -494,11 +494,11 @@ Historical bounded forward transition from the pinned read-only-proven
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
-Exact bounded successor transition from the sealed 121-migration predecessor
-to the current 122-migration portfolio:
+Exact bounded successor transition from the sealed 122-migration predecessor
+to the current 123-migration portfolio:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-successor-migration --deploy \\
-    --prior-migration-proof-dir /absolute/path/pinned-121/migration-proof \\
+    --prior-migration-proof-dir /absolute/path/pinned-122/migration-proof \\
     --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \\
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
@@ -513,9 +513,9 @@ Required execution environment:
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
 Exactly one migration mode is required. Resume mode is read-only. The current
-successor mode is restricted to exact 121-to-122 authority. The pinned
+successor mode is restricted to exact 122-to-123 authority. The pinned
 104-to-120 transition remains immutable historical proof and cannot be run
-from a 122-candidate checkout.`;
+from a 123-candidate checkout.`;
 }
 
 function parseArguments(argv) {
@@ -1609,9 +1609,9 @@ async function runSeed(
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 122 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 123 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260722010000_modernize_provider_service_role_claims.sql" ||
+      "20260722020000_persist_ghl_location_token_scope.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
@@ -5818,7 +5818,7 @@ async function main() {
   }
   if (options.applyForwardMigration) {
     throw new Error(
-      "The current 122 candidate cannot execute historical 104-to-120 forward mode; use --apply-successor-migration with an exact sealed 121 proof",
+      "The current 123 candidate cannot execute historical 104-to-120 forward mode; use --apply-successor-migration with an exact sealed 122 proof",
     );
   }
   approvedStagingEvidenceParent =
@@ -5979,7 +5979,7 @@ async function main() {
         : options.applyForwardMigration
           ? "exact forward-only isolated-staging migration broker"
           : options.applySuccessorMigration
-            ? "exact 121-to-122 successor isolated-staging migration broker"
+            ? "exact 122-to-123 successor isolated-staging migration broker"
             : "atomic fresh isolated-staging migration broker",
       env: {
         ...childBaseEnvironment(),
@@ -6101,34 +6101,34 @@ async function main() {
   const exactSuccessorApplication =
     options.applySuccessorMigration &&
     migrationSummary.migrationMode === "APPLY_SUCCESSOR_EXACT" &&
-    migrationSummary.transition === "EXACT_121_TO_122" &&
+    migrationSummary.transition === "EXACT_122_TO_123" &&
     migrationSummary.forwardOnly === true &&
     migrationSummary.priorMigrationCount ===
-      FORWARD_121_TO_122_AUTHORITY.prior.migrationCount &&
+      FORWARD_122_TO_123_AUTHORITY.prior.migrationCount &&
     migrationSummary.forwardMigrationCount === 1 &&
     JSON.stringify(migrationSummary.forwardMigration) === JSON.stringify({
-      version: FORWARD_121_TO_122_AUTHORITY.forwardMigration.version,
-      file: FORWARD_121_TO_122_AUTHORITY.forwardMigration.file,
-      sha256: FORWARD_121_TO_122_AUTHORITY.forwardMigration.sha256,
+      version: FORWARD_122_TO_123_AUTHORITY.forwardMigration.version,
+      file: FORWARD_122_TO_123_AUTHORITY.forwardMigration.file,
+      sha256: FORWARD_122_TO_123_AUTHORITY.forwardMigration.sha256,
     }) &&
     migrationSummary.migrationPortfolioSha256 ===
-      FORWARD_121_TO_122_AUTHORITY.current.migrationPortfolioSha256 &&
+      FORWARD_122_TO_123_AUTHORITY.current.migrationPortfolioSha256 &&
     migrationSummary.remoteMutationStarted === true &&
     migrationSummary.remoteMutationCompleted === true &&
     migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
     migrationSummary.remoteStateVerificationStatus ===
-      "EXACT_FORWARD_121_TO_122_COMMITTED_PORTFOLIO" &&
+      "EXACT_FORWARD_122_TO_123_COMMITTED_PORTFOLIO" &&
     priorApplicationRetainedHistory &&
     migrationSummary.priorApplication?.migrationCount ===
-      FORWARD_121_TO_122_AUTHORITY.prior.migrationCount &&
+      FORWARD_122_TO_123_AUTHORITY.prior.migrationCount &&
     migrationSummary.priorApplication?.migrationPortfolioSha256 ===
-      FORWARD_121_TO_122_AUTHORITY.prior.migrationPortfolioSha256 &&
+      FORWARD_122_TO_123_AUTHORITY.prior.migrationPortfolioSha256 &&
     migrationSummary.priorApplication?.lastCommittedVersion ===
-      FORWARD_121_TO_122_AUTHORITY.prior.finalMigration.slice(0, 14) &&
+      FORWARD_122_TO_123_AUTHORITY.prior.finalMigration.slice(0, 14) &&
     JSON.stringify(migrationSummary.priorApplication?.migrationFiles) ===
       JSON.stringify(migrations.migrationFiles.slice(
         0,
-        FORWARD_121_TO_122_AUTHORITY.prior.migrationCount,
+        FORWARD_122_TO_123_AUTHORITY.prior.migrationCount,
       ));
   if (
     migrationSummary.status !== "PASS" ||
@@ -6140,7 +6140,7 @@ async function main() {
       "EXACT_COMMITTED_PORTFOLIO",
       "EXACT_EXISTING_COMMITTED_PORTFOLIO",
       "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",
-      "EXACT_FORWARD_121_TO_122_COMMITTED_PORTFOLIO",
+      "EXACT_FORWARD_122_TO_123_COMMITTED_PORTFOLIO",
     ].includes(migrationSummary.remoteStateVerificationStatus) ||
     migrationSummary.migrationCount !== EXPECTED_MIGRATION_COUNT ||
     migrationSummary.migrationHistoryCount !== EXPECTED_MIGRATION_COUNT ||

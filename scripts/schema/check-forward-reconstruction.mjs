@@ -24,7 +24,7 @@ const ACTIVE_APP_CONTRACT_TABLES = [
 const FROZEN_FOUNDATION_LAST_FILE =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
 const FROZEN_FOUNDATION_MIGRATION_COUNT = 80;
-const EXACT_INTEGRATED_MIGRATION_COUNT = 122;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 123;
 const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260712213000_create_ghl_sandbox_provider_path.sql",
   "20260712214000_create_continuous_reporting_and_safe_optimizer.sql",
@@ -68,6 +68,7 @@ const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260717090000_create_canonical_lead_outcome_ledger.sql",
   "20260720010000_add_ghl_embed_sso_authority.sql",
   "20260722010000_modernize_provider_service_role_claims.sql",
+  "20260722020000_persist_ghl_location_token_scope.sql",
 ];
 
 function fail(message, details = {}) {
