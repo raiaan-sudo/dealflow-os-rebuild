@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1119,
-  "deployableSourceSha256": "cb88c1e10c78ea00430895a3e3e3d0e6c2fa8265f29d536ee7b01d4fcd3ba2a8",
+  "deployableSourceSha256": "99ea44b7ef4fe120a024336b56b510b212121854bbfdb70606aa6ff5619a924d",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -3138,9 +3138,9 @@
     },
     {
       "path": "src/app/ghl/embed/ghl-embed-bootstrap.tsx",
-      "size": 7076,
+      "size": 7071,
       "mode": 33188,
-      "sha256": "54101213a1f0516a5cbf12ad52ad3d6d249a4c4c9957617cfe8e6345effb9a2f"
+      "sha256": "5e71ba5f588f6f63b3bcabb370c3a44f2e04e20f1b774c67e9f748dd0b75471f"
     },
     {
       "path": "src/app/ghl/embed/page.tsx",

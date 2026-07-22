@@ -142,12 +142,12 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
           parentOrigin: event.origin,
         });
       } catch (error) {
-        console.warn("DealFlow GHL embed verification stopped", {
-          code: safeEmbedErrorCode(
+        console.warn(
+          `DealFlow GHL embed verification stopped: ${safeEmbedErrorCode(
             error instanceof Error ? error.message : null,
             "ghl_embed_exchange_failed",
-          ),
-        });
+          )}`,
+        );
         setStatus("The CRM workspace did not match your DealFlow account. Continue in a new tab or contact support.");
         setBlocked(true);
       }
