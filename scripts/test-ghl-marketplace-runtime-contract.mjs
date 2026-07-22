@@ -65,24 +65,49 @@ try {
   const companyTokenJson = {
     accessToken: "access-token-value-at-least-twenty-characters",
     refreshToken: "refresh-token-value-at-least-twenty-characters",
-    tokenType: "Bearer", expiresIn: 86400, scope: "users.write contacts.readonly",
+    tokenType: "Bearer", expiresIn: 86400,
+    scope: "users.write contacts.readonly locations.write snapshots.readonly",
     userType: "Company", companyId: "synthetic_company_001", userId: "synthetic_user_001",
     approvedLocations: ["synthetic_location_002", "synthetic_location_001"],
   };
   const companyToken = runtime.parseGhlMarketplaceTokenResponse(companyTokenJson);
   assert.equal(companyToken.locationId, null);
-  assert.deepEqual(companyToken.scopes, ["contacts.readonly", "users.write"]);
-  const locationTokenJson = { ...companyTokenJson, userType: "Location", locationId: "synthetic_location_001" };
+  assert.deepEqual(companyToken.scopes, [
+    "contacts.readonly", "locations.write", "snapshots.readonly", "users.write",
+  ]);
+  const locationTokenJson = {
+    ...companyTokenJson,
+    scope: "users.write contacts.readonly oauth.readonly oauth.write",
+    userType: "Location",
+    locationId: "synthetic_location_001",
+  };
   const locationToken = runtime.parseGhlMarketplaceTokenResponse(locationTokenJson);
   assert.equal(locationToken.locationId, "synthetic_location_001");
+  assert.deepEqual(runtime.expectedGhlMarketplaceLocationTokenScopes(companyToken.scopes), [
+    "contacts.readonly", "oauth.readonly", "oauth.write", "users.write",
+  ]);
   assert.throws(() => runtime.parseGhlMarketplaceTokenResponse({ ...companyTokenJson, locationId: "synthetic_location_001" }), /response_invalid/);
   assert.throws(() => runtime.parseGhlMarketplaceTokenResponse({ ...locationTokenJson, locationId: undefined }), /response_invalid/);
   assert.equal(runtime.assertGhlMarketplaceTokenBinding({
     token: locationToken, expectedUserType: "Location",
     expectedCompanyFingerprint: oauth.fingerprintGhlAuthorityValue("synthetic_company_001"),
     expectedLocationFingerprint: oauth.fingerprintGhlAuthorityValue("synthetic_location_001"),
-    expectedScopeFingerprint: oauth.fingerprintGhlScopes(["users.write", "contacts.readonly"]),
+    expectedScopeFingerprint: oauth.fingerprintGhlScopes(
+      runtime.expectedGhlMarketplaceLocationTokenScopes(companyToken.scopes),
+    ),
   }), true);
+  assert.throws(() => runtime.assertGhlMarketplaceTokenBinding({
+    token: runtime.parseGhlMarketplaceTokenResponse({
+      ...locationTokenJson,
+      scope: `${locationTokenJson.scope} opportunities.write`,
+    }),
+    expectedUserType: "Location",
+    expectedCompanyFingerprint: oauth.fingerprintGhlAuthorityValue("synthetic_company_001"),
+    expectedLocationFingerprint: oauth.fingerprintGhlAuthorityValue("synthetic_location_001"),
+    expectedScopeFingerprint: oauth.fingerprintGhlScopes(
+      runtime.expectedGhlMarketplaceLocationTokenScopes(companyToken.scopes),
+    ),
+  }), /tenant_binding_mismatch/);
   assert.throws(() => runtime.assertGhlMarketplaceTokenBinding({
     token: locationToken, expectedUserType: "Location",
     expectedCompanyFingerprint: oauth.fingerprintGhlAuthorityValue("wrong_company_001"),

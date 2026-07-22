@@ -12,6 +12,7 @@ import {
   assertGhlMarketplaceTokenBinding,
   decryptGhlMarketplaceCredential,
   encryptGhlMarketplaceCredential,
+  expectedGhlMarketplaceLocationTokenScopes,
   GhlMarketplaceOAuthClient,
   GhlMarketplaceProviderError,
   normalizeGhlMarketplaceReturnPath,
@@ -609,8 +610,11 @@ export async function exchangeGhlCompanyTokenForLocation(input: {
       expectedUserType: "Location",
       expectedCompanyFingerprint: value(authority.company_fingerprint),
       expectedLocationFingerprint: value(exchange.location_fingerprint),
-      expectedScopeFingerprint: value(exchange.scope_fingerprint),
+      expectedScopeFingerprint: fingerprintGhlScopes(
+        expectedGhlMarketplaceLocationTokenScopes(config.scopes),
+      ),
     });
+    const locationScopeFingerprint = fingerprintGhlScopes(token.scopes);
     const pair = await storeEncryptedPair({
       admin,
       authorityId: value(authority.id),
@@ -621,12 +625,13 @@ export async function exchangeGhlCompanyTokenForLocation(input: {
       generation: 1,
     });
     const { data: settled, error: settleError } = await (admin as any).rpc(
-      "settle_ghl_marketplace_location_exchange_encrypted_v2",
+      "settle_ghl_marketplace_location_exchange_encrypted_v3",
       {
         p_exchange_id: exchangeId,
         p_outcome: "succeeded",
         p_access_credential_ref: pair.access.envelope.reference,
         p_refresh_credential_ref: pair.refresh.envelope.reference,
+        p_scope_fingerprint: locationScopeFingerprint,
         p_access_expires_at: new Date(now.getTime() + token.expiresIn * 1_000).toISOString(),
         p_refresh_expires_at: new Date(now.getTime() + REFRESH_TTL_MS).toISOString(),
         p_key_version: config.keyVersion,

@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1113,
-  "deployableSourceSha256": "f42b2cd0d93cae94662d1e54d0c50e2a897c7e5b3965d84ca08960c1afab8491",
+  "entryCount": 1114,
+  "deployableSourceSha256": "9edddefa8fda23be5a5e188aaaa7cb14513549f9eaa5a41a91aa56ab726d9f8b",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1668,9 +1668,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-disposable-db.mjs",
-      "size": 38103,
+      "size": 38617,
       "mode": 33188,
-      "sha256": "20cd24d93026d01a3e27468b3cbd44f88cd591bd9f4662c876b2db8bf42dac9d"
+      "sha256": "1bced2cee84f5b1e355f6b4de9673158657db0bf48a66268c7f936e051927e2d"
     },
     {
       "path": "scripts/test-ghl-marketplace-refresh-fencing.ts",
@@ -1680,9 +1680,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-runtime-contract.mjs",
-      "size": 11484,
+      "size": 12495,
       "mode": 33188,
-      "sha256": "cc4563cc5d683d03cf8798a45362c75bf48d51cefc1ae00bf79037bb2cecae09"
+      "sha256": "7ee24d08bbe5ccfbb1213e3b1fed56d78b98b8e06c8c588331f62024d129c4c8"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
@@ -4278,9 +4278,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/marketplace-runtime-contract.ts",
-      "size": 18175,
+      "size": 18990,
       "mode": 33188,
-      "sha256": "071d416dcbe0f6e826d1074b3d06d45a8b1acdd01b5cb355ea336488b95f07f6"
+      "sha256": "0331315fa2b4967ee9a02e1c6fa74300baab790fe00e10bdcdd9593c0782604b"
     },
     {
       "path": "src/lib/integrations/gohighlevel/memory-repository.ts",
@@ -5064,9 +5064,9 @@
     },
     {
       "path": "src/lib/services/ghl-marketplace-runtime-service.ts",
-      "size": 33791,
+      "size": 34026,
       "mode": 33188,
-      "sha256": "169ced9a57d3f43b0587844abc3c67ae4c0856da4d02c363bec6105272a5f6c1"
+      "sha256": "c840ed1b4a081f4b45d45a210ee7596471afd149d96679f617a1112d269d04f7"
     },
     {
       "path": "src/lib/services/ghl-periodic-form-sweep-service.ts",
@@ -6465,6 +6465,12 @@
       "size": 2001,
       "mode": 33188,
       "sha256": "8026fb77bd2d8537831177a8cbb501749bf0a05db323dec182746cd8f22fbe2a"
+    },
+    {
+      "path": "supabase/migrations/20260722020000_persist_ghl_location_token_scope.sql",
+      "size": 6751,
+      "mode": 33188,
+      "sha256": "97953981112bbf33f9d2e7c1f4d73cce205aa3adc6141164f30d44c5e7a45839"
     },
     {
       "path": "supabase/reconciliation/README.md",

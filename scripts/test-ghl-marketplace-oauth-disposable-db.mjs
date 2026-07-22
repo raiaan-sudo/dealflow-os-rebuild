@@ -576,11 +576,19 @@ try {
     `), { label: "Stage encrypted location credential pair" });
     assert.match(lastLine(session.psql(asRole("service_role", `
       select concat_ws('|',result_outcome,result_token_set_id)
-      from public.settle_ghl_marketplace_location_exchange_encrypted_v2(
+      from public.settle_ghl_marketplace_location_exchange_encrypted_v3(
         '${runtimeExchangeId}','succeeded','${RUNTIME_ACCESS_REF_2}','${RUNTIME_REFRESH_REF_2}',
+        '${sha("runtime-location-scope")}',
         timezone('utc',now()) + interval '1 day',timezone('utc',now()) + interval '365 days',1,timezone('utc',now())
       );
     `), { label: "Settle encrypted location-token exchange" })), /^succeeded\|[a-f0-9-]{36}$/);
+    assert.equal(lastLine(session.psql(`
+      select concat_ws('|',exchange.result_scope_fingerprint,token.scope_fingerprint)
+      from public.ghl_marketplace_location_token_exchanges exchange
+      join public.ghl_marketplace_token_sets token on token.id=exchange.result_token_set_id
+      where exchange.id='${runtimeExchangeId}';
+    `, { label: "Persist exact provider location scope" })),
+    `${sha("runtime-location-scope")}|${sha("runtime-location-scope")}`);
 
     const transientRefreshClaim = lastLine(session.psql(asRole("service_role", `
       select result_claim_token

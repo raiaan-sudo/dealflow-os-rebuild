@@ -33,6 +33,14 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INSTALL_HOST = /(?:^|\.)(?:gohighlevel\.com|leadconnectorhq\.com)$/i;
 const TOKEN_MAX_BYTES = 32_768;
 const RESPONSE_MAX_BYTES = 256 * 1024;
+const GHL_LOCATION_TOKEN_REMOVED_SCOPES = new Set([
+  "locations.write",
+  "snapshots.readonly",
+]);
+const GHL_LOCATION_TOKEN_ADDED_SCOPES = [
+  "oauth.readonly",
+  "oauth.write",
+] as const;
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -178,6 +186,22 @@ export type GhlMarketplaceToken = Readonly<{
   approvedLocations: readonly string[];
   userId: string;
 }>;
+
+/**
+ * HighLevel's company-to-location exchange deliberately replaces the two
+ * agency-only capabilities with its location-token OAuth capabilities. Keep
+ * that live provider transformation exact: every other configured scope must
+ * survive, both documented OAuth scopes must appear, and no unapproved scope
+ * drift is accepted by the binding check.
+ */
+export function expectedGhlMarketplaceLocationTokenScopes(
+  companyScopes: readonly string[],
+) {
+  return normalizeGhlScopes([
+    ...companyScopes.filter((scope) => !GHL_LOCATION_TOKEN_REMOVED_SCOPES.has(scope)),
+    ...GHL_LOCATION_TOKEN_ADDED_SCOPES,
+  ]);
+}
 
 export function parseGhlMarketplaceTokenResponse(value: unknown): GhlMarketplaceToken {
   const body = record(value);
