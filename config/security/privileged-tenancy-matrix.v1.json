@@ -9,8 +9,8 @@
       "src/lib"
     ],
     "migrationRoot": "supabase/migrations",
-    "finalMigration": "20260720010000_add_ghl_embed_sso_authority.sql",
-    "expectedMigrationCount": 121
+    "finalMigration": "20260722010000_modernize_provider_service_role_claims.sql",
+    "expectedMigrationCount": 122
   },
   "invariant": "Every privileged or tenant-bypass path must bind an exact actor, organization or explicitly classified global authority, and resource before access or mutation. Unknown surfaces fail closed.",
   "classes": [
