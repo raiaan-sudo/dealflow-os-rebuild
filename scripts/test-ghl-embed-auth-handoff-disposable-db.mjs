@@ -12,6 +12,10 @@ const migration = readFileSync(join(
   root,
   "supabase/migrations/20260720010000_add_ghl_embed_sso_authority.sql",
 ), "utf8");
+const operatorProbeMigration = readFileSync(join(
+  root,
+  "supabase/migrations/20260722040000_add_service_only_operator_grant_probe.sql",
+), "utf8");
 const image = "postgres:17.6";
 const containerName = `dealflow-ghl-embed-sso-${process.pid}-${randomBytes(3).toString("hex")}`;
 const harness = createDisposablePostgresHarness({ containerName, image });
@@ -105,6 +109,7 @@ try {
       partner_id uuid not null
     );
     create table public.platform_operator_grants(id uuid primary key default gen_random_uuid(),user_id uuid not null);
+    revoke all on table public.platform_operator_grants from public, anon, authenticated, service_role;
     create table public.account_deletion_suspensions(organization_id uuid,requested_by_user_id uuid);
     insert into public.partners values('${PARTNER}');
     insert into public.organizations values('${ORGANIZATION}');
@@ -124,6 +129,7 @@ try {
       ('${ORGANIZATION}','location_missing','ghl_user_missing','missing@example.com','active','${PARTNER}'),
       ('${ORGANIZATION}','location_operator','ghl_user_operator','operator@example.com','active','${PARTNER}');
     ${migration}
+    ${operatorProbeMigration}
   `, "apply GHL embed SSO migration");
   assert.equal(psql("select value from public.app_schema_metadata where key='schema_version';"), "20260720010000");
   assert.equal(psql(`select count(*) from information_schema.columns where table_schema='public'
@@ -152,6 +158,12 @@ try {
   /candidate_ambiguous_or_missing/i);
   assert.equal(psql(`select count(*) from public.workspace_ghl_users
     where ghl_location_id='location_operator' and dealflow_user_id is null;`), "1");
+  mustFail(service("select count(*) from public.platform_operator_grants;"), /permission denied/i);
+  assert.equal(psql(service(`select public.has_platform_operator_grant_v1('${USER}');`)), "f");
+  assert.equal(psql(service(`select public.has_platform_operator_grant_v1('${OTHER_USER}');`)), "t");
+  mustFail(`set role authenticated; set request.jwt.claim.role='authenticated';
+    select public.has_platform_operator_grant_v1('${USER}'); reset role;`,
+  /permission denied|service_role_required/i);
   mustFail(`insert into public.workspace_ghl_users(
     workspace_id,ghl_location_id,ghl_user_id,email,invite_status,partner_id,dealflow_user_id
   ) values('${ORGANIZATION}','location_002','ghl_user_002','realtor@example.com','active','${PARTNER}','${USER}');`,

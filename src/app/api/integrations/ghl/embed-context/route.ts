@@ -103,10 +103,9 @@ async function verifyPasswordlessEmbedAuthority(input: {
         .eq("user_id", input.userId)
         .limit(2),
       (input.admin as any)
-        .from("platform_operator_grants")
-        .select("id")
-        .eq("user_id", input.userId)
-        .limit(1),
+        .rpc("has_platform_operator_grant_v1", {
+          p_user_id: input.userId,
+        }),
       (input.admin as any)
         .from("account_deletion_suspensions")
         .select("organization_id,requested_by_user_id")
@@ -116,7 +115,6 @@ async function verifyPasswordlessEmbedAuthority(input: {
     ]);
   const profiles = rows(profileResult.data);
   const memberships = rows(membershipResult.data);
-  const operators = rows(operatorResult.data);
   const suspensions = rows(suspensionResult.data);
   const membership = memberships[0] as Record<string, unknown> | undefined;
   const authUser = authResult.data?.user as unknown as Record<string, unknown> | undefined;
@@ -127,7 +125,7 @@ async function verifyPasswordlessEmbedAuthority(input: {
     !authResult.error &&
     profiles.length === 1 &&
     memberships.length === 1 &&
-    operators.length === 0 &&
+    operatorResult.data === false &&
     suspensions.length === 0 &&
     normalized((profiles[0] as Record<string, unknown>).email) === input.email &&
     !BLOCKED_PASSWORDLESS_ROLES.has(normalized(membership?.role)) &&

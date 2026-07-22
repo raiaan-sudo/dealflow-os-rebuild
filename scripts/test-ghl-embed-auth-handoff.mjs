@@ -20,6 +20,10 @@ const migrationSource = fs.readFileSync(
   "supabase/migrations/20260720010000_add_ghl_embed_sso_authority.sql",
   "utf8",
 );
+const operatorProbeMigrationSource = fs.readFileSync(
+  "supabase/migrations/20260722040000_add_service_only_operator_grant_probe.sql",
+  "utf8",
+);
 
 function normalizePartnerDomainHost(value) {
   const candidate = value?.trim().toLowerCase().replace(/\.$/, "") ?? "";
@@ -113,7 +117,7 @@ for (const marker of [
   "dealflow_user_id",
   "bind_workspace_ghl_dealflow_user_v1",
   "verifyPasswordlessEmbedAuthority",
-  "platform_operator_grants",
+  "has_platform_operator_grant_v1",
   "account_deletion_suspensions",
   "begin_ghl_embed_auth_exchange_v1",
   "consume_ghl_embed_auth_exchange_v1",
@@ -134,6 +138,29 @@ assert.ok(
 assert.match(routeSource, /consume_ghl_embed_auth_exchange_v1[\s\S]+auth\.admin\.generateLink/);
 assert.doesNotMatch(routeSource, /auth\.admin\.createUser/);
 assert.doesNotMatch(routeSource, /signInWithPassword/);
+assert.doesNotMatch(routeSource, /\.from\(["']platform_operator_grants["']\)/);
+assert.match(
+  routeSource,
+  /operatorResult\.data === false/,
+  "embed authority must fail closed when the service-only operator probe is not exactly false",
+);
+for (const marker of [
+  "security definer",
+  "has_platform_operator_grant_v1",
+  "platform_operator_grants",
+  "service_role_required",
+  "has_table_privilege",
+  "has_function_privilege",
+]) {
+  assert.ok(
+    operatorProbeMigrationSource.includes(marker),
+    `operator grant probe migration is missing ${marker}`,
+  );
+}
+assert.doesNotMatch(
+  operatorProbeMigrationSource,
+  /grant\s+select\s+on\s+(?:table\s+)?public\.platform_operator_grants/i,
+);
 for (const marker of [
   "auth.users",
   "platform_operator_grants",

@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1119,
-  "deployableSourceSha256": "fc0e93e3783f5a26285a52591b4695bf476b8a1e07186f08fdd071b25fdf829a",
+  "entryCount": 1120,
+  "deployableSourceSha256": "c7e9c6c87a36aa6897ea24677ac2d4ac52c64714509c91d0a1ba8c517f66b34f",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1632,15 +1632,15 @@
     },
     {
       "path": "scripts/test-ghl-embed-auth-handoff-disposable-db.mjs",
-      "size": 10950,
+      "size": 11736,
       "mode": 33188,
-      "sha256": "a90b98a86ca7ec3611eeb6402d42e64615f64ed01b1345d13ac847c05ade3563"
+      "sha256": "8661f7db54d88fe3008e597e66be317bb2c595a385c479aaa0e21e3b46a22e4c"
     },
     {
       "path": "scripts/test-ghl-embed-auth-handoff.mjs",
-      "size": 5277,
+      "size": 6132,
       "mode": 33188,
-      "sha256": "2d397bbc9057a21d36453d51961c96afbbc698f5dad16e96574c79e178b2bff5"
+      "sha256": "4121420bb02da05bb2ef279134949091a0dc4114ef5d7f9c9baba78807d038d9"
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
@@ -2898,9 +2898,9 @@
     },
     {
       "path": "src/app/api/integrations/ghl/embed-context/route.ts",
-      "size": 21257,
+      "size": 21193,
       "mode": 33188,
-      "sha256": "c55bff8600bdb153b7a97f0c6b4fe67ddf2e1974dfcb65eaa3937fcb21f07e65"
+      "sha256": "b0aaa7976cacee28359e6b455279d2aac00d911dc4f3bb5855919d13c028aa91"
     },
     {
       "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
@@ -6501,6 +6501,12 @@
       "size": 12663,
       "mode": 33188,
       "sha256": "e963ce3b313b6c6db832ed635394e3d80143371063e9060f4554af312c1a8276"
+    },
+    {
+      "path": "supabase/migrations/20260722040000_add_service_only_operator_grant_probe.sql",
+      "size": 1992,
+      "mode": 33188,
+      "sha256": "9a126cd3ac04104c4a165d31a6e14182f93f970dd1f999e1f64ae249c092b070"
     },
     {
       "path": "supabase/reconciliation/README.md",
