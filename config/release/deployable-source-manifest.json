@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1116,
-  "deployableSourceSha256": "1f0ef4dd2b00fb3cc9e2dcbe76eacb84514bab4daee28b08b614026840eadd99",
+  "deployableSourceSha256": "43c2df951e0be3951130b4f0620a85e276f3070e3ba75289696d010b2c6567f0",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -2010,9 +2010,9 @@
     },
     {
       "path": "scripts/test-post-audit-successor-contract.ts",
-      "size": 8332,
+      "size": 8337,
       "mode": 33188,
-      "sha256": "109d0fbaeaffd446e070cd85a9c5074f397429de718112a0c3061fd27637a3be"
+      "sha256": "2b767121f7d7f4a6f6fe9938d3e177606e952f4312edfa0530da165a5e5e9e5f"
     },
     {
       "path": "scripts/test-privacy-consent-dsar-contract.mjs",

@@ -198,11 +198,11 @@ const migrations = readdirSync("supabase/migrations")
   .sort();
 assert.equal(migrations.length, 123);
 assert.deepEqual(migrations.slice(-6), [
-  "20260717080000_harden_support_delivery_lifecycle.sql",
   "20260717081000_expand_campaign_lifecycle_authority.sql",
   "20260717082000_provider_aware_funnel_publication.sql",
   "20260717090000_create_canonical_lead_outcome_ledger.sql",
   "20260720010000_add_ghl_embed_sso_authority.sql",
+  "20260722010000_modernize_provider_service_role_claims.sql",
   "20260722020000_persist_ghl_location_token_scope.sql",
 ]);
 const lifecycleSource = readFileSync("src/lib/services/canonical-campaign-lifecycle-service.ts", "utf8");
