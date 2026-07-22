@@ -6,6 +6,7 @@ type ExchangeResult = {
   status?: "ready" | "storage_check_required";
   nextPath?: string;
   handoffToken?: string;
+  code?: string;
 };
 
 type SignedEmbedContext = {
@@ -17,6 +18,12 @@ type PendingHandoff = {
   context: SignedEmbedContext;
   handoffToken: string;
 };
+
+function safeEmbedErrorCode(value: unknown, fallback: string) {
+  return typeof value === "string" && /^ghl_embed_[a-z0-9_]{1,80}$/.test(value)
+    ? value
+    : fallback;
+}
 
 export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
   const [status, setStatus] = useState("Verifying your CRM workspace…");
@@ -46,7 +53,7 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
     });
     const result = await response.json().catch(() => ({})) as ExchangeResult;
     if (!response.ok || result.status !== "ready" || !result.nextPath) {
-      throw new Error("embed_handoff_rejected");
+      throw new Error(safeEmbedErrorCode(result.code, "ghl_embed_handoff_rejected"));
     }
     if (!await cookieAvailable()) throw new Error("embed_session_cookie_unavailable");
     window.location.assign(result.nextPath);
@@ -60,7 +67,9 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
       body: JSON.stringify(context),
     });
     const result = await response.json().catch(() => ({})) as ExchangeResult;
-    if (!response.ok) throw new Error("embed_context_rejected");
+    if (!response.ok) {
+      throw new Error(safeEmbedErrorCode(result.code, "ghl_embed_context_rejected"));
+    }
 
     if (result.status === "ready" && result.nextPath) {
       if (!await cookieAvailable()) throw new Error("embed_session_cookie_unavailable");
@@ -132,7 +141,13 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
           encryptedData: event.data.payload,
           parentOrigin: event.origin,
         });
-      } catch {
+      } catch (error) {
+        console.warn("DealFlow GHL embed verification stopped", {
+          code: safeEmbedErrorCode(
+            error instanceof Error ? error.message : null,
+            "ghl_embed_exchange_failed",
+          ),
+        });
         setStatus("The CRM workspace did not match your DealFlow account. Continue in a new tab or contact support.");
         setBlocked(true);
       }

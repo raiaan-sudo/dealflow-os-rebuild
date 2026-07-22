@@ -293,6 +293,8 @@ for (const marker of [
   "cookieAvailable",
   "finalizationAttemptedRef",
   "finalizeHandoff",
+  "safeEmbedErrorCode",
+  "DealFlow GHL embed verification stopped",
   'target="_blank"',
 ]) {
   if (!bootstrapSource.includes(marker)) failures.push(`Embed bootstrap is missing: ${marker}`);
