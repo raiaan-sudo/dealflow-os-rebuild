@@ -28,7 +28,10 @@ export async function GET(request: Request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: "/api/integrations/ghl/marketplace",
+      // The Marketplace app uses the neutral /crm callback because HighLevel
+      // rejects redirect URLs containing provider-brand terms. Scope the state
+      // cookie to both the neutral callback and the legacy /ghl callback.
+      path: "/api/integrations",
       maxAge: 10 * 60,
     });
     return NextResponse.redirect(binding.installUrl);

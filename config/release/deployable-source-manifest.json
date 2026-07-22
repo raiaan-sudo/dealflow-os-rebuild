@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1110,
-  "deployableSourceSha256": "d6b2df9301494d25e4d634d7b7aea73083d03264f126f05207bd8ca167e0dc7e",
+  "deployableSourceSha256": "9f766fcf048e62e629444a56883e44d904a11c037c9fc9aab589413820ef38da",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1650,9 +1650,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-contract.mjs",
-      "size": 7220,
+      "size": 7740,
       "mode": 33188,
-      "sha256": "6c3f4164b099ff7ef295aa35c8b7072b43f137d1f9c7f26473212875fbcdfc8a"
+      "sha256": "6159883bd7982aa4c25f192df1fed784a5561b0e52e28de72ed261fa718b38c4"
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-disposable-db.mjs",
@@ -2880,9 +2880,9 @@
     },
     {
       "path": "src/app/api/integrations/ghl/marketplace/connect/route.ts",
-      "size": 1609,
+      "size": 1826,
       "mode": 33188,
-      "sha256": "54be056535ab57582f44e2baa5037b33088cb09f0142c4cab2c6304b778a7950"
+      "sha256": "5be007e3b3e7b033a2c3b7090a45ca447a6083922aca95dee99e4e1ff1f5b059"
     },
     {
       "path": "src/app/api/integrations/ghl/webhook/route.ts",

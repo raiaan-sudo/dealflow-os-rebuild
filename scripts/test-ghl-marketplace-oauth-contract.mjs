@@ -11,8 +11,23 @@ const root = process.cwd();
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-ghl-marketplace-contract-"));
 const tsc = path.join(root, "node_modules", ".bin", "tsc");
 const source = "src/lib/integrations/gohighlevel/marketplace-oauth-contract.ts";
+const connectRouteSource = fs.readFileSync(
+  path.join(root, "src/app/api/integrations/ghl/marketplace/connect/route.ts"),
+  "utf8",
+);
 
 try {
+  assert.match(
+    connectRouteSource,
+    /path:\s*["']\/api\/integrations["']/,
+    "OAuth state cookie must reach both the neutral /crm callback and legacy /ghl callback",
+  );
+  assert.doesNotMatch(
+    connectRouteSource,
+    /path:\s*["']\/api\/integrations\/ghl\/marketplace["']/,
+    "OAuth state cookie must not be scoped away from the neutral Marketplace callback",
+  );
+
   const compile = spawnSync(tsc, [
     "--pretty", "false",
     "--target", "ES2022",
