@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1113,
-  "deployableSourceSha256": "d140af48d5c5dd15b0b30485323677ecd98ffb130e0fec06714467684fed3f13",
+  "deployableSourceSha256": "9bf4925744e6e9ca1672f7466725d26eb87c978ded2aa262013c84757664e7a9",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -960,9 +960,9 @@
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 113624,
+      "size": 113635,
       "mode": 33188,
-      "sha256": "c9e779b9191b5588d9eb55d6e7ce43fec53c7c757d7e5de3217a58894c60dc36"
+      "sha256": "5734c6b14e3a84c5c6b0edb7041051a90cc5b8ab61232dbafa1f7e4daaf39aac"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -1086,9 +1086,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 296971,
+      "size": 296982,
       "mode": 33188,
-      "sha256": "b2b5fbf798cec3f175f08660854b2ce034a3a2c6211772a4c75da86cc3165120"
+      "sha256": "3822ccfb0afe8e997e7e8830a44304eb555fe74f8ca3f8f5e997ddd9511943cd"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1200,9 +1200,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 9316,
+      "size": 9327,
       "mode": 33188,
-      "sha256": "04cd66d0eb011b815bc884fdfd29b2d68e62bc2aea3faaf12991981d6bf7f5bb"
+      "sha256": "c4bbbacf8cb8841206ccad5d215f3dc2209ed1082a33b9a5dad55f5b197d011e"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1398,9 +1398,9 @@
     },
     {
       "path": "scripts/test-account-deletion-offboarding-disposable-db.mjs",
-      "size": 45805,
+      "size": 45816,
       "mode": 33188,
-      "sha256": "0ab38d1acc6db0300b09511d45b07477ec998be320a6972695a81aa7a5741ed6"
+      "sha256": "00f87943cde11969d5a0f2b8720e2ea033248b6104be1154cb8bec2e2c165b1c"
     },
     {
       "path": "scripts/test-admin-page-authorization-contract.mjs",
@@ -1578,15 +1578,15 @@
     },
     {
       "path": "scripts/test-generated-static-deletion-disposable-db.mjs",
-      "size": 15463,
+      "size": 15474,
       "mode": 33188,
-      "sha256": "dc0b6219ef34c8897f00a05cf2f73ead274d896eb14aa2f8b09f749a9262e0d7"
+      "sha256": "f7404c6cf4040f1a130d4c5e4ca4abd3b8da3b2ff3faeff31bd5d63b80c9bfac"
     },
     {
       "path": "scripts/test-generated-video-storage-disposable-db.mjs",
-      "size": 14238,
+      "size": 14249,
       "mode": 33188,
-      "sha256": "50602c15c62b3a95de31cbd4986e087b6caab0f878beac7b3000c56a9702eda2"
+      "sha256": "d58861230f366cead7821ef4205dfb75dd6595e13731b35e05c0eef0b77e9772"
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
@@ -1632,9 +1632,9 @@
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
-      "size": 84628,
+      "size": 84639,
       "mode": 33188,
-      "sha256": "de33515062b3435c1c929611ebcf86b05c088d70d546ee9bc66641ccaefa0fa9"
+      "sha256": "d5361e6f885ff22c9eb4001fe38d527960e7138e643d1e57f4323f73ce0ffc00"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation.ts",
@@ -1686,9 +1686,9 @@
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
-      "size": 53636,
+      "size": 53647,
       "mode": 33188,
-      "sha256": "5683eb5f42f3bea3c7d7dc15254c74af6e8f77f6467a59f366bb4f25322d5907"
+      "sha256": "26d368d9603c4a4af3a47d98a4430280113e114ede383f822fea2874533d2fb0"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-route.mjs",
@@ -1776,9 +1776,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 33841,
+      "size": 33852,
       "mode": 33188,
-      "sha256": "b4fcb53615b77dc1da9525d8b23166eb9c87c8aed2819b3f923fa248e960cafe"
+      "sha256": "bba54a8d4dcdd70232d73c8527644b395a7a287205381c10a7129ba88dc028bb"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
@@ -2016,9 +2016,9 @@
     },
     {
       "path": "scripts/test-privileged-tenancy-disposable-db.mjs",
-      "size": 21031,
+      "size": 21042,
       "mode": 33188,
-      "sha256": "9056ecff4753f7153ca8d3842c66d64816fa3f09d7318f356867d9c54f3e6390"
+      "sha256": "bcfc2a15b866fc26fdc86f0d4686f9c4f54a4ae233f83b188fd92d4431b705f0"
     },
     {
       "path": "scripts/test-privileged-tenancy-matrix.mjs",

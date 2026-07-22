@@ -9,7 +9,7 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const FINAL_MIGRATION = "20260720010000_add_ghl_embed_sso_authority.sql";
+const FINAL_MIGRATION = "20260722010000_modernize_provider_service_role_claims.sql";
 const PRIVILEGED_TENANCY_MIGRATION = "20260717040000_bind_generated_static_storage_tenancy.sql";
 const TRANSACTION_OWNER = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = readdirSync(MIGRATIONS)

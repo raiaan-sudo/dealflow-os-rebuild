@@ -1609,9 +1609,9 @@ async function runSeed(
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 121 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 122 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260720010000_add_ghl_embed_sso_authority.sql" ||
+      "20260722010000_modernize_provider_service_role_claims.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
