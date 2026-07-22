@@ -336,6 +336,23 @@ assert.ok(
     .includes("https://crm.second-partner.example"),
   "one partner's exact desktop origin must never frame another partner host",
 );
+runtimeProcess.env.GHL_APP_SHARED_SECRET = "";
+assert.equal(
+  capabilityHelpers.isGhlEmbedCapabilityEnabled(),
+  false,
+  "capability issuance must fail closed without the app shared secret",
+);
+assert.deepEqual(
+  capabilityHelpers.getAllowedGhlParentOrigins("partner.example"),
+  [
+    "https://app.gohighlevel.com",
+    "https://app.leadconnectorhq.com",
+    "https://crm.partner.example",
+  ],
+  "the signed-context bootstrap must remain frameable on its exact allowed origins",
+);
+runtimeProcess.env.GHL_APP_SHARED_SECRET =
+  "sentinel-secure-ghl-app-shared-secret-2026-alpha";
 assert.equal(
   capabilityHelpers.resolveAllowedGhlParentOrigin({
     candidate: "https://evil.example",

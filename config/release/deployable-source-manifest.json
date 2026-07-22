@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1119,
-  "deployableSourceSha256": "a829823eb44d217b4a4c139a84b73bc15b38871e70837b10d236fa00b9fe9ede",
+  "deployableSourceSha256": "9464e63e7b585c58ca1ddab35e812b91f1d1a77d4d864d08f406b8f258db8b8b",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1644,9 +1644,9 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 21345,
+      "size": 21929,
       "mode": 33188,
-      "sha256": "16e6781855f25a5bf85ec61edd5eac0f8b1bf9ecfe6238290073bad1e58edb92"
+      "sha256": "1d0578877fa8b8a78c27f534c5f9f220403673c2c18d0b1b38f2c3a97e6d4803"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
@@ -5484,15 +5484,15 @@
     },
     {
       "path": "src/lib/white-label/ghl-embed-capability.ts",
-      "size": 16894,
+      "size": 17201,
       "mode": 33188,
-      "sha256": "67eeaf64f04630c56d8f19f6e42bd5e79cfd26f1dccef70737f6bc6533c16746"
+      "sha256": "207d82f5439feea4c8df44177b494489dde495536d98be2cb94565933f9ae5de"
     },
     {
       "path": "src/lib/white-label/ghl-embed-host-context.ts",
-      "size": 1510,
+      "size": 1508,
       "mode": 33188,
-      "sha256": "9a5bd94a458cb0167cd0ad96dc0d212f9895ea5f529604acd2f1956bef3c2f1e"
+      "sha256": "2cf0dea9c5beadd53a6c8fc9ebfdff56e7ef4cafbd745a73ddbf0f8903f134de"
     },
     {
       "path": "src/lib/white-label/ghl-embed-request-origin.ts",

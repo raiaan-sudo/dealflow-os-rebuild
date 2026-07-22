@@ -114,7 +114,11 @@ export function getGhlAppSharedSecret() {
 }
 
 export function isGhlEmbedCapabilityEnabled() {
-  return process.env.GHL_IFRAME_EMBED_ENABLED === "true" && Boolean(getGhlAppSharedSecret());
+  return isGhlEmbedBootstrapEnabled() && Boolean(getGhlAppSharedSecret());
+}
+
+export function isGhlEmbedBootstrapEnabled() {
+  return process.env.GHL_IFRAME_EMBED_ENABLED === "true";
 }
 
 function configuredPartnerParentOrigins(partnerHost: string) {
@@ -136,7 +140,10 @@ function configuredPartnerParentOrigins(partnerHost: string) {
 }
 
 export function getAllowedGhlParentOrigins(partnerHost: string) {
-  if (!isGhlEmbedCapabilityEnabled()) return [];
+  // The bootstrap must be frameable before it can receive and verify GHL's
+  // signed user context. Capability/session issuance still requires the
+  // independent app shared secret and therefore remains fail-closed.
+  if (!isGhlEmbedBootstrapEnabled()) return [];
   const official = process.env.GHL_IFRAME_ALLOW_SHARED_HIGHLEVEL_ORIGINS === "true"
     ? OFFICIAL_HIGHLEVEL_PARENT_ORIGINS
     : [];

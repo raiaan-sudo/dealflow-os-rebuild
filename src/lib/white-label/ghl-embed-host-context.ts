@@ -1,4 +1,4 @@
-import { isGhlEmbedCapabilityEnabled } from "./ghl-embed-capability";
+import { isGhlEmbedBootstrapEnabled } from "./ghl-embed-capability";
 import {
   loadVerifiedPartnerDomainContext,
   normalizePartnerDomainHost,
@@ -31,7 +31,7 @@ function configuredDirectAppHost() {
 export async function resolveGhlEmbedHostContext(
   rawHost: string | null | undefined,
 ): Promise<GhlEmbedHostContext | null> {
-  if (!isGhlEmbedCapabilityEnabled()) return null;
+  if (!isGhlEmbedBootstrapEnabled()) return null;
   const domain = normalizePartnerDomainHost(rawHost);
   if (!domain) return null;
 
