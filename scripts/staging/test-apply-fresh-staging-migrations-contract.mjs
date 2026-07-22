@@ -41,7 +41,7 @@ function requireMarker(pattern, label) {
   assert.match(source, pattern, `Tracked staging broker is missing ${label}`);
 }
 
-requireMarker(/const exactMigrationCount = 123/, "the exact 123-migration gate");
+requireMarker(/const exactMigrationCount = 125/, "the exact 125-migration gate");
 requireMarker(/codex\/dealflow-release-closure-plan/, "the exact isolated release branch gate");
 requireMarker(
   /assertExactForward104To120Portfolio/,
@@ -210,7 +210,9 @@ requireMarker(/retentionConfigurationRowSecurityForced: true/, "retention forced
 requireMarker(/serviceRoleColumnWritePrivilegesPresent: false/, "sealed service_role column-write result");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
 requireMarker(/expectedPriorFinalMigration[\s\S]+20260713028000_harden_account_deletion_retention_authority\.sql/, "the prior final migration pin");
-requireMarker(/requiredFinalMigration[\s\S]+20260722020000_persist_ghl_location_token_scope\.sql/, "the final migration 123 pin");
+requireMarker(/requiredFinalMigration[\s\S]+20260722040000_add_service_only_operator_grant_probe\.sql/, "the final migration 125 pin");
+requireMarker(/currentManagedStructuralCatalogSha256[\s\S]+fa60715bdfecedfe6e251a01dbfa1eacc6f37c1e8fbf6278af047f8bc73eb516/, "the exact managed catalog digest for migration 125");
+requireMarker(/currentManagedStructuralCatalogRecordCount = 8416/, "the exact managed catalog record count for migration 125");
 requireMarker(/--apply-successor-exact/, "the exact 122-to-123 successor mode");
 requireMarker(/APPLY_SUCCESSOR_EXACT/, "the exact successor execution classification");
 requireMarker(/EXACT_122_TO_123/, "the exact successor transition identity");
@@ -603,8 +605,8 @@ assert.match(
 );
 assert.match(
   resumeBranch,
-  /platformCatalogDriftObserved[\s\S]*captureManagedCatalogIdentity\([\s\S]*FORWARD_122_TO_123_AUTHORITY\.current\.managedStructuralCatalogSha256[\s\S]*FORWARD_122_TO_123_AUTHORITY\.current\.managedStructuralCatalogRecordCount/,
-  "Resume verifier must tolerate only stable platform drift while binding the exact DealFlow-managed 123 catalog",
+  /platformCatalogDriftObserved[\s\S]*captureManagedCatalogIdentity\([\s\S]*currentManagedStructuralCatalogSha256[\s\S]*currentManagedStructuralCatalogRecordCount/,
+  "Resume verifier must tolerate only stable platform drift while binding the exact DealFlow-managed 125 catalog",
 );
 assert.match(
   resumeBranch,
@@ -1306,5 +1308,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer fresh 123-migration transaction, fail-closed read-only exact-existing resume, immutable historical 104-to-120, 120-to-121, and 121-to-122 proofs, exact 122-to-123 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 123 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer fresh 125-migration transaction, fail-closed read-only exact-existing resume, immutable historical 104-to-120, 120-to-121, and 121-to-122 proofs, exact historical 122-to-123 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 125 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
 );

@@ -874,8 +874,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 123/);
-assert.match(runner, /20260722020000_persist_ghl_location_token_scope\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 125/);
+assert.match(runner, /20260722040000_add_service_only_operator_grant_probe\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -2564,7 +2564,7 @@ assert.match(
 );
 assert.match(
   help.stdout,
-  /Exact bounded successor transition from the sealed 122-migration predecessor[\s\S]*\n  node[^\n]* \\\n    --execute --apply-successor-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-122\/migration-proof/s,
+  /Historical bounded successor transition from the sealed 122-migration predecessor[\s\S]*\n  node[^\n]* \\\n    --execute --apply-successor-migration --deploy \\\n    --prior-migration-proof-dir \/absolute\/path\/pinned-122\/migration-proof/s,
   "successor-mode help must preserve executable multiline shell continuations",
 );
 
@@ -2578,5 +2578,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh, exact 122-to-123 successor, or read-only-resume authorization gate; immutable historical 104-to-120, 120-to-121, and 121-to-122 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 123-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; immutable historical 104-to-120, 120-to-121, 121-to-122, and 122-to-123 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 125-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

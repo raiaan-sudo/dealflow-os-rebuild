@@ -17,8 +17,8 @@ const trustBundle = readFileSync(
 
 assert.match(source, /authority broker requires Node 24/);
 assert.match(source, /!\/\^v24\\\.\/.+value\.runtime/s);
-assert.match(source, /expectedMigrationCount = 123/);
-assert.match(source, /20260722020000_persist_ghl_location_token_scope\.sql/);
+assert.match(source, /expectedMigrationCount = 125/);
+assert.match(source, /20260722040000_add_service_only_operator_grant_probe\.sql/);
 assert.match(source, /expectedProjectSafeSuffix = "qibh"/);
 assert.match(source, /expectedProjectFingerprint/);
 assert.match(source, /config\/security\/supabase-prod-ca-2021\.crt/);

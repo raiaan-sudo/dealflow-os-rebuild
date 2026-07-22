@@ -125,9 +125,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 123;
+const EXPECTED_MIGRATION_COUNT = 125;
 const EXPECTED_FINAL_MIGRATION =
-  "20260722020000_persist_ghl_location_token_scope.sql";
+  "20260722040000_add_service_only_operator_grant_probe.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
   "92e1e9b756b7a9aca9a7db5daaf68d7ae93d68368f33fc1fd787024a1a099802";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
@@ -494,8 +494,8 @@ Historical bounded forward transition from the pinned read-only-proven
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
-Exact bounded successor transition from the sealed 122-migration predecessor
-to the current 123-migration portfolio:
+Historical bounded successor transition from the sealed 122-migration predecessor
+to the sealed 123-migration portfolio (not executable by the current candidate):
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
     --execute --apply-successor-migration --deploy \\
     --prior-migration-proof-dir /absolute/path/pinned-122/migration-proof \\
@@ -512,10 +512,10 @@ Required execution environment:
   DEALFLOW_STAGING_PROJECT_RECORD=/absolute/external/owner-only-qibh-project-record.json
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
-Exactly one migration mode is required. Resume mode is read-only. The current
-successor mode is restricted to exact 122-to-123 authority. The pinned
-104-to-120 transition remains immutable historical proof and cannot be run
-from a 123-candidate checkout.`;
+Exactly one migration mode is required. Resume mode is read-only. Historical
+104-to-120 and 122-to-123 transitions remain immutable proof and cannot be run
+from the current 125-migration checkout; use fresh apply or exact-existing
+read-only verification.`;
 }
 
 function parseArguments(argv) {
@@ -1609,9 +1609,9 @@ async function runSeed(
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 123 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 125 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260722020000_persist_ghl_location_token_scope.sql" ||
+      "20260722040000_add_service_only_operator_grant_probe.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
@@ -5818,7 +5818,12 @@ async function main() {
   }
   if (options.applyForwardMigration) {
     throw new Error(
-      "The current 123 candidate cannot execute historical 104-to-120 forward mode; use --apply-successor-migration with an exact sealed 122 proof",
+      "The current 125 candidate cannot execute historical forward modes; use fresh apply or read-only exact-existing verification",
+    );
+  }
+  if (options.applySuccessorMigration) {
+    throw new Error(
+      "The current 125 candidate cannot execute the historical 122-to-123 successor mode; use fresh apply or read-only exact-existing verification",
     );
   }
   approvedStagingEvidenceParent =

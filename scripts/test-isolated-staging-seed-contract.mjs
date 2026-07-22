@@ -419,8 +419,8 @@ assert.match(source, /successorCreditReplayIntent: "e3000000-0000-4000-8000-0000
 assert.match(source, /successorCreditRequest: "e3000000-0000-4000-8000-000000000003"/);
 assert.match(source, /checkoutSessionId: "cs_test_df_successor_credit_pending_20260716"/);
 assert.match(source, /successorProviderIndependent: \{/);
-assert.match(source, /exactMigrationChainRequired: 123/);
-assert.match(source, /20260722020000_persist_ghl_location_token_scope\.sql/);
+assert.match(source, /exactMigrationChainRequired: 125/);
+assert.match(source, /20260722040000_add_service_only_operator_grant_probe\.sql/);
 assert.match(successorContract, /SUCCESSOR_SCHEMA_VERSION = "20260720010000"/);
 for (const table of [
   "ghl_marketplace_oauth_states",

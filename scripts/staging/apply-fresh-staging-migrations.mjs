@@ -112,11 +112,14 @@ const expectedPriorMigrationPortfolioSha256 =
 const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
-const exactMigrationCount = 123;
+const exactMigrationCount = 125;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260722020000_persist_ghl_location_token_scope.sql";
+  "20260722040000_add_service_only_operator_grant_probe.sql";
+const currentManagedStructuralCatalogSha256 =
+  "fa60715bdfecedfe6e251a01dbfa1eacc6f37c1e8fbf6278af047f8bc73eb516";
+const currentManagedStructuralCatalogRecordCount = 8416;
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -568,7 +571,7 @@ assertExactForward120To121Portfolio(
   migrationDir,
 );
 const locationTokenScopeSuccessorPortfolio = assertExactForward122To123Portfolio(
-  migrationIdentity.records,
+  migrationIdentity.records.slice(0, FORWARD_122_TO_123_AUTHORITY.current.migrationCount),
   migrationDir,
 );
 const migrationSources = migrations.map((file) => {
@@ -589,6 +592,7 @@ const forwardAtomicMigrationTransaction = buildAtomicMigrationTransaction(
 );
 const locationTokenScopeSuccessorMigrationSources = migrationSources.slice(
   FORWARD_122_TO_123_AUTHORITY.prior.migrationCount,
+  FORWARD_122_TO_123_AUTHORITY.current.migrationCount,
 );
 const locationTokenScopeSuccessorAtomicMigrationTransaction = buildAtomicMigrationTransaction(
   locationTokenScopeSuccessorMigrationSources,
@@ -2355,11 +2359,11 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     );
     if (
       existingManagedCatalog.managedStructuralCatalogSha256 !==
-        FORWARD_122_TO_123_AUTHORITY.current.managedStructuralCatalogSha256 ||
+        currentManagedStructuralCatalogSha256 ||
       existingManagedCatalog.managedStructuralCatalogRecordCount !==
-        FORWARD_122_TO_123_AUTHORITY.current.managedStructuralCatalogRecordCount
+        currentManagedStructuralCatalogRecordCount
     ) {
-      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 123 authority");
+      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 125 authority");
     }
     verificationStage = "MANAGED_STRUCTURAL_CATALOG_STABILITY";
     const existingManagedCatalogRepeat = captureManagedCatalogIdentity(
