@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1120,
-  "deployableSourceSha256": "c7e9c6c87a36aa6897ea24677ac2d4ac52c64714509c91d0a1ba8c517f66b34f",
+  "deployableSourceSha256": "b36ddc5dc7626f9cd0a412abc4c47bd43b030bf5af5723e66953348dda146cf5",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1110,9 +1110,9 @@
     },
     {
       "path": "scripts/staging/staging-access-gate-scenario.ts",
-      "size": 13631,
+      "size": 14523,
       "mode": 33188,
-      "sha256": "4261804e2d6ae5c7349baa43f6385ccef9d3c27dd054ea4c4d41f00f79b9a5a1"
+      "sha256": "eb873357c8eb5096599e3e34eda33267981b5daa80f492ffc0aa705bdfc25374"
     },
     {
       "path": "scripts/staging/staging-evidence-root-contract.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
-      "size": 15040,
+      "size": 15233,
       "mode": 33188,
-      "sha256": "b99f2d3fe82d2d08c1308db530c66b092fcc2ed0c1baf45fb1716491809d0d25"
+      "sha256": "ac6e64c74324b39bcf16629d26fccd26bbb477519284688257aef5f2e9d05a31"
     },
     {
       "path": "scripts/staging/test-next-static-chunk-path.mjs",
@@ -5526,9 +5526,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 32146,
+      "size": 32322,
       "mode": 33188,
-      "sha256": "98820f5dac2fd5b56bbcdb49af1e527d5624297903ce17b468a9dc957acb3298"
+      "sha256": "b8a2bf49f4030ef522cf1957e6f803df6131592a65d7c3decfa9618b63f5436f"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",

@@ -117,6 +117,10 @@ if (scenario === "authorized") {
   path = "/_next/data/staging-gate-proof.json";
 } else if (scenario === "native_callback") {
   path = "/api/stripe/webhook";
+} else if (scenario === "ghl_marketplace_crm_callback") {
+  path = "/api/integrations/crm/marketplace/callback";
+} else if (scenario === "ghl_marketplace_legacy_callback") {
+  path = "/api/integrations/ghl/marketplace/callback";
 } else if (scenario === "lead_capture_blocked") {
   path = "/api/lead-capture";
 } else if (scenario === "ghl_bootstrap_valid") {
@@ -286,6 +290,18 @@ async function main() {
     || scenario === "ghl_bootstrap_missing_config"
   ) {
     assert.equal(response.status, 503);
+  } else if (
+    scenario === "ghl_marketplace_crm_callback" ||
+    scenario === "ghl_marketplace_legacy_callback"
+  ) {
+    // The isolated outer gate must let the exact OAuth callback reach the
+    // ordinary authenticated-route boundary. This fixture deliberately omits
+    // Supabase configuration, so that boundary proves itself with a setup
+    // redirect rather than a middleware pass-through.
+    assert.equal(response.status, 307);
+    const location = new URL(response.headers.get("location") ?? "", "https://dealflow-isolated.example");
+    assert.equal(location.pathname, "/login");
+    assert.equal(location.searchParams.get("reason"), "setup");
   } else {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-middleware-next"), "1");

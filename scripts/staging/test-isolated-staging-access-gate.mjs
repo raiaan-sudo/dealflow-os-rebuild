@@ -238,6 +238,8 @@ assert.doesNotMatch(
   /lead-capture/,
 );
 for (const path of [
+  "/api/integrations/crm/marketplace/callback",
+  "/api/integrations/ghl/marketplace/callback",
   "/api/integrations/ghl/webhook",
   "/api/meta/data-deletion",
   "/api/meta/leadgen/webhook",
@@ -309,6 +311,8 @@ for (const scenario of [
   "production_static_ungated",
   "production_image_ungated",
   "native_callback",
+  "ghl_marketplace_crm_callback",
+  "ghl_marketplace_legacy_callback",
   "lead_capture_blocked",
   "ghl_bootstrap_valid",
   "ghl_bootstrap_wrong_parent",
@@ -370,5 +374,5 @@ for (const scenario of [
 }
 
 console.log(
-  "isolated staging access gate: PASS (private app, exact direct-image inventory, deny-all staging image inputs, strict provider-edge rejection contract, custom optimizer closed, and lead-capture surface; fail-closed secret; no secret forwarding; production unaffected; exact native-signed provider callbacks remain reachable)",
+  "isolated staging access gate: PASS (private app, exact direct-image inventory, deny-all staging image inputs, strict provider-edge rejection contract, custom optimizer closed, and lead-capture surface; fail-closed secret; no secret forwarding; production unaffected; exact native-signed provider and state-bound GHL OAuth callbacks remain reachable)",
 );

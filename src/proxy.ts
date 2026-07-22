@@ -84,6 +84,8 @@ const STAGING_RETIRED_PUBLIC_IMAGE_SOURCE_PATH =
 const DISABLED_STAGING_IMAGE_OPTIMIZER_PATH =
   "/_dealflow-staging-image-optimizer-disabled";
 const STAGING_NATIVE_PROVIDER_CALLBACK_PATHS = new Set([
+  "/api/integrations/crm/marketplace/callback",
+  "/api/integrations/ghl/marketplace/callback",
   "/api/integrations/ghl/webhook",
   "/api/meta/data-deletion",
   "/api/meta/leadgen/webhook",
@@ -197,7 +199,8 @@ function getIsolatedStagingAccessDecision(request: NextRequest) {
 
   // Provider callbacks cannot attach DealFlow's private staging header. Only
   // the exact native callback routes bypass this outer gate; each remains
-  // fail-closed behind its provider verify-token or signature contract.
+  // fail-closed behind its route-level signature/verify-token contract or,
+  // for the GHL OAuth callbacks, authenticated context plus one-time state.
   if (STAGING_NATIVE_PROVIDER_CALLBACK_PATHS.has(request.nextUrl.pathname)) {
     return { required: false, configured: true, authorized: true } as const;
   }
