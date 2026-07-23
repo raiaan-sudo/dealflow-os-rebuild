@@ -129,7 +129,7 @@ const EXPECTED_MIGRATION_COUNT = 126;
 const EXPECTED_FINAL_MIGRATION =
   "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
-  "92e1e9b756b7a9aca9a7db5daaf68d7ae93d68368f33fc1fd787024a1a099802";
+  "df23c70342d004cae4dddfe4e70c7fee6db85cf26005643f7763e734f7b9afcf";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -1971,7 +1971,7 @@ async function configureHostedStagingEnvironment(
     expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
     environment,
     sensitiveKeys: HOSTED_SECRET_ENV_NAMES,
-    expectedCount: 95,
+    expectedCount: 96,
     providerSensitiveNames: PROVIDER_SENSITIVE_ENV_NAMES,
     fetchImpl: fetch,
     delayImpl: abortableDelay,
@@ -1984,16 +1984,16 @@ async function configureHostedStagingEnvironment(
 
 function assertExactHostedEnvironmentProof(proof) {
   const expectedSensitiveCount = HOSTED_SECRET_ENV_NAMES.size;
-  const expectedReadableCount = 95 - expectedSensitiveCount;
+  const expectedReadableCount = 96 - expectedSensitiveCount;
   if (
     proof?.status !== "PASS" ||
     proof.synchronizationMode !== "bounded_idempotent_missing_or_drifted_only" ||
-    proof.environmentVariableCount !== 95 ||
+    proof.environmentVariableCount !== 96 ||
     proof.environmentNameSetSha256 !== EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 ||
-    proof.finalExactStructureCount !== 95 ||
+    proof.finalExactStructureCount !== 96 ||
     proof.finalReadableValueDigestMatchCount !== expectedReadableCount ||
     proof.finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount ||
-    proof.finalExpectedValueDispositionCount !== 95 ||
+    proof.finalExpectedValueDispositionCount !== 96 ||
     proof.finalUnexpectedEnvironmentCount !== 0 ||
     proof.exactTarget !== "production" ||
     proof.exactTypePortfolioProven !== true ||
@@ -2003,9 +2003,9 @@ function assertExactHostedEnvironmentProof(proof) {
     proof.valueDigestsPersistedToEvidence !== false ||
     proof.providerCredentialNamesPresent !== false ||
     !Array.isArray(proof.variables) ||
-    proof.variables.length !== 95
+    proof.variables.length !== 96
   ) {
-    throw new Error("The exact 95-variable isolated staging environment proof is incomplete");
+    throw new Error("The exact 96-variable isolated staging environment proof is incomplete");
   }
   const seen = new Set();
   for (const variable of proof.variables) {
@@ -5860,8 +5860,8 @@ async function main() {
     stagingAccessGateSecret,
   );
   const hostedEnvironmentNames = Object.keys(hostedEnvironment).sort();
-  if (hostedEnvironmentNames.length !== 95) {
-    throw new Error("The exact 95-variable isolated staging environment portfolio is required");
+  if (hostedEnvironmentNames.length !== 96) {
+    throw new Error("The exact 96-variable isolated staging environment portfolio is required");
   }
   const roundOne = readValidatedRound(
     options.roundOne,

@@ -703,13 +703,13 @@ assert.match(hostedEnvironmentSource, /DEALFLOW_RUNTIME_MIGRATION_PORTFOLIO_SHA2
 assert.match(hostedEnvironmentSource, /migrationIdentity\.migrationPortfolioSha256/);
 assert.match(hostedEnvironmentSource, /DEALFLOW_RUNTIME_MIGRATION_COUNT/);
 assert.match(hostedEnvironmentSource, /String\(migrationIdentity\.migrationCount\)/);
-assert.match(runner, /hostedEnvironmentNames\.length !== 95/);
-assert.match(runner, /exact 95-variable isolated staging environment portfolio/);
+assert.match(runner, /hostedEnvironmentNames\.length !== 96/);
+assert.match(runner, /exact 96-variable isolated staging environment portfolio/);
 assert.match(runner, /EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256/);
-assert.match(runner, /finalExactStructureCount !== 95/);
+assert.match(runner, /finalExactStructureCount !== 96/);
 assert.match(runner, /finalReadableValueDigestMatchCount !== expectedReadableCount/);
 assert.match(runner, /finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount/);
-assert.match(runner, /finalExpectedValueDispositionCount !== 95/);
+assert.match(runner, /finalExpectedValueDispositionCount !== 96/);
 assert.match(runner, /finalUnexpectedEnvironmentCount !== 0/);
 assert.match(runner, /assertExactHostedEnvironmentProof\(hostedEnvironmentProof\)/);
 const hostedSecretNameSource = runner.slice(
@@ -1460,7 +1460,7 @@ assert.match(runner, /record\.fileCount > 0/);
 assert.match(runner, /record\.evidenceSha256/);
 assert.match(runner, /record\.summarySha256/);
 assert.match(runner, /synchronizeExactVercelEnvironment/);
-assert.match(runner, /expectedCount: 95/);
+assert.match(runner, /expectedCount: 96/);
 assert.match(runner, /batchSize: 20/);
 const hostedEnvironmentConfigurationSource = runner.slice(
   runner.indexOf("async function configureHostedStagingEnvironment("),
