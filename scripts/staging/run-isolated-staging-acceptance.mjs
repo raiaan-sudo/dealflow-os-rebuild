@@ -6301,6 +6301,23 @@ async function main() {
     ownerDecisionAuthority.productionGrantCount === 0;
   const privacyAuthority = retentionAuthoritySummary.privacyAuthority;
   const privacyAuthorityRpcBinding = privacyAuthority?.rpcBinding;
+  const syntheticDeletionReset =
+    retentionAuthoritySummary.syntheticDeletionReset;
+  const exactSyntheticDeletionReset =
+    ["no_prior_fixture", "exact_prior_fixture_removed"].includes(
+      syntheticDeletionReset?.mode,
+    ) &&
+    syntheticDeletionReset?.exactFixtureOnly === true &&
+    Number.isSafeInteger(syntheticDeletionReset?.deletionRequestCount) &&
+    syntheticDeletionReset.deletionRequestCount >= 0 &&
+    syntheticDeletionReset.deletionRequestCount <= 1 &&
+    Number.isSafeInteger(syntheticDeletionReset?.privacyRequestCount) &&
+    syntheticDeletionReset.privacyRequestCount >= 0 &&
+    syntheticDeletionReset.privacyRequestCount <= 1 &&
+    syntheticDeletionReset.postResetDeletionRequestCount === 0 &&
+    syntheticDeletionReset.postResetSuspensionCount === 0 &&
+    syntheticDeletionReset.postResetPrivacyRequestCount === 0 &&
+    syntheticDeletionReset.customerDataAccessed === false;
   const exactPrivacyAuthority =
     [
       "exact_synthetic_privacy_grant_installed",
@@ -6392,6 +6409,7 @@ async function main() {
       "bounded_generation_rotation_or_unexpired_exact_replay_with_catalog_rebind" ||
     !exactOwnerDecisionAuthority ||
     !exactPrivacyAuthority ||
+    !exactSyntheticDeletionReset ||
     !exactVerificationRoundEvidence ||
     !truthfulRetentionMutationState ||
     retentionAuthoritySummary.productionMutationPerformed !== false ||

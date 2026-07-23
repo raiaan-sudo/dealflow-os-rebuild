@@ -64,6 +64,16 @@ const expectedDeferrals = FINAL_VERIFICATION_HOSTED_DEFERRALS;
 const authorityMarker =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const authorityTimestamp = "2026-07-12T12:00:00.000Z";
+const syntheticDeletionOrganizationId =
+  "d1000000-0000-4000-8000-000000000019";
+const syntheticDeletionEmail =
+  "dealflow-staging-deletion-20260712@example.com";
+const syntheticDeletionOrganizationName =
+  "DF-STAGING-20260712 Deletion Lifecycle Realty";
+const syntheticDeletionOrganizationSlug =
+  "df-staging-deletion-lifecycle-realty";
+const syntheticDeletionIdempotencyKey =
+  "df-staging-deletion-provider-writes-disabled";
 const productionPendingPolicy = Object.freeze({
   graceDays: 7,
   operationalRetentionDays: 30,
@@ -694,6 +704,219 @@ begin;
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
 select pg_advisory_xact_lock(hashtextextended('dealflow-qibh-retention-authority-v1', 0));
+create temp table dealflow_synthetic_deletion_requests on commit drop as
+select request.id
+from public.account_deletion_requests request
+where request.organization_id='${syntheticDeletionOrganizationId}'::uuid;
+create temp table dealflow_synthetic_privacy_requests on commit drop as
+select request.id
+from public.privacy_subject_requests request
+where request.organization_id='${syntheticDeletionOrganizationId}'::uuid;
+create temp table dealflow_synthetic_deletion_reset_result(
+  mode text not null,
+  deletion_request_count integer not null,
+  privacy_request_count integer not null
+) on commit drop;
+do $dealflow_synthetic_deletion_reset_guard$
+declare
+  target_owner uuid;
+  target_deletion_count integer;
+  target_privacy_count integer;
+begin
+  select count(*) into target_deletion_count
+  from dealflow_synthetic_deletion_requests;
+  select count(*) into target_privacy_count
+  from dealflow_synthetic_privacy_requests;
+  if target_deletion_count > 1 or target_privacy_count > 1 then
+    raise exception using
+      errcode='55000',
+      message='dealflow_synthetic_deletion_reset_cardinality_mismatch';
+  end if;
+  select organization.owner_user_id into target_owner
+  from public.organizations organization
+  where organization.id='${syntheticDeletionOrganizationId}'::uuid
+    and organization.name=${sqlLiteral(syntheticDeletionOrganizationName)}
+    and organization.slug=${sqlLiteral(syntheticDeletionOrganizationSlug)};
+  if (
+    (target_deletion_count > 0 or target_privacy_count > 0)
+    and (
+      target_owner is null
+      or not exists (
+        select 1
+        from public.users app_user
+        join auth.users auth_user on auth_user.id=app_user.id
+        where app_user.id=target_owner
+          and lower(app_user.email)=lower(${sqlLiteral(syntheticDeletionEmail)})
+          and lower(auth_user.email)=lower(${sqlLiteral(syntheticDeletionEmail)})
+      )
+    )
+  ) then
+    raise exception using
+      errcode='42501',
+      message='dealflow_synthetic_deletion_reset_identity_mismatch';
+  end if;
+  if exists (
+    select 1
+    from public.account_deletion_requests request
+    where request.id in (
+      select target.id from dealflow_synthetic_deletion_requests target
+    )
+      and (
+        request.requested_by_user_id is distinct from target_owner
+        or request.idempotency_key is distinct from
+          ${sqlLiteral(syntheticDeletionIdempotencyKey)}
+        or request.identity_method is distinct from 'aal2'
+        or request.identity_email_hash is distinct from
+          'sha256:${sha256(syntheticDeletionEmail)}'
+      )
+  ) then
+    raise exception using
+      errcode='42501',
+      message='dealflow_synthetic_deletion_reset_request_mismatch';
+  end if;
+  if exists (
+    select 1
+    from public.privacy_subject_requests request
+    where request.id in (
+      select target.id from dealflow_synthetic_privacy_requests target
+    )
+      and (
+        request.requested_by_user_id is distinct from target_owner
+        or request.request_type is distinct from 'delete'
+        or request.idempotency_key is distinct from
+          ${sqlLiteral(syntheticDeletionIdempotencyKey)}
+        or request.account_deletion_request_id not in (
+          select target.id from dealflow_synthetic_deletion_requests target
+        )
+      )
+  ) then
+    raise exception using
+      errcode='42501',
+      message='dealflow_synthetic_deletion_reset_privacy_request_mismatch';
+  end if;
+  if exists (
+    select 1
+    from public.privacy_subject_request_receipts receipt
+    where receipt.request_id in (
+      select target.id from dealflow_synthetic_privacy_requests target
+    )
+      and receipt.operation_idempotency_key is distinct from
+        ${sqlLiteral(syntheticDeletionIdempotencyKey)}
+  ) then
+    raise exception using
+      errcode='42501',
+      message='dealflow_synthetic_deletion_reset_receipt_mismatch';
+  end if;
+  insert into dealflow_synthetic_deletion_reset_result values (
+    case
+      when target_deletion_count=0 and target_privacy_count=0
+        then 'no_prior_fixture'
+      else 'exact_prior_fixture_removed'
+    end,
+    target_deletion_count,
+    target_privacy_count
+  );
+end
+$dealflow_synthetic_deletion_reset_guard$;
+alter table public.account_deletion_receipts
+  disable trigger account_deletion_receipt_append_only;
+alter table public.privacy_subject_request_receipts
+  disable trigger privacy_subject_receipt_immutable_guard;
+alter table private.privacy_export_manifest_entries
+  disable trigger privacy_export_manifest_immutable_guard;
+alter table private.privacy_export_artifacts
+  disable trigger privacy_export_artifact_immutable_guard;
+alter table public.account_deletion_resource_manifest
+  disable trigger account_deletion_manifest_identity_immutable;
+alter table public.account_deletion_tombstones
+  disable trigger account_deletion_tombstone_identity_immutable;
+alter table private.generated_static_storage_cleanup_authorities
+  disable trigger protect_generated_static_cleanup_authority;
+delete from public.account_deletion_suspensions suspension
+where suspension.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from private.generated_static_storage_cleanup_authorities authority
+where authority.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from public.account_deletion_resource_manifest manifest
+where manifest.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from public.account_deletion_tombstones tombstone
+where tombstone.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from public.account_deletion_receipts receipt
+where receipt.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from public.account_deletion_legal_hold_events event
+where event.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from public.account_deletion_tasks task
+where task.request_id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from private.privacy_export_manifest_entries entry
+where entry.request_id in (
+  select target.id from dealflow_synthetic_privacy_requests target
+);
+delete from private.privacy_export_artifacts artifact
+where artifact.request_id in (
+  select target.id from dealflow_synthetic_privacy_requests target
+);
+delete from public.privacy_subject_request_receipts receipt
+where receipt.request_id in (
+  select target.id from dealflow_synthetic_privacy_requests target
+);
+update public.account_deletion_requests request
+set privacy_subject_request_id=null
+where request.id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+delete from public.privacy_subject_requests request
+where request.id in (
+  select target.id from dealflow_synthetic_privacy_requests target
+);
+delete from public.account_deletion_requests request
+where request.id in (
+  select target.id from dealflow_synthetic_deletion_requests target
+);
+alter table private.generated_static_storage_cleanup_authorities
+  enable trigger protect_generated_static_cleanup_authority;
+alter table public.account_deletion_tombstones
+  enable trigger account_deletion_tombstone_identity_immutable;
+alter table public.account_deletion_resource_manifest
+  enable trigger account_deletion_manifest_identity_immutable;
+alter table private.privacy_export_artifacts
+  enable trigger privacy_export_artifact_immutable_guard;
+alter table private.privacy_export_manifest_entries
+  enable trigger privacy_export_manifest_immutable_guard;
+alter table public.privacy_subject_request_receipts
+  enable trigger privacy_subject_receipt_immutable_guard;
+alter table public.account_deletion_receipts
+  enable trigger account_deletion_receipt_append_only;
+do $dealflow_synthetic_deletion_reset_postcondition$
+begin
+  if exists (
+    select 1 from public.account_deletion_requests
+    where organization_id='${syntheticDeletionOrganizationId}'::uuid
+  ) or exists (
+    select 1 from public.account_deletion_suspensions
+    where organization_id='${syntheticDeletionOrganizationId}'::uuid
+  ) or exists (
+    select 1 from public.privacy_subject_requests
+    where organization_id='${syntheticDeletionOrganizationId}'::uuid
+  ) then
+    raise exception using
+      errcode='55000',
+      message='dealflow_synthetic_deletion_reset_incomplete';
+  end if;
+end
+$dealflow_synthetic_deletion_reset_postcondition$;
 create temp table dealflow_expected_owner_grants (
   capability text primary key,
   decision_ids text[] not null,
@@ -1153,6 +1376,21 @@ select json_build_object(
   'mode', result.mode,
   'ownerGrantMode', result.owner_grant_mode,
   'privacyGrantMode', result.privacy_grant_mode,
+  'syntheticDeletionResetMode', reset.mode,
+  'syntheticDeletionRequestCount', reset.deletion_request_count,
+  'syntheticPrivacyRequestCount', reset.privacy_request_count,
+  'syntheticDeletionPostResetRequestCount', (
+    select count(*) from public.account_deletion_requests
+    where organization_id='${syntheticDeletionOrganizationId}'::uuid
+  ),
+  'syntheticDeletionPostResetSuspensionCount', (
+    select count(*) from public.account_deletion_suspensions
+    where organization_id='${syntheticDeletionOrganizationId}'::uuid
+  ),
+  'syntheticPrivacyPostResetRequestCount', (
+    select count(*) from public.privacy_subject_requests
+    where organization_id='${syntheticDeletionOrganizationId}'::uuid
+  ),
   'ownerGrantCount', (select count(*) from public.owner_decision_authority_grants grant_row
     where grant_row.environment='staging'
       and grant_row.generation=(select max(latest.generation)
@@ -1257,6 +1495,7 @@ select json_build_object(
   'policyVersion', configuration.policy_version
 )
 from dealflow_retention_authority_result result
+cross join dealflow_synthetic_deletion_reset_result reset
 cross join public.account_deletion_retention_configuration configuration
 join pg_class class on class.relname='account_deletion_retention_configuration'
 join pg_namespace namespace on namespace.oid=class.relnamespace and namespace.nspname='public'
@@ -1334,6 +1573,19 @@ const validPrivacyGrantMode = [
   "exact_synthetic_privacy_grant_rotated",
   "exact_synthetic_privacy_grant_reused",
 ].includes(databaseResult?.privacyGrantMode);
+const validSyntheticDeletionReset =
+  ["no_prior_fixture", "exact_prior_fixture_removed"].includes(
+    databaseResult?.syntheticDeletionResetMode,
+  ) &&
+  Number.isSafeInteger(databaseResult?.syntheticDeletionRequestCount) &&
+  databaseResult.syntheticDeletionRequestCount >= 0 &&
+  databaseResult.syntheticDeletionRequestCount <= 1 &&
+  Number.isSafeInteger(databaseResult?.syntheticPrivacyRequestCount) &&
+  databaseResult.syntheticPrivacyRequestCount >= 0 &&
+  databaseResult.syntheticPrivacyRequestCount <= 1 &&
+  databaseResult.syntheticDeletionPostResetRequestCount === 0 &&
+  databaseResult.syntheticDeletionPostResetSuspensionCount === 0 &&
+  databaseResult.syntheticPrivacyPostResetRequestCount === 0;
 // The exact inventory installer refreshes and rebinds the catalog snapshot even
 // on an otherwise exact replay. A successful authority transaction therefore
 // always performs an isolated-staging database mutation and must never be
@@ -1376,6 +1628,7 @@ try {
     !validRetentionMode ||
     !validOwnerGrantMode ||
     !validPrivacyGrantMode ||
+    !validSyntheticDeletionReset ||
     databaseResult.ownerGrantCount !== 4 ||
     databaseResult.ownerGrantCapabilityCount !== 4 ||
     !Number.isSafeInteger(databaseResult.ownerGrantHistoricalCount) ||
@@ -1488,6 +1741,19 @@ const proof = {
   relationOwner: "postgres",
   ownerUpdatePrivilege: true,
   syntheticStagingOnly: true,
+  syntheticDeletionReset: {
+    mode: databaseResult.syntheticDeletionResetMode,
+    exactFixtureOnly: true,
+    deletionRequestCount: databaseResult.syntheticDeletionRequestCount,
+    privacyRequestCount: databaseResult.syntheticPrivacyRequestCount,
+    postResetDeletionRequestCount:
+      databaseResult.syntheticDeletionPostResetRequestCount,
+    postResetSuspensionCount:
+      databaseResult.syntheticDeletionPostResetSuspensionCount,
+    postResetPrivacyRequestCount:
+      databaseResult.syntheticPrivacyPostResetRequestCount,
+    customerDataAccessed: false,
+  },
   ownerDecisionAuthority: {
     installationMode: databaseResult.ownerGrantMode,
     currentGrantCount: databaseResult.ownerGrantCount,

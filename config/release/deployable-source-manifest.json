@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "35887a10fa3db426337e2e58f5bcf96e819eaab8f66c2e00ab228b8237030fa2",
+  "deployableSourceSha256": "a4f00bf9cb2313707763626916e6556bd9a379ea90734de58c32e25f580ef926",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1050,9 +1050,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 74055,
+      "size": 85048,
       "mode": 33188,
-      "sha256": "789cd5cb5156135df8536b7300915a28c427a9a25c355282ce8e289748e2a9c5"
+      "sha256": "bdfa407157a844491520b53a8d2f6e539c2702167884261798e52811d7bd0fbb"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1092,9 +1092,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 298730,
+      "size": 299679,
       "mode": 33188,
-      "sha256": "b3a74164700306e760b5ee1559871cbf926c84de1541c878fad0e04439a01ddc"
+      "sha256": "00e21d4e1268c6e30493bd1795e97f07b6acfd56b6c95f9f820383dab57fe8fa"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1212,9 +1212,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 9599,
+      "size": 11319,
       "mode": 33188,
-      "sha256": "62624a82d8ad1ec4956c6516abc82bd98822358b318dec3daab5841a68a34e25"
+      "sha256": "2a585c08452401dc27892c848885c62c6e5d7b9a1a8cce2a15d42c3ed5e66184"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1224,9 +1224,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 134756,
+      "size": 135276,
       "mode": 33188,
-      "sha256": "00fc93c1f103b26a47dc09c5b24182fef4d5bf6dd451b55b2deb0d19bfc01e62"
+      "sha256": "b9a63ead0951ecad72f2e3ff6ac46defe995d4615777dc5bce4ea11f1ed4a786"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
