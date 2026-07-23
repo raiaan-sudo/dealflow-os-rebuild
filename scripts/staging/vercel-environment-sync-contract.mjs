@@ -377,10 +377,11 @@ async function readExactInventory(
     throw new Error(`Duplicate Vercel environment keys require owner cleanup: ${duplicateNames.join(", ")}`);
   }
   for (const record of records) {
-    if (sensitiveKeys.has(record.key)) {
+    if (sensitiveKeys.has(record.key) || record.type === "sensitive") {
       // Vercel sensitive values are intentionally non-readable once created.
-      // Ignore any placeholder and prove them through an idempotent exact-ID
-      // rewrite, a successful provider acknowledgement, and metadata readback.
+      // This also covers a non-secret key whose existing provider type drifted
+      // to sensitive: classify the type/value drift without trying to decrypt
+      // it, then repair it through the exact-ID write path.
       record.value = undefined;
       continue;
     }
@@ -414,7 +415,11 @@ function classifyInventory(inventory, names, environment, sensitiveKeys) {
     const drift = structuralDriftCategories(record, expectedType);
     if (sensitiveKeys.has(key)) {
       drift.push("sensitive_value_unreadable");
-    } else if (sha256(record.value) !== sha256(environment[key])) {
+    } else if (
+      record.type === "sensitive" ||
+      record.value === undefined ||
+      sha256(record.value) !== sha256(environment[key])
+    ) {
       drift.push("value");
     }
     return {

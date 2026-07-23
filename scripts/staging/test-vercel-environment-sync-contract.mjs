@@ -267,6 +267,26 @@ async function synchronizePortfolio({
 
 {
   const provider = fakeProvider([
+    exactRecord("PUBLIC_FLAG", "provider-withheld-sensitive-value", {
+      type: "sensitive",
+      decrypted: false,
+    }),
+    exactRecord("SECRET_VALUE", environment.SECRET_VALUE),
+  ]);
+  const proof = await synchronize(provider);
+  assert.equal(proof.status, "PASS");
+  assert.equal(proof.patchedRecordCount, 2);
+  const publicTypeRepair = provider.calls.find(
+    (call) => call.method === "PATCH" && call.body?.key === "PUBLIC_FLAG",
+  );
+  assert.equal(publicTypeRepair.body.type, "encrypted");
+  assert.equal(publicTypeRepair.body.value, environment.PUBLIC_FLAG);
+  assert.equal(provider.state.get("PUBLIC_FLAG").type, "encrypted");
+  assert.equal(provider.state.get("PUBLIC_FLAG").decrypted, true);
+}
+
+{
+  const provider = fakeProvider([
     exactRecord("PUBLIC_FLAG", environment.PUBLIC_FLAG),
   ]);
   const proof = await synchronize(provider);
