@@ -58,6 +58,11 @@ create index if not exists billing_access_key_events_key_created_idx
 alter table public.billing_access_keys enable row level security;
 alter table public.billing_access_key_events enable row level security;
 
+grant all privileges on table
+  public.billing_access_keys,
+  public.billing_access_key_events
+to anon, authenticated, service_role;
+
 comment on table public.billing_access_keys is
   'Single-use paid checkout access keys that can be claimed by a new DealFlow workspace.';
 

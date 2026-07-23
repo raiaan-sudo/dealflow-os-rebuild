@@ -16,7 +16,7 @@ export const FORWARD_121_TO_122_AUTHORITY = Object.freeze({
     migrationCount: 122,
     finalMigration: "20260722010000_modernize_provider_service_role_claims.sql",
     migrationPortfolioSha256:
-      "112b469f921b463fbf074bbb75ba08e3499fc8d3116df7c7bbde35a40b9ede43",
+      "4616a173bb1a85e1254e23df7a240f23bcfadba58007aa7436591dd80a304e30",
     managedStructuralCatalogSha256:
       "afd3b0d494dc85a2d4862e676e39170dec6fa270f516e4f8213603c86d01c250",
     managedStructuralCatalogRecordCount: 8405,

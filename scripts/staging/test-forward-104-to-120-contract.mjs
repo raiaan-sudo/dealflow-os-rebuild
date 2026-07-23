@@ -57,11 +57,11 @@ assert.equal(FORWARD_104_TO_120_AUTHORITY.current.migrationCount, 120);
 assert.equal(FORWARD_104_TO_120_AUTHORITY.forwardMigrations.length, 16);
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256,
-  "f44431a984f93c736fcc229d2fff321cff3c676b3d334d4a8ca25d715e353224",
+  "6145596442e33d08e57ac24b41ca14c40c96c8ba31ae62a00e7309208cf668ed",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.migrationPortfolioSha256,
-  "fa6f66b0346b7674f5613a206fcc188e1cb38cc0332919f9fe76337c2a37570f",
+  "76a311cf7d4f4aee58d9e73060695c40bfe2eb1977c7fcc950f4b5a774445d87",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,

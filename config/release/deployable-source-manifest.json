@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "f4f496cca2e0eca14e7ac0668a708ca8f712bd7d35f9ebd4713b28756bd2dc2e",
+  "deployableSourceSha256": "4f584db4c3e847a969caff9ff66b80e3490dc7cfacc43df3e5e9eca373b53152",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1022,25 +1022,25 @@
       "path": "scripts/staging/forward-104-to-120-contract.mjs",
       "size": 24866,
       "mode": 33188,
-      "sha256": "4cbc1ae163b016947da2595ef35188263f361b51fadfebed15fb5713413ade01"
+      "sha256": "cd8e139cb566443737406a86c0eebf3ab4253ba311d6de1568d7c9171dc01eff"
     },
     {
       "path": "scripts/staging/forward-120-to-121-contract.mjs",
       "size": 3932,
       "mode": 33188,
-      "sha256": "3d7a0b7b5d41ad42761abc61c994ee72d2f2427e73cf1478ff06e9b58d5f3344"
+      "sha256": "ca8e325a655db47dcecff082b3b50ad420bd218f4c942b83f3ad2deb5c9115b8"
     },
     {
       "path": "scripts/staging/forward-121-to-122-contract.mjs",
       "size": 3895,
       "mode": 33188,
-      "sha256": "2a919c3ef3d63708384fd42b073f252a9401395905104175ef7a4e12c53ea3f7"
+      "sha256": "89a1e5ff8aacc3883ac4e9819ea6d115d2dd02bec7163a865796b39fbbc6182d"
     },
     {
       "path": "scripts/staging/forward-122-to-123-contract.mjs",
       "size": 3884,
       "mode": 33188,
-      "sha256": "c459222621cbedcd9a07b27fe61af20ede763d7d82701d6c5c041673488e3991"
+      "sha256": "081f4b62e546404ebc21ad6713094b847da59389ffd51c7ccd267e8d587fd24b"
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
@@ -1184,7 +1184,7 @@
       "path": "scripts/staging/test-forward-104-to-120-contract.mjs",
       "size": 25313,
       "mode": 33188,
-      "sha256": "6ec8cddb235510252f7b27b79b439b9ffe7a5d4a4276a711f8b0563010e5e92f"
+      "sha256": "2e752423389ebcda8603bf48d58a213ae8253034f1a337d73b2c24f954188494"
     },
     {
       "path": "scripts/staging/test-forward-120-to-121-contract.mjs",
@@ -6120,9 +6120,9 @@
     },
     {
       "path": "supabase/migrations/20260705090000_create_billing_access_keys.sql",
-      "size": 3289,
+      "size": 3423,
       "mode": 33188,
-      "sha256": "54260ab869d22817d12eac8356663a7d6cc54646f45849cfcac3def47c90eae4"
+      "sha256": "44f9871f9d5bba9581af187c8d87e1c6272164693b95af582df1df473037f340"
     },
     {
       "path": "supabase/migrations/20260706170000_create_lead_tracking_health.sql",
