@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "b7c59e542590d63f8a52c56f2baa0f6da159c50a3784506c83292c2cfb7364df",
+  "deployableSourceSha256": "13a4cfa6e91576efe3bc054532e57111355a592dc24bc7ac37cf789c676985b1",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -36,9 +36,9 @@
     },
     {
       "path": ".vercelignore",
-      "size": 502,
+      "size": 518,
       "mode": 33188,
-      "sha256": "1b62c46e2726a8719ff496804f1a3ac1905fef0dc955fb7555887ef8d9a0ee79"
+      "sha256": "146bd827cf5c9f78d4ed32f6696bd224e2f4259cb0df0ab19d4950170288fd60"
     },
     {
       "path": "CURRENT_RELEASE_EVIDENCE_BUNDLE.md",

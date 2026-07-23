@@ -2,6 +2,7 @@
 .env.*
 
 .next/
+.next-safe-e2e/
 out/
 output/
 test-results/
