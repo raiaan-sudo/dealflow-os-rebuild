@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "4f584db4c3e847a969caff9ff66b80e3490dc7cfacc43df3e5e9eca373b53152",
+  "deployableSourceSha256": "b7c59e542590d63f8a52c56f2baa0f6da159c50a3784506c83292c2cfb7364df",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -630,9 +630,9 @@
     },
     {
       "path": "next.config.mjs",
-      "size": 3031,
+      "size": 3413,
       "mode": 33188,
-      "sha256": "74d45eb8828f3bef40863c23abff23216d2a0307731e84042aaf8d4e3b0322f5"
+      "sha256": "b8950ddc38abc0b0eb644035e29db042d2dad2b357e7d2b8843ae59de5b08c80"
     },
     {
       "path": "package-lock.json",
@@ -6636,9 +6636,9 @@
     },
     {
       "path": "tests/e2e/safe-browser-environment.ts",
-      "size": 2974,
+      "size": 3018,
       "mode": 33188,
-      "sha256": "6e056940e419e2fdf649c4922d2e8d66bf01f7e443fe3c31299bf56582453b5d"
+      "sha256": "2d961c4d04495eec23183ab30b1cd98566f3b379493ce35a8963dc44c134cb1d"
     },
     {
       "path": "tests/e2e/test-safe-acceptance-reporter.mjs",
@@ -6648,9 +6648,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 27335,
+      "size": 27656,
       "mode": 33188,
-      "sha256": "be094e5cf5fd8df26a381256a678143c1b42853eedfcd29bab123b93427fcf99"
+      "sha256": "2546a85634f41f3d0ba0aefea07f1f05b37361904e227fb628194dfb2d14efb3"
     },
     {
       "path": "tests/performance/README.md",
@@ -6726,9 +6726,9 @@
     },
     {
       "path": "tsconfig.json",
-      "size": 798,
+      "size": 874,
       "mode": 33188,
-      "sha256": "1077f6f02cae792b4444279cdd7f2c31a4a33316fb2fb8719d7e5a5c34c922e2"
+      "sha256": "ad88f64117c193aa3779c9a512514d32206ecd97a81ee0f0e56ed20bd7f9fa43"
     },
     {
       "path": "tsconfig.typecheck.json",

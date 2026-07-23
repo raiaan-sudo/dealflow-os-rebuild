@@ -27,6 +27,7 @@ function requireAll(source, markers, label) {
 }
 
 const config = read("playwright.safe.config.ts");
+const nextConfig = read("next.config.mjs");
 const safeEnvironment = read("tests/e2e/safe-browser-environment.ts");
 const spec = read("tests/e2e/dealflow-safe.spec.ts");
 const stagingAcceptanceSpec = read("tests/e2e/dealflow-staging-acceptance.spec.ts");
@@ -73,8 +74,20 @@ requireAll(
 assert.doesNotMatch(config, /extraHTTPHeaders/);
 
 requireAll(
+  nextConfig,
+  [
+    "DEALFLOW_NEXT_DIST_DIR",
+    "configuredDistDir === \".\"",
+    "configuredDistDir === \"..\"",
+    "{ distDir: configuredDistDir }",
+  ],
+  "Next.js isolated safe-browser build directory",
+);
+
+requireAll(
   safeEnvironment,
   [
+    'DEALFLOW_NEXT_DIST_DIR: ".next-safe-e2e"',
     'ALLOW_META_LIVE_LAUNCH: "false"',
     'ALLOW_SCHEDULED_META_LAUNCH_EXECUTION: "false"',
     'ALLOW_META_DUE_ACTIVATION: "false"',

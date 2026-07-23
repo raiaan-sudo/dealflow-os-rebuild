@@ -3,6 +3,15 @@ import { existsSync } from "node:fs";
 
 const configuredBuildCpus = Number.parseInt(process.env.NEXT_BUILD_CPUS ?? "1", 10);
 const buildCpus = Number.isFinite(configuredBuildCpus) && configuredBuildCpus > 0 ? configuredBuildCpus : 1;
+const configuredDistDir = process.env.DEALFLOW_NEXT_DIST_DIR?.trim() ?? "";
+if (
+  configuredDistDir &&
+  (!/^[A-Za-z0-9._-]+$/.test(configuredDistDir) ||
+    configuredDistDir === "." ||
+    configuredDistDir === "..")
+) {
+  throw new Error("DEALFLOW_NEXT_DIST_DIR must be a safe repository-local directory name");
+}
 const ISOLATED_STAGING_HOST_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1";
 const ISOLATED_STAGING_PROJECT_ID_SHA256 =
@@ -58,6 +67,7 @@ const isolatedStagingImageConfig = resolveIsolatedStagingImageConfig();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  ...(configuredDistDir ? { distDir: configuredDistDir } : {}),
   experimental: {
     cpus: buildCpus,
   },

@@ -3,6 +3,7 @@ node_modules/
 
 # next
 .next/
+.next-safe-e2e/
 out/
 
 # production
