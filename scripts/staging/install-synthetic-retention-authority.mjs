@@ -1376,21 +1376,6 @@ select json_build_object(
   'mode', result.mode,
   'ownerGrantMode', result.owner_grant_mode,
   'privacyGrantMode', result.privacy_grant_mode,
-  'syntheticDeletionResetMode', reset.mode,
-  'syntheticDeletionRequestCount', reset.deletion_request_count,
-  'syntheticPrivacyRequestCount', reset.privacy_request_count,
-  'syntheticDeletionPostResetRequestCount', (
-    select count(*) from public.account_deletion_requests
-    where organization_id='${syntheticDeletionOrganizationId}'::uuid
-  ),
-  'syntheticDeletionPostResetSuspensionCount', (
-    select count(*) from public.account_deletion_suspensions
-    where organization_id='${syntheticDeletionOrganizationId}'::uuid
-  ),
-  'syntheticPrivacyPostResetRequestCount', (
-    select count(*) from public.privacy_subject_requests
-    where organization_id='${syntheticDeletionOrganizationId}'::uuid
-  ),
   'ownerGrantCount', (select count(*) from public.owner_decision_authority_grants grant_row
     where grant_row.environment='staging'
       and grant_row.generation=(select max(latest.generation)
@@ -1493,6 +1478,24 @@ select json_build_object(
   'receiptRetentionDays', configuration.receipt_retention_days,
   'billingCancellationMode', configuration.billing_cancellation_mode,
   'policyVersion', configuration.policy_version
+ )::jsonb || jsonb_build_object(
+  'syntheticDeletionReset', jsonb_build_object(
+    'mode', reset.mode,
+    'deletionRequestCount', reset.deletion_request_count,
+    'privacyRequestCount', reset.privacy_request_count,
+    'postResetDeletionRequestCount', (
+      select count(*) from public.account_deletion_requests
+      where organization_id='${syntheticDeletionOrganizationId}'::uuid
+    ),
+    'postResetSuspensionCount', (
+      select count(*) from public.account_deletion_suspensions
+      where organization_id='${syntheticDeletionOrganizationId}'::uuid
+    ),
+    'postResetPrivacyRequestCount', (
+      select count(*) from public.privacy_subject_requests
+      where organization_id='${syntheticDeletionOrganizationId}'::uuid
+    )
+  )
 )
 from dealflow_retention_authority_result result
 cross join dealflow_synthetic_deletion_reset_result reset
@@ -1573,19 +1576,21 @@ const validPrivacyGrantMode = [
   "exact_synthetic_privacy_grant_rotated",
   "exact_synthetic_privacy_grant_reused",
 ].includes(databaseResult?.privacyGrantMode);
+const databaseSyntheticDeletionReset =
+  databaseResult?.syntheticDeletionReset;
 const validSyntheticDeletionReset =
   ["no_prior_fixture", "exact_prior_fixture_removed"].includes(
-    databaseResult?.syntheticDeletionResetMode,
+    databaseSyntheticDeletionReset?.mode,
   ) &&
-  Number.isSafeInteger(databaseResult?.syntheticDeletionRequestCount) &&
-  databaseResult.syntheticDeletionRequestCount >= 0 &&
-  databaseResult.syntheticDeletionRequestCount <= 1 &&
-  Number.isSafeInteger(databaseResult?.syntheticPrivacyRequestCount) &&
-  databaseResult.syntheticPrivacyRequestCount >= 0 &&
-  databaseResult.syntheticPrivacyRequestCount <= 1 &&
-  databaseResult.syntheticDeletionPostResetRequestCount === 0 &&
-  databaseResult.syntheticDeletionPostResetSuspensionCount === 0 &&
-  databaseResult.syntheticPrivacyPostResetRequestCount === 0;
+  Number.isSafeInteger(databaseSyntheticDeletionReset?.deletionRequestCount) &&
+  databaseSyntheticDeletionReset.deletionRequestCount >= 0 &&
+  databaseSyntheticDeletionReset.deletionRequestCount <= 1 &&
+  Number.isSafeInteger(databaseSyntheticDeletionReset?.privacyRequestCount) &&
+  databaseSyntheticDeletionReset.privacyRequestCount >= 0 &&
+  databaseSyntheticDeletionReset.privacyRequestCount <= 1 &&
+  databaseSyntheticDeletionReset.postResetDeletionRequestCount === 0 &&
+  databaseSyntheticDeletionReset.postResetSuspensionCount === 0 &&
+  databaseSyntheticDeletionReset.postResetPrivacyRequestCount === 0;
 // The exact inventory installer refreshes and rebinds the catalog snapshot even
 // on an otherwise exact replay. A successful authority transaction therefore
 // always performs an isolated-staging database mutation and must never be
@@ -1742,16 +1747,18 @@ const proof = {
   ownerUpdatePrivilege: true,
   syntheticStagingOnly: true,
   syntheticDeletionReset: {
-    mode: databaseResult.syntheticDeletionResetMode,
+    mode: databaseSyntheticDeletionReset.mode,
     exactFixtureOnly: true,
-    deletionRequestCount: databaseResult.syntheticDeletionRequestCount,
-    privacyRequestCount: databaseResult.syntheticPrivacyRequestCount,
+    deletionRequestCount:
+      databaseSyntheticDeletionReset.deletionRequestCount,
+    privacyRequestCount:
+      databaseSyntheticDeletionReset.privacyRequestCount,
     postResetDeletionRequestCount:
-      databaseResult.syntheticDeletionPostResetRequestCount,
+      databaseSyntheticDeletionReset.postResetDeletionRequestCount,
     postResetSuspensionCount:
-      databaseResult.syntheticDeletionPostResetSuspensionCount,
+      databaseSyntheticDeletionReset.postResetSuspensionCount,
     postResetPrivacyRequestCount:
-      databaseResult.syntheticPrivacyPostResetRequestCount,
+      databaseSyntheticDeletionReset.postResetPrivacyRequestCount,
     customerDataAccessed: false,
   },
   ownerDecisionAuthority: {

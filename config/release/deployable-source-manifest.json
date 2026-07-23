@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "a4f00bf9cb2313707763626916e6556bd9a379ea90734de58c32e25f580ef926",
+  "deployableSourceSha256": "a03f608db24d1015cfcfa357d44ac3c8b0e8caa46e7d738c7c881357da5adfee",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1050,9 +1050,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 85048,
+      "size": 85250,
       "mode": 33188,
-      "sha256": "bdfa407157a844491520b53a8d2f6e539c2702167884261798e52811d7bd0fbb"
+      "sha256": "3819721328eedf4ac148330fe0851f51f078b757c2cb747c73e69956f5403daf"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1212,9 +1212,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 11319,
+      "size": 11420,
       "mode": 33188,
-      "sha256": "2a585c08452401dc27892c848885c62c6e5d7b9a1a8cce2a15d42c3ed5e66184"
+      "sha256": "64332b664a4eb653e3574d904b4fd5c2e575e76bba839c944dbcad3d3b3e9ec1"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
