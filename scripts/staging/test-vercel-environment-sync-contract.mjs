@@ -308,6 +308,41 @@ async function synchronizePortfolio({
 
 {
   const provider = fakeProvider([
+    exactRecord("PUBLIC_FLAG", "provider-ciphertext", { decrypted: false }),
+    exactRecord("SECRET_VALUE", environment.SECRET_VALUE),
+  ]);
+  const originalFetch = provider.fetchImpl;
+  let semanticMisses = 0;
+  provider.fetchImpl = async (input, init) => {
+    const url = new URL(input);
+    const result = await originalFetch(input, init);
+    if (
+      init.method === "GET" &&
+      /\/v1\/projects\/[^/]+\/env\/env_public_flag$/.test(url.pathname) &&
+      semanticMisses < 2
+    ) {
+      semanticMisses += 1;
+      return response(200, exactRecord("PUBLIC_FLAG", "provider-ciphertext", {
+        decrypted: false,
+      }), { "x-vercel-request-id": `req_contract_semantic_miss_${semanticMisses}` });
+    }
+    if (
+      init.method === "GET" &&
+      /\/v1\/projects\/[^/]+\/env\/env_public_flag$/.test(url.pathname)
+    ) {
+      return response(200, exactRecord("PUBLIC_FLAG", environment.PUBLIC_FLAG, {
+        decrypted: true,
+      }), { "x-vercel-request-id": "req_contract_semantic_recovery" });
+    }
+    return result;
+  };
+  const proof = await synchronize(provider);
+  assert.equal(proof.semanticValueReadRetryCount, 2);
+  assert.deepEqual(provider.delays.slice(0, 2), [500, 1_000]);
+}
+
+{
+  const provider = fakeProvider([
     exactRecord("PUBLIC_FLAG", "stale", {
       type: "plain",
       target: ["preview"],
@@ -430,7 +465,7 @@ async function synchronizePortfolio({
   assert.equal(proof.finalExpectedValueDispositionCount, 2);
   assert.equal(provider.calls.filter(
     (call) => call.method === "GET" && /\/env\/env_/.test(call.pathname),
-  ).length, 3);
+  ).length, 2);
 }
 
 {
@@ -467,5 +502,5 @@ async function synchronizePortfolio({
 }
 
 console.log(
-  "Vercel environment sync contract: PASS (exact metadata; decrypted:true encrypted-value readback with exact-ID fallback; sensitive-value exact-ID rewrite plus provider acknowledgement; production-safe request bodies; missing/value drift batched upsert; bounded Retry-After/X-RateLimit-Reset; deterministic 4xx; ambiguous 408/409/5xx/transport readback; secret-free exact 91/81/10 proof)",
+  "Vercel environment sync contract: PASS (exact metadata; decrypted:true encrypted-value readback with exact-ID selective fallback and bounded semantic retry; sensitive-value exact-ID rewrite plus provider acknowledgement; production-safe request bodies; missing/value drift batched upsert; bounded Retry-After/X-RateLimit-Reset; deterministic 4xx; ambiguous 408/409/5xx/transport readback; secret-free exact 91/81/10 proof)",
 );

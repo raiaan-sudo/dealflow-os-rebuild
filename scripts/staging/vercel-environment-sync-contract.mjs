@@ -317,7 +317,45 @@ async function readWithBoundedRetry(context, path, query, counters) {
   throw new Error("Unreachable Vercel read retry state");
 }
 
-async function readExactInventory(context, counters, sensitiveKeys) {
+async function readExactDecryptedValue(context, counters, record) {
+  for (let attempt = 1; attempt <= context.maxAttempts; attempt += 1) {
+    const single = await readWithBoundedRetry(
+      context,
+      `/v1/projects/{projectId}/env/${encodeURIComponent(record.id)}`,
+      { decrypt: "true" },
+      counters,
+    );
+    const raw = single.payload?.env ?? single.payload;
+    const value = raw?.value;
+    if (raw?.decrypted === true && typeof value === "string") {
+      return value;
+    }
+    if (attempt === context.maxAttempts) {
+      throw new VercelEnvironmentSyncError("environment_value_readback_unavailable", {
+        status: single.status,
+        providerCode: normalizedProviderCode(single.payload),
+        requestId: normalizedRequestId(single.headers),
+      });
+    }
+    counters.semanticValueReadRetryCount += 1;
+    await context.delayImpl(Math.min(500 * attempt, 2_000));
+  }
+  throw new Error("Unreachable Vercel decrypted-value read state");
+}
+
+async function readExactInventory(
+  context,
+  counters,
+  sensitiveKeys,
+  { readableKeys = null } = {},
+) {
+  if (
+    readableKeys !== null &&
+    (!(readableKeys instanceof Set) ||
+      [...readableKeys].some((key) => !ENVIRONMENT_KEY_PATTERN.test(key)))
+  ) {
+    throw new Error("Vercel readable-key selection is invalid");
+  }
   const response = await readWithBoundedRetry(
     context,
     "/v10/projects/{projectId}/env",
@@ -346,23 +384,12 @@ async function readExactInventory(context, counters, sensitiveKeys) {
       record.value = undefined;
       continue;
     }
-    if (record.value !== undefined) continue;
-    const single = await readWithBoundedRetry(
-      context,
-      `/v1/projects/{projectId}/env/${encodeURIComponent(record.id)}`,
-      {},
-      counters,
-    );
-    const raw = single.payload?.env ?? single.payload;
-    const value = raw?.value;
-    if (raw?.decrypted !== true || typeof value !== "string") {
-      throw new VercelEnvironmentSyncError("environment_value_readback_unavailable", {
-        status: single.status,
-        providerCode: normalizedProviderCode(single.payload),
-        requestId: normalizedRequestId(single.headers),
-      });
+    if (readableKeys !== null && !readableKeys.has(record.key)) {
+      record.value = undefined;
+      continue;
     }
-    record.value = value;
+    if (record.value !== undefined) continue;
+    record.value = await readExactDecryptedValue(context, counters, record);
   }
   return { records, byName };
 }
@@ -491,7 +518,15 @@ async function writeWithReadback({
       response.status >= 500 ||
       response.status === 0 ||
       AMBIGUOUS_WRITE_STATUS.has(response.status);
-    const readback = await readExactInventory(context, counters, sensitiveKeys);
+    const readableKeys = new Set(
+      committedKeys.filter((key) => !sensitiveKeys.has(key)),
+    );
+    const readback = await readExactInventory(
+      context,
+      counters,
+      sensitiveKeys,
+      { readableKeys },
+    );
     const providerAcknowledged =
       response.status >= 200 &&
       response.status < 300 &&
@@ -578,6 +613,7 @@ export async function synchronizeExactVercelEnvironment({
   const counters = {
     rateLimitRetryCount: 0,
     readRetryCount: 0,
+    semanticValueReadRetryCount: 0,
     ambiguousWriteReadbackCommitCount: 0,
     ambiguousWriteReadbackRetryCount: 0,
     successfulWriteReadbackRetryCount: 0,
