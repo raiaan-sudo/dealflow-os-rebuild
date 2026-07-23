@@ -1357,6 +1357,14 @@ function renderCatalogAssertion(assertion, expectedRows, index) {
       "source_row.routine_schema = 'auth' AND source_row.routine_name IN ('uid','role','email','jwt')",
     );
   }
+  if (assertion.source === "public" && assertion.id === "13e_default_grants") {
+    // A fresh hosted Supabase project can omit the supabase_admin-owned
+    // public-schema default ACLs that exist in the native Supabase bootstrap.
+    // DealFlow cannot alter that managed role remotely. Bind the gate to the
+    // postgres-owned defaults that govern every application migration object;
+    // platform-owned defaults remain outside application schema authority.
+    conditions.push("source_row.owner_name = 'postgres'");
+  }
   const scope = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   const tag = `dealflow_expected_${index}`;
   let locallyProvableExpectedRows = expectedRows;
@@ -1370,6 +1378,10 @@ function renderCatalogAssertion(assertion, expectedRows, index) {
   if (assertion.id === "14d_dependency_schema_routines_for_body_closure") {
     locallyProvableExpectedRows = locallyProvableExpectedRows.filter((row) =>
       row.routine_schema === "auth" && ["uid", "role", "email", "jwt"].includes(row.routine_name));
+  }
+  if (assertion.source === "public" && assertion.id === "13e_default_grants") {
+    locallyProvableExpectedRows = locallyProvableExpectedRows.filter((row) =>
+      row.owner_name === "postgres");
   }
   const expected = dollarJson(sortedRows(locallyProvableExpectedRows.map((row) =>
     Object.fromEntries(projection.map((field) => [field, row[field]])))), tag);
@@ -1412,6 +1424,11 @@ function replaceUserIdTextCast(expression) {
 }
 
 function renderGate(current, publicCurrent, privateAuthority, assertionCatalog) {
+  const portablePostgresDefaultPrivileges = [
+    "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO anon, authenticated, postgres, service_role;",
+    "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO anon, authenticated, postgres, service_role;",
+    "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL PRIVILEGES ON FUNCTIONS TO anon, authenticated, postgres, service_role;",
+  ].join("\n");
   const assertionSql = assertionCatalog.assertions.map((assertion, index) => {
     const source = assertion.source === "public" ? publicCurrent : privateAuthority;
     const expectedRows = source.categories?.[assertion.id] ?? [];
@@ -1454,6 +1471,11 @@ function renderGate(current, publicCurrent, privateAuthority, assertionCatalog) 
 `-- under native PostgreSQL, Supabase CLI, and hosted Supabase migration runners.\n` +
 `BEGIN;\n` +
 `SET LOCAL search_path = "$user", public;\n\n` +
+`-- Normalize the application-owned default ACLs that a fresh hosted Supabase\n` +
+`-- project may omit. Managed supabase_admin defaults are deliberately not\n` +
+`-- mutated and are excluded from the portable application-schema gate.\n` +
+`-- dealflow:statement id=${record.version}.portable_postgres_default_privileges.001 sha256=${sha256(portablePostgresDefaultPrivileges)}\n` +
+`${portablePostgresDefaultPrivileges}\n\n` +
 `${assertionSql}\n\n` +
 `-- This migration takes ACCESS EXCLUSIVE lock on campaign_plans and may rewrite that table and its indexes.\n` +
 `-- It first proves the exact authoritative table/column/constraint/index shape, then performs the single authorized text-to-uuid normalization.\n` +

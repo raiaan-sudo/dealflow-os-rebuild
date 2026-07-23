@@ -173,7 +173,7 @@
     {
       "classification": "AUTHORITATIVE_SHAPE_GATE_AND_GUARDED_NORMALIZATION",
       "name": "validate_and_normalize_pre_candidate_shape",
-      "sha256": "3670d9f414e300407c2a6aa7256df1570c86b0e9b5a08ecbdf20e0182361b56e",
+      "sha256": "a61fb33d7da5d81c251dae3bc5877b0fdc967d794d803a2e0b435b8f4a2622ac",
       "version": "20260710160000"
     },
     {

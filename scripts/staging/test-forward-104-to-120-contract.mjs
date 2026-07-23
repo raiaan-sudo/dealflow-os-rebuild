@@ -44,6 +44,13 @@ const records = readdirSync(migrationDir)
   .sort()
   .slice(0, FORWARD_104_TO_120_AUTHORITY.current.migrationCount)
   .map((name) => ({ name }));
+const portablePreCandidateGateSource = readFileSync(
+  join(
+    migrationDir,
+    "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
+  ),
+  "utf8",
+);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const canonicalizeManagedCatalogMaterial = (material) => String(material ?? "")
   .split("\n")
@@ -57,11 +64,11 @@ assert.equal(FORWARD_104_TO_120_AUTHORITY.current.migrationCount, 120);
 assert.equal(FORWARD_104_TO_120_AUTHORITY.forwardMigrations.length, 16);
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256,
-  "6145596442e33d08e57ac24b41ca14c40c96c8ba31ae62a00e7309208cf668ed",
+  "c6d39d8bd4fe39ba8762c968a8010d772c96fa750ea39c2c5a409c4292fe33a5",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.migrationPortfolioSha256,
-  "76a311cf7d4f4aee58d9e73060695c40bfe2eb1977c7fcc950f4b5a774445d87",
+  "e6ff6049ff5a5c5691c54285850748f0e4190af23f389acde1cab7ead0245e2c",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,
@@ -78,6 +85,18 @@ assert.equal(
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.finalMigration,
   "20260717090000_create_canonical_lead_outcome_ledger.sql",
+);
+assert.match(
+  portablePreCandidateGateSource,
+  /ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO anon, authenticated, postgres, service_role;/,
+);
+assert.match(
+  portablePreCandidateGateSource,
+  /source_row\."schema_name" = 'public' AND source_row\.owner_name = 'postgres'/,
+);
+assert.doesNotMatch(
+  portablePreCandidateGateSource,
+  /ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin/,
 );
 
 const exact = assertExactForward104To120Portfolio(records, migrationDir);

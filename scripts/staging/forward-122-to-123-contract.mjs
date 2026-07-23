@@ -16,7 +16,7 @@ export const FORWARD_122_TO_123_AUTHORITY = Object.freeze({
     migrationCount: 123,
     finalMigration: "20260722020000_persist_ghl_location_token_scope.sql",
     migrationPortfolioSha256:
-      "8d67698f80165385f2857425ce2fcc2c1376b02fe217b7c6ca36b6b0daea204c",
+      "5ad214ab85d9dc3c0410950e2bd7b1a04e706059f5f98f518a84b1207dfc0138",
     managedStructuralCatalogSha256:
       "b41cd90ccb0d5f8629932d0d36fdfaf75110fc4a55c567465194039c0ec0cd6e",
     managedStructuralCatalogRecordCount: 8408,

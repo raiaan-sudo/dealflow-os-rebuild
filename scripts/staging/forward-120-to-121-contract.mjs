@@ -17,7 +17,7 @@ export const FORWARD_120_TO_121_AUTHORITY = Object.freeze({
     migrationCount: 121,
     finalMigration: "20260720010000_add_ghl_embed_sso_authority.sql",
     migrationPortfolioSha256:
-      "5f15629785792df07576c194b2db38b7f969701df8df98acb0d6221f12aed257",
+      "2adf321b77c225023f47914edacbe32cf9edbc212ce9b3a76e62d579ef3c2a92",
     managedStructuralCatalogSha256:
       "afd3b0d494dc85a2d4862e676e39170dec6fa270f516e4f8213603c86d01c250",
     managedStructuralCatalogRecordCount: 8405,

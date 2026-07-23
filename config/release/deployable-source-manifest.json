@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "13a4cfa6e91576efe3bc054532e57111355a592dc24bc7ac37cf789c676985b1",
+  "deployableSourceSha256": "e95fe1fd6432ebab8f35fde0595b69351a30b92a1d832fc2c22cbe12d47ceb5c",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -618,9 +618,9 @@
     },
     {
       "path": "eslint.config.mjs",
-      "size": 394,
+      "size": 421,
       "mode": 33188,
-      "sha256": "4529eaa3ed8d30ed53ed2e60bb64c247d9b845770b299373eaf4d26979af98f0"
+      "sha256": "56b3c795a1f105644cd31dfa5eb9018a3aff19ca7c088f8e2fc9f15957e4528a"
     },
     {
       "path": "lighthouserc.json",
@@ -804,9 +804,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 108898,
+      "size": 110559,
       "mode": 33188,
-      "sha256": "288a6d2a75299ce8d8e3352a10e1a631bb9759c2538c0cfeee7402a96f7eef38"
+      "sha256": "898db0ddb240eebc93a7d375fea09fb72982f805d5c5a5c0b9f076c74447ab3c"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -1022,25 +1022,25 @@
       "path": "scripts/staging/forward-104-to-120-contract.mjs",
       "size": 24866,
       "mode": 33188,
-      "sha256": "cd8e139cb566443737406a86c0eebf3ab4253ba311d6de1568d7c9171dc01eff"
+      "sha256": "66f8ab52bea578813055802ad6019c3c1402b4862272a3f1ad953e6b4b31f507"
     },
     {
       "path": "scripts/staging/forward-120-to-121-contract.mjs",
       "size": 3932,
       "mode": 33188,
-      "sha256": "ca8e325a655db47dcecff082b3b50ad420bd218f4c942b83f3ad2deb5c9115b8"
+      "sha256": "153b872600ceb21203797318757155b057e7738a51f27a9bbc816f8bf619e38e"
     },
     {
       "path": "scripts/staging/forward-121-to-122-contract.mjs",
       "size": 3895,
       "mode": 33188,
-      "sha256": "89a1e5ff8aacc3883ac4e9819ea6d115d2dd02bec7163a865796b39fbbc6182d"
+      "sha256": "335cdc3d6e98ea87037e39a228caff12bb1f2ce24e186edf0151e7493f43fdb7"
     },
     {
       "path": "scripts/staging/forward-122-to-123-contract.mjs",
       "size": 3884,
       "mode": 33188,
-      "sha256": "081f4b62e546404ebc21ad6713094b847da59389ffd51c7ccd267e8d587fd24b"
+      "sha256": "4f8f9111213f74ae99977e21ec7d02051b7d74d72e3751fa9fd1efcbf079da67"
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
@@ -1182,9 +1182,9 @@
     },
     {
       "path": "scripts/staging/test-forward-104-to-120-contract.mjs",
-      "size": 25313,
+      "size": 25919,
       "mode": 33188,
-      "sha256": "2e752423389ebcda8603bf48d58a213ae8253034f1a337d73b2c24f954188494"
+      "sha256": "c27e7643582090d92b810fd1a88edef886722b5952f4c2d7c3b0002fb647130e"
     },
     {
       "path": "scripts/staging/test-forward-120-to-121-contract.mjs",
@@ -6132,9 +6132,9 @@
     },
     {
       "path": "supabase/migrations/20260710160000_validate_and_normalize_pre_candidate_shape.sql",
-      "size": 2815200,
+      "size": 2802982,
       "mode": 33188,
-      "sha256": "3670d9f414e300407c2a6aa7256df1570c86b0e9b5a08ecbdf20e0182361b56e"
+      "sha256": "a61fb33d7da5d81c251dae3bc5877b0fdc967d794d803a2e0b435b8f4a2622ac"
     },
     {
       "path": "supabase/migrations/20260710170000_create_ghl_tenant_provisioning_foundation.sql",
@@ -6566,7 +6566,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "b363a5ad0187094fb7265129e0739299e036b00a37b353cb2b261cc2ffe4fe4b"
+      "sha256": "78d5fd09ab2dbea35629b92608323307ce82cf87b629a6899630be71bada1bd0"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
@@ -6582,9 +6582,9 @@
     },
     {
       "path": "supabase/reconciliation/migration-provenance.v1.json",
-      "size": 534489,
+      "size": 534788,
       "mode": 33188,
-      "sha256": "62b282e1fa842b44776bed6ed8286a8f58eed9f2384a4260a7531518929359f5"
+      "sha256": "7fd9ec08a5e351bd47d7ea878a075f3ef59d9f67f7d07234680a51d60d9a535d"
     },
     {
       "path": "supabase/reconciliation/private-schema-authority.v1.json",

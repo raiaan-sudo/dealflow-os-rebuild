@@ -4,6 +4,7 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".next-safe-e2e/**",
       "node_modules/**",
       "out/**",
       "coverage/**",

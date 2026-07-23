@@ -19,7 +19,7 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
     finalMigration:
       "20260715010000_move_legacy_org_member_policies_private.sql",
     migrationPortfolioSha256:
-      "6145596442e33d08e57ac24b41ca14c40c96c8ba31ae62a00e7309208cf668ed",
+      "c6d39d8bd4fe39ba8762c968a8010d772c96fa750ea39c2c5a409c4292fe33a5",
     normalizedSchemaSha256:
       "67f201df805559a97908e353e6c4e4a2c35df0812eb96cb6b92b50e711f84fe3",
     structuralCatalogSha256:
@@ -42,7 +42,7 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
     finalMigration:
       "20260717090000_create_canonical_lead_outcome_ledger.sql",
     migrationPortfolioSha256:
-      "76a311cf7d4f4aee58d9e73060695c40bfe2eb1977c7fcc950f4b5a774445d87",
+      "e6ff6049ff5a5c5691c54285850748f0e4190af23f389acde1cab7ead0245e2c",
     // Independently reproduced twice on PostgreSQL 17.6: once from a fresh
     // 120-migration database and once from the exact 104 prefix followed by
     // migrations 105-120. The managed catalog uses a pg_catalog-only search

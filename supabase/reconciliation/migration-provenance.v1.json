@@ -12148,10 +12148,16 @@
       "sha256": "0107f5360448e0612f16803bd0681d4b11bf0fd739fea422b575c80a942287a6"
     },
     {
+      "id": "20260710160000.portable_postgres_default_privileges.001",
+      "migrationFile": "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
+      "migrationVersion": "20260710160000",
+      "sha256": "74bae32744c0250d2fe06f68bdb0f699079ec3b150c771ab675d5276189eec1d"
+    },
+    {
       "id": "20260710160000.catalog_gate_and_uuid_normalization.001",
       "migrationFile": "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
       "migrationVersion": "20260710160000",
-      "sha256": "f234014b4dc1d51ab2a47d2bf38d0358810e537bc5f206dd5a9ff682c83cf1b7"
+      "sha256": "1fdbd55a40c00439d5568ad89d082096ed7de2deed710b5bf3a503e6c94dfdec"
     },
     {
       "id": "20260710235994.app_contract.001",
@@ -12161,5 +12167,5 @@
     }
   ],
   "schemaVersion": "dealflow.migration-statement-provenance.v1",
-  "statementCount": 2026
+  "statementCount": 2027
 }
