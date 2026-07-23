@@ -1,4 +1,10 @@
 import { getHiggsfieldGenerationEnv, getPublicAppUrl } from "@/lib/env";
+import {
+  createHiggsfieldCliVideo,
+  getHiggsfieldCliVideoStatus,
+  HiggsfieldCliError,
+  type HiggsfieldCliConfig,
+} from "@/lib/ai/higgsfield-cli";
 import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
 import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
 import { lookup as lookupDns } from "node:dns/promises";
@@ -74,13 +80,45 @@ function getConfig(options: { requireDispatchAuthorization: boolean }) {
   }
 
   const env = getHiggsfieldGenerationEnv();
-  if (!env?.apiKey || !env.apiSecret || !env.credentialsValid) {
+  if (!env?.credentialsValid) {
     throw new HiggsfieldProviderUsageError(
       "Higgsfield credentials are missing or invalid.",
       "released",
     );
   }
 
+  if (env.authMode === "official_cli_oauth") {
+    if (
+      !env.cliEnabled ||
+      !env.cliPath ||
+      !env.cliSha256 ||
+      !env.configHome
+    ) {
+      throw new HiggsfieldProviderUsageError(
+        "Higgsfield official CLI OAuth configuration is incomplete.",
+        "released",
+      );
+    }
+    return {
+      authMode: env.authMode,
+      cliPath: env.cliPath,
+      cliSha256: env.cliSha256,
+      configHome: env.configHome,
+      workspaceId: env.workspaceId,
+      model: env.model,
+      resolution: env.resolution,
+      durationSeconds: env.durationSeconds,
+      generateAudio: env.generateAudio,
+      maxProviderCredits: env.maxProviderCredits,
+    } satisfies HiggsfieldCliConfig & { authMode: "official_cli_oauth" };
+  }
+
+  if (!env.apiKey || !env.apiSecret || !env.baseUrl) {
+    throw new HiggsfieldProviderUsageError(
+      "Higgsfield legacy credentials are missing or invalid.",
+      "released",
+    );
+  }
   if (env.apiKey.includes("***") || env.apiSecret.includes("***")) {
     throw new HiggsfieldProviderUsageError(
       "Higgsfield credentials appear masked or incomplete.",
@@ -89,6 +127,7 @@ function getConfig(options: { requireDispatchAuthorization: boolean }) {
   }
 
   return {
+    authMode: env.authMode,
     authorization: `Key ${env.apiKey}:${env.apiSecret}`,
     baseUrl: resolveProviderEndpoint({
       provider: "higgsfield",
@@ -99,6 +138,24 @@ function getConfig(options: { requireDispatchAuthorization: boolean }) {
         ? env.model
         : "dop-turbo",
   } as const;
+}
+
+function toProviderUsageError(error: unknown) {
+  if (error instanceof HiggsfieldProviderUsageError) return error;
+  if (error instanceof HiggsfieldCliError) {
+    return new HiggsfieldProviderUsageError(
+      error.message,
+      error.category === "operator_action_required"
+        ? "operator_action_required"
+        : error.category === "rejected"
+          ? "rejected"
+          : "released",
+    );
+  }
+  return new HiggsfieldProviderUsageError(
+    error instanceof Error ? error.message : "Higgsfield provider operation failed.",
+    "operator_action_required",
+  );
 }
 
 function normalizeInputImageUrl(value: string | null | undefined) {
@@ -187,6 +244,26 @@ export async function createHiggsfieldVideo(request: {
 
   const config = getConfig({ requireDispatchAuthorization: true });
   const inputImageUrl = await verifyInputImageUrl(request.inputImageUrl);
+  if (config.authMode === "official_cli_oauth") {
+    try {
+      const created = await createHiggsfieldCliVideo({
+        config,
+        prompt,
+        inputImageUrl,
+      });
+      return {
+        requestId: created.id,
+        status: normalizeStatus(created.status),
+        model: created.model,
+        raw: {
+          providerCreditsEstimated: created.providerCreditsEstimated,
+          cliVersion: created.cliVersion,
+        },
+      };
+    } catch (error) {
+      throw toProviderUsageError(error);
+    }
+  }
   let response: Response;
   let data: Record<string, unknown> | null;
 
@@ -249,6 +326,50 @@ export async function getHiggsfieldVideoStatus(requestId: string): Promise<Higgs
   // switch is subsequently disabled. Credentials and endpoint policy remain
   // mandatory; this never authorizes a new generation.
   const config = getConfig({ requireDispatchAuthorization: false });
+  if (config.authMode === "official_cli_oauth") {
+    try {
+      const result = await getHiggsfieldCliVideoStatus({
+        config,
+        requestId: normalizedId,
+      });
+      const status = normalizeStatus(result.status);
+      const rawVideoUrl = safeText(result.resultUrl);
+      let videoUrl: string | null = null;
+      if (rawVideoUrl) {
+        try {
+          const parsed = new URL(rawVideoUrl);
+          if (
+            !parsed.username &&
+            !parsed.password &&
+            !parsed.hash &&
+            parsed.protocol === "https:"
+          ) {
+            videoUrl = parsed.toString();
+          }
+        } catch {
+          videoUrl = null;
+        }
+      }
+      if (status === "completed" && !videoUrl) {
+        throw new HiggsfieldProviderUsageError(
+          "Higgsfield reported completion without a safe credential-free video URL.",
+          "operator_action_required",
+        );
+      }
+      return {
+        requestId: normalizedId,
+        status,
+        videoUrl,
+        error:
+          status === "failed" || status === "nsfw"
+            ? "Higgsfield generation failed."
+            : null,
+        raw: { status },
+      };
+    } catch (error) {
+      throw toProviderUsageError(error);
+    }
+  }
   let response: Response;
   let data: Record<string, unknown> | null;
   try {

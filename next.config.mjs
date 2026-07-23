@@ -59,6 +59,9 @@ const nextConfig = {
     "/api/internal/release-identity": [
       "./public/.well-known/dealflow-hosted-build-identity.json",
     ],
+    "/api/internal/system-jobs": [
+      "./node_modules/@higgsfield/cli/vendor/hf",
+    ],
   },
   ...(isolatedStagingImageConfig
     ? { images: isolatedStagingImageConfig }

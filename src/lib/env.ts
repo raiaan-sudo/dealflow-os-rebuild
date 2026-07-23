@@ -493,6 +493,12 @@ export function validateVideoGenerationEnv() {
 }
 
 export function getHiggsfieldGenerationEnv() {
+  const cliEnabled = process.env.HIGGSFIELD_CLI_ENABLED === "true";
+  const cliPath = process.env.HIGGSFIELD_CLI_PATH?.trim() || null;
+  const cliSha256 =
+    process.env.HIGGSFIELD_CLI_SHA256?.trim().toLowerCase() || null;
+  const configHome = process.env.HIGGSFIELD_CONFIG_HOME?.trim() || null;
+  const workspaceId = process.env.HIGGSFIELD_WORKSPACE_ID?.trim() || null;
   const credentials =
     process.env.HIGGSFIELD_CREDENTIALS ??
     process.env.HF_CREDENTIALS ??
@@ -503,25 +509,99 @@ export function getHiggsfieldGenerationEnv() {
     process.env.HIGGSFIELD_API_SECRET ?? process.env.HF_API_SECRET ?? null;
   const baseUrl =
     process.env.HIGGSFIELD_BASE_URL ?? "https://platform.higgsfield.ai";
-  const model = process.env.HIGGSFIELD_VIDEO_MODEL ?? "dop-turbo";
+  const model =
+    process.env.HIGGSFIELD_VIDEO_MODEL ??
+    (cliEnabled ? "seedance_2_0_mini" : "dop-turbo");
 
-  if (!credentials && !apiKey && !apiSecret) {
+  if (
+    !cliEnabled &&
+    !cliPath &&
+    !cliSha256 &&
+    !configHome &&
+    !workspaceId &&
+    !credentials &&
+    !apiKey &&
+    !apiSecret
+  ) {
     return null;
+  }
+
+  if (cliEnabled || cliPath || cliSha256 || configHome || workspaceId) {
+    const maxProviderCredits = Number(
+      process.env.HIGGSFIELD_MAX_PROVIDER_CREDITS ?? "12.5",
+    );
+    return {
+      authMode: "official_cli_oauth" as const,
+      cliEnabled,
+      cliPath,
+      cliSha256,
+      configHome,
+      workspaceId,
+      credentialsValid:
+        cliEnabled &&
+        Boolean(cliPath) &&
+        Boolean(cliSha256 && /^[a-f0-9]{64}$/.test(cliSha256)) &&
+        Boolean(configHome) &&
+        Number.isFinite(maxProviderCredits) &&
+        maxProviderCredits > 0,
+      model,
+      resolution:
+        process.env.HIGGSFIELD_VIDEO_RESOLUTION === "480p"
+          ? ("480p" as const)
+          : ("720p" as const),
+      durationSeconds: 5 as const,
+      generateAudio: process.env.HIGGSFIELD_VIDEO_GENERATE_AUDIO === "true",
+      maxProviderCredits,
+      apiKey: null,
+      apiSecret: null,
+      baseUrl: null,
+    };
   }
 
   const credentialParts = credentials?.split(":") ?? [];
 
   return {
+    authMode: "legacy_key_secret" as const,
     apiKey: credentials ? credentialParts[0] ?? null : apiKey,
     apiSecret: credentials ? credentialParts[1] ?? null : apiSecret,
     credentialsValid: credentials ? credentialParts.length === 2 : true,
     baseUrl,
     model,
+    cliEnabled: false,
+    cliPath: null,
+    cliSha256: null,
+    configHome: null,
+    workspaceId: null,
+    resolution: null,
+    durationSeconds: null,
+    generateAudio: null,
+    maxProviderCredits: null,
   };
 }
 
 export function validateHiggsfieldGenerationEnv() {
   const env = getHiggsfieldGenerationEnv();
+  if (env?.authMode === "official_cli_oauth") {
+    const missing = [
+      ["HIGGSFIELD_CLI_ENABLED=true", env.cliEnabled],
+      ["HIGGSFIELD_CLI_PATH", env.cliPath],
+      [
+        "HIGGSFIELD_CLI_SHA256",
+        Boolean(env.cliSha256 && /^[a-f0-9]{64}$/.test(env.cliSha256)),
+      ],
+      ["HIGGSFIELD_CONFIG_HOME", env.configHome],
+      [
+        "HIGGSFIELD_MAX_PROVIDER_CREDITS must be greater than zero",
+        Number.isFinite(env.maxProviderCredits) && env.maxProviderCredits > 0,
+      ],
+    ]
+      .filter(([, value]) => !value)
+      .map(([label]) => String(label));
+    return {
+      configured: missing.length === 0,
+      missing,
+    };
+  }
   const validation = validateEnv([
     ["HIGGSFIELD_API_KEY (or HF_CREDENTIALS)", env?.apiKey],
     ["HIGGSFIELD_API_SECRET (or HF_CREDENTIALS)", env?.apiSecret],

@@ -160,6 +160,7 @@
     "test:privacy-authority-db": "node ./scripts/test-privacy-consent-dsar-disposable-db.mjs"
   },
   "dependencies": {
+    "@higgsfield/cli": "1.1.19",
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.104.1",

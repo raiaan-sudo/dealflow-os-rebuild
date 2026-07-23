@@ -43,10 +43,19 @@ configuration-driven.
 
 ## Authoritative video path
 
-Higgsfield is the primary video provider. A valid Higgsfield configuration
-always wins. A partial Higgsfield configuration fails closed. HeyGen can be
-selected only when both `ALLOW_HEYGEN_LEGACY_FALLBACK=true` and its existing
-paid-generation authorization are explicitly enabled.
+Higgsfield is the primary video provider. The supported service path uses the
+official pinned `@higgsfield/cli` binary and an owner-only OAuth config home.
+The binary must match `HIGGSFIELD_CLI_SHA256`, the credential and provider
+configuration files must be owner-only, and the official CLI first estimates
+the exact provider credits. A request above
+`HIGGSFIELD_MAX_PROVIDER_CREDITS` fails before dispatch. Temporary source media
+is mode `0600` inside a mode `0700` directory and is removed in `finally`.
+
+The former key/secret REST transport remains a named legacy compatibility path;
+it is not silently selected over a valid official-CLI configuration. A partial
+Higgsfield configuration fails closed. HeyGen can be selected only when both
+`ALLOW_HEYGEN_LEGACY_FALLBACK=true` and its existing paid-generation
+authorization are explicitly enabled.
 
 The customer action is the campaign Assets button labelled `Generate video •
 $5 credit`. The API pins the selected provider into the durable job payload and
@@ -129,10 +138,17 @@ again before staging or release.
 
 ## Evidence boundary
 
+On 2026-07-22, one authorized synthetic OAuth-CLI acceptance job completed with
+the official CLI version `1.1.19`. Its bounded estimate was 5 provider credits,
+the exact observed provider-account delta was 5 credits, no credits were
+purchased, and DealFlow's new official-CLI status adapter recovered the exact
+completed job. The provider-job identity digest is
+`a131d19a70ad5ea43cf8322c74f5610be6d69bef94d0b857ca65594484c520fa`;
+the raw credential, account balance, email, workspace identity and result URL
+are excluded from source and evidence.
+
 Local mock-provider, source-proxy, storage, database and pure authority tests
-make no provider call, paid generation, remote database write or deployment.
-Hosted two-partner/two-child browser and RLS proof, an exact configured Supabase
-bucket proof, and one authorized real Higgsfield sandbox acceptance remain
-external release gates. Until those hosted checks pass, local proof establishes
-the implementation and safety invariants but does not claim a live provider
-generation or production release.
+continue to prove the financial, tenant, storage, replay and ambiguity
+invariants without additional provider calls. This acceptance closes the
+isolated Higgsfield provider-behavior gate; it does not authorize production or
+replace the production provider-activation gate.

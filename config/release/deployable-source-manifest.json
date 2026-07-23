@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1121,
-  "deployableSourceSha256": "4ba26eadca0073dd87fa3d9f40bfdf6f68cceeef0a944ce48d9b8fb9534626da",
+  "entryCount": 1123,
+  "deployableSourceSha256": "9042dc77ae5c26a8b78ba441b49ce2b7dfe3fa6cf3c9a6fcb17e90746bf1c348",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -246,9 +246,9 @@
     },
     {
       "path": "docs/dealflow-completion/PROVIDER_ACCEPTANCE_BOUNDARIES.md",
-      "size": 6347,
+      "size": 6729,
       "mode": 33188,
-      "sha256": "178c0bf2a4b62a7465fd2548fd9a447b35707f703c15cc408669c9cab6e28660"
+      "sha256": "1292d4a2d86afd9d683e9d2c32f4b09387813915e779305b63517e88f91a2b0f"
     },
     {
       "path": "docs/dealflow-completion/RELEASE_CANDIDATE_MANIFEST.md",
@@ -294,9 +294,9 @@
     },
     {
       "path": "docs/dealflow-completion/WHITE_LABEL_AND_HIGGSFIELD_AUTHORITY_20260713.md",
-      "size": 8078,
+      "size": 9045,
       "mode": 33188,
-      "sha256": "80220120328cb391b7b4ca31b706dc26755e3bdb11ee265b5444cc57db306793"
+      "sha256": "ee4b4a6b6d24fd072516420dd26ce83dbd54d47589e8cc1c812a8aa350411588"
     },
     {
       "path": "docs/dealflow-completion/baseline-manifest.json",
@@ -630,21 +630,21 @@
     },
     {
       "path": "next.config.mjs",
-      "size": 2630,
+      "size": 2722,
       "mode": 33188,
-      "sha256": "c52ba4eb81cd7dea260d787a3e57cb5687c9d8a5f88344f23f9919221ab575d2"
+      "sha256": "28ad766ddb91a7b9732f9a28230924b9894d2630da55ea54d5d8cd7522685bcf"
     },
     {
       "path": "package-lock.json",
-      "size": 270647,
+      "size": 271289,
       "mode": 33188,
-      "sha256": "7c8ed4b23da2de8be79dd62155ac7ae26318641d1df3da1f9f3380227ec15899"
+      "sha256": "4a26fdbb8dcd9f16595cfa346dc7ec4a5dc6165dc60f65e18a48210bfede4319"
     },
     {
       "path": "package.json",
-      "size": 18506,
+      "size": 18539,
       "mode": 33188,
-      "sha256": "68e3bfe9d2209342023bd6554029c2ae93b1ae94b38bd1cadcd8930db9629aa6"
+      "sha256": "1b716d96fd2c4bfa81f5207c341bccc16c8dd77a5323675709602a6d90e9a317"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -1092,9 +1092,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 297242,
+      "size": 297478,
       "mode": 33188,
-      "sha256": "a88acd02c57ef02cffe5aee6a0ae27af716710100c42d5ac723cc006c23edc1a"
+      "sha256": "5e063f8f19b61821f33410d48656f23de2d8fb07d77790c439b5d29835b9bd42"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1757,10 +1757,16 @@
       "sha256": "77121e7e680c5da270996713b0cecea852703657ad1ab1222e2b62d259509df3"
     },
     {
-      "path": "scripts/test-higgsfield-provider.mjs",
-      "size": 630,
+      "path": "scripts/test-higgsfield-cli.ts",
+      "size": 7514,
       "mode": 33188,
-      "sha256": "755ab2f4a4041ae41453b8aa9e81e71fbe54e1817674b6e96d0b5150df01bd2a"
+      "sha256": "fd251604461ba535a698fa098ac8bb8245ab4fb5e143ac63dc89d4fd737bac13"
+    },
+    {
+      "path": "scripts/test-higgsfield-provider.mjs",
+      "size": 805,
+      "mode": 33188,
+      "sha256": "cd308011b3f94456fb6880f489eccddad9d554e7c2153f94edde5efa6fd82a2f"
     },
     {
       "path": "scripts/test-higgsfield-provider.ts",
@@ -2192,7 +2198,7 @@
       "path": "scripts/test-supply-chain-contract.mjs",
       "size": 2458,
       "mode": 33188,
-      "sha256": "b6de4fe59f9cbb45899d758f6559f5b165c7f8e034a5bb63481094ae51d5d5e4"
+      "sha256": "74aae3035241ed88010876d2899cc1c2fba07b50f21908113ac382b629db0450"
     },
     {
       "path": "scripts/test-support-external-delivery.mjs",
@@ -3875,10 +3881,16 @@
       "sha256": "6e4cbde73ad88e03560633e936068adef0a3e1c36f7db5a6abd4057483fc8363"
     },
     {
-      "path": "src/lib/ai/higgsfield.ts",
-      "size": 9891,
+      "path": "src/lib/ai/higgsfield-cli.ts",
+      "size": 8782,
       "mode": 33188,
-      "sha256": "a3e6f84cb1f26d7a80e8cc88c3003bd9fe25c009dde116d48629579b014d12d8"
+      "sha256": "ea9b80de9ef4bc17a8e4f99a76ffd706c1f3614071f7cd7113e75a8f2cb953e5"
+    },
+    {
+      "path": "src/lib/ai/higgsfield.ts",
+      "size": 13339,
+      "mode": 33188,
+      "sha256": "a62f66416cadb7491f83a8de8e84798aadc52389abc4d47f6ff770b867ad0173"
     },
     {
       "path": "src/lib/ai/providers.ts",
@@ -3894,9 +3906,9 @@
     },
     {
       "path": "src/lib/ai/video-provider.ts",
-      "size": 5629,
+      "size": 5788,
       "mode": 33188,
-      "sha256": "becce15b526ba78b590ba7f83a31c916aaac712abe16aad6cf1a0f0a4f101d4f"
+      "sha256": "916eb31a46ab09176e46bf78da4f4cb8079f80ddddad614441b6016e01a1b04f"
     },
     {
       "path": "src/lib/analytics/kpi-semantic-contract.ts",
@@ -4086,9 +4098,9 @@
     },
     {
       "path": "src/lib/env.ts",
-      "size": 15495,
+      "size": 17886,
       "mode": 33188,
-      "sha256": "e46fc972369b3b625f186c10129ae014d3230ceae29f0e367544f56ada1760b7"
+      "sha256": "843f59a52b43aca96a5f21d54c759a87d4591ed2f079d795925ebde19941d338"
     },
     {
       "path": "src/lib/formatters/index.ts",
@@ -4236,9 +4248,9 @@
     },
     {
       "path": "src/lib/integrations/creative/durable-video-provider.ts",
-      "size": 2812,
+      "size": 2931,
       "mode": 33188,
-      "sha256": "57d5690323d0a9caab5e75740cfea99233cf118b83ef1120ab7c331e37062e6d"
+      "sha256": "450a04458c920c7b48ed02286771a21c5164b8b8fcda754c664beb15a306bb4b"
     },
     {
       "path": "src/lib/integrations/creative/image-provider.ts",

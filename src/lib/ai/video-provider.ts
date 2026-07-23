@@ -35,7 +35,13 @@ function normalizeDurableMediaUrl(value: string | null | undefined) {
 
 export function getDurableVideoProvider(): DurableVideoProviderName | null {
   const higgsfield = getHiggsfieldGenerationEnv();
-  if (higgsfield?.apiKey && higgsfield.apiSecret && higgsfield.credentialsValid) {
+  if (
+    higgsfield?.credentialsValid &&
+    (
+      higgsfield.authMode === "official_cli_oauth" ||
+      (higgsfield.apiKey && higgsfield.apiSecret)
+    )
+  ) {
     return "higgsfield";
   }
 
@@ -59,9 +65,11 @@ export function isDurableVideoProviderAuthorized(provider: DurableVideoProviderN
     const higgsfield = getHiggsfieldGenerationEnv();
     return Boolean(
       process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true" &&
-      higgsfield?.apiKey &&
-      higgsfield.apiSecret &&
-      higgsfield.credentialsValid,
+      higgsfield?.credentialsValid &&
+      (
+        higgsfield.authMode === "official_cli_oauth" ||
+        (higgsfield.apiKey && higgsfield.apiSecret)
+      ),
     );
   }
 
@@ -77,7 +85,7 @@ export function getDurableVideoProviderUnavailableReason(params: {
   inputImageUrl?: string | null;
 }) {
   if (!params.provider) {
-    return "Video generation is not configured. Configure Higgsfield credentials; HeyGen is available only through the explicitly enabled legacy fallback.";
+    return "Video generation is not configured. Configure Higgsfield official CLI OAuth; HeyGen is available only through the explicitly enabled legacy fallback.";
   }
   if (!isDurableVideoProviderAuthorized(params.provider)) {
     return params.provider === "higgsfield"

@@ -51,7 +51,12 @@ class DurableVideoIntegrationProvider
       configured: false,
       missingConfig: higgsfield
         ? validateHiggsfieldGenerationEnv().missing
-        : ["HIGGSFIELD_API_KEY", "HIGGSFIELD_API_SECRET"],
+        : [
+            "HIGGSFIELD_CLI_ENABLED=true",
+            "HIGGSFIELD_CLI_PATH",
+            "HIGGSFIELD_CLI_SHA256",
+            "HIGGSFIELD_CONFIG_HOME",
+          ],
     };
   }
 

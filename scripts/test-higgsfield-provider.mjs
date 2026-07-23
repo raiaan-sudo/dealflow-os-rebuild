@@ -12,11 +12,17 @@ const executable = path.join(
 );
 for (const test of [
   "scripts/test-higgsfield-provider.ts",
+  "scripts/test-higgsfield-cli.ts",
   "scripts/test-higgsfield-source-proxy.ts",
 ]) {
   const result = spawnSync(executable, [test], {
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, "--conditions=react-server"]
+        .filter(Boolean)
+        .join(" "),
+    },
     stdio: "inherit",
   });
   if (result.error) throw result.error;

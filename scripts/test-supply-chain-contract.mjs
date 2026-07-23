@@ -46,7 +46,7 @@ const result = JSON.parse(execFileSync(process.execPath, [
   "--check",
 ], { encoding: "utf8" }).trim());
 assert.match(result.status, /^PASS/);
-assert.equal(result.componentCount, 512);
+assert.equal(result.componentCount, 513);
 assert.equal(result.signedBuildProvenance, false);
 assert.equal(result.outputDirectory, null);
 assert.match(result.packageLockSha256, /^[a-f0-9]{64}$/);

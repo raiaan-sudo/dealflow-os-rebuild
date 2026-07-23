@@ -1,6 +1,6 @@
 # DealFlow provider acceptance boundaries
 
-Status: `SOURCE CONTRACT INTEGRATED / HOSTED ACCEPTANCE NOT_YET_RUN / PRODUCTION NO_GO`
+Status: `SOURCE CONTRACT INTEGRATED / ISOLATED STAGING PARTIALLY ACCEPTED / PRODUCTION NO_GO`
 
 Configuration, a reachable hostname, an accepted queue row, and a local mock are
 not provider acceptance. Every provider path must prove exact environment,
@@ -48,7 +48,7 @@ screenshots, logs or chat.
 | Meta ACTIVE delivery | Disabled in ordinary staging; any sandbox proof uses zero-spend/test boundary and exact customer preauthorization | Explicit owner release, exact budget/account/object lineage, ACTIVE readback, monitoring/stop plan | `SKIPPED_SAFETY` until a qualifying isolated boundary exists |
 | Meta optimizer | Sandbox account only; policy-v2, fixed ceiling/cooldown/cap, exact ACTIVE test objects, one-use dispatch and reconcile | Signed owner policy, canary, kill switches, live account authority and spend controls | `NOT_YET_RUN`; production default-off |
 | GHL | Marketplace sandbox/PIT or clearly isolated account; preinstalled snapshot/slot manifest; synthetic location/contact/opportunity; email/SMS disabled | Agency capability, exact installation/location/snapshot/slot, lifecycle webhook, offboarding policy and canary | `NOT_YET_RUN`; no live GHL record is claimed |
-| Higgsfield/creative | No-cost test/sandbox endpoint only; exact host; synthetic prompt; no paid generation | Approved production account, durable credit reservation, receipt/ambiguity proof and cost authority | Provider acceptance `NOT_YET_RUN`; paid action `SKIPPED_SAFETY` |
+| Higgsfield/creative | Exact official OAuth CLI, synthetic source/prompt, bounded preflight cost, one provider job, exact CDN allowlist and no credit purchase | Approved production account, protected OAuth worker/config home or provider-issued service key, durable credit reservation, receipt/ambiguity proof and cost authority | 2026-07-22 isolated acceptance `PASS`: completed job, 5-credit estimate, exact 5-credit account delta, DealFlow status readback; production activation remains `NOT_PROVEN` |
 | Twilio | Test infrastructure only, exact allowlisted test recipient, no real SMS/call; mock hard-blocked in production | Signed webhook, exact messaging service/from/to authority, compliance and canary | `NOT_YET_RUN`; no SMS sent |
 | Support | `internal_operator_inbox` or zero-communication `staging_sink`; loopback mail sink only under exact test attestation | Owner-approved exact HTTPS idempotent gateway, destination, receipt, token and production flag | Staging `NOT_YET_RUN`; no email sent |
 | Turnstile | Test/site key appropriate to isolated host; exact action and hostname | Non-test keys, exact production hosts/actions, provider verification evidence | Hosted `NOT_YET_RUN` |
@@ -78,5 +78,7 @@ idempotency key, pre/post state, provider receipt, timestamps, retry/reconcile
 outcome, cleanup state, command/browser result, manifest and checksums. It must
 exclude raw credentials, cookies, PII, lead payloads and message bodies.
 
-No provider call, communication, charge, ad delivery, paid generation,
+The single 2026-07-22 Higgsfield synthetic acceptance described above was
+separately owner-authorized and used existing provider credits without a new
+purchase. No other provider call, communication, charge, ad delivery,
 production mutation or spend is authorized or claimed by this document.

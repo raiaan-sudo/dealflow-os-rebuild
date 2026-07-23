@@ -1259,6 +1259,10 @@ function hostedStagingEnvironment(
     TURNSTILE_ALLOWED_HOSTNAMES: EXPECTED_APP_ALIASES
       .map(({ host }) => host)
       .join(","),
+    // Exact CDN hosts observed from the authorized Higgsfield acceptance job.
+    // No wildcard CloudFront allowance is permitted.
+    HIGGSFIELD_VIDEO_OUTPUT_HOSTS:
+      "d8j0ntlcm91z4.cloudfront.net,d2ol7oe51mr4n9.cloudfront.net",
     INTERNAL_ADMIN_EMAILS: EXPECTED_OPERATOR_EMAIL,
     ...Object.fromEntries(REQUIRED_FALSE_CONTROLS.map((name) => [name, "false"])),
     ...REQUIRED_EQUAL_CONTROLS,
