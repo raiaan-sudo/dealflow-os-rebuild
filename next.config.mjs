@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 
 const configuredBuildCpus = Number.parseInt(process.env.NEXT_BUILD_CPUS ?? "1", 10);
 const buildCpus = Number.isFinite(configuredBuildCpus) && configuredBuildCpus > 0 ? configuredBuildCpus : 1;
@@ -8,6 +9,11 @@ const ISOLATED_STAGING_PROJECT_ID_SHA256 =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
 const DISABLED_STAGING_IMAGE_OPTIMIZER_PATH =
   "/_dealflow-staging-image-optimizer-disabled";
+const PACKAGED_HIGGSFIELD_CLI_PATH =
+  "./node_modules/@higgsfield/cli/vendor/hf";
+const packagedHiggsfieldCliAvailable = existsSync(
+  new URL(PACKAGED_HIGGSFIELD_CLI_PATH, import.meta.url),
+);
 
 export function resolveIsolatedStagingImageConfig(environment = process.env) {
   const deploymentTarget =
@@ -59,9 +65,13 @@ const nextConfig = {
     "/api/internal/release-identity": [
       "./public/.well-known/dealflow-hosted-build-identity.json",
     ],
-    "/api/internal/system-jobs": [
-      "./node_modules/@higgsfield/cli/vendor/hf",
-    ],
+    ...(packagedHiggsfieldCliAvailable
+      ? {
+          "/api/internal/system-jobs": [
+            PACKAGED_HIGGSFIELD_CLI_PATH,
+          ],
+        }
+      : {}),
   },
   ...(isolatedStagingImageConfig
     ? { images: isolatedStagingImageConfig }

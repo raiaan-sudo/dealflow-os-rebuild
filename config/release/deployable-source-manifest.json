@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "9042dc77ae5c26a8b78ba441b49ce2b7dfe3fa6cf3c9a6fcb17e90746bf1c348",
+  "deployableSourceSha256": "59c8a6c40e5d62441e3e7442ee96246fa114390b8de85bfc13c61bf46281c897",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -630,9 +630,9 @@
     },
     {
       "path": "next.config.mjs",
-      "size": 2722,
+      "size": 3031,
       "mode": 33188,
-      "sha256": "28ad766ddb91a7b9732f9a28230924b9894d2630da55ea54d5d8cd7522685bcf"
+      "sha256": "74d45eb8828f3bef40863c23abff23216d2a0307731e84042aaf8d4e3b0322f5"
     },
     {
       "path": "package-lock.json",
