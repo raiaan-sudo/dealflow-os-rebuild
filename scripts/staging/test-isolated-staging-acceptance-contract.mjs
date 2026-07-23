@@ -2090,7 +2090,7 @@ assert.match(browserSessionContract, /challenges\.cloudflare\.com/);
 assert.match(browserSessionContract, /url\.origin !== "https:\/\/challenges\.cloudflare\.com"/);
 assert.match(browserSessionContract, /url\.username !== ""/);
 assert.match(browserSessionContract, /\/turnstile\/v0\/api\.js/);
-assert.match(browserSessionContract, /turnstile\\\/v0\\\/b/);
+assert.match(browserSessionContract, /turnstile\\\/v0\\\/\(\?:b\|g\)/);
 assert.match(browserSessionContract, /\/cdn-cgi\/challenge-platform\//);
 assert.match(browserSpec, /public funnel renders the official staging Turnstile test widget/);
 assert.match(browserSpec, /request\.resourceType\(\) === "xhr"/);

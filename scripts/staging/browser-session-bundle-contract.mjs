@@ -184,7 +184,7 @@ export function isAllowedStagingTurnstileRequest(rawUrl, method, enabled) {
     return true;
   }
   if (
-    /^\/turnstile\/v0\/b\/[a-f0-9]{12,64}\/api\.js$/.test(url.pathname) &&
+    /^\/turnstile\/v0\/(?:b|g)\/[a-f0-9]{12,64}\/api\.js$/.test(url.pathname) &&
     url.search === "" &&
     url.hash === "" &&
     ["GET", "HEAD"].includes(normalizedMethod)
