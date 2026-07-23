@@ -102,6 +102,17 @@ function fakeProvider(initialRecords, writeOutcomes = []) {
         ? response(200, existing, { "x-vercel-request-id": "req_contract_single" })
         : response(404, { error: { code: "not_found" } });
     }
+    if (init.method === "DELETE") {
+      const id = decodeURIComponent(url.pathname.split("/").at(-1));
+      const existing = [...state.values()].find((record) => record.id === id);
+      if (!existing) {
+        return response(404, { error: { code: "not_found" } });
+      }
+      state.delete(existing.key);
+      return response(200, { id }, {
+        "x-vercel-request-id": `req_contract_delete_${existing.key.toLowerCase()}`,
+      });
+    }
     if (!["POST", "PATCH"].includes(init.method)) {
       return response(405, { error: { code: "method_not_allowed" } });
     }
@@ -276,11 +287,23 @@ async function synchronizePortfolio({
   const proof = await synchronize(provider);
   assert.equal(proof.status, "PASS");
   assert.equal(proof.patchedRecordCount, 2);
-  const publicTypeRepair = provider.calls.find(
-    (call) => call.method === "PATCH" && call.body?.key === "PUBLIC_FLAG",
+  assert.equal(proof.recreatedSensitiveTypeDriftCount, 1);
+  const publicTypeDelete = provider.calls.find(
+    (call) =>
+      call.method === "DELETE" &&
+      /\/env\/env_public_flag$/.test(call.pathname),
   );
-  assert.equal(publicTypeRepair.body.type, "encrypted");
-  assert.equal(publicTypeRepair.body.value, environment.PUBLIC_FLAG);
+  assert.ok(publicTypeDelete);
+  const publicTypeRepair = provider.calls.find(
+    (call) =>
+      call.method === "POST" &&
+      call.body?.some?.((record) => record.key === "PUBLIC_FLAG"),
+  );
+  const publicDesired = publicTypeRepair.body.find(
+    (record) => record.key === "PUBLIC_FLAG",
+  );
+  assert.equal(publicDesired.type, "encrypted");
+  assert.equal(publicDesired.value, environment.PUBLIC_FLAG);
   assert.equal(provider.state.get("PUBLIC_FLAG").type, "encrypted");
   assert.equal(provider.state.get("PUBLIC_FLAG").decrypted, true);
 }

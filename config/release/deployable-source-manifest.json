@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "621c2519937492a37dd5bd43b2d616293e7643426883d239bb04e4a59f40d48e",
+  "deployableSourceSha256": "f4f496cca2e0eca14e7ac0668a708ca8f712bd7d35f9ebd4713b28756bd2dc2e",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1308,9 +1308,9 @@
     },
     {
       "path": "scripts/staging/test-vercel-environment-sync-contract.mjs",
-      "size": 18419,
+      "size": 19238,
       "mode": 33188,
-      "sha256": "79eaf661c035147aa3b2cf4c9c40d83c4df396353daccd38a41390a59bdd746a"
+      "sha256": "f988db25c59059c8006d0db3afdd800ffa30699d0ea1bf9f2a50ffb53321aef3"
     },
     {
       "path": "scripts/staging/test-vercel-staging-protection-contract.mjs",
@@ -1350,9 +1350,9 @@
     },
     {
       "path": "scripts/staging/vercel-environment-sync-contract.mjs",
-      "size": 24655,
+      "size": 27826,
       "mode": 33188,
-      "sha256": "3fcb517b504504e1c1ba599c7b8bbd590cac4ea3e18dbf0a8c36b21d17007fcf"
+      "sha256": "172c3349d7e94c2144b801b13a045dd5d816234c23cb42336093688f8a6c040f"
     },
     {
       "path": "scripts/staging/vercel-staging-protection-contract.mjs",

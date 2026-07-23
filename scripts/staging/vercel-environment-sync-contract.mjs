@@ -570,6 +570,81 @@ async function writeWithReadback({
   throw new Error("Unreachable Vercel write retry state");
 }
 
+async function deleteWithReadback({
+  context,
+  record,
+  sensitiveKeys,
+  counters,
+}) {
+  for (let attempt = 1; attempt <= context.maxAttempts; attempt += 1) {
+    const response = await executeRequest({
+      ...context,
+      url: buildApiUrl(
+        context.projectId,
+        context.organizationId,
+        `/v9/projects/{projectId}/env/${encodeURIComponent(record.id)}`,
+      ),
+      method: "DELETE",
+      body: undefined,
+    });
+    if (response.status === 429) {
+      if (attempt === context.maxAttempts) {
+        throw new VercelEnvironmentSyncError(
+          "rate_limit_retry_exhausted",
+          safeRequestDiagnostic(response),
+        );
+      }
+      const delayMs = parseRateLimitDelayMs(
+        response.headers,
+        context.maxRetryAfterMs,
+      );
+      counters.rateLimitRetryCount += 1;
+      await context.delayImpl(delayMs);
+      continue;
+    }
+    if (
+      response.status >= 400 &&
+      response.status < 500 &&
+      !AMBIGUOUS_WRITE_STATUS.has(response.status)
+    ) {
+      throw new VercelEnvironmentSyncError(
+        "deterministic_write_4xx",
+        safeRequestDiagnostic(response),
+      );
+    }
+    const ambiguous =
+      response.transportFailure ||
+      response.status >= 500 ||
+      response.status === 0 ||
+      AMBIGUOUS_WRITE_STATUS.has(response.status);
+    const readback = await readExactInventory(
+      context,
+      counters,
+      sensitiveKeys,
+      { readableKeys: new Set() },
+    );
+    if (!readback.byName.has(record.key)) {
+      if (ambiguous) counters.ambiguousWriteReadbackCommitCount += 1;
+      return;
+    }
+    if (response.status >= 200 && response.status < 300) {
+      counters.successfulWriteReadbackRetryCount += 1;
+    } else if (ambiguous) {
+      counters.ambiguousWriteReadbackRetryCount += 1;
+    }
+    if (attempt === context.maxAttempts) {
+      throw new VercelEnvironmentSyncError(
+        ambiguous
+          ? "ambiguous_write_not_committed"
+          : "successful_write_failed_readback",
+        safeRequestDiagnostic(response),
+      );
+    }
+    await context.delayImpl(Math.min(500 * attempt, 2_000));
+  }
+  throw new Error("Unreachable Vercel delete retry state");
+}
+
 export async function synchronizeExactVercelEnvironment({
   projectId,
   organizationId,
@@ -637,13 +712,45 @@ export async function synchronizeExactVercelEnvironment({
   const initialInventory = await readExactInventory(context, counters, sensitiveKeys);
   const initial = classifyInventory(initialInventory, names, environment, sensitiveKeys);
   const missing = initial.states.filter((state) => state.status === "missing");
+  const recreateSensitiveTypeDrift = initial.states.filter(
+    (state) =>
+      state.record?.type === "sensitive" &&
+      expectedTypeFor(state.key, sensitiveKeys) === "encrypted",
+  );
+  const recreateSensitiveTypeDriftKeys = new Set(
+    recreateSensitiveTypeDrift.map((state) => state.key),
+  );
   const patchExisting = initial.states.filter(
-    (state) => state.record && state.drift.some((category) =>
-      category !== "value" || category === "sensitive_value_unreadable"),
+    (state) =>
+      state.record &&
+      !recreateSensitiveTypeDriftKeys.has(state.key) &&
+      state.drift.some((category) =>
+        category !== "value" || category === "sensitive_value_unreadable"),
   );
   const valueOnly = initial.states.filter(
     (state) => state.record && state.drift.length === 1 && state.drift[0] === "value",
   );
+
+  for (const state of recreateSensitiveTypeDrift) {
+    await deleteWithReadback({
+      context,
+      record: state.record,
+      sensitiveKeys,
+      counters,
+    });
+    await writeWithReadback({
+      context,
+      path: "/v10/projects/{projectId}/env",
+      query: { upsert: "true" },
+      method: "POST",
+      body: [desiredRecord(state.key, environment, sensitiveKeys)],
+      committedKeys: [state.key],
+      names,
+      environment,
+      sensitiveKeys,
+      counters,
+    });
+  }
 
   for (const state of patchExisting) {
     await writeWithReadback({
@@ -707,7 +814,9 @@ export async function synchronizeExactVercelEnvironment({
     initialMissingCount: missing.length,
     initialDriftedCount: initial.states.length - missing.length - initial.states.filter((state) => state.status === "present_exact").length,
     unchangedCount: initial.states.filter((state) => state.status === "present_exact").length,
-    patchedRecordCount: patchExisting.length,
+    patchedRecordCount:
+      patchExisting.length + recreateSensitiveTypeDrift.length,
+    recreatedSensitiveTypeDriftCount: recreateSensitiveTypeDrift.length,
     sensitiveValueRewriteCount: initial.states.filter(
       (state) => state.drift.includes("sensitive_value_unreadable"),
     ).length,
