@@ -136,6 +136,58 @@ export function isHarmlessSupersededApplicationRead({
   );
 }
 
+/**
+ * Classify one WebKit script read that was replaced during the exact second
+ * partner journey. The request itself must be a bounded same-origin HTTPS GET
+ * with no response, and the caller must prove both that a later same-origin
+ * request succeeded and that the complete authenticated, branded,
+ * tenant-isolated journey reached its required final state.
+ */
+export function isHarmlessSupersededApplicationScript({
+  errorText,
+  method,
+  resourceType,
+  isNavigationRequest,
+  sameActiveApplicationOrigin,
+  frameMatchesActiveApplicationOrigin,
+  httpsTransport,
+  hasCredentials,
+  hasFragment,
+  responseStatus,
+  requestSequence,
+  mainFrameNavigationSequenceAtStart,
+  mainFrameNavigationSequenceAtFailure,
+  elapsedMs,
+  laterSuccessfulSameOriginRequest,
+  finalJourneyProven,
+}) {
+  return (
+    isExpectedNavigationAbort(errorText) &&
+    method === "GET" &&
+    resourceType === "script" &&
+    isNavigationRequest === false &&
+    sameActiveApplicationOrigin === true &&
+    frameMatchesActiveApplicationOrigin === true &&
+    httpsTransport === true &&
+    hasCredentials === false &&
+    hasFragment === false &&
+    responseStatus === null &&
+    Number.isSafeInteger(requestSequence) &&
+    requestSequence > 0 &&
+    Number.isSafeInteger(mainFrameNavigationSequenceAtStart) &&
+    mainFrameNavigationSequenceAtStart > 0 &&
+    (mainFrameNavigationSequenceAtFailure ===
+      mainFrameNavigationSequenceAtStart ||
+      mainFrameNavigationSequenceAtFailure ===
+        mainFrameNavigationSequenceAtStart + 1) &&
+    Number.isSafeInteger(elapsedMs) &&
+    elapsedMs >= 0 &&
+    elapsedMs <= 5_000 &&
+    laterSuccessfulSameOriginRequest === true &&
+    finalJourneyProven === true
+  );
+}
+
 const TELEMETRY_REQUEST_CLASS = "locally_intercepted_activation_telemetry";
 const PURPOSE_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
 

@@ -29,6 +29,7 @@ import {
 import {
   isHarmlessAbortedApplicationRscPrefetch,
   isHarmlessSupersededApplicationRead,
+  isHarmlessSupersededApplicationScript,
   isExpectedNavigationAbort,
   sanitizedRequestFailureDiagnostic,
   sanitizedRequestTargetFingerprint,
@@ -72,6 +73,8 @@ const EXACT_HARMLESS_PARTNER_ROUTE_READ_TARGETS = new Set([
   "sha256:43cc0bb132fdfdcdede8cd25f1a2e5a8b0edda4d7623b2870a178f37430666cc",
   "sha256:626374affa34db1373506a684e574e9edc5ae916924f25930094f24bfecd366c",
 ]);
+const EXACT_WEBKIT_PARTNER_TWO_SUPERSEDED_SCRIPT_TARGET =
+  "sha256:1cea83c4b1e91e763a8e4676dbdcc4c40f799a15921cb0e0b98871e1838fd3de";
 const LOCALIZED_PRODUCT_COPY = Object.freeze({
   en: Object.freeze({ signIn: "Sign in", dashboard: "Dashboard" }),
   fr: Object.freeze({ signIn: "Se connecter", dashboard: "Tableau de bord" }),
@@ -106,6 +109,53 @@ type Diagnostics = {
 };
 
 const diagnosticsByPage = new WeakMap<Page, Diagnostics>();
+type SanitizedRequestLifecycle = {
+  requestSequence: number | null;
+  mainFrameNavigationSequenceAtStart: number | null;
+  mainFrameNavigationSequenceAtFailure: number;
+  elapsedMs: number | null;
+  responseStatus: number | null;
+  resourceType: string;
+  isNavigationRequest: boolean;
+  sameActiveApplicationOrigin: boolean;
+  frameMatchesActiveApplicationOrigin: boolean;
+  httpsTransport: boolean;
+  hasCredentials: boolean;
+  hasFragment: boolean;
+  rscHeader: boolean;
+  nextRouterPrefetchHeader: boolean;
+  rscQueryCount: number;
+  exactBoundedRscQuery: boolean;
+  queryKeyCount: number;
+  failureRecordRawUrlRetained: false;
+  failureRecordRawHostRetained: false;
+};
+type DeferredWebKitScriptAbort = {
+  failure: string;
+  errorText: string;
+  method: string;
+  lifecycle: SanitizedRequestLifecycle;
+};
+type PartnerTwoFinalJourneyProof = {
+  exactFinalUrl: boolean;
+  authenticatedStateProven: boolean;
+  partnerTwoBrandingProven: boolean;
+  partnerOneBrandExcluded: boolean;
+  tenantIsolationProven: boolean;
+  requiredCampaignReadCompleted: boolean;
+};
+const deferredWebKitScriptAbortsByPage = new WeakMap<
+  Page,
+  DeferredWebKitScriptAbort[]
+>();
+const successfulApplicationResponseSequencesByPage = new WeakMap<
+  Page,
+  Set<number>
+>();
+const partnerTwoFinalJourneyProofByPage = new WeakMap<
+  Page,
+  PartnerTwoFinalJourneyProof
+>();
 
 function requiredEnvironment(name: string) {
   const value = process.env[name]?.trim();
@@ -406,6 +456,13 @@ async function installFailClosedNetworkBoundary(
   };
   const context = page.context();
   diagnosticsByPage.set(page, diagnostics);
+  const deferredWebKitScriptAborts: DeferredWebKitScriptAbort[] = [];
+  const successfulApplicationResponseSequences = new Set<number>();
+  deferredWebKitScriptAbortsByPage.set(page, deferredWebKitScriptAborts);
+  successfulApplicationResponseSequencesByPage.set(
+    page,
+    successfulApplicationResponseSequences,
+  );
   const applicationOrigins = [
     new URL(requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL")).origin,
     new URL(requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL")).origin,
@@ -623,7 +680,7 @@ async function installFailClosedNetworkBoundary(
       frameMatchesActiveApplicationOrigin = false;
     }
     const rscValues = requestUrl.searchParams.getAll("_rsc");
-    const sanitizedLifecycle = {
+    const sanitizedLifecycle: SanitizedRequestLifecycle = {
       requestSequence: lifecycle?.requestSequence ?? null,
       mainFrameNavigationSequenceAtStart:
         lifecycle?.mainFrameNavigationSequenceAtStart ?? null,
@@ -681,17 +738,50 @@ async function installFailClosedNetworkBoundary(
       new URL(request.url()).protocol === "blob:" &&
       isAllowedStagingTurnstileRequest(request.url(), request.method(), true) &&
       errorText === "The operation couldn’t be completed. (WebKitBlobResource error 1.)";
+    const deferredExactWebKitPartnerTwoScriptAbort =
+      browserName === "webkit" &&
+      testTitle === PARTNER_TWO_CORE_ROUTES_TEST_TITLE &&
+      requestTargetFingerprint ===
+        EXACT_WEBKIT_PARTNER_TWO_SUPERSEDED_SCRIPT_TARGET &&
+      request.method() === "GET" &&
+      request.resourceType() === "script" &&
+      isExpectedNavigationAbort(errorText);
+    if (deferredExactWebKitPartnerTwoScriptAbort) {
+      deferredWebKitScriptAborts.push({
+        failure,
+        errorText,
+        method: request.method(),
+        lifecycle: sanitizedLifecycle,
+      });
+    }
     if (
       !expectedNavigationAbort &&
       !harmlessAbortedApplicationRscPrefetch &&
       !harmlessSupersededApplicationRead &&
-      !expectedInterceptedWebKitTurnstileBlobFailure
+      !expectedInterceptedWebKitTurnstileBlobFailure &&
+      !deferredExactWebKitPartnerTwoScriptAbort
     ) {
       diagnostics.requestFailures.push(failure);
     }
   });
   context.on("response", (response) => {
     observedResponseStatusByRequest.set(response.request(), response.status());
+    const lifecycle = requestLifecycle.get(response.request());
+    try {
+      const responseUrl = new URL(response.url());
+      if (
+        lifecycle &&
+        allowedApplicationOrigins.has(responseUrl.origin) &&
+        responseUrl.username === "" &&
+        responseUrl.password === "" &&
+        response.status() >= 200 &&
+        response.status() < 400
+      ) {
+        successfulApplicationResponseSequences.add(lifecycle.requestSequence);
+      }
+    } catch {
+      // The ordinary diagnostics below remain fail-closed for malformed URLs.
+    }
     if (response.status() >= 500) {
       diagnostics.serverErrors.push(
         `${response.status()} ${safeHttpEvidenceTarget(response.url())}`,
@@ -711,6 +801,37 @@ async function installFailClosedNetworkBoundary(
 async function assertDiagnosticsClean(page: Page, testInfo: TestInfo) {
   const diagnostics = diagnosticsByPage.get(page);
   expect(diagnostics, "staging diagnostics were not installed").toBeTruthy();
+  const deferredScriptAborts =
+    deferredWebKitScriptAbortsByPage.get(page) ?? [];
+  const successfulApplicationResponseSequences =
+    successfulApplicationResponseSequencesByPage.get(page) ?? new Set<number>();
+  const finalJourneyProof = partnerTwoFinalJourneyProofByPage.get(page);
+  const finalJourneyProven =
+    finalJourneyProof?.exactFinalUrl === true &&
+    finalJourneyProof.authenticatedStateProven === true &&
+    finalJourneyProof.partnerTwoBrandingProven === true &&
+    finalJourneyProof.partnerOneBrandExcluded === true &&
+    finalJourneyProof.tenantIsolationProven === true &&
+    finalJourneyProof.requiredCampaignReadCompleted === true;
+  for (const candidate of deferredScriptAborts) {
+    const candidateSequence = candidate.lifecycle.requestSequence;
+    const laterSuccessfulSameOriginRequest =
+      Number.isSafeInteger(candidateSequence) &&
+      [...successfulApplicationResponseSequences].some(
+        (sequence) => sequence > Number(candidateSequence),
+      );
+    if (
+      !isHarmlessSupersededApplicationScript({
+        errorText: candidate.errorText,
+        method: candidate.method,
+        ...candidate.lifecycle,
+        laterSuccessfulSameOriginRequest,
+        finalJourneyProven,
+      })
+    ) {
+      diagnostics!.requestFailures.push(candidate.failure);
+    }
+  }
   const optimizerPathnames = await page.evaluate(
     scanOptimizerBrowserSurfaces,
     { exactPaths: [...IMAGE_OPTIMIZER_PATHS] },
@@ -1333,15 +1454,38 @@ test("second white-label child receives only partner-two branding and tenant dat
     ).toBeVisible();
     await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
   }
-  const partnerCampaignsUrl = new URL("/api/campaigns", partnerOrigin).toString();
-  const campaigns = await page.request.get(partnerCampaignsUrl, {
-    maxRedirects: 0,
-    headers: stagingAppHeaders(partnerCampaignsUrl),
+  const campaigns = await page.evaluate(async () => {
+    const response = await fetch("/api/campaigns", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    return {
+      status: response.status,
+      body: await response.text(),
+    };
   });
-  expect(campaigns.status()).toBe(200);
-  const campaignBody = await campaigns.text();
+  expect(campaigns.status).toBe(200);
+  const campaignBody = campaigns.body;
   expect(campaignBody).toContain(PARTNER_TWO_CAMPAIGN_ID);
   expect(campaignBody).not.toContain(PARTNER_ONE_CAMPAIGN_ID);
+  const finalUrl = new URL(page.url());
+  expect(finalUrl.origin).toBe(new URL(partnerOrigin).origin);
+  expect(finalUrl.pathname).toBe("/support");
+  await expect(
+    page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
+  partnerTwoFinalJourneyProofByPage.set(page, {
+    exactFinalUrl: true,
+    authenticatedStateProven: campaigns.status === 200,
+    partnerTwoBrandingProven: true,
+    partnerOneBrandExcluded: true,
+    tenantIsolationProven:
+      campaignBody.includes(PARTNER_TWO_CAMPAIGN_ID) &&
+      !campaignBody.includes(PARTNER_ONE_CAMPAIGN_ID),
+    requiredCampaignReadCompleted: true,
+  });
 });
 
 test("partner admin authenticates without gaining an unassigned customer workspace", async ({ page }) => {

@@ -8,6 +8,7 @@ import {
   classifyAbortedInterceptedTelemetry,
   isHarmlessAbortedApplicationRscPrefetch,
   isHarmlessSupersededApplicationRead,
+  isHarmlessSupersededApplicationScript,
   sanitizedTelemetryPurposeFingerprint,
 } from "./expected-navigation-abort.mjs";
 
@@ -363,6 +364,76 @@ for (const unsafeOverride of [
   assert.equal(
     isHarmlessAbortedApplicationRscPrefetch({
       ...exactAbortedRscPrefetch,
+      ...unsafeOverride,
+    }),
+    false,
+  );
+}
+
+requireAll(
+  stagingAcceptanceSpec,
+  [
+    "EXACT_WEBKIT_PARTNER_TWO_SUPERSEDED_SCRIPT_TARGET",
+    "sha256:1cea83c4b1e91e763a8e4676dbdcc4c40f799a15921cb0e0b98871e1838fd3de",
+    'browserName === "webkit"',
+    "testTitle === PARTNER_TWO_CORE_ROUTES_TEST_TITLE",
+    "deferredWebKitScriptAbortsByPage",
+    "successfulApplicationResponseSequencesByPage",
+    "partnerTwoFinalJourneyProofByPage",
+    "laterSuccessfulSameOriginRequest",
+    "isHarmlessSupersededApplicationScript({",
+    'expect(finalUrl.pathname).toBe("/support")',
+    "campaignBody.includes(PARTNER_TWO_CAMPAIGN_ID)",
+    "!campaignBody.includes(PARTNER_ONE_CAMPAIGN_ID)",
+  ],
+  "Exact WebKit partner-two superseded-script classifier boundary",
+);
+
+const exactSupersededApplicationScript = Object.freeze({
+  errorText: "Load request cancelled",
+  method: "GET",
+  resourceType: "script",
+  isNavigationRequest: false,
+  sameActiveApplicationOrigin: true,
+  frameMatchesActiveApplicationOrigin: true,
+  httpsTransport: true,
+  hasCredentials: false,
+  hasFragment: false,
+  responseStatus: null,
+  requestSequence: 55,
+  mainFrameNavigationSequenceAtStart: 3,
+  mainFrameNavigationSequenceAtFailure: 3,
+  elapsedMs: 241,
+  laterSuccessfulSameOriginRequest: true,
+  finalJourneyProven: true,
+});
+assert.equal(
+  isHarmlessSupersededApplicationScript(exactSupersededApplicationScript),
+  true,
+);
+for (const unsafeOverride of [
+  { errorText: "network failed" },
+  { method: "POST" },
+  { resourceType: "fetch" },
+  { isNavigationRequest: true },
+  { sameActiveApplicationOrigin: false },
+  { frameMatchesActiveApplicationOrigin: false },
+  { httpsTransport: false },
+  { hasCredentials: true },
+  { hasFragment: true },
+  { responseStatus: 200 },
+  { requestSequence: 0 },
+  { mainFrameNavigationSequenceAtStart: 0 },
+  { mainFrameNavigationSequenceAtFailure: 2 },
+  { mainFrameNavigationSequenceAtFailure: 5 },
+  { elapsedMs: -1 },
+  { elapsedMs: 5_001 },
+  { laterSuccessfulSameOriginRequest: false },
+  { finalJourneyProven: false },
+]) {
+  assert.equal(
+    isHarmlessSupersededApplicationScript({
+      ...exactSupersededApplicationScript,
       ...unsafeOverride,
     }),
     false,
