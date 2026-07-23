@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 125;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 126;
 const REQUIRED_FINAL_MIGRATION =
-  "20260722040000_add_service_only_operator_grant_probe.sql";
+  "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",

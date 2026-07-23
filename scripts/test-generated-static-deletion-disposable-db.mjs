@@ -92,7 +92,7 @@ function authorizeSql(claim, generation, overrides = {}) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.at(-1), "20260722040000_add_service_only_operator_grant_probe.sql");
+  assert.equal(migrations.at(-1), "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql");
   adapter.preflight();
   if (adapter.psql("select exists(select 1 from pg_roles where rolname='postgres');") !== "t") {
     adapter.psql("create role postgres superuser nologin;");

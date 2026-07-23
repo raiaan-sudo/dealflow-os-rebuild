@@ -196,8 +196,8 @@ assert.equal(classifyGhlLifecycleOutcome({
 const migrations = readdirSync("supabase/migrations")
   .filter((file) => /^\d{14}_.+\.sql$/.test(file))
   .sort();
-assert.equal(migrations.length, 125);
-assert.deepEqual(migrations.slice(-8), [
+assert.equal(migrations.length, 126);
+assert.deepEqual(migrations.slice(-9), [
   "20260717081000_expand_campaign_lifecycle_authority.sql",
   "20260717082000_provider_aware_funnel_publication.sql",
   "20260717090000_create_canonical_lead_outcome_ledger.sql",
@@ -206,6 +206,7 @@ assert.deepEqual(migrations.slice(-8), [
   "20260722020000_persist_ghl_location_token_scope.sql",
   "20260722030000_support_direct_ghl_embed_sso.sql",
   "20260722040000_add_service_only_operator_grant_probe.sql",
+  "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql",
 ]);
 const lifecycleSource = readFileSync("src/lib/services/canonical-campaign-lifecycle-service.ts", "utf8");
 const scheduledSource = readFileSync("src/lib/services/scheduled-campaign-launch-service.ts", "utf8");

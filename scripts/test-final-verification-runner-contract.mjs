@@ -749,8 +749,8 @@ assert.throws(
 );
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 125",
-  "20260722040000_add_service_only_operator_grant_probe.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 126",
+  "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["npm", ["run", "format:check"]]',
@@ -849,5 +849,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (exclusive worktree lock, migration 125, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (exclusive worktree lock, migration 126, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

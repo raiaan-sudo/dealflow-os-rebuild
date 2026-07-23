@@ -9,8 +9,8 @@
       "src/lib"
     ],
     "migrationRoot": "supabase/migrations",
-    "finalMigration": "20260722040000_add_service_only_operator_grant_probe.sql",
-    "expectedMigrationCount": 125
+    "finalMigration": "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql",
+    "expectedMigrationCount": 126
   },
   "invariant": "Every privileged or tenant-bypass path must bind an exact actor, organization or explicitly classified global authority, and resource before access or mutation. Unknown surfaces fail closed.",
   "classes": [

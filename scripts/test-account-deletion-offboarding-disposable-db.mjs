@@ -12,7 +12,7 @@ const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
 const proposalPath = process.env.ACCOUNT_DELETION_MIGRATION_PROPOSAL
   ?? path.join(migrationsDir, "20260713026000_add_account_deletion_and_provider_offboarding.sql");
-const requiredFinalMigration = "20260722040000_add_service_only_operator_grant_probe.sql";
+const requiredFinalMigration = "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql";
 const retentionAuthorityMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -46,6 +46,10 @@ const REQUEST_B = "96000000-0000-4000-8000-000000000002";
 const GHL_INSTALLATION_A = "97000000-0000-4000-8000-000000000001";
 const GHL_SNAPSHOT_A = "97000000-0000-4000-8000-000000000002";
 const GHL_MAPPING_A = "97000000-0000-4000-8000-000000000003";
+const GHL_MARKETPLACE_AUTHORITY_A = "97000000-0000-4000-8000-000000000004";
+const GHL_MARKETPLACE_LIFECYCLE_A = "97000000-0000-4000-8000-000000000005";
+const GHL_MARKETPLACE_TOKEN_SET_A = "97000000-0000-4000-8000-000000000006";
+const GHL_MARKETPLACE_TOKEN_EVENT_A = "97000000-0000-4000-8000-000000000007";
 const CREATIVE_A = "98000000-0000-4000-8000-000000000001";
 const CREATIVE_B = "98000000-0000-4000-8000-000000000002";
 const CREATIVE_VIDEO_A = "98000000-0000-4000-8000-000000000003";
@@ -92,7 +96,7 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 125, "test expects the exact 125-migration candidate");
+  assert.equal(migrations.length, 126, "test expects the exact 126-migration candidate");
   assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
@@ -143,6 +147,10 @@ try {
     });
     session.psql(`begin; set role postgres; ${fs.readFileSync(proposalPath, "utf8")} reset role; commit;`, {
       label: "Replay integrated account-deletion migration a second time",
+      timeoutMs: 180_000,
+    });
+    session.psql(`begin; set role postgres; ${migrationSource(requiredFinalMigration)} reset role; commit;`, {
+      label: "Reapply terminal account-deletion GHL receipt cleanup hardening after historical replay",
       timeoutMs: 180_000,
     });
     session.psql(`
@@ -270,6 +278,43 @@ try {
         '${GHL_MAPPING_A}','${ORG_A}','${GHL_INSTALLATION_A}','test','location-test-a',
         'platform','${GHL_SNAPSHOT_A}','active',timezone('utc',now()),timezone('utc',now()),
         'env:GHL_SANDBOX_LOCATION_DELETE_TOKEN','["forms.readonly"]'::jsonb,timezone('utc',now())
+      );
+      insert into public.ghl_marketplace_authorities(
+        id,installation_id,organization_id,location_mapping_id,environment,owner_kind,
+        install_scope,app_fingerprint,company_fingerprint,location_fingerprint,
+        account_fingerprint,scope_fingerprint,status,installed_at
+      ) values (
+        '${GHL_MARKETPLACE_AUTHORITY_A}','${GHL_INSTALLATION_A}','${ORG_A}','${GHL_MAPPING_A}',
+        'test','platform','location','sha256:${"a".repeat(64)}','sha256:${"b".repeat(64)}',
+        'sha256:${"c".repeat(64)}','sha256:${"d".repeat(64)}','sha256:${"e".repeat(64)}',
+        'active',timezone('utc',now())
+      );
+      insert into public.ghl_marketplace_lifecycle_events(
+        id,authority_id,organization_id,event_type,event_fingerprint,app_fingerprint,
+        company_fingerprint,location_fingerprint,account_fingerprint,outcome
+      ) values (
+        '${GHL_MARKETPLACE_LIFECYCLE_A}','${GHL_MARKETPLACE_AUTHORITY_A}','${ORG_A}',
+        'INSTALL','sha256:${"f".repeat(64)}','sha256:${"a".repeat(64)}',
+        'sha256:${"b".repeat(64)}','sha256:${"c".repeat(64)}','sha256:${"d".repeat(64)}','applied'
+      );
+      insert into public.ghl_marketplace_token_sets(
+        id,authority_id,organization_id,location_mapping_id,subject_kind,
+        encrypted_access_credential_ref,encrypted_refresh_credential_ref,
+        account_fingerprint,scope_fingerprint,access_expires_at,refresh_expires_at,
+        key_version,status
+      ) values (
+        '${GHL_MARKETPLACE_TOKEN_SET_A}','${GHL_MARKETPLACE_AUTHORITY_A}','${ORG_A}',
+        '${GHL_MAPPING_A}','location','enc-ref:v1:synthetic-access-credential',
+        'enc-ref:v1:synthetic-refresh-credential','sha256:${"d".repeat(64)}',
+        'sha256:${"e".repeat(64)}',timezone('utc',now())+interval '1 hour',
+        timezone('utc',now())+interval '2 hours',1,'active'
+      );
+      insert into public.ghl_marketplace_token_events(
+        id,token_set_id,organization_id,event_type,generation,account_fingerprint,
+        scope_fingerprint,key_version
+      ) values (
+        '${GHL_MARKETPLACE_TOKEN_EVENT_A}','${GHL_MARKETPLACE_TOKEN_SET_A}','${ORG_A}',
+        'created',1,'sha256:${"d".repeat(64)}','sha256:${"e".repeat(64)}',1
       );
       insert into public.service_types(organization_id,name,category) values
         ('${ORG_A}','Sensitive service','core'),('${ORG_B}','Other service','core');
@@ -519,7 +564,27 @@ try {
         ) result;
       `), { label: `Execute ${expectedKind}` }));
       const result = JSON.parse(raw);
-      assert.equal(result.result_outcome, "completed", `${expectedKind} did not complete internally`);
+      const remainingDiagnostic = result.result_outcome === "completed"
+        ? ""
+        : session.psql(`
+            select relation_name || ':' || private.account_deletion_inventory_row_count(
+              relation_schema, relation_name, scope_column, '${ORG_A}', '${USER_A}'
+            )::text
+            from public.account_deletion_data_inventory
+            where resource_kind='table'
+              and executor_task='delete_operational_data'
+              and relation_name not in ('organizations','users','support_tickets','creative_assets')
+              and disposition <> 'anonymize'
+              and private.account_deletion_inventory_row_count(
+                relation_schema, relation_name, scope_column, '${ORG_A}', '${USER_A}'
+              ) > 0
+            order by relation_name;
+          `, { label: "Diagnose remaining operational deletion rows" });
+      assert.equal(
+        result.result_outcome,
+        "completed",
+        `${expectedKind} did not complete internally: ${JSON.stringify(result)} ${remainingDiagnostic}`,
+      );
       settleTask(task, result.result_outcome, result.result_code, result.receipt_metadata ?? {});
       return task;
     }
@@ -743,6 +808,10 @@ try {
     assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.leads where organization_id='${ORG_A}';`))), "0");
     assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.campaign_plans where organization_id='${ORG_A}';`))), "0");
     assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.service_types where organization_id='${ORG_A}';`))), "0");
+    assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.ghl_marketplace_authorities where organization_id='${ORG_A}';`))), "0", "GHL Marketplace authority survived operational deletion");
+    assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.ghl_marketplace_lifecycle_events where organization_id='${ORG_A}';`))), "0", "append-only GHL lifecycle receipt survived approved account deletion");
+    assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.ghl_marketplace_token_sets where organization_id='${ORG_A}';`))), "0", "GHL token set survived operational deletion");
+    assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.ghl_marketplace_token_events where organization_id='${ORG_A}';`))), "0", "append-only GHL token receipt survived approved account deletion");
     assert.equal(lastLine(session.psql(asRole("service_role", `select subject||'|'||message||'|'||safe_context::text from public.support_tickets where id='${TICKET_A}';`))), "Deleted account request|[deleted]|{}");
     assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.activation_journey_events where organization_id='${ORG_A}';`))), "0");
     assert.equal(lastLine(session.psql(asRole("service_role", `select count(*) from public.client_error_events where metadata->>'organizationId'='${ORG_A}';`))), "0");
@@ -759,7 +828,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 125 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 126 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, account-deletion-only GHL append-only receipt cleanup, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }
