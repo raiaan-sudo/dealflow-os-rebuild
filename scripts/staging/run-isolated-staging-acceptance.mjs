@@ -203,6 +203,10 @@ const EXPECTED_SYNTHETIC_RETENTION_POLICY = Object.freeze({
   billingCancellationMode: "period_end",
   policyVersion: 2,
 });
+const EXPECTED_SYNTHETIC_PRIVACY_POLICY_VERSION =
+  "dealflow-synthetic-staging-privacy-v1";
+const EXPECTED_SYNTHETIC_PRIVACY_POLICY_DIGEST =
+  "66e9e852bb295fcbe9e993d42629320c31c0810d6c17631cb29f16a744132507";
 const EXPECTED_DATABASE_TRUST_BUNDLE_PATH = join(
   EXPECTED_REPO,
   "config",
@@ -1720,6 +1724,7 @@ async function runProviderIndependentStagingProof(
   providerSessionBundleJson,
   providerSessionSecrets,
   ghlEmbedAuthExchangePreflightCount,
+  privacyAuthorityRpcBinding,
 ) {
   const environment = {
     ...childBaseEnvironment(),
@@ -1732,6 +1737,8 @@ async function runProviderIndependentStagingProof(
     STAGING_ACCESS_GATE_SECRET: process.env.STAGING_ACCESS_GATE_SECRET,
     STAGING_TURNSTILE_TEST_TOKEN,
     STAGING_SYNTHETIC_PROVIDER_SESSION_BUNDLE: providerSessionBundleJson,
+    STAGING_SYNTHETIC_PRIVACY_AUTHORITY_RPC_BINDING:
+      JSON.stringify(privacyAuthorityRpcBinding),
     DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT:
       String(ghlEmbedAuthExchangePreflightCount),
     ALLOW_META_LIVE_LAUNCH: "false",
@@ -1795,6 +1802,8 @@ async function runProviderIndependentStagingProof(
     parsed.accountDeletion?.providerReceiptCount !== 0 ||
     parsed.accountDeletion?.hostedWorkerFailClosed !== true ||
     parsed.accountDeletion?.fullProviderOffboardingPerformed !== false ||
+    parsed.accountDeletion?.protectedLowLevelFunctionDirectlyCallable !== false ||
+    parsed.accountDeletion?.privacyAuthorityWrapperUsed !== true ||
     parsed.successorProviderIndependent?.schemaVersion !== "20260720010000" ||
     parsed.successorProviderIndependent?.serviceOnlyTableCount !== 18 ||
     parsed.successorProviderIndependent?.postAuditServiceOnlyTableCount !== 7 ||
@@ -6291,6 +6300,7 @@ async function main() {
     ownerDecisionAuthority.hostProjectMatches === true &&
     ownerDecisionAuthority.productionGrantCount === 0;
   const privacyAuthority = retentionAuthoritySummary.privacyAuthority;
+  const privacyAuthorityRpcBinding = privacyAuthority?.rpcBinding;
   const exactPrivacyAuthority =
     [
       "exact_synthetic_privacy_grant_installed",
@@ -6313,7 +6323,17 @@ async function main() {
     privacyAuthority.wrongSnapshotCount === 0 &&
     privacyAuthority.terminalAuthorityTableCount === 2 &&
     privacyAuthority.legalRetentionAuthorized === false &&
-    privacyAuthority.workerAndLegalHoldExecutionAuthorized === false;
+    privacyAuthority.workerAndLegalHoldExecutionAuthorized === false &&
+    privacyAuthorityRpcBinding?.environment === "staging" &&
+    privacyAuthorityRpcBinding?.candidateCommit === identity.commit &&
+    privacyAuthorityRpcBinding?.candidateTree === identity.tree &&
+    privacyAuthorityRpcBinding?.candidateDigest === identity.trackedWorktreeSha256 &&
+    /^[a-f0-9]{64}$/.test(privacyAuthorityRpcBinding?.authorityPacketDigest ?? "") &&
+    /^[a-f0-9]{64}$/.test(privacyAuthorityRpcBinding?.signatureBundleDigest ?? "") &&
+    privacyAuthorityRpcBinding?.policyVersion ===
+      EXPECTED_SYNTHETIC_PRIVACY_POLICY_VERSION &&
+    privacyAuthorityRpcBinding?.policyDigest ===
+      EXPECTED_SYNTHETIC_PRIVACY_POLICY_DIGEST;
   const verificationRoundEvidence = retentionAuthoritySummary.verificationRoundEvidence;
   const exactVerificationRoundEvidence =
     Array.isArray(verificationRoundEvidence) &&
@@ -6783,6 +6803,7 @@ async function main() {
     providerBundle.json,
     providerBundle.secrets,
     ghlEmbedAuthExchangePreflightCount,
+    privacyAuthorityRpcBinding,
   );
   writeJson(join(options.evidenceDir, "provider-independent-journeys.json"), {
     ...providerIndependentProof,

@@ -83,6 +83,42 @@ function firstRow(value) {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
+function parseSyntheticPrivacyAuthorityRpcBinding() {
+  const raw = requireEnvironment("STAGING_SYNTHETIC_PRIVACY_AUTHORITY_RPC_BINDING", 200);
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("Synthetic privacy authority RPC binding must be valid JSON");
+  }
+  const digestKeys = [
+    "candidateDigest",
+    "authorityPacketDigest",
+    "signatureBundleDigest",
+    "policyDigest",
+  ];
+  if (
+    value?.environment !== "staging" ||
+    !/^[a-f0-9]{40}$/.test(value?.candidateCommit ?? "") ||
+    !/^[a-f0-9]{40}$/.test(value?.candidateTree ?? "") ||
+    !digestKeys.every((key) => /^[a-f0-9]{64}$/.test(value?.[key] ?? "")) ||
+    value?.policyVersion !== "dealflow-synthetic-staging-privacy-v1" ||
+    Object.keys(value).sort().join(",") !== [
+      "authorityPacketDigest",
+      "candidateCommit",
+      "candidateDigest",
+      "candidateTree",
+      "environment",
+      "policyDigest",
+      "policyVersion",
+      "signatureBundleDigest",
+    ].sort().join(",")
+  ) {
+    throw new Error("Synthetic privacy authority RPC binding is not exact");
+  }
+  return Object.freeze(value);
+}
+
 async function noError(result, label) {
   if (result.error) throw new Error(`${label}: ${result.error.message}`);
   return result.data;
@@ -598,6 +634,7 @@ async function main() {
     "read exact synthetic deletion authority",
   );
   const expectedAuthorityHash = `sha256:${sha256(RETENTION_AUTHORITY_MARKER)}`;
+  const privacyAuthority = parseSyntheticPrivacyAuthorityRpcBinding();
   if (
     authority.approved_authority_hash !== expectedAuthorityHash ||
     !authority.approved_at ||
@@ -616,7 +653,7 @@ async function main() {
     await admin.from("users").select("id,email").eq("email", EMAILS.deletion).single(),
     "read synthetic deletion actor",
   );
-  let deletionRequest = await noError(
+  const existingDeletionRequest = await noError(
     await admin
       .from("account_deletion_requests")
       .select("id,organization_id,requested_by_user_id,state,retention_policy,confirmation_code")
@@ -624,18 +661,64 @@ async function main() {
       .maybeSingle(),
     "read synthetic deletion request",
   );
-  if (!deletionRequest) {
-    deletionRequest = firstRow(await noError(
-      await admin.rpc("create_account_deletion_request_v1", {
-        p_organization_id: IDS.deletionOrganization,
-        p_actor_user_id: deletionUser.id,
-        p_idempotency_key: "df-staging-deletion-provider-writes-disabled",
-        p_identity_method: "password",
-        p_identity_email_hash: `sha256:${sha256(EMAILS.deletion)}`,
-      }),
-      "create synthetic fail-closed deletion request",
-    ));
+  const directRequest = await admin.rpc("create_account_deletion_request_v1", {
+    p_organization_id: IDS.deletionOrganization,
+    p_actor_user_id: deletionUser.id,
+    p_idempotency_key: "df-staging-deletion-provider-writes-disabled",
+    p_identity_method: "aal2",
+    p_identity_email_hash: `sha256:${sha256(EMAILS.deletion)}`,
+  });
+  if (!directRequest.error || directRequest.error.code !== "42501") {
+    throw new Error("Protected low-level account deletion function was directly callable");
   }
+  const idempotencyKey = "df-staging-deletion-provider-writes-disabled";
+  const requestPayloadDigest = sha256(JSON.stringify({
+    requestType: "delete",
+    identityMethod: "aal2",
+    fixture: FIXTURE,
+  }));
+  const evidenceDigest = sha256(JSON.stringify({
+    organizationId: IDS.deletionOrganization,
+    userId: deletionUser.id,
+    idempotencyKey,
+    fixture: FIXTURE,
+  }));
+  const wrapper = firstRow(await noError(
+    await admin.rpc("create_privacy_delete_request_v1", {
+      p_organization_id: IDS.deletionOrganization,
+      p_actor_user_id: deletionUser.id,
+      p_idempotency_key: idempotencyKey,
+      p_identity_email_hash: `sha256:${sha256(EMAILS.deletion)}`,
+      p_request_payload_digest: requestPayloadDigest,
+      p_evidence_digest: evidenceDigest,
+      p_assurance_level: "aal2",
+      p_session_issued_at: new Date().toISOString(),
+      p_environment: privacyAuthority.environment,
+      p_candidate_commit: privacyAuthority.candidateCommit,
+      p_candidate_tree: privacyAuthority.candidateTree,
+      p_candidate_digest: privacyAuthority.candidateDigest,
+      p_authority_packet_digest: privacyAuthority.authorityPacketDigest,
+      p_signature_bundle_digest: privacyAuthority.signatureBundleDigest,
+      p_policy_version: privacyAuthority.policyVersion,
+      p_policy_digest: privacyAuthority.policyDigest,
+    }),
+    "create synthetic privacy-authorized fail-closed deletion request",
+  ));
+  if (
+    !/^[a-f0-9-]{36}$/i.test(wrapper?.account_deletion_request_id ?? "") ||
+    (existingDeletionRequest &&
+      existingDeletionRequest.id !== wrapper.account_deletion_request_id)
+  ) {
+    throw new Error("Privacy-authorized deletion wrapper returned no stable request identity");
+  }
+  const deletionRequest = await noError(
+    await admin
+      .from("account_deletion_requests")
+      .select("id,organization_id,requested_by_user_id,state,retention_policy,confirmation_code")
+      .eq("id", wrapper.account_deletion_request_id)
+      .single(),
+    "read privacy-authorized synthetic deletion request",
+  );
   if (
     deletionRequest?.organization_id !== IDS.deletionOrganization ||
     deletionRequest?.requested_by_user_id !== deletionUser.id ||
@@ -779,6 +862,8 @@ async function main() {
       providerReceiptCount: 0,
       hostedWorkerFailClosed: true,
       fullProviderOffboardingPerformed: false,
+      protectedLowLevelFunctionDirectlyCallable: false,
+      privacyAuthorityWrapperUsed: true,
     },
     successorProviderIndependent: {
       schemaVersion: successorServiceOnlyFinal.schemaVersion,

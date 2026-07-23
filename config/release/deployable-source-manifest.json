@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1123,
-  "deployableSourceSha256": "86c0d99c0c0c1d323d2c0ed17718d8d5a2ecfe774352ef74569c45d9dd8bd349",
+  "deployableSourceSha256": "82e4a457b1796b541f5ebac410dec23d15414124ebe023e66fa24162bb4443f6",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1050,9 +1050,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 73636,
+      "size": 74055,
       "mode": 33188,
-      "sha256": "93b90376c81b3899d80d4b95930971b374617e8e95d18eb4e5c344c38fc81b52"
+      "sha256": "789cd5cb5156135df8536b7300915a28c427a9a25c355282ce8e289748e2a9c5"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1092,15 +1092,15 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 297478,
+      "size": 298730,
       "mode": 33188,
-      "sha256": "86f9c10e0a7924292263458502a86fc7536f19f76ecf741c438613eb566193c7"
+      "sha256": "b3a74164700306e760b5ee1559871cbf926c84de1541c878fad0e04439a01ddc"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
-      "size": 32713,
+      "size": 36092,
       "mode": 33188,
-      "sha256": "707c83b05080cf0d9372031320a771d7b6829438642d912018221168f8d481b2"
+      "sha256": "7f9cdd6a12df54633d34b4818822ffb701f7194224d207ab19f14c43f93515ef"
     },
     {
       "path": "scripts/staging/safe-browser-host-contract.mjs",
@@ -1212,9 +1212,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 9331,
+      "size": 9599,
       "mode": 33188,
-      "sha256": "fbff200a92349f9bc762e508c2606220dd516c0a8727404018405398743fc1c3"
+      "sha256": "62624a82d8ad1ec4956c6516abc82bd98822358b318dec3daab5841a68a34e25"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1224,9 +1224,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 134377,
+      "size": 134756,
       "mode": 33188,
-      "sha256": "d42eef18c070d7b7ed8562e1f6e9c4c7505c6a5fb1ae041b65b73a10f0963233"
+      "sha256": "00fc93c1f103b26a47dc09c5b24182fef4d5bf6dd451b55b2deb0d19bfc01e62"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",

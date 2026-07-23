@@ -108,6 +108,10 @@ assert.match(source, /productionOwnerGrantCount/);
 assert.match(source, /productionPrivacyGrantCount/);
 assert.match(source, /privacyLegalRetentionAuthorizedCount/);
 assert.match(source, /workerAndLegalHoldExecutionAuthorized: false/);
+assert.match(source, /rpcBinding:/);
+assert.match(source, /authorityPacketDigest: privacyCapabilityRecord\.payloadSha256/);
+assert.match(source, /signatureBundleDigest: privacySignatureBundleSha256/);
+assert.match(source, /policyDigest: privacyPolicy\.policyDigest/);
 assert.match(source, /exact_authority_projection_refresh_committed/);
 assert.match(
   source,

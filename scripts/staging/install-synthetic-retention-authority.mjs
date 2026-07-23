@@ -1512,6 +1512,16 @@ const proof = {
     terminalAuthorityTableCount: databaseResult.inventoryAuthorityTableCount,
     legalRetentionAuthorized: databaseResult.privacyLegalRetentionAuthorizedCount !== 0,
     workerAndLegalHoldExecutionAuthorized: false,
+    rpcBinding: {
+      environment: "staging",
+      candidateCommit: identity.headCommit,
+      candidateTree: identity.headTree,
+      candidateDigest: identity.trackedWorktreeSha256,
+      authorityPacketDigest: privacyCapabilityRecord.payloadSha256,
+      signatureBundleDigest: privacySignatureBundleSha256,
+      policyVersion: privacyPolicy.policyVersion,
+      policyDigest: privacyPolicy.policyDigest,
+    },
   },
   replaySemantics:
     "bounded_generation_rotation_or_unexpired_exact_replay_with_catalog_rebind",
