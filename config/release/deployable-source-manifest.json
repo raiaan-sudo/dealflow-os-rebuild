@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1123,
-  "deployableSourceSha256": "a03f608db24d1015cfcfa357d44ac3c8b0e8caa46e7d738c7c881357da5adfee",
+  "entryCount": 1124,
+  "deployableSourceSha256": "06d9e2fddc7d91ab2f0dbbc13bc50ff9de07a58f479a4c0d99d922637d978697",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -617,6 +617,12 @@
       "sha256": "f72d84f46a58735064f0bf9be90ca60a12455af64ec3ef5e7a37cc648dca8939"
     },
     {
+      "path": "docs/release/STAGING_CRON_ACCESS_GATE_REPAIR_20260724.md",
+      "size": 2038,
+      "mode": 33188,
+      "sha256": "a40e2f675187c66035ce8ffa2319e530c25d2324091328581072139d0491148b"
+    },
+    {
       "path": "eslint.config.mjs",
       "size": 421,
       "mode": 33188,
@@ -1110,9 +1116,9 @@
     },
     {
       "path": "scripts/staging/staging-access-gate-scenario.ts",
-      "size": 14523,
+      "size": 15269,
       "mode": 33188,
-      "sha256": "eb873357c8eb5096599e3e34eda33267981b5daa80f492ffc0aa705bdfc25374"
+      "sha256": "e3b5088dc8e4bad645df91f0b1f8d20f342cc5125882f2da64dc75227db394c9"
     },
     {
       "path": "scripts/staging/staging-evidence-root-contract.mjs",
@@ -1230,9 +1236,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
-      "size": 15233,
+      "size": 15518,
       "mode": 33188,
-      "sha256": "ac6e64c74324b39bcf16629d26fccd26bbb477519284688257aef5f2e9d05a31"
+      "sha256": "aadf1d22cb356d4cb52c67018828346d6fdbbfc373c138455b8918134b411a79"
     },
     {
       "path": "scripts/staging/test-next-static-chunk-path.mjs",
@@ -5538,9 +5544,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 32322,
+      "size": 33076,
       "mode": 33188,
-      "sha256": "b8a2bf49f4030ef522cf1957e6f803df6131592a65d7c3decfa9618b63f5436f"
+      "sha256": "96c93c869fc881b19b146726dbd6d62e47e0bad2bc4197e5ffec17c64ad02c13"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",

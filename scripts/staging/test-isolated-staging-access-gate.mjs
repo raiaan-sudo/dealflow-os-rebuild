@@ -57,6 +57,11 @@ assert.match(proxy, /requestHeaders\.delete\(STAGING_ACCESS_HEADER\)/);
 assert.match(proxy, /requestHeaders\.delete\(VERCEL_PROTECTION_BYPASS_HEADER\)/);
 assert.match(proxy, /requestHeaders\.delete\(VERCEL_SET_BYPASS_COOKIE_HEADER\)/);
 assert.match(proxy, /VERCEL_AUTOMATION_BYPASS_COOKIE/);
+assert.match(proxy, /stagingInternalRequestAuthorized/);
+assert.match(
+  proxy,
+  /isInternalApiRequest\(request\.nextUrl\.pathname\)[\s\S]*isAuthorizedInternalRequest\(request\)\.authorized/,
+);
 assert.match(proxy, /removeCookieFromRequestHeader\(/);
 assert.match(proxy, /STAGING_ACCESS_COOKIE/);
 assert.match(proxy, /rawPathname === "\/_next"/);
@@ -277,6 +282,9 @@ assert.match(runner, /withStagingAccess/);
 
 for (const scenario of [
   "authorized",
+  "authorized_internal_cron",
+  "wrong_internal_cron",
+  "missing_internal_cron_secret",
   "authorized_static_header",
   "authorized_static_cookie",
   "wrong_static_header",

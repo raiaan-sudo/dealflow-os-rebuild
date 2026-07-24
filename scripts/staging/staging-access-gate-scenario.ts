@@ -32,8 +32,20 @@ let method = "GET";
 let suppliedSecret: string | null = null;
 let suppliedCookieSecret: string | null = null;
 const scenarioHeaders = new Headers();
+const internalSystemJobsSecret =
+  "I8!dealflow-isolated-staging-internal-jobs-92Q";
+process.env.INTERNAL_SYSTEM_JOBS_SECRET = internalSystemJobsSecret;
 if (scenario === "authorized") {
   suppliedSecret = secret;
+} else if (scenario === "authorized_internal_cron") {
+  path = "/api/internal/system-jobs";
+  scenarioHeaders.set("authorization", `Bearer ${internalSystemJobsSecret}`);
+} else if (scenario === "wrong_internal_cron") {
+  path = "/api/internal/system-jobs";
+  scenarioHeaders.set("authorization", `Bearer ${"W".repeat(internalSystemJobsSecret.length)}`);
+} else if (scenario === "missing_internal_cron_secret") {
+  path = "/api/internal/system-jobs";
+  delete process.env.INTERNAL_SYSTEM_JOBS_SECRET;
 } else if (scenario === "authorized_static_header") {
   path = "/_next/static/chunks/staging-gate-proof.js";
   suppliedSecret = secret;
@@ -259,6 +271,8 @@ async function main() {
   if (
     scenario === "unauthorized" ||
     scenario === "unauthorized_cookie" ||
+    scenario === "wrong_internal_cron" ||
+    scenario === "missing_internal_cron_secret" ||
     scenario === "unauthorized_static" ||
     scenario === "unauthorized_image" ||
     scenario === "closed_disabled_image_no_gate" ||

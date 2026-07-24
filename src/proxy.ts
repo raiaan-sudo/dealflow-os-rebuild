@@ -707,10 +707,23 @@ export async function proxy(request: NextRequest) {
     stagingAccess.required && stagingAccess.configured
       ? await isAuthorizedIsolatedStagingGhlEmbedRequest(request)
       : false;
+  // Vercel Cron cannot attach DealFlow's private staging-access header. It
+  // does attach the exact configured cron bearer token, which is already one
+  // of the internal-system-job secrets. Allow only an exact internal route
+  // with that existing constant-time authorization to cross the outer
+  // staging gate; the normal internal-route branch below validates it again.
+  // Invalid or missing tokens still receive the staging 404, so this does not
+  // reveal that the private route exists.
+  const stagingInternalRequestAuthorized =
+    stagingAccess.required &&
+    stagingAccess.configured &&
+    isInternalApiRequest(request.nextUrl.pathname) &&
+    isAuthorizedInternalRequest(request).authorized;
   if (
     stagingAccess.required &&
     !stagingAccess.authorized &&
-    !stagingGhlEmbedAuthorized
+    !stagingGhlEmbedAuthorized &&
+    !stagingInternalRequestAuthorized
   ) {
     return applySecurityHeaders(
       request,
