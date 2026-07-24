@@ -16,7 +16,7 @@ import {
   assertFinalVerificationDiskHeadroom,
   assertFinalVerificationEvidenceIsSealable,
   detectFinalVerificationFatalResourceDiagnostic,
-  readFinalVerificationFreeBytes,
+  settleFinalVerificationDiskHeadroom,
 } from "./lib/final-verification-evidence-contract.mjs";
 import { requireFinalVerificationNativeEnvironment } from "./lib/final-verification-environment.mjs";
 import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
@@ -468,10 +468,11 @@ for (let index = 0; index < commands.length; index += 1) {
   const fatalResourceDiagnostic = detectFinalVerificationFatalResourceDiagnostic(
     `${result.stdout ?? ""}\n${result.stderr ?? ""}\n${result.error?.message ?? ""}`,
   );
-  const diskFreeBytesAfter = Math.min(
-    readFinalVerificationFreeBytes(root),
-    readFinalVerificationFreeBytes(outputDirectory),
-  );
+  const diskHeadroomSettlement = settleFinalVerificationDiskHeadroom([
+    root,
+    outputDirectory,
+  ]);
+  const diskFreeBytesAfter = diskHeadroomSettlement.availableBytes;
   const postCommandDiskHeadroomFailed =
     diskFreeBytesAfter < FINAL_VERIFICATION_MINIMUM_FREE_BYTES;
   let invariantError = null;
@@ -513,7 +514,9 @@ for (let index = 0; index < commands.length; index += 1) {
       `command_exit_code: ${commandExitCode}`,
       `record_exit_code: ${exitCode}`,
       `disk_free_bytes_before: ${diskFreeBytesBefore}`,
+      `disk_free_bytes_after_initial: ${diskHeadroomSettlement.initialAvailableBytes}`,
       `disk_free_bytes_after: ${diskFreeBytesAfter}`,
+      `disk_headroom_settlement_wait_ms: ${diskHeadroomSettlement.waitedMs}`,
       `fatal_resource_diagnostic: ${fatalResourceDiagnostic ?? "none"}`,
       `post_command_disk_headroom: ${postCommandDiskHeadroomFailed ? "failed" : "passed"}`,
       `post_command_repository_invariant: ${invariantError ? "failed" : "passed"}`,

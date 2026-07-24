@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1124,
-  "deployableSourceSha256": "a67abc82946bb925e06a4855e3136bd861b50e388b59472886f419b7950dba43",
+  "deployableSourceSha256": "990902c45469486608f124c3ebf98fa524002b7177a133bd723fb8270756532d",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -858,9 +858,9 @@
     },
     {
       "path": "scripts/lib/final-verification-evidence-contract.mjs",
-      "size": 13457,
+      "size": 14878,
       "mode": 33188,
-      "sha256": "745789e767117dfc351580f8b0ae14154db2e193870f3657d27976586e28f68a"
+      "sha256": "02dc49e3128995d2847aac98a6bd916cce9c4a78c7c4e236681de0f2777f2c24"
     },
     {
       "path": "scripts/lib/final-verification-lock.mjs",
@@ -918,9 +918,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 25347,
+      "size": 25555,
       "mode": 33188,
-      "sha256": "e4315c3277bbdc60595d56d75f997986a353b9ec27e87f8c6af206f7d3a7a090"
+      "sha256": "e665cdebb75762c866995d4edee37d640ae8b6f4f35c8c2d1594956ad3734abc"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -1578,9 +1578,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 31071,
+      "size": 32337,
       "mode": 33188,
-      "sha256": "ae9cc8599a3b557ade5a8d932b8f309b64923f962fda6a9b40d6225bcc77344c"
+      "sha256": "484ed0ccc0905e0bcc6893dfc2f1f9518384df5d7f4e1741be4d84abd62ffcfd"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",

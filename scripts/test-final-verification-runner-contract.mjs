@@ -34,6 +34,7 @@ import {
   assertFinalVerificationEvidenceIsSealable,
   detectFinalVerificationFatalResourceDiagnostic,
   readFinalVerificationFreeBytes,
+  settleFinalVerificationDiskHeadroom,
 } from "./lib/final-verification-evidence-contract.mjs";
 import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
 
@@ -322,6 +323,36 @@ assert.throws(
     }),
   /requires at least/,
 );
+{
+  const observations = [
+    FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 2,
+    FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1,
+    FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  ];
+  const waits = [];
+  const settlement = settleFinalVerificationDiskHeadroom(["/fixture"], {
+    readFreeBytes: () => observations.shift(),
+    wait: (milliseconds) => waits.push(milliseconds),
+    intervalMs: 1_000,
+    maxWaitMs: 2_000,
+  });
+  assert.equal(settlement.initialAvailableBytes, FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 2);
+  assert.equal(settlement.availableBytes, FINAL_VERIFICATION_MINIMUM_FREE_BYTES);
+  assert.equal(settlement.waitedMs, 2_000);
+  assert.equal(settlement.settled, true);
+  assert.deepEqual(waits, [1_000, 1_000]);
+}
+{
+  const settlement = settleFinalVerificationDiskHeadroom(["/fixture"], {
+    readFreeBytes: () => FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1,
+    wait: () => {},
+    intervalMs: 1_000,
+    maxWaitMs: 2_000,
+  });
+  assert.equal(settlement.availableBytes, FINAL_VERIFICATION_MINIMUM_FREE_BYTES - 1);
+  assert.equal(settlement.waitedMs, 2_000);
+  assert.equal(settlement.settled, false);
+}
 
 assert.equal(FINAL_VERIFICATION_COMMAND_COUNT, 91);
 assert.equal(FINAL_VERIFICATION_COMMAND_PORTFOLIO.length, 91);
@@ -804,6 +835,9 @@ for (const marker of [
   'sealableEvidence?.browser.status ?? "INCOMPLETE"',
   "detectFinalVerificationFatalResourceDiagnostic(",
   "assertFinalVerificationDiskHeadroom(root)",
+  "settleFinalVerificationDiskHeadroom([",
+  "disk_free_bytes_after_initial:",
+  "disk_headroom_settlement_wait_ms:",
   "fatal_resource_diagnostic:",
   "post_command_disk_headroom:",
 ]) {

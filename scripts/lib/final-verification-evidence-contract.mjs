@@ -170,6 +170,58 @@ export function assertFinalVerificationDiskHeadroom(
   return availableBytes;
 }
 
+export function settleFinalVerificationDiskHeadroom(
+  paths,
+  {
+    readFreeBytes = readFinalVerificationFreeBytes,
+    wait = (milliseconds) => {
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
+        0,
+        0,
+        milliseconds,
+      );
+    },
+    intervalMs = 1_000,
+    maxWaitMs = 60_000,
+  } = {},
+) {
+  if (
+    !Array.isArray(paths) ||
+    paths.length < 1 ||
+    paths.some((path) => typeof path !== "string" || path.length < 1) ||
+    typeof readFreeBytes !== "function" ||
+    typeof wait !== "function" ||
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < 1 ||
+    !Number.isSafeInteger(maxWaitMs) ||
+    maxWaitMs < 0 ||
+    maxWaitMs % intervalMs !== 0
+  ) {
+    fail("Final verification disk-headroom settlement input is invalid");
+  }
+  const read = () =>
+    Math.min(...paths.map((path) => readFreeBytes(path)));
+  const initialAvailableBytes = read();
+  let availableBytes = initialAvailableBytes;
+  let waitedMs = 0;
+  while (
+    availableBytes < FINAL_VERIFICATION_MINIMUM_FREE_BYTES &&
+    waitedMs < maxWaitMs
+  ) {
+    wait(intervalMs);
+    waitedMs += intervalMs;
+    availableBytes = read();
+  }
+  return Object.freeze({
+    initialAvailableBytes,
+    availableBytes,
+    waitedMs,
+    settled: availableBytes >= FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+    minimumRequiredBytes: FINAL_VERIFICATION_MINIMUM_FREE_BYTES,
+  });
+}
+
 export function assertExactLocalBrowserEvidence(outputDirectory) {
   const browserRoot = resolve(outputDirectory, "browser-proof");
   const artifactRoot = join(browserRoot, "artifacts");
