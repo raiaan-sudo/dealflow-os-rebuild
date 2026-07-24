@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1124,
-  "deployableSourceSha256": "990902c45469486608f124c3ebf98fa524002b7177a133bd723fb8270756532d",
+  "deployableSourceSha256": "b504b0620ae0a7f1cb5cac3c9e9416dc8390de35b06d8dfbb099aad7d844d8df",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1764,9 +1764,9 @@
     },
     {
       "path": "scripts/test-higgsfield-cli.ts",
-      "size": 7514,
+      "size": 7540,
       "mode": 33188,
-      "sha256": "fd251604461ba535a698fa098ac8bb8245ab4fb5e143ac63dc89d4fd737bac13"
+      "sha256": "a8b6e79508c74cbf4158ba95bcc966e2a4a68ab746577c5f3fe09c3ec6fef183"
     },
     {
       "path": "scripts/test-higgsfield-provider.mjs",
@@ -3888,9 +3888,9 @@
     },
     {
       "path": "src/lib/ai/higgsfield-cli.ts",
-      "size": 8782,
+      "size": 9642,
       "mode": 33188,
-      "sha256": "ea9b80de9ef4bc17a8e4f99a76ffd706c1f3614071f7cd7113e75a8f2cb953e5"
+      "sha256": "4aa3161530b43cca67060354059c00eeb3504bae261f627c227f93403b7a0623"
     },
     {
       "path": "src/lib/ai/higgsfield.ts",

@@ -196,8 +196,33 @@ async function runCliJson(
   }
 }
 
+function findSingleJobReceipt(value: unknown, depth = 0): Record<string, unknown> {
+  if (depth > 4) return {};
+  const candidates: Record<string, unknown>[] = [];
+  const visit = (nested: unknown, nestedDepth: number) => {
+    if (nestedDepth > 4) return;
+    if (Array.isArray(nested)) {
+      for (const entry of nested) visit(entry, nestedDepth + 1);
+      return;
+    }
+    const record = asRecord(nested);
+    if (!Object.keys(record).length) return;
+    const id = safeText(record.id) || safeText(record.job_id);
+    const status = safeText(record.status);
+    if (/^[A-Za-z0-9_-]{8,160}$/.test(id) && status) {
+      candidates.push(record);
+      return;
+    }
+    for (const entry of Object.values(record)) {
+      visit(entry, nestedDepth + 1);
+    }
+  };
+  visit(value, depth);
+  return candidates.length === 1 ? candidates[0] : {};
+}
+
 function parseJob(value: unknown): HiggsfieldCliJob {
-  const root = asRecord(value);
+  const root = findSingleJobReceipt(value);
   const id = safeText(root.id) || safeText(root.job_id);
   const status = safeText(root.status).toLowerCase();
   const resultUrl =

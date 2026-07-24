@@ -67,9 +67,11 @@ if (args.includes("cost")) {
     process.exit(1);
   }
   process.stdout.write(JSON.stringify({
-    id: "synthetic_job_12345678",
-    status: "queued",
-    result_url: null
+    jobs: [{
+      id: "synthetic_job_12345678",
+      status: "queued",
+      result_url: null
+    }]
   }));
 } else if (args.includes("get")) {
   process.stdout.write(JSON.stringify({
