@@ -1341,10 +1341,31 @@ const aliasEdgeObservationSource = runner.slice(
   runner.indexOf("async function requestExactAppAliasEdgeObservation("),
   runner.indexOf("async function waitForExactAppAliasPropagation("),
 );
+const preDeployClosedAliasSource = runner.slice(
+  runner.indexOf("async function proveClosedPreDeployAppAliasSurface("),
+  runner.indexOf("function exactAliasRuntimeAccess("),
+);
 assert.doesNotMatch(propagationWaitSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
 assert.doesNotMatch(aliasEdgeObservationSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
 assert.match(aliasEdgeObservationSource, /withVercelAutomationBypass\(\{\}, true\)/);
 assert.match(aliasEdgeObservationSource, /allowDuringTermination/);
+assert.doesNotMatch(preDeployClosedAliasSource, /STAGING_ACCESS_HEADER|STAGING_ACCESS_COOKIE|withStagingAccess/);
+assert.match(
+  preDeployClosedAliasSource,
+  /requestExactAppAliasEdgeObservation\(alias, \{/,
+);
+assert.match(
+  preDeployClosedAliasSource,
+  /classifyExactAliasPropagationObservation\(noGate\)/,
+);
+assert.match(
+  preDeployClosedAliasSource,
+  /vercelAutomationBypassSecretPersistedToEvidence: false/,
+);
+assert.match(
+  preDeployClosedAliasSource,
+  /was publicly reachable before staging deployment/,
+);
 assert.match(propagationWaitSource, /post-propagation alias/);
 assert.match(propagationWaitSource, /catch \(error\)[\s\S]+throw error/);
 assert.match(propagationWaitSource, /mapping\?\.deploymentId !== deployment\.deploymentId/);

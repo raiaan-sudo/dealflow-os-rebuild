@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1124,
-  "deployableSourceSha256": "06d9e2fddc7d91ab2f0dbbc13bc50ff9de07a58f479a4c0d99d922637d978697",
+  "deployableSourceSha256": "a67abc82946bb925e06a4855e3136bd861b50e388b59472886f419b7950dba43",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 299679,
+      "size": 300078,
       "mode": 33188,
-      "sha256": "00e21d4e1268c6e30493bd1795e97f07b6acfd56b6c95f9f820383dab57fe8fa"
+      "sha256": "49bed43c44708da7f45ba249b684ab5b13882b5aa1804502fe8a3e32def73d0d"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 135276,
+      "size": 135980,
       "mode": 33188,
-      "sha256": "b9a63ead0951ecad72f2e3ff6ac46defe995d4615777dc5bce4ea11f1ed4a786"
+      "sha256": "ea41c770b3f325f3458fcec259e0cd8800fe850f21e9a8c65da5ae6b3f46e8df"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",

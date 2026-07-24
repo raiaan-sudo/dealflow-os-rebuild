@@ -43,6 +43,7 @@ import {
   EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
   EXACT_ALIAS_PROPAGATION_TIMEOUT_MS,
   ExactAliasPropagationTimeoutError,
+  classifyExactAliasPropagationObservation,
   classifyExactVercelAutomationProtectionRedirect,
   proveSequentialExactApplicationGate,
   summarizeExactAliasPropagationFailure,
@@ -2687,20 +2688,22 @@ async function proveClosedPreDeployAppAliasSurface() {
   }
   const aliases = [];
   for (const alias of EXPECTED_APP_ALIASES) {
-    const noGate = await requestExactAppAlias(alias);
-    if (
-      noGate.status !== 404 ||
-      ![
-        "VERCEL_DEPLOYMENT_NOT_FOUND",
-        "DEALFLOW_APPLICATION_GATE",
-      ].includes(noGate.disposition)
-    ) {
+    const noGate = await requestExactAppAliasEdgeObservation(alias, {
+      timeoutMs: EXACT_ALIAS_PROPAGATION_REQUEST_TIMEOUT_MS,
+    });
+    let closedSurfaceClassification;
+    try {
+      closedSurfaceClassification =
+        classifyExactAliasPropagationObservation(noGate);
+    } catch {
       throw new Error(`${alias.label} was publicly reachable before staging deployment`);
     }
     aliases.push({
       label: alias.label,
       host: alias.host,
       noGate,
+      closedSurfaceClassification,
+      vercelAutomationBypassRequired: noGate.protectionBypass !== null,
     });
   }
   return Object.freeze({
@@ -2709,6 +2712,9 @@ async function proveClosedPreDeployAppAliasSurface() {
     aliasCount: aliases.length,
     aliases,
     gateCredentialSent: false,
+    vercelAutomationBypassSecretSentOnlyToExactAlias: true,
+    vercelAutomationBypassSecretPersistedToEvidence: false,
+    exactVercelProtectionOrApplicationGateRequired: true,
     publicWindowObserved: false,
   });
 }
