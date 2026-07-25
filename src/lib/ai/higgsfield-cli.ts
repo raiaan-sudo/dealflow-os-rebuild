@@ -238,6 +238,52 @@ function parseJob(value: unknown): HiggsfieldCliJob {
   return { id, status, resultUrl };
 }
 
+function findSingleCreatedJobId(value: unknown, depth = 0) {
+  if (depth > 4) return null;
+  const candidates: string[] = [];
+  const visit = (nested: unknown, nestedDepth: number) => {
+    if (nestedDepth > 4 || !nested || typeof nested !== "object") return;
+    if (Array.isArray(nested)) {
+      for (const child of nested) visit(child, nestedDepth + 1);
+      return;
+    }
+    const record = nested as Record<string, unknown>;
+    for (const key of ["job_ids", "jobIds"]) {
+      const ids = record[key];
+      if (!Array.isArray(ids)) continue;
+      for (const id of ids) {
+        const normalized = safeText(id);
+        if (/^[A-Za-z0-9_-]{8,160}$/.test(normalized)) {
+          candidates.push(normalized);
+        }
+      }
+    }
+    for (const child of Object.values(record)) {
+      visit(child, nestedDepth + 1);
+    }
+  };
+  visit(value, depth);
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function parseCreatedJob(value: unknown): HiggsfieldCliJob {
+  try {
+    return parseJob(value);
+  } catch (error) {
+    if (!(error instanceof HiggsfieldCliError)) throw error;
+  }
+  const id = findSingleCreatedJobId(value);
+  if (!id) {
+    throw new HiggsfieldCliError(
+      "Higgsfield official CLI returned an invalid create receipt.",
+      "operator_action_required",
+    );
+  }
+  // CLI 1.1.19 returns {"job_ids":[...]} for an accepted non-waiting
+  // create. The durable status poll is the authority for every later state.
+  return { id, status: "queued", resultUrl: null };
+}
+
 function mediaExtension(contentType: string) {
   if (contentType === "image/jpeg") return "jpg";
   if (contentType === "image/webp") return "webp";
@@ -315,7 +361,7 @@ export async function createHiggsfieldCliVideoFromVerifiedImage(params: {
         "rejected",
       );
     }
-    const job = parseJob(
+    const job = parseCreatedJob(
       await runCliJson(
         params.config,
         ["generate", "create", ...args],

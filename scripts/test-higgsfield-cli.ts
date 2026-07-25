@@ -66,18 +66,22 @@ if (args.includes("cost")) {
     process.stderr.write("transport closed after dispatch\\n");
     process.exit(1);
   }
+  if (mode === "ambiguous-receipt") {
+    process.stdout.write(JSON.stringify({
+      job_ids: ["synthetic_job_12345678", "synthetic_job_87654321"]
+    }));
+    process.exit(0);
+  }
   process.stdout.write(JSON.stringify({
-    jobs: [{
-      id: "synthetic_job_12345678",
-      status: "queued",
-      result_url: null
-    }]
+    job_ids: ["synthetic_job_12345678"]
   }));
 } else if (args.includes("get")) {
   process.stdout.write(JSON.stringify({
-    id: args[args.length - 1],
-    status: "completed",
-    result_url: "https://cdn.higgsfield.ai/synthetic.mp4"
+    jobs: [{
+      id: args[args.length - 1],
+      status: "completed",
+      result_url: "https://cdn.higgsfield.ai/synthetic.mp4"
+    }]
   }));
 } else {
   process.stderr.write("unsupported test command\\n");
@@ -215,6 +219,20 @@ if (args.includes("cost")) {
       createHiggsfieldCliVideoFromVerifiedImage({
         config,
         prompt: "A bounded synthetic prompt that must preserve ambiguous provider authority.",
+        image,
+      }),
+    (error: unknown) => {
+      assert(error instanceof HiggsfieldCliError);
+      assert.equal(error.category, "operator_action_required");
+      return true;
+    },
+  );
+  await writeFile(modePath, "ambiguous-receipt\n", { mode: 0o600 });
+  await assert.rejects(
+    () =>
+      createHiggsfieldCliVideoFromVerifiedImage({
+        config,
+        prompt: "A bounded synthetic prompt that must reject multiple provider job identities.",
         image,
       }),
     (error: unknown) => {
