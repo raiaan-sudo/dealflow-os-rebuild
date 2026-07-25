@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1124,
-  "deployableSourceSha256": "6e1d5855e75dbaa80a0991803b561c23c29dab928a443301910b06c7878d3908",
+  "entryCount": 1125,
+  "deployableSourceSha256": "05965a0e0c5f74f244880fded18556a99a3e043f999a8a5ca086413511fc419f",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1500,9 +1500,9 @@
     },
     {
       "path": "scripts/test-creative-content-integrity.mjs",
-      "size": 2413,
+      "size": 2356,
       "mode": 33188,
-      "sha256": "d680a4b3d3d13c85caa6038932b860f2b49cec6b0ffee0bb85487951b0dfaf45"
+      "sha256": "7ceb750f3e6709a022e6625ee43600e1e6c83efc17c84018349bd0c25d8eeb9c"
     },
     {
       "path": "scripts/test-creative-lead-disposable-db.mjs",
@@ -4743,6 +4743,12 @@
       "size": 6059,
       "mode": 33188,
       "sha256": "9bd4de6ce3b0941fa7f023445f99e0f009e4bce0c5f10ec3cd7fda8dca2b8c2e"
+    },
+    {
+      "path": "src/lib/security/pinned-dns-lookup.ts",
+      "size": 757,
+      "mode": 33188,
+      "sha256": "b384c19f353bee14329db4ce34ca1156712dcf749066ab3b20968a99c13f2171"
     },
     {
       "path": "src/lib/security/public-network-address.ts",

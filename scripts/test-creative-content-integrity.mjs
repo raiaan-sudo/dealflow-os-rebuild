@@ -42,7 +42,7 @@ for (const address of [
 }
 
 assert.match(creativeSource, /addresses\.some\(\(entry\) => !isPublicCreativeAddress\(entry\.address\)\)/);
-assert.match(creativeSource, /lookup: \(_hostname, _options, callback\) => callback\(null, resolved\.address, resolved\.family\)/);
+assert.match(creativeSource, /lookup: createPinnedDnsLookup\(resolved\)/);
 assert.match(creativeSource, /resolved = await resolvePinnedCreativeUrl\(result\.redirect, lookupDns\)/);
 assert.match(creativeSource, /MAX_REDIRECTS = 3/);
 assert.match(creativeSource, /MAX_CREATIVE_BYTES = 12 \* 1024 \* 1024/);
