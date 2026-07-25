@@ -214,7 +214,7 @@ try {
   assert.match(storageSource, /\.info\(params\.storagePath\)/);
   assert.match(storageSource, /lookupDns\(url\.hostname, \{ all: true, verbatim: true \}\)/);
   assert.match(storageSource, /addresses\.some\(\(entry\) => !isPublicNetworkAddress\(entry\.address\)\)/);
-  assert.match(storageSource, /lookup: \(_hostname, _options, callback\) =>/);
+  assert.match(storageSource, /lookup: createPinnedDnsLookup\(resolved\)/);
   assert.match(storageSource, /upsert: false/);
   assert.match(storageSource, /bind_generated_video_storage_v1/);
   assert.match(storageSource, /Never remove after the binding RPC was attempted/);

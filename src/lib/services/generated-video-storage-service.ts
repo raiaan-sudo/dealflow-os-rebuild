@@ -11,6 +11,10 @@ import {
 } from "@/lib/services/creative-asset-storage-identity";
 import type { Database } from "@/lib/supabase/types";
 import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
+import {
+  createPinnedDnsLookup,
+  selectPreferredDnsAddress,
+} from "@/lib/security/pinned-dns-lookup";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   GENERATED_VIDEO_MAX_BYTES,
@@ -307,8 +311,8 @@ type PinnedGeneratedVideoUrl = {
 export function selectPreferredGeneratedVideoAddress(
   addresses: readonly { address: string; family: number }[],
 ) {
-  const selected = addresses.find((entry) => entry.family === 4) ?? addresses[0];
-  if (!selected || (selected.family !== 4 && selected.family !== 6)) {
+  const selected = selectPreferredDnsAddress(addresses);
+  if (!selected) {
     throw new ApiError(
       502,
       "Generated video host did not resolve to a supported address family.",
@@ -317,7 +321,7 @@ export function selectPreferredGeneratedVideoAddress(
   }
   return {
     address: selected.address,
-    family: selected.family as 4 | 6,
+    family: selected.family,
   };
 }
 
@@ -447,8 +451,7 @@ function requestPinnedGeneratedVideo(
         "Accept-Encoding": "identity",
         "User-Agent": "DealFlow-Generated-Video-Import/1",
       },
-      lookup: (_hostname, _options, callback) =>
-        callback(null, resolved.address, resolved.family),
+      lookup: createPinnedDnsLookup(resolved),
       timeout: timeoutMs,
     }, async (response) => {
       const status = response.statusCode ?? 0;

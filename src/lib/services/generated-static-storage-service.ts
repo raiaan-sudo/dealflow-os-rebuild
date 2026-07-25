@@ -15,6 +15,10 @@ import {
   GENERATED_STATIC_STORAGE_BUCKET,
 } from "@/lib/services/creative-asset-storage-identity";
 import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
+import {
+  createPinnedDnsLookup,
+  selectPreferredDnsAddress,
+} from "@/lib/security/pinned-dns-lookup";
 
 const GENERATED_STATIC_FETCH_TIMEOUT_MS = 30_000;
 const GENERATED_STATIC_MAX_REDIRECTS = 2;
@@ -263,7 +267,11 @@ async function resolvePinnedUrl(value: string, timeoutMs: number) {
   if (addresses.length === 0 || addresses.some((entry) => !isPublicNetworkAddress(entry.address))) {
     throw new ApiError(502, "Generated image host could not be verified as public.", "generated_static_host_forbidden");
   }
-  return { url, address: addresses[0]!.address, family: addresses[0]!.family as 4 | 6 };
+  const selected = selectPreferredDnsAddress(addresses);
+  if (!selected) {
+    throw new ApiError(502, "Generated image host did not resolve to a supported address family.", "generated_static_host_forbidden");
+  }
+  return { url, ...selected };
 }
 
 function consumePinnedResponse(response: IncomingMessage, request: ReturnType<typeof httpsRequest>) {
@@ -321,7 +329,7 @@ function requestPinnedUrl(resolved: Awaited<ReturnType<typeof resolvePinnedUrl>>
         "Accept-Encoding": "identity",
         "User-Agent": "DealFlow-Generated-Static-Import/1",
       },
-      lookup: (_hostname, _options, callback) => callback(null, resolved.address, resolved.family),
+      lookup: createPinnedDnsLookup(resolved),
       timeout: timeoutMs,
     }, async (response) => {
       const status = response.statusCode ?? 0;

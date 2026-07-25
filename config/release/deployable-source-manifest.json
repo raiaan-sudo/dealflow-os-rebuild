@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1124,
-  "deployableSourceSha256": "146219cea5f6347a8c0cb880dfb38c131cd4749b3b35d496b6fee164e1347edf",
+  "deployableSourceSha256": "6e1d5855e75dbaa80a0991803b561c23c29dab928a443301910b06c7878d3908",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1614,9 +1614,9 @@
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
-      "size": 15429,
+      "size": 16215,
       "mode": 33188,
-      "sha256": "c185db651c7cdd0b438be673eb017b7ce4ee8588b34e641bdc7b2c7b1cf97e51"
+      "sha256": "1a8cef5398cd30df50a92d3c3be09604ec1a77587577f0fe7dcc9c60ea243915"
     },
     {
       "path": "scripts/test-ghl-booking-handoff-contract.mjs",
@@ -1776,9 +1776,9 @@
     },
     {
       "path": "scripts/test-higgsfield-provider.ts",
-      "size": 10116,
+      "size": 10113,
       "mode": 33188,
-      "sha256": "e2f12108cfb22a2f54a34f63f272828502c05a7ce2670eb54f3408ab9fd0abcc"
+      "sha256": "e04c0476cd72c88f934db47e5430777f12c2feaeb0ff16f14d81a703c0fcddae"
     },
     {
       "path": "scripts/test-higgsfield-source-proxy.ts",
@@ -4062,9 +4062,9 @@
     },
     {
       "path": "src/lib/creative-content-integrity.ts",
-      "size": 8328,
+      "size": 8558,
       "mode": 33188,
-      "sha256": "1e4b58219d9533c2d465c0c7e1a390cf92414d832d40af688c9dc86c815eb773"
+      "sha256": "6c7c8b803764eccfd06bd5a7c1fdec4c15e92259c3923b648ad363bc994ce845"
     },
     {
       "path": "src/lib/dashboard/campaign-delivery-metrics.ts",
@@ -5058,15 +5058,15 @@
     },
     {
       "path": "src/lib/services/generated-static-storage-service.ts",
-      "size": 20272,
+      "size": 20482,
       "mode": 33188,
-      "sha256": "1da842d8ed08959d848404acd983d89f3ac2497838a8f7c620155dc90c6150c9"
+      "sha256": "1e389a5d508c8726553771774c4ee23e586c5f9b0dda69f890d4f3b92e9a30f9"
     },
     {
       "path": "src/lib/services/generated-video-storage-service.ts",
-      "size": 29648,
+      "size": 29607,
       "mode": 33188,
-      "sha256": "a1e3d5efc4ea7b7286a8c725c8dd5a830c0e04b809b5ebcab60c2d132e024acb"
+      "sha256": "761f66b40f0b73f5c97c2adc93b8bfe72d4b98d4f9947735214f9d20abef37da"
     },
     {
       "path": "src/lib/services/ghl-fake-lead-outbox-service.ts",

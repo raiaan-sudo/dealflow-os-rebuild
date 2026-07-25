@@ -8,6 +8,10 @@ import { isIP } from "node:net";
 import { ApiError } from "@/lib/api/route";
 import { getPublicAppUrl } from "@/lib/env";
 import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
+import {
+  createPinnedDnsLookup,
+  selectPreferredDnsAddress,
+} from "@/lib/security/pinned-dns-lookup";
 
 const MAX_CREATIVE_BYTES = 12 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
@@ -56,7 +60,11 @@ async function resolvePinnedCreativeUrl(value: string, lookup: Lookup) {
   if (!addresses.length || addresses.some((entry) => !isPublicCreativeAddress(entry.address))) {
     throw new ApiError(409, "The selected creative host could not be verified as public.", "meta_creative_asset_identity_invalid");
   }
-  return { url, address: addresses[0]!.address, family: addresses[0]!.family };
+  const selected = selectPreferredDnsAddress(addresses);
+  if (!selected) {
+    throw new ApiError(409, "The selected creative host did not resolve to a supported address family.", "meta_creative_asset_identity_invalid");
+  }
+  return { url, ...selected };
 }
 
 type VerifiedCreativeImage = {
@@ -147,7 +155,7 @@ async function requestPinnedImage(
     const request = httpsRequest(resolved.url, {
       method: "GET",
       headers: { Accept: "image/*", "User-Agent": "DealFlow-Creative-Integrity/1" },
-      lookup: (_hostname, _options, callback) => callback(null, resolved.address, resolved.family),
+      lookup: createPinnedDnsLookup(resolved),
       timeout: 15_000,
     }, async (response) => {
       const status = response.statusCode ?? 0;

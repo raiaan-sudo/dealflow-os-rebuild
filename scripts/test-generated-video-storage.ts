@@ -13,6 +13,7 @@ import {
   validateCreativeAssetContent,
   validateManualCreativeAssetFile,
 } from "../src/lib/services/creative-asset-content-validation";
+import { createPinnedDnsLookup } from "../src/lib/security/pinned-dns-lookup";
 
 const ids = {
   organizationId: "10000000-0000-4000-8000-000000000001",
@@ -161,6 +162,35 @@ function createStorageHarness(publicOrigin: string, options?: { failBinding?: bo
 }
 
 async function main() {
+  const pinned = createPinnedDnsLookup({
+    address: "203.0.113.10",
+    family: 4,
+  });
+  await new Promise<void>((resolve, reject) => {
+    pinned("provider.example", { all: true }, (error, addresses) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      assert.deepEqual(addresses, [{
+        address: "203.0.113.10",
+        family: 4,
+      }]);
+      resolve();
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    pinned("provider.example", { all: false }, (error, address, family) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      assert.equal(address, "203.0.113.10");
+      assert.equal(family, 4);
+      resolve();
+    });
+  });
+
   assert.deepEqual(
     selectPreferredGeneratedVideoAddress([
       { address: "2001:db8::10", family: 6 },
