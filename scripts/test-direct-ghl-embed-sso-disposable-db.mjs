@@ -73,10 +73,10 @@ try {
       if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
       if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role nologin; end if;
     end $$;
-    create schema auth;
-    create function auth.role() returns text language sql stable
+    create schema if not exists auth;
+    create or replace function auth.role() returns text language sql stable
       as $$ select nullif(current_setting('request.jwt.claim.role',true),'') $$;
-    create table auth.users(
+    create table if not exists auth.users(
       id uuid primary key, email text, email_confirmed_at timestamptz,
       banned_until timestamptz, deleted_at timestamptz, is_anonymous boolean default false
     );

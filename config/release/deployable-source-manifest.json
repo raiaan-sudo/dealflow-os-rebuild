@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1125,
-  "deployableSourceSha256": "8dbff0427a5c9d914e3d9a2558f966ff16a4f0d549b23d7fb67ec3e94415b487",
+  "deployableSourceSha256": "c4b24e6783ad01de2d7f812b2bfc713ebd89d006da3e092fe61351a80158cb13",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1560,9 +1560,9 @@
     },
     {
       "path": "scripts/test-direct-ghl-embed-sso-disposable-db.mjs",
-      "size": 8722,
+      "size": 8761,
       "mode": 33188,
-      "sha256": "5f27b15e71cae60e99b5ace8b1c741e8bd408a1e689a79bd2b42de39d3846f23"
+      "sha256": "3ec75fabdf0d37f4c74db06110ce700138a8cf830d4fea3998ffc824ca7d817d"
     },
     {
       "path": "scripts/test-disposable-postgres-harness-contract.mjs",
