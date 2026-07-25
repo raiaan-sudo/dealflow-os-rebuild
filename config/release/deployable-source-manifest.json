@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1124,
-  "deployableSourceSha256": "02443425cb800a774596e3a120d1cf98416b2c0522bbaf0a2a009883b3141820",
+  "deployableSourceSha256": "146219cea5f6347a8c0cb880dfb38c131cd4749b3b35d496b6fee164e1347edf",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1614,9 +1614,9 @@
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
-      "size": 14687,
+      "size": 15429,
       "mode": 33188,
-      "sha256": "4b74cd4907fa533a9a0aa284d1c1c6bc254cc8ca2dc22434fed57c27c4fb5a4d"
+      "sha256": "c185db651c7cdd0b438be673eb017b7ce4ee8588b34e641bdc7b2c7b1cf97e51"
     },
     {
       "path": "scripts/test-ghl-booking-handoff-contract.mjs",
@@ -5064,9 +5064,9 @@
     },
     {
       "path": "src/lib/services/generated-video-storage-service.ts",
-      "size": 28870,
+      "size": 29648,
       "mode": 33188,
-      "sha256": "1420a37fb63030c75069e58edadf8467cdcdc317fcf0808701ea87d130c68a93"
+      "sha256": "a1e3d5efc4ea7b7286a8c725c8dd5a830c0e04b809b5ebcab60c2d132e024acb"
     },
     {
       "path": "src/lib/services/ghl-fake-lead-outbox-service.ts",

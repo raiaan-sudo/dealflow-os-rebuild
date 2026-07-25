@@ -304,6 +304,23 @@ type PinnedGeneratedVideoUrl = {
   family: 4 | 6;
 };
 
+export function selectPreferredGeneratedVideoAddress(
+  addresses: readonly { address: string; family: number }[],
+) {
+  const selected = addresses.find((entry) => entry.family === 4) ?? addresses[0];
+  if (!selected || (selected.family !== 4 && selected.family !== 6)) {
+    throw new ApiError(
+      502,
+      "Generated video host did not resolve to a supported address family.",
+      "generated_video_host_forbidden",
+    );
+  }
+  return {
+    address: selected.address,
+    family: selected.family as 4 | 6,
+  };
+}
+
 async function resolvePinnedGeneratedVideoUrl(
   value: string,
   providerName: VideoProviderName,
@@ -335,11 +352,14 @@ async function resolvePinnedGeneratedVideoUrl(
       "generated_video_host_forbidden",
     );
   }
-  const selected = addresses[0]!;
+  // Some provider CDNs return IPv6 records first even in runtimes without a
+  // usable IPv6 route. Prefer a verified-public IPv4 address when available,
+  // while retaining IPv6 as the fail-closed fallback for IPv6-only hosts.
+  const selected = selectPreferredGeneratedVideoAddress(addresses);
   return {
     url,
     address: selected.address,
-    family: selected.family as 4 | 6,
+    family: selected.family,
   };
 }
 

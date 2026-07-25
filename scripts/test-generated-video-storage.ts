@@ -5,7 +5,10 @@ import {
   GENERATED_VIDEO_STORAGE_BUCKET,
   isCanonicalGeneratedVideoStorageIdentity,
 } from "../src/lib/services/creative-asset-storage-identity";
-import { importGeneratedVideoToCanonicalStorage } from "../src/lib/services/generated-video-storage-service";
+import {
+  importGeneratedVideoToCanonicalStorage,
+  selectPreferredGeneratedVideoAddress,
+} from "../src/lib/services/generated-video-storage-service";
 import {
   validateCreativeAssetContent,
   validateManualCreativeAssetFile,
@@ -158,6 +161,28 @@ function createStorageHarness(publicOrigin: string, options?: { failBinding?: bo
 }
 
 async function main() {
+  assert.deepEqual(
+    selectPreferredGeneratedVideoAddress([
+      { address: "2001:db8::10", family: 6 },
+      { address: "203.0.113.10", family: 4 },
+    ]),
+    { address: "203.0.113.10", family: 4 },
+    "generated-video transport did not prefer IPv4 when a provider CDN returned IPv6 first",
+  );
+  assert.deepEqual(
+    selectPreferredGeneratedVideoAddress([
+      { address: "2001:db8::10", family: 6 },
+    ]),
+    { address: "2001:db8::10", family: 6 },
+    "generated-video transport did not retain the IPv6-only fallback",
+  );
+  assert.throws(
+    () => selectPreferredGeneratedVideoAddress([
+      { address: "unsupported", family: 0 },
+    ]),
+    /supported address family/,
+  );
+
   for (const [bytes, declaredMimeType, kind, expectedMimeType] of [
     [png, "image/png", "image", "image/png"],
     [jpeg, "image/jpeg", "image", "image/jpeg"],
