@@ -179,7 +179,7 @@ function exactRedirectUri(input: string) {
 export function getGhlMarketplaceApplicationConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ) {
-  const appId = requiredProviderId(value(environment.GHL_MARKETPLACE_APP_ID), "ghl_marketplace_app_id_invalid");
+  const { appId } = getGhlMarketplaceWebhookConfig(environment);
   const clientId = value(environment.GHL_MARKETPLACE_CLIENT_ID);
   const clientSecret = value(environment.GHL_MARKETPLACE_CLIENT_SECRET);
   if (!/^[A-Za-z0-9_-]{8,200}$/.test(clientId) || clientSecret.length < 20 || clientSecret.length > 2_048) {
@@ -198,6 +198,16 @@ export function getGhlMarketplaceApplicationConfig(
     throw new ApiError(503, "GHL Marketplace encryption authority is unavailable.", "ghl_marketplace_encryption_authority_invalid");
   }
   return Object.freeze({ appId, clientId, clientSecret, scopes, redirectUri, installUrl, encodedEncryptionKey, keyVersion });
+}
+
+export function getGhlMarketplaceWebhookConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  const appId = requiredProviderId(
+    value(environment.GHL_MARKETPLACE_APP_ID),
+    "ghl_marketplace_app_id_invalid",
+  );
+  return Object.freeze({ appId });
 }
 
 export function assertGhlMarketplaceProviderEffectsAllowed(
@@ -386,7 +396,11 @@ export async function acceptGhlMarketplaceRuntimeEvent(
   rawBody: string,
   providerEnvironment: GhlLifecycleEnvironment,
 ) {
-  const config = getGhlMarketplaceApplicationConfig();
+  // Provider lifecycle webhooks are already authenticated by the dedicated
+  // webhook signature gate. They need only the immutable app identity; OAuth
+  // client credentials and token-encryption authority remain mandatory only
+  // for outbound OAuth/token operations.
+  const config = getGhlMarketplaceWebhookConfig();
   const event = parseGhlMarketplaceLifecycleEvent(rawBody, config.appId);
   const admin = createAdminClient();
   if (!admin) throw new ApiError(503, "GHL Marketplace persistence is unavailable.", "service_role_missing");

@@ -11,8 +11,28 @@ const root = process.cwd();
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-ghl-runtime-contract-"));
 const tsc = path.join(root, "node_modules", ".bin", "tsc");
 const source = "src/lib/integrations/gohighlevel/marketplace-runtime-contract.ts";
+const runtimeServiceSource = fs.readFileSync(
+  path.join(root, "src/lib/services/ghl-marketplace-runtime-service.ts"),
+  "utf8",
+);
 
 try {
+  assert.match(
+    runtimeServiceSource,
+    /export function getGhlMarketplaceWebhookConfig\([\s\S]*?GHL_MARKETPLACE_APP_ID[\s\S]*?return Object\.freeze\(\{ appId \}\);/,
+    "signed Marketplace lifecycle webhooks must require only the immutable app identity",
+  );
+  assert.match(
+    runtimeServiceSource,
+    /acceptGhlMarketplaceRuntimeEvent\([\s\S]*?const config = getGhlMarketplaceWebhookConfig\(\);/,
+    "Marketplace lifecycle ingestion must not require outbound OAuth credentials",
+  );
+  assert.doesNotMatch(
+    runtimeServiceSource,
+    /acceptGhlMarketplaceRuntimeEvent\([\s\S]{0,400}?getGhlMarketplaceApplicationConfig\(\)/,
+    "Marketplace lifecycle ingestion must remain decoupled from OAuth client secrets",
+  );
+
   const compile = spawnSync(tsc, [
     "--pretty", "false", "--target", "ES2022", "--module", "commonjs",
     "--moduleResolution", "node", "--strict", "--esModuleInterop", "--skipLibCheck",

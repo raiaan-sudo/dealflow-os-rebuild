@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1125,
-  "deployableSourceSha256": "05965a0e0c5f74f244880fded18556a99a3e043f999a8a5ca086413511fc419f",
+  "deployableSourceSha256": "8dbff0427a5c9d914e3d9a2558f966ff16a4f0d549b23d7fb67ec3e94415b487",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1704,9 +1704,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-runtime-contract.mjs",
-      "size": 12495,
+      "size": 13362,
       "mode": 33188,
-      "sha256": "7ee24d08bbe5ccfbb1213e3b1fed56d78b98b8e06c8c588331f62024d129c4c8"
+      "sha256": "7c6a20f8d062fd1b0315f21c95f00dba95e06cc616ad09531a9598a73ec0f417"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
@@ -5106,9 +5106,9 @@
     },
     {
       "path": "src/lib/services/ghl-marketplace-runtime-service.ts",
-      "size": 34026,
+      "size": 34538,
       "mode": 33188,
-      "sha256": "c840ed1b4a081f4b45d45a210ee7596471afd149d96679f617a1112d269d04f7"
+      "sha256": "8c12eb781f1fe69f84220f65cb38f98cdf27b068c1f2530a5a34aebc16ab9325"
     },
     {
       "path": "src/lib/services/ghl-periodic-form-sweep-service.ts",
