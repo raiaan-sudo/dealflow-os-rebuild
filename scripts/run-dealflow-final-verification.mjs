@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 126;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 127;
 const REQUIRED_FINAL_MIGRATION =
-  "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql";
+  "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",

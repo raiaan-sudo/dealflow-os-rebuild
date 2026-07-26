@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  createEnvironmentGhlCredentialResolver,
   createGhlProductionAdapter,
   createProductionEnvironmentGhlCredentialResolver,
   evaluateGhlProductionGate,
@@ -28,6 +27,7 @@ import { processGhlPersonalizationWorkerBatch } from "./ghl-personalization-serv
 import { processGhlInboundFormReconciliationBatch } from "./ghl-inbound-form-reconciliation-service";
 import { processGhlPeriodicFormSweepBatch } from "./ghl-periodic-form-sweep-service";
 import { isolateGhlProviderWorkerComponent } from "./ghl-provider-worker-isolation";
+import { createGhlMarketplaceAwareCredentialResolver } from "./ghl-marketplace-credential-resolver";
 
 type JsonRecord = Record<string, unknown>;
 type Client = SupabaseClient<Database> & {
@@ -128,13 +128,19 @@ export async function processGhlProvisioningWorkerBatch(input: {
       const provider = input.environment === "production"
         ? createGhlProductionAdapter({
           credentialRef,
-          credentialResolver: createProductionEnvironmentGhlCredentialResolver(),
+          credentialResolver: createGhlMarketplaceAwareCredentialResolver({
+            client: input.client as any,
+            providerEnvironment: "production",
+          }),
           gate: input.productionGate!,
           companyId,
         })
         : new GhlSandboxAdapter({
           credentialRef,
-          credentialResolver: createEnvironmentGhlCredentialResolver(),
+          credentialResolver: createGhlMarketplaceAwareCredentialResolver({
+            client: input.client as any,
+            providerEnvironment: "sandbox",
+          }),
           gate: input.sandboxGate!,
           companyId,
         });
@@ -251,7 +257,11 @@ export async function processGhlPeriodicFormSweepFromEnvironment(input: {
     deadlineAtMs: input.deadlineAtMs,
     providerFactory: (authority) => new GhlSandboxAdapter({
       credentialRef: authority.credentialRef,
-      credentialResolver: createEnvironmentGhlCredentialResolver(environment),
+      credentialResolver: createGhlMarketplaceAwareCredentialResolver({
+        client: client as any,
+        providerEnvironment: "sandbox",
+        environment,
+      }),
       gate,
       httpClient: createGhlInboundReadHttpClient(gate.baseUrl),
       companyId: authority.providerAgencyId,
@@ -370,7 +380,11 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
     maxItems: Math.min(input.maxReconciliationItems ?? 1, 1),
     providerFactory: (authority) => new GhlSandboxAdapter({
       credentialRef: authority.credentialRef,
-      credentialResolver: createEnvironmentGhlCredentialResolver(environment),
+      credentialResolver: createGhlMarketplaceAwareCredentialResolver({
+        client: client as any,
+        providerEnvironment: "sandbox",
+        environment,
+      }),
       gate: sandboxGate,
       httpClient: createGhlInboundReadHttpClient(sandboxGate.baseUrl),
       companyId: authority.providerAgencyId,
@@ -383,7 +397,11 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
       gate: sandboxGate,
       providerFactory: (authority) => new GhlSandboxAdapter({
         credentialRef: authority.credentialRef,
-        credentialResolver: createEnvironmentGhlCredentialResolver(environment),
+        credentialResolver: createGhlMarketplaceAwareCredentialResolver({
+          client: client as any,
+          providerEnvironment: "sandbox",
+          environment,
+        }),
         gate: sandboxGate,
         companyId: authority.providerAgencyId,
       }),
@@ -402,7 +420,11 @@ export async function processGhlProviderWorkerFromEnvironment(input: {
     maxItems: input.maxProvisioningSteps,
     providerFactory: (authority) => new GhlSandboxAdapter({
       credentialRef: authority.credentialRef,
-      credentialResolver: createEnvironmentGhlCredentialResolver(environment),
+      credentialResolver: createGhlMarketplaceAwareCredentialResolver({
+        client: client as any,
+        providerEnvironment: "sandbox",
+        environment,
+      }),
       gate: sandboxGate,
       companyId: authority.providerAgencyId,
     }),

@@ -39,6 +39,7 @@ const PUBLIC_PATHS = new Set([
   "/terms",
   "/data-deletion",
   "/crm/embed",
+  "/crm/connect",
   "/ghl/embed",
   "/access/checkout",
   "/access-key/success",

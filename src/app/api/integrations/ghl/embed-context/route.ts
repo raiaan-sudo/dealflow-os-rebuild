@@ -8,7 +8,9 @@ import {
 } from "@/lib/api/rate-limit";
 import { isExplicitNonProductionDeployment } from "@/lib/deployment-target";
 import { getSupabaseEnv, isInternalAdminEmail } from "@/lib/env";
+import { resolveGhlLifecycleEnvironment } from "@/lib/integrations/gohighlevel/lifecycle-gate";
 import { decryptGhlSignedUserContext } from "@/lib/integrations/gohighlevel/signed-user-context";
+import { createGhlMarketplaceEmbedBootstrapClaim } from "@/lib/services/ghl-marketplace-runtime-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -215,6 +217,8 @@ export async function POST(request: Request) {
     const allowedEnvironments = nonProductionDeployment
       ? ["sandbox", "test"]
       : ["production"];
+    const payloadDigest = await createGhlEmbedSignedContextDigest(body.encryptedData);
+    if (!payloadDigest) return deny("ghl_embed_context_digest_unavailable", 503);
 
     const mappingResult = await bindPartnerId(
       (admin as any)
@@ -226,8 +230,54 @@ export async function POST(request: Request) {
       hostContext.partnerId,
     ).limit(2);
     const mappings = rows(mappingResult.data);
-    if (mappingResult.error || mappings.length !== 1) {
+    if (mappingResult.error || mappings.length > 1) {
       return deny("ghl_embed_location_unbound");
+    }
+    if (mappings.length === 0) {
+      const provisioningResult = await bindPartnerId(
+        (admin as any)
+          .from("ghl_location_mappings")
+          .select("id,status")
+          .eq("provider_location_id", signedContext.activeLocation)
+          .eq("status", "provisioning")
+          .in("environment", allowedEnvironments),
+        hostContext.partnerId,
+      ).limit(2);
+      const provisioningMappings = rows(provisioningResult.data);
+      if (provisioningResult.error || provisioningMappings.length > 1) {
+        return deny("ghl_embed_location_unbound");
+      }
+      if (provisioningMappings.length === 1) {
+        return NextResponse.json(
+          {
+            status: "connection_pending",
+            code: "ghl_embed_connection_pending",
+          },
+          {
+            status: 202,
+            headers: { "Cache-Control": "no-store, max-age=0" },
+          },
+        );
+      }
+      const claim = await createGhlMarketplaceEmbedBootstrapClaim({
+        providerEnvironment: resolveGhlLifecycleEnvironment(),
+        partnerId: hostContext.partnerId,
+        domain: hostContext.domain,
+        companyId: signedContext.companyId,
+        locationId: signedContext.activeLocation,
+        userId: signedContext.userId,
+        normalizedEmail: signedContext.email,
+        parentOrigin,
+        payloadDigest,
+      });
+      return NextResponse.json(
+        {
+          status: "connection_required",
+          nextPath: claim.nextPath,
+          claimToken: claim.claimToken,
+        },
+        { headers: { "Cache-Control": "no-store, max-age=0" } },
+      );
     }
     const mapping = mappings[0] as Record<string, unknown>;
 
@@ -337,9 +387,6 @@ export async function POST(request: Request) {
 
     const organizationId = String(mapping.organization_id);
     const partnerId = hostContext.partnerId;
-    const payloadDigest = await createGhlEmbedSignedContextDigest(body.encryptedData);
-    if (!payloadDigest) return deny("ghl_embed_context_digest_unavailable", 503);
-
     const authorityValid = await verifyPasswordlessEmbedAuthority({
       admin,
       userId: boundDealflowUserId,

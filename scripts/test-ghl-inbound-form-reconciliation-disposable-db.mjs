@@ -10,9 +10,9 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const EXPECTED_MIGRATION_COUNT = 126;
+const EXPECTED_MIGRATION_COUNT = 127;
 const TARGET_MIGRATION = "20260713022000_reconcile_native_ghl_form_submissions.sql";
-const REQUIRED_FINAL_MIGRATION = "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql";
+const REQUIRED_FINAL_MIGRATION = "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql";
 const TRANSACTION_OWNING_MIGRATION = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = readdirSync(MIGRATIONS)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))

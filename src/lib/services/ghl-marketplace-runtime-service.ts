@@ -23,12 +23,17 @@ import {
 } from "@/lib/integrations/gohighlevel/marketplace-runtime-contract";
 import type { GhlLifecycleEnvironment } from "@/lib/integrations/gohighlevel/lifecycle-gate";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  createGhlEmbedBootstrapClaim,
+  verifyGhlEmbedBootstrapClaim,
+} from "@/lib/white-label/ghl-embed-capability";
 
 export const GHL_MARKETPLACE_STATE_COOKIE = "df_ghl_marketplace_state";
 export const GHL_MARKETPLACE_PROVIDER_ATTESTATION = "DEALFLOW_GHL_MARKETPLACE_EXACT_V1";
 export const GHL_MARKETPLACE_SYNTHETIC_ACCOUNT_ATTESTATION =
   "DEALFLOW_GHL_MARKETPLACE_SYNTHETIC_ACCOUNT_V1";
 const STATE_TTL_MS = 10 * 60_000;
+const BOOTSTRAP_CLAIM_TTL_MS = 5 * 60_000;
 const REFRESH_TTL_MS = 365 * 24 * 60 * 60_000;
 const REFRESH_AMBIGUITY_FENCE_TIMEOUT_MS = 3_000;
 
@@ -228,6 +233,208 @@ export function assertGhlMarketplaceProviderEffectsAllowed(
   return true;
 }
 
+export async function createGhlMarketplaceEmbedBootstrapClaim(input: {
+  providerEnvironment: GhlLifecycleEnvironment;
+  partnerId: string | null;
+  domain: string;
+  companyId: string;
+  locationId: string;
+  userId: string;
+  normalizedEmail: string;
+  parentOrigin: string;
+  payloadDigest: string;
+  now?: Date;
+}) {
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(
+      503,
+      "GHL Marketplace persistence is unavailable.",
+      "service_role_missing",
+    );
+  }
+  const { appId } = getGhlMarketplaceWebhookConfig();
+  const now = input.now ?? new Date();
+  const environment = input.providerEnvironment === "production" ? "production" : "sandbox";
+  const payloadFingerprint = `sha256:${input.payloadDigest}`;
+  const { data, error } = await (admin as any).rpc(
+    "register_ghl_marketplace_embed_bootstrap_claim_v1",
+    {
+      p_environment: environment,
+      p_partner_id: input.partnerId,
+      p_app_fingerprint: fingerprintGhlAuthorityValue(appId),
+      p_company_fingerprint: fingerprintGhlAuthorityValue(input.companyId),
+      p_location_fingerprint: fingerprintGhlAuthorityValue(input.locationId),
+      p_user_fingerprint: fingerprintGhlAuthorityValue(input.userId),
+      p_email_fingerprint: fingerprintGhlAuthorityValue(input.normalizedEmail),
+      p_parent_origin_fingerprint: fingerprintGhlAuthorityValue(input.parentOrigin),
+      p_payload_fingerprint: payloadFingerprint,
+      p_provider_company_id: input.companyId,
+      p_provider_location_id: input.locationId,
+      p_provider_user_id: input.userId,
+      p_expires_at: new Date(now.getTime() + BOOTSTRAP_CLAIM_TTL_MS).toISOString(),
+      p_now: now.toISOString(),
+    },
+  );
+  const claimId = value(data);
+  if (error || !claimId) {
+    throw new ApiError(
+      409,
+      "The GHL workspace connection could not be prepared.",
+      "ghl_marketplace_bootstrap_claim_failed",
+    );
+  }
+  const claimToken = await createGhlEmbedBootstrapClaim({
+    claimId,
+    payloadDigest: input.payloadDigest,
+    partnerId: input.partnerId,
+    domain: input.domain,
+  }, Math.floor(now.getTime() / 1_000));
+  if (!claimToken) {
+    throw new ApiError(
+      503,
+      "The GHL workspace connection authority is unavailable.",
+      "ghl_marketplace_bootstrap_token_failed",
+    );
+  }
+  return { claimToken, nextPath: "/crm/connect" };
+}
+
+async function createGhlMarketplaceOAuthState(input: {
+  admin: any;
+  userId: string;
+  organizationId: string;
+  providerEnvironment: GhlLifecycleEnvironment;
+  installationId: string;
+  mappingId: string | null;
+  partnerId: string | null;
+  companyId: string;
+  locationId: string | null;
+  installScope: "company" | "location";
+  returnPath: unknown;
+  reconnectRequested: boolean;
+  now?: Date;
+}) {
+  const config = getGhlMarketplaceApplicationConfig();
+  const state = randomBytes(32).toString("base64url");
+  const now = input.now ?? new Date();
+  const expiresAt = new Date(now.getTime() + STATE_TTL_MS).toISOString();
+  const returnPath = normalizeGhlMarketplaceReturnPath(input.returnPath);
+  const locationScope = input.installScope === "location";
+  const databaseEnvironment = input.providerEnvironment === "production" ? "production" : "sandbox";
+  const { data, error } = await input.admin.rpc("create_ghl_marketplace_oauth_state_v2", {
+    p_organization_id: input.organizationId,
+    p_initiated_by_user_id: input.userId,
+    p_partner_id: input.partnerId,
+    p_environment: databaseEnvironment,
+    p_state_hash: fingerprintGhlAuthorityValue(state),
+    p_installation_id: input.installationId,
+    p_location_mapping_id: locationScope ? input.mappingId : null,
+    p_install_scope: input.installScope,
+    p_app_fingerprint: fingerprintGhlAuthorityValue(config.appId),
+    p_account_fingerprint: fingerprintGhlAuthorityValue(
+      locationScope ? value(input.locationId) : input.companyId,
+    ),
+    p_scope_fingerprint: fingerprintGhlScopes(config.scopes),
+    p_company_fingerprint: fingerprintGhlAuthorityValue(input.companyId),
+    p_location_fingerprint: locationScope
+      ? fingerprintGhlAuthorityValue(value(input.locationId))
+      : null,
+    p_redirect_uri_fingerprint: fingerprintGhlAuthorityValue(config.redirectUri),
+    p_return_path: returnPath,
+    p_reconnect_requested: input.reconnectRequested,
+    p_expires_at: expiresAt,
+  });
+  if (error || !value(data)) {
+    throw new ApiError(
+      409,
+      "The GHL connection could not be started.",
+      "ghl_marketplace_state_create_failed",
+    );
+  }
+  return {
+    state,
+    expiresAt,
+    installUrl: config.installUrl,
+    returnPath,
+  };
+}
+
+export async function createGhlMarketplaceBootstrapConnectBinding(input: {
+  claimToken: string;
+  userId: string;
+  organizationId: string;
+  providerEnvironment: GhlLifecycleEnvironment;
+  returnPath: unknown;
+  now?: Date;
+}) {
+  const claim = await verifyGhlEmbedBootstrapClaim(input.claimToken, {
+    nowSeconds: input.now ? Math.floor(input.now.getTime() / 1_000) : undefined,
+  });
+  if (!claim) {
+    throw new ApiError(
+      400,
+      "The GHL workspace connection claim is invalid or expired.",
+      "ghl_marketplace_bootstrap_claim_invalid",
+    );
+  }
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(
+      503,
+      "GHL Marketplace persistence is unavailable.",
+      "service_role_missing",
+    );
+  }
+  assertGhlMarketplaceProviderEffectsAllowed(input.providerEnvironment);
+  const now = input.now ?? new Date();
+  const { data, error } = await (admin as any).rpc(
+    "consume_ghl_marketplace_embed_bootstrap_claim_v1",
+    {
+      p_claim_id: claim.claimId,
+      p_payload_fingerprint: `sha256:${claim.payloadDigest}`,
+      p_organization_id: input.organizationId,
+      p_user_id: input.userId,
+      p_now: now.toISOString(),
+    },
+  );
+  const binding = oneRow(data);
+  if (
+    error ||
+    !binding ||
+    binding.result_partner_id !== claim.partnerId ||
+    !value(binding.result_installation_id) ||
+    !value(binding.result_location_mapping_id)
+  ) {
+    throw new ApiError(
+      409,
+      "The GHL workspace connection claim could not be bound.",
+      "ghl_marketplace_bootstrap_claim_consume_failed",
+    );
+  }
+  return createGhlMarketplaceOAuthState({
+    admin,
+    userId: input.userId,
+    organizationId: input.organizationId,
+    providerEnvironment: input.providerEnvironment,
+    installationId: value(binding.result_installation_id),
+    mappingId: value(binding.result_location_mapping_id),
+    partnerId: claim.partnerId,
+    companyId: requiredProviderId(
+      value(binding.result_provider_company_id),
+      "ghl_marketplace_company_invalid",
+    ),
+    locationId: requiredProviderId(
+      value(binding.result_provider_location_id),
+      "ghl_marketplace_location_invalid",
+    ),
+    installScope: "company",
+    returnPath: input.returnPath,
+    reconnectRequested: false,
+    now,
+  });
+}
+
 export async function createGhlMarketplaceConnectBinding(input: {
   userId: string;
   organizationId: string;
@@ -240,7 +447,6 @@ export async function createGhlMarketplaceConnectBinding(input: {
   const admin = createAdminClient();
   if (!admin) throw new ApiError(503, "GHL Marketplace persistence is unavailable.", "service_role_missing");
   assertGhlMarketplaceProviderEffectsAllowed(input.providerEnvironment);
-  const config = getGhlMarketplaceApplicationConfig();
   const databaseEnvironment = input.providerEnvironment === "production" ? "production" : "sandbox";
   const mappingResult = await (admin as any).from("ghl_location_mappings")
     .select("id,organization_id,installation_id,environment,provider_location_id,partner_id,status")
@@ -265,32 +471,21 @@ export async function createGhlMarketplaceConnectBinding(input: {
   }
   const companyId = requiredProviderId(value(installation.provider_agency_id), "ghl_marketplace_company_invalid");
   const locationId = requiredProviderId(value(mapping.provider_location_id), "ghl_marketplace_location_invalid");
-  const state = randomBytes(32).toString("base64url");
-  const now = input.now ?? new Date();
-  const expiresAt = new Date(now.getTime() + STATE_TTL_MS).toISOString();
-  const returnPath = normalizeGhlMarketplaceReturnPath(input.returnPath);
-  const locationScope = input.installScope === "location";
-  const { data, error } = await (admin as any).rpc("create_ghl_marketplace_oauth_state_v2", {
-    p_organization_id: input.organizationId,
-    p_initiated_by_user_id: input.userId,
-    p_partner_id: mapping.partner_id ?? null,
-    p_environment: databaseEnvironment,
-    p_state_hash: fingerprintGhlAuthorityValue(state),
-    p_installation_id: mapping.installation_id,
-    p_location_mapping_id: locationScope ? mapping.id : null,
-    p_install_scope: input.installScope,
-    p_app_fingerprint: fingerprintGhlAuthorityValue(config.appId),
-    p_account_fingerprint: fingerprintGhlAuthorityValue(locationScope ? locationId : companyId),
-    p_scope_fingerprint: fingerprintGhlScopes(config.scopes),
-    p_company_fingerprint: fingerprintGhlAuthorityValue(companyId),
-    p_location_fingerprint: locationScope ? fingerprintGhlAuthorityValue(locationId) : null,
-    p_redirect_uri_fingerprint: fingerprintGhlAuthorityValue(config.redirectUri),
-    p_return_path: returnPath,
-    p_reconnect_requested: input.reconnectRequested,
-    p_expires_at: expiresAt,
+  return createGhlMarketplaceOAuthState({
+    admin,
+    userId: input.userId,
+    organizationId: input.organizationId,
+    providerEnvironment: input.providerEnvironment,
+    installationId: value(mapping.installation_id),
+    mappingId: value(mapping.id),
+    partnerId: (mapping.partner_id as string | null) ?? null,
+    companyId,
+    locationId,
+    installScope: input.installScope,
+    returnPath: input.returnPath,
+    reconnectRequested: input.reconnectRequested,
+    now: input.now,
   });
-  if (error || !value(data)) throw new ApiError(409, "The GHL connection could not be started.", "ghl_marketplace_state_create_failed");
-  return { state, expiresAt, installUrl: config.installUrl, returnPath };
 }
 
 async function storeEncryptedPair(input: {
@@ -389,7 +584,84 @@ export async function completeGhlMarketplaceOAuthCallback(input: {
   if (finalizeError || result?.result_outcome !== "finalized") {
     throw new ApiError(503, "The encrypted GHL connection requires operator reconciliation.", "ghl_marketplace_callback_finalize_failed");
   }
-  return { returnPath: value(state.result_return_path) || "/settings", authorityId: result.result_authority_id, tokenSetId: result.result_token_set_id };
+  let locationTokenSetId: string | null = null;
+  if (userType === "Company") {
+    const authorityId = value(result.result_authority_id);
+    const authorityQuery = await (admin as any)
+      .from("ghl_marketplace_authorities")
+      .select("id,installation_id,partner_id,environment,status")
+      .eq("id", authorityId)
+      .eq("status", "active")
+      .limit(2);
+    const authorities = Array.isArray(authorityQuery.data)
+      ? authorityQuery.data as Record<string, unknown>[]
+      : [];
+    const authority = authorities.length === 1 ? authorities[0] : null;
+    const mappingQuery = authority
+      ? await (admin as any)
+        .from("ghl_location_mappings")
+        .select("id,organization_id,installation_id,partner_id,environment,status")
+        .eq("organization_id", input.organizationId)
+        .eq("installation_id", authority.installation_id)
+        .eq("environment", authority.environment)
+        .in("status", ["provisioning", "active"])
+        .limit(2)
+      : { data: null, error: new Error("authority_missing") };
+    const mappings = Array.isArray(mappingQuery.data)
+      ? mappingQuery.data as Record<string, unknown>[]
+      : [];
+    if (authorityQuery.error || mappingQuery.error || !authority || mappings.length !== 1) {
+      throw new ApiError(
+        503,
+        "The exact GHL location mapping could not be resolved after authorization.",
+        "ghl_marketplace_bootstrap_mapping_missing",
+      );
+    }
+    const mapping = mappings[0];
+    const locationExchange = await exchangeGhlCompanyTokenForLocation({
+      companyTokenSetId: value(result.result_token_set_id),
+      organizationId: input.organizationId,
+      locationMappingId: value(mapping.id),
+      partnerId: (mapping.partner_id as string | null) ?? null,
+      requestFingerprint: fingerprintGhlAuthorityValue(
+        `oauth-bootstrap:${authorityId}:${value(mapping.id)}`,
+      ),
+      idempotencyKey: `ghl-marketplace-bootstrap:${authorityId}:${value(mapping.id)}`,
+      providerEnvironment: input.providerEnvironment,
+      client,
+      now,
+    });
+    if (locationExchange.outcome !== "succeeded" || !locationExchange.tokenSetId) {
+      throw new ApiError(
+        503,
+        "The GHL location credential could not be completed.",
+        "ghl_marketplace_bootstrap_location_token_incomplete",
+      );
+    }
+    locationTokenSetId = locationExchange.tokenSetId;
+    const { error: installationUpdateError } = await (admin as any)
+      .from("ghl_installations")
+      .update({
+        encrypted_credential_ref: `ghl-marketplace-token-set:${locationTokenSetId}`,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", authority.installation_id)
+      .eq("environment", authority.environment)
+      .eq("status", "active");
+    if (installationUpdateError) {
+      throw new ApiError(
+        503,
+        "The GHL location credential reference could not be activated.",
+        "ghl_marketplace_bootstrap_credential_reference_failed",
+      );
+    }
+  }
+  return {
+    returnPath: value(state.result_return_path) || "/settings",
+    authorityId: result.result_authority_id,
+    tokenSetId: result.result_token_set_id,
+    locationTokenSetId,
+  };
 }
 
 export async function acceptGhlMarketplaceRuntimeEvent(
@@ -656,7 +928,12 @@ export async function exchangeGhlCompanyTokenForLocation(input: {
     if (settleError || result?.result_outcome !== "succeeded") {
       throw new ApiError(503, "The GHL location token requires operator reconciliation.", "ghl_marketplace_location_exchange_settle_failed");
     }
-    return { outcome: "succeeded", exchangeId, tokenSetId: value(result.result_token_set_id) };
+    return {
+      outcome: "succeeded",
+      exchangeId,
+      tokenSetId: value(result.result_token_set_id),
+      scopes: token.scopes,
+    };
   } catch (error) {
     const deterministicProviderFailure = error instanceof GhlMarketplaceProviderError && !error.uncertain;
     const ambiguous = providerResponseReceived || (error instanceof GhlMarketplaceProviderError && error.uncertain);

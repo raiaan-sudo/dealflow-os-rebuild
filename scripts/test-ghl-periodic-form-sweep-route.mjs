@@ -29,7 +29,7 @@ assert.match(worker, /ghlProductionGateFromEnvironment\("form_submissions_read",
 assert.match(worker, /ghlProductionGateFromEnvironment\("lifecycle_webhook", environment\)/);
 assert.match(worker, /credentialRef: authority\.credentialRef/);
 assert.match(worker, /createProductionEnvironmentGhlCredentialResolver\(environment\)/);
-assert.match(worker, /createEnvironmentGhlCredentialResolver\(environment\)/);
+assert.match(worker, /createGhlMarketplaceAwareCredentialResolver\(\{[\s\S]*providerEnvironment: "sandbox"/);
 assert.match(worker, /createGhlInboundReadHttpClient\(gate\.baseUrl\)/);
 assert.doesNotMatch(
   worker.slice(worker.indexOf("processGhlPeriodicFormSweepFromEnvironment")),

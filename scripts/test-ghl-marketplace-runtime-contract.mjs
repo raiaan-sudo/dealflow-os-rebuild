@@ -15,6 +15,10 @@ const runtimeServiceSource = fs.readFileSync(
   path.join(root, "src/lib/services/ghl-marketplace-runtime-service.ts"),
   "utf8",
 );
+const credentialResolverSource = fs.readFileSync(
+  path.join(root, "src/lib/services/ghl-marketplace-credential-resolver.ts"),
+  "utf8",
+);
 
 try {
   assert.match(
@@ -31,6 +35,26 @@ try {
     runtimeServiceSource,
     /acceptGhlMarketplaceRuntimeEvent\([\s\S]{0,400}?getGhlMarketplaceApplicationConfig\(\)/,
     "Marketplace lifecycle ingestion must remain decoupled from OAuth client secrets",
+  );
+  assert.match(
+    credentialResolverSource,
+    /ghl-marketplace-token-set:\(\[0-9a-f\]\{8\}/,
+    "Marketplace credentials must use an opaque, exact token-set reference",
+  );
+  assert.match(
+    credentialResolverSource,
+    /ghl_marketplace_token_sets[\s\S]*subject_kind", "location"[\s\S]*status", "active"/,
+    "Marketplace credentials must resolve only from one active location token set",
+  );
+  assert.match(
+    credentialResolverSource,
+    /ghl_marketplace_authorities[\s\S]*environment", input\.providerEnvironment[\s\S]*status", "active"/,
+    "Marketplace credentials must remain bound to an active authority in the exact provider environment",
+  );
+  assert.match(
+    credentialResolverSource,
+    /resolve_ghl_marketplace_credential_v2[\s\S]*decryptGhlMarketplaceCredential/,
+    "Marketplace credentials must remain encrypted until the bounded provider callback",
   );
 
   const compile = spawnSync(tsc, [

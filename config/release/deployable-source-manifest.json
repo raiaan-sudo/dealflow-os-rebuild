@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1125,
-  "deployableSourceSha256": "c4b24e6783ad01de2d7f812b2bfc713ebd89d006da3e092fe61351a80158cb13",
+  "entryCount": 1130,
+  "deployableSourceSha256": "b95fbe927281cedabcb4edd20932b1758152968e126d0e8b35c6bb7aa01a437c",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -810,9 +810,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 110559,
+      "size": 110630,
       "mode": 33188,
-      "sha256": "898db0ddb240eebc93a7d375fea09fb72982f805d5c5a5c0b9f076c74447ab3c"
+      "sha256": "2b98cd0823e49f3e2c4673d0500913afa5a44664a7b7f3525d63c3a3a635d732"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -918,9 +918,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 25555,
+      "size": 25559,
       "mode": 33188,
-      "sha256": "e665cdebb75762c866995d4edee37d640ae8b6f4f35c8c2d1594956ad3734abc"
+      "sha256": "58d819f02535b171ece13aa0020bf7fa0942f7adab0aa57ca04f742a12011beb"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -960,15 +960,15 @@
     },
     {
       "path": "scripts/schema/check-forward-reconstruction.mjs",
-      "size": 21633,
+      "size": 21704,
       "mode": 33188,
-      "sha256": "ccb2d9433dcab965d7f895e09aaf15bd8c2fdfcfc6f73928690728786d91314e"
+      "sha256": "6715aa0341a9e0c041151f370a161d7d77cabe979bfd564828051e66bca92bf3"
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 113639,
+      "size": 113643,
       "mode": 33188,
-      "sha256": "e4a5a9a88606785b978d1e550791f737a1bde05c825f18d9246731f03a2f23ef"
+      "sha256": "2ea22d07d11347f79959d4ea8ee32fdc68bc3194cc23e55348f867f6da0fda88"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -990,9 +990,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 186930,
+      "size": 186934,
       "mode": 33188,
-      "sha256": "f0f8c0767926d879cd260866bc90a88fe53b936634bc56e49a0f9f7e02e72c5f"
+      "sha256": "eb07e3ff2dba9b7fdf0f40c310c983703b1667aac77fbcb61e209daefa4cb73b"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1056,9 +1056,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 85250,
+      "size": 85254,
       "mode": 33188,
-      "sha256": "3819721328eedf4ac148330fe0851f51f078b757c2cb747c73e69956f5403daf"
+      "sha256": "c6754ae1484b5b98576c536e84ee87a9935dc736f9c3a635ca549b49803b590b"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 300078,
+      "size": 300086,
       "mode": 33188,
-      "sha256": "49bed43c44708da7f45ba249b684ab5b13882b5aa1804502fe8a3e32def73d0d"
+      "sha256": "838b4ada1a3a389ace8759f8981eb5e9ef22215cd193a2dd43ef5f9cc642bc66"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1152,9 +1152,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 62046,
+      "size": 62050,
       "mode": 33188,
-      "sha256": "83bdf9299f849bb6cec66d7f9e396fa5b24c1cf80847759eae54e44ec0adc8c7"
+      "sha256": "c2710ea78128696258f994b7593c87357801ebcef704cec50fde448df2c3719c"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1218,9 +1218,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 11420,
+      "size": 11424,
       "mode": 33188,
-      "sha256": "64332b664a4eb653e3574d904b4fd5c2e575e76bba839c944dbcad3d3b3e9ec1"
+      "sha256": "2a18363c2842f0df931ccc2ab4940c065ea6c7e945893ce6951c57ea978d059f"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 135980,
+      "size": 135984,
       "mode": 33188,
-      "sha256": "ea41c770b3f325f3458fcec259e0cd8800fe850f21e9a8c65da5ae6b3f46e8df"
+      "sha256": "9f4e72c3f649fec42391e4ee4e3fa0d2b8698a9444e9cfa61681fa581e519e02"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1416,9 +1416,9 @@
     },
     {
       "path": "scripts/test-account-deletion-offboarding-disposable-db.mjs",
-      "size": 50522,
+      "size": 50658,
       "mode": 33188,
-      "sha256": "8e66e7c8ed29e1ea6b97ca4bf95faf42c62bd84291eb7d00f0c69244e588ed9c"
+      "sha256": "ad63174036eb9760319c007b0a1b10d650d306fdc867f6fc06492eda9b16185a"
     },
     {
       "path": "scripts/test-admin-page-authorization-contract.mjs",
@@ -1578,9 +1578,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 32337,
+      "size": 32341,
       "mode": 33188,
-      "sha256": "484ed0ccc0905e0bcc6893dfc2f1f9518384df5d7f4e1741be4d84abd62ffcfd"
+      "sha256": "c354c42fbbe92b266c5a5b4a83c7fb5861b6ce6d94223e9d374104305ca58fcf"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",
@@ -1602,15 +1602,15 @@
     },
     {
       "path": "scripts/test-generated-static-deletion-disposable-db.mjs",
-      "size": 15478,
+      "size": 15482,
       "mode": 33188,
-      "sha256": "fcef361473eec2e3c31e312f36dd0709142dc269129015321c396ac8d5c98238"
+      "sha256": "c7b423c8698c3d5fa7b9619dc232090a6e347fe7a58163819721af954165caf0"
     },
     {
       "path": "scripts/test-generated-video-storage-disposable-db.mjs",
-      "size": 14253,
+      "size": 14257,
       "mode": 33188,
-      "sha256": "2fe40a92aa13b265ebf343ec92b4ff016bc86998e024a0cdb68b8922850d4a53"
+      "sha256": "7ddf0af939ba8cccc4514fbf47e5c5b7fe140bdca1bde077cea9e764ec8d2e12"
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
@@ -1650,15 +1650,15 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 22398,
+      "size": 25011,
       "mode": 33188,
-      "sha256": "b1bc946ad16c915d6f787eac41250e7ad9d9b1981f213f4532348e7c50c285a0"
+      "sha256": "13f97bee8408117f54001e5eba9ba399cecf7ec9baeb25d6772f4506f9d4c7bc"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
-      "size": 84643,
+      "size": 84647,
       "mode": 33188,
-      "sha256": "6eb76b39725a48489ef528507c752185dac83e2baccfb0ba53e7296ce597eea9"
+      "sha256": "f3858db8c0beae08db54d5842acf3ac7690aaca0724de7a5c86de79d91785e17"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation.ts",
@@ -1692,9 +1692,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-disposable-db.mjs",
-      "size": 38617,
+      "size": 42719,
       "mode": 33188,
-      "sha256": "1bced2cee84f5b1e355f6b4de9673158657db0bf48a66268c7f936e051927e2d"
+      "sha256": "066796ac212f276801e762f97033973506e4c3b05b4557e2abb469e4a54f1eca"
     },
     {
       "path": "scripts/test-ghl-marketplace-refresh-fencing.ts",
@@ -1704,21 +1704,21 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-runtime-contract.mjs",
-      "size": 13362,
+      "size": 14393,
       "mode": 33188,
-      "sha256": "7c6a20f8d062fd1b0315f21c95f00dba95e06cc616ad09531a9598a73ec0f417"
+      "sha256": "acd1794d048f36e0ca94b36be4bd3e8efa5c3dd5940130371a71b426b8873490"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
-      "size": 53651,
+      "size": 53655,
       "mode": 33188,
-      "sha256": "9b7bad7535ef25559569e90165f680819b27034943a5cddb188a6849aaee782b"
+      "sha256": "edd02a66516a5330baa217fe69d130941efb88d295310f28484713a38e6e7fa2"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-route.mjs",
-      "size": 3010,
+      "size": 3041,
       "mode": 33188,
-      "sha256": "337c3cd2517baee5a445612c479e52d127acff9cf1940d67d5ecb1d8b73642fe"
+      "sha256": "b271db810e7f7d2c64224f682c808c450408bf07430a8cb647e242a1853a667e"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-service.ts",
@@ -1794,9 +1794,9 @@
     },
     {
       "path": "scripts/test-integrated-migration-chain-disposable-db.mjs",
-      "size": 50497,
+      "size": 50568,
       "mode": 33188,
-      "sha256": "bef85e3bd06ab4606b5d1634229acfacfd5c49e6a92e31f109f1f4650116c1c2"
+      "sha256": "3d26020613bf0ce07e93372915dd6aaef664043f28b4478d8298e6f2f0f00089"
     },
     {
       "path": "scripts/test-internal-sms-notifications.mjs",
@@ -1806,9 +1806,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 33856,
+      "size": 33860,
       "mode": 33188,
-      "sha256": "a10280441a112b3b99c3e5f4c3ec69ebdfc7c3345140be1b4339b44d82162fbc"
+      "sha256": "65b3c60dcc9a02e4ab6c75ae5876a5d9e57882821f8a3365c177f5af01a68c93"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
@@ -1958,7 +1958,7 @@
       "path": "scripts/test-migration-read-only-contract.mjs",
       "size": 7157,
       "mode": 33188,
-      "sha256": "8f412b5bf377b127d9da702bcd65296058aefe8f65a045711e6c10bb96185d65"
+      "sha256": "ac9c62c2d7ec1330b65e0333749165dfa0c9ec306bf71331126bb7f9373458d0"
     },
     {
       "path": "scripts/test-native-postgres-test-adapter.mjs",
@@ -2028,9 +2028,9 @@
     },
     {
       "path": "scripts/test-post-audit-successor-contract.ts",
-      "size": 8519,
+      "size": 8591,
       "mode": 33188,
-      "sha256": "8e87647adbcddefc97ea75bbd6d6606300a09f4e4b87f43569cf3906fe63a224"
+      "sha256": "dc7ff62de761a1d7e20ef1d767d05d98180eace81748dc9040f9810cd06db8ec"
     },
     {
       "path": "scripts/test-privacy-consent-dsar-contract.mjs",
@@ -2046,9 +2046,9 @@
     },
     {
       "path": "scripts/test-privileged-tenancy-disposable-db.mjs",
-      "size": 21046,
+      "size": 21050,
       "mode": 33188,
-      "sha256": "9ca4128a2c6071372fa5603cce5ee8a3e6e0dfff307879cb3f6b4aad9b37abbd"
+      "sha256": "39f8f479d10a1060de7ae9149cf796080eb040d108fc1e847ebe5ff7206009d2"
     },
     {
       "path": "scripts/test-privileged-tenancy-matrix.mjs",
@@ -2910,9 +2910,15 @@
     },
     {
       "path": "src/app/api/integrations/ghl/embed-context/route.ts",
-      "size": 21193,
+      "size": 23004,
       "mode": 33188,
-      "sha256": "b0aaa7976cacee28359e6b455279d2aac00d911dc4f3bb5855919d13c028aa91"
+      "sha256": "34d34b2d53ffb691266d31b8fcd25b4c73dc6e4948d65dcf09cb29cc67dfa133"
+    },
+    {
+      "path": "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",
+      "size": 2214,
+      "mode": 33188,
+      "sha256": "7843130a230ea2a5f7e94f8346318b7aeddf64410356252093fc2b5f1c62adc9"
     },
     {
       "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
@@ -3107,6 +3113,18 @@
       "sha256": "3ce954a4705ef85a767398d90e01825636193ca1168d7551314acfd3dac76665"
     },
     {
+      "path": "src/app/crm/connect/ghl-marketplace-connect-bootstrap.tsx",
+      "size": 3971,
+      "mode": 33188,
+      "sha256": "f7a731fa02f1b08efa864c6f41d9a94b47aac74dc73e54f591444e50935eff91"
+    },
+    {
+      "path": "src/app/crm/connect/page.tsx",
+      "size": 229,
+      "mode": 33188,
+      "sha256": "ade3bafd182cdce7f802e0a21d5e9afa33dc3b6d644c01ea38dd9d3f35a5f73b"
+    },
+    {
       "path": "src/app/crm/embed/page.tsx",
       "size": 483,
       "mode": 33188,
@@ -3150,9 +3168,9 @@
     },
     {
       "path": "src/app/ghl/embed/ghl-embed-bootstrap.tsx",
-      "size": 7071,
+      "size": 7946,
       "mode": 33188,
-      "sha256": "5e71ba5f588f6f63b3bcabb370c3a44f2e04e20f1b774c67e9f748dd0b75471f"
+      "sha256": "e7eb15f2e0eaf62a0e671daa76d40c4fd46ddb0fda17cfb17034518402282ff1"
     },
     {
       "path": "src/app/ghl/embed/page.tsx",
@@ -5105,10 +5123,16 @@
       "sha256": "69422486f9afa7ed074bdc0cb62a1b59a59418551a795d1ebad6bd9deb5ee971"
     },
     {
-      "path": "src/lib/services/ghl-marketplace-runtime-service.ts",
-      "size": 34538,
+      "path": "src/lib/services/ghl-marketplace-credential-resolver.ts",
+      "size": 4443,
       "mode": 33188,
-      "sha256": "8c12eb781f1fe69f84220f65cb38f98cdf27b068c1f2530a5a34aebc16ab9325"
+      "sha256": "a6e36ef9e53aa04d5717afa8bdf108e94de041d2d89f7b7d3948fb174dd17214"
+    },
+    {
+      "path": "src/lib/services/ghl-marketplace-runtime-service.ts",
+      "size": 43539,
+      "mode": 33188,
+      "sha256": "33a023b884f17c5f254881fd4f603854a205e6d1198e3815dae77d8fa2b3ba12"
     },
     {
       "path": "src/lib/services/ghl-periodic-form-sweep-service.ts",
@@ -5136,9 +5160,9 @@
     },
     {
       "path": "src/lib/services/ghl-provider-worker-service.ts",
-      "size": 17770,
+      "size": 18416,
       "mode": 33188,
-      "sha256": "3003abbead35773e51b3fdac504016ef78e929e0b1e541c0b73bb8bacdc716a3"
+      "sha256": "9ba355fd890792dc329e7cf49d542754e1d864bd32d67fa8a49e726936025e58"
     },
     {
       "path": "src/lib/services/ghl-provisioning-repository.ts",
@@ -5508,9 +5532,9 @@
     },
     {
       "path": "src/lib/white-label/ghl-embed-capability.ts",
-      "size": 17201,
+      "size": 20086,
       "mode": 33188,
-      "sha256": "207d82f5439feea4c8df44177b494489dde495536d98be2cb94565933f9ae5de"
+      "sha256": "712d9eb61fe9143988e61d486360ac5ee4623ebd6bf0cda75d5804e1f9508952"
     },
     {
       "path": "src/lib/white-label/ghl-embed-host-context.ts",
@@ -5550,9 +5574,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 33076,
+      "size": 33094,
       "mode": 33188,
-      "sha256": "96c93c869fc881b19b146726dbd6d62e47e0bad2bc4197e5ffec17c64ad02c13"
+      "sha256": "d7cd9395d0cce21270c742a2650138e0ab689fe99a7da58c6cbb6544b4721be5"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",
@@ -6537,6 +6561,12 @@
       "size": 7537,
       "mode": 33188,
       "sha256": "aa4cc285b1dffaded4f5c109ec13a4b19acda8556e98b3031432c75b93f64f97"
+    },
+    {
+      "path": "supabase/migrations/20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
+      "size": 22178,
+      "mode": 33188,
+      "sha256": "2d3d265fd70e86a7eb67268d60388fed534e95f5218aa22108de2b5aba7c48e6"
     },
     {
       "path": "supabase/reconciliation/README.md",

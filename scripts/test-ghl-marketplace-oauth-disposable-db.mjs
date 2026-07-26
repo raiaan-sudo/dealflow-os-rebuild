@@ -27,8 +27,10 @@ const adapter = createNativePostgresTestAdapter({
 
 const USER_A = "a1000000-0000-4000-8000-000000000001";
 const USER_B = "a1000000-0000-4000-8000-000000000002";
+const USER_C = "a1000000-0000-4000-8000-000000000003";
 const ORG_A = "a2000000-0000-4000-8000-000000000001";
 const ORG_B = "a2000000-0000-4000-8000-000000000002";
+const ORG_C = "a2000000-0000-4000-8000-000000000003";
 const INSTALLATION = "a3000000-0000-4000-8000-000000000001";
 const SNAPSHOT = "a3000000-0000-4000-8000-000000000002";
 const MAPPING = "a3000000-0000-4000-8000-000000000003";
@@ -37,6 +39,9 @@ const WRONG_PARTNER = "a4000000-0000-4000-8000-000000000001";
 const AGENCY_ID = "synthetic-marketplace-company";
 const LOCATION_ID = "synthetic-marketplace-location";
 const LOCATION_B_ID = "synthetic-marketplace-location-b";
+const BOOTSTRAP_AGENCY_ID = "synthetic-bootstrap-company";
+const BOOTSTRAP_LOCATION_ID = "synthetic-bootstrap-location";
+const BOOTSTRAP_USER_ID = "synthetic-bootstrap-user";
 
 function sha(value) {
   return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
@@ -186,17 +191,21 @@ try {
 
     session.psql(`
       set role postgres;
-      insert into auth.users(id) values ('${USER_A}'),('${USER_B}');
+      insert into auth.users(id) values ('${USER_A}'),('${USER_B}'),('${USER_C}');
       insert into public.users(id,email,full_name) values
         ('${USER_A}','ghl-owner-a@example.invalid','GHL Owner A'),
-        ('${USER_B}','ghl-owner-b@example.invalid','GHL Owner B');
+        ('${USER_B}','ghl-owner-b@example.invalid','GHL Owner B'),
+        ('${USER_C}','ghl-owner-c@example.invalid','GHL Owner C');
       insert into public.organizations(id,name,slug,owner_user_id) values
         ('${ORG_A}','GHL Workspace A','ghl-workspace-a','${USER_A}'),
-        ('${ORG_B}','GHL Workspace B','ghl-workspace-b','${USER_B}');
+        ('${ORG_B}','GHL Workspace B','ghl-workspace-b','${USER_B}'),
+        ('${ORG_C}','GHL Workspace C','ghl-workspace-c','${USER_C}');
       insert into public.organization_memberships(organization_id,user_id,role) values
-        ('${ORG_A}','${USER_A}','owner'),('${ORG_B}','${USER_B}','owner');
+        ('${ORG_A}','${USER_A}','owner'),('${ORG_B}','${USER_B}','owner'),
+        ('${ORG_C}','${USER_C}','owner');
       insert into public.ghl_workspace_tenants(organization_id,tenant_kind,status) values
-        ('${ORG_A}','direct_realtor','active'),('${ORG_B}','direct_realtor','active');
+        ('${ORG_A}','direct_realtor','active'),('${ORG_B}','direct_realtor','active'),
+        ('${ORG_C}','direct_realtor','active');
       insert into public.ghl_installations(
         id,environment,owner_kind,provider_agency_id,status,capability_manifest
       ) values ('${INSTALLATION}','test','platform','${AGENCY_ID}','active','{}'::jsonb);
@@ -218,6 +227,72 @@ try {
       );
       reset role;
     `, { label: "Create synthetic GHL Marketplace fixtures" });
+
+    const bootstrapPayload = sha("synthetic-bootstrap-payload");
+    const bootstrapClaimId = lastLine(session.psql(asRole("service_role", `
+      select public.register_ghl_marketplace_embed_bootstrap_claim_v1(
+        'test',null,'${APP_3}','${sha(BOOTSTRAP_AGENCY_ID)}',
+        '${sha(BOOTSTRAP_LOCATION_ID)}','${sha(BOOTSTRAP_USER_ID)}',
+        '${sha("ghl-owner-c@example.invalid")}','${sha("https://app.gohighlevel.com")}',
+        '${bootstrapPayload}','${BOOTSTRAP_AGENCY_ID}','${BOOTSTRAP_LOCATION_ID}',
+        '${BOOTSTRAP_USER_ID}',timezone('utc',now()) + interval '5 minutes',
+        timezone('utc',now())
+      );
+    `), { label: "Register first-install bootstrap claim" }));
+    assert.match(bootstrapClaimId, /^[0-9a-f-]{36}$/i);
+    mustFail(session, asRole("authenticated", `
+      select public.consume_ghl_marketplace_embed_bootstrap_claim_v1(
+        '${bootstrapClaimId}','${bootstrapPayload}','${ORG_C}','${USER_C}',
+        timezone('utc',now())
+      );
+    `, USER_C), /permission denied|ghl_marketplace_service_role_required/i,
+    "authenticated caller consumed a service-only bootstrap claim");
+    mustFail(session, asRole("service_role", `
+      select public.consume_ghl_marketplace_embed_bootstrap_claim_v1(
+        '${bootstrapClaimId}','${bootstrapPayload}','${ORG_B}','${USER_B}',
+        timezone('utc',now())
+      );
+    `), /bootstrap_tenant_mismatch|bootstrap_workspace_collision/i,
+    "bootstrap claim bound to a different tenant");
+    const bootstrapBinding = lastLine(session.psql(asRole("service_role", `
+      select result_installation_id::text || ':' || result_location_mapping_id::text
+      from public.consume_ghl_marketplace_embed_bootstrap_claim_v1(
+        '${bootstrapClaimId}','${bootstrapPayload}','${ORG_C}','${USER_C}',
+        timezone('utc',now())
+      );
+    `), { label: "Consume first-install bootstrap claim once" }));
+    assert.match(bootstrapBinding, /^[0-9a-f-]{36}:[0-9a-f-]{36}$/i);
+    assert.equal(lastLine(session.psql(`
+      select mapping.status
+      from public.ghl_location_mappings mapping
+      where mapping.organization_id='${ORG_C}' and mapping.environment='test';
+    `)), "provisioning");
+    mustFail(session, asRole("service_role", `
+      select public.consume_ghl_marketplace_embed_bootstrap_claim_v1(
+        '${bootstrapClaimId}','${bootstrapPayload}','${ORG_C}','${USER_C}',
+        timezone('utc',now())
+      );
+    `), /bootstrap_claim_unavailable/i, "bootstrap claim replayed");
+    mustFail(session, `
+      update public.ghl_location_mappings
+      set status='active'
+      where organization_id='${ORG_C}' and environment='test';
+    `, /ghl_location_mappings_active_ready_check/i,
+    "unverified bootstrap mapping became active");
+    mustFail(session, asRole("service_role", `
+      insert into public.ghl_marketplace_embed_bootstrap_claims(
+        environment,app_fingerprint,company_fingerprint,location_fingerprint,
+        user_fingerprint,email_fingerprint,parent_origin_fingerprint,
+        payload_fingerprint,provider_company_id,provider_location_id,
+        provider_user_id,expires_at
+      ) values (
+        'test','${APP_3}','${sha(BOOTSTRAP_AGENCY_ID)}',
+        '${sha("another-location")}','${sha(BOOTSTRAP_USER_ID)}',
+        '${sha("ghl-owner-c@example.invalid")}','${sha("https://app.gohighlevel.com")}',
+        '${sha("direct-write")}','${BOOTSTRAP_AGENCY_ID}','another-location',
+        '${BOOTSTRAP_USER_ID}',timezone('utc',now()) + interval '5 minutes'
+      );
+    `), /permission denied/i, "service role bypassed bootstrap claim RPC");
 
     assert.equal(lastLine(session.psql(asModernPostgrestRole("service_role", `
       select result_outcome from public.ingest_ghl_marketplace_runtime_event_v2(

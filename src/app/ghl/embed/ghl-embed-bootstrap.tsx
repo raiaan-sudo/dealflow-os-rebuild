@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type ExchangeResult = {
-  status?: "ready" | "storage_check_required";
+  status?:
+    | "ready"
+    | "storage_check_required"
+    | "connection_required"
+    | "connection_pending";
   nextPath?: string;
   handoffToken?: string;
+  claimToken?: string;
   code?: string;
 };
 
@@ -29,6 +34,8 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
   const [status, setStatus] = useState("Verifying your CRM workspace…");
   const [blocked, setBlocked] = useState(false);
   const [needsStorageAccess, setNeedsStorageAccess] = useState(false);
+  const [connectionHref, setConnectionHref] = useState("/login");
+  const [connectionLabel, setConnectionLabel] = useState("Continue in a new tab");
   const pendingHandoffRef = useRef<PendingHandoff | null>(null);
   const finalizationAttemptedRef = useRef(false);
 
@@ -74,6 +81,23 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
     if (result.status === "ready" && result.nextPath) {
       if (!await cookieAvailable()) throw new Error("embed_session_cookie_unavailable");
       window.location.assign(result.nextPath);
+      return;
+    }
+    if (
+      result.status === "connection_required" &&
+      result.nextPath &&
+      result.claimToken
+    ) {
+      const fragment = new URLSearchParams({ claim: result.claimToken }).toString();
+      setConnectionHref(`${result.nextPath}#${fragment}`);
+      setConnectionLabel("Connect DealFlow");
+      setStatus("Connect this CRM workspace to your DealFlow account once to finish setup.");
+      setBlocked(true);
+      return;
+    }
+    if (result.status === "connection_pending") {
+      setStatus("This CRM workspace is connected and its snapshot verification is finishing.");
+      setBlocked(false);
       return;
     }
     if (result.status !== "storage_check_required" || !result.handoffToken) {
@@ -182,11 +206,11 @@ export function GhlEmbedBootstrap(props: { allowedParentOrigins: string[] }) {
         {blocked || needsStorageAccess ? (
           <a
             className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
-            href="/login"
+            href={connectionHref}
             target="_blank"
             rel="noreferrer"
           >
-            Continue in a new tab
+            {connectionLabel}
           </a>
         ) : null}
       </section>

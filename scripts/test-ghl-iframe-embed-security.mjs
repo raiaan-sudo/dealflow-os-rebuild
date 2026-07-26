@@ -23,6 +23,18 @@ const bootstrapSource = fs.readFileSync(
   "src/app/ghl/embed/ghl-embed-bootstrap.tsx",
   "utf8",
 );
+const marketplaceConnectSource = fs.readFileSync(
+  "src/app/crm/connect/ghl-marketplace-connect-bootstrap.tsx",
+  "utf8",
+);
+const marketplaceBootstrapRouteSource = fs.readFileSync(
+  "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",
+  "utf8",
+);
+const marketplaceBootstrapMigrationSource = fs.readFileSync(
+  "supabase/migrations/20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
+  "utf8",
+);
 const neutralBootstrapSource = fs.readFileSync(
   "src/app/crm/embed/page.tsx",
   "utf8",
@@ -296,8 +308,44 @@ for (const marker of [
   "safeEmbedErrorCode",
   "DealFlow GHL embed verification stopped",
   'target="_blank"',
+  '"connection_required"',
+  '"connection_pending"',
+  '"Connect DealFlow"',
 ]) {
   if (!bootstrapSource.includes(marker)) failures.push(`Embed bootstrap is missing: ${marker}`);
+}
+for (const marker of [
+  "sessionStorage",
+  "history.replaceState",
+  '"/api/integrations/ghl/marketplace/bootstrap"',
+  'login.searchParams.set("redirectedFrom", "/crm/connect")',
+  "window.location.assign(result.authorizationUrl)",
+]) {
+  if (!marketplaceConnectSource.includes(marker)) {
+    failures.push(`Marketplace first-install UI is missing: ${marker}`);
+  }
+}
+for (const marker of [
+  "assertSameOriginRequest",
+  "getAuthenticatedContext",
+  "createGhlMarketplaceBootstrapConnectBinding",
+  "GHL_MARKETPLACE_STATE_COOKIE",
+]) {
+  if (!marketplaceBootstrapRouteSource.includes(marker)) {
+    failures.push(`Marketplace first-install route is missing: ${marker}`);
+  }
+}
+for (const marker of [
+  "ghl_marketplace_embed_bootstrap_claims",
+  "register_ghl_marketplace_embed_bootstrap_claim_v1",
+  "consume_ghl_marketplace_embed_bootstrap_claim_v1",
+  "membership.role in ('owner','admin')",
+  "status in ('provisioning','active')",
+  "force row level security",
+]) {
+  if (!marketplaceBootstrapMigrationSource.includes(marker)) {
+    failures.push(`Marketplace first-install migration is missing: ${marker}`);
+  }
 }
 for (const marker of [
   "GhlEmbedBootstrap",
@@ -374,6 +422,44 @@ assert.equal(
 );
 
 const now = 1_800_000_000;
+const bootstrapClaimToken = await capabilityHelpers.createGhlEmbedBootstrapClaim({
+  claimId: "90000000-0000-4000-8000-000000000026",
+  payloadDigest: "a".repeat(64),
+  partnerId: null,
+  domain: "partner.example",
+}, now);
+assert.ok(bootstrapClaimToken);
+assert.deepEqual(
+  await capabilityHelpers.verifyGhlEmbedBootstrapClaim(
+    bootstrapClaimToken,
+    { nowSeconds: now + 30 },
+  ),
+  {
+    v: 1,
+    claimId: "90000000-0000-4000-8000-000000000026",
+    payloadDigest: "a".repeat(64),
+    partnerId: null,
+    domain: "partner.example",
+    iat: now,
+    exp: now + 300,
+  },
+);
+assert.equal(
+  await capabilityHelpers.verifyGhlEmbedBootstrapClaim(
+    `${bootstrapClaimToken.slice(0, -1)}x`,
+    { nowSeconds: now + 30 },
+  ),
+  null,
+  "a modified bootstrap claim must fail closed",
+);
+assert.equal(
+  await capabilityHelpers.verifyGhlEmbedBootstrapClaim(
+    bootstrapClaimToken,
+    { nowSeconds: now + 301 },
+  ),
+  null,
+  "an expired bootstrap claim must fail closed",
+);
 const baseCapability = {
   partnerId: "10000000-0000-4000-8000-000000000026",
   domain: "partner.example",
