@@ -184,6 +184,8 @@ async function synchronizePortfolio({
   provider,
   environmentPortfolio,
   sensitivePortfolio,
+  preservedSensitivePortfolio = new Set(),
+  providerSensitiveNames = ["FORBIDDEN_PROVIDER_TOKEN"],
 }) {
   return await synchronizeExactVercelEnvironment({
     projectId,
@@ -193,8 +195,9 @@ async function synchronizePortfolio({
     expectedOrganizationIdFingerprint: sha256(organizationId),
     environment: environmentPortfolio,
     sensitiveKeys: sensitivePortfolio,
+    preservedSensitiveNames: preservedSensitivePortfolio,
     expectedCount: Object.keys(environmentPortfolio).length,
-    providerSensitiveNames: ["FORBIDDEN_PROVIDER_TOKEN"],
+    providerSensitiveNames,
     fetchImpl: provider.fetchImpl,
     delayImpl: provider.delayImpl,
     batchSize: 2,
@@ -257,6 +260,41 @@ async function synchronizePortfolio({
   assert.equal(proof.ambiguousWriteReadbackCommitCount, 1);
   assert.equal(proof.ambiguousWriteReadbackRetryCount, 0);
   assert.equal(provider.calls.filter((call) => call.method === "POST").length, 1);
+}
+
+{
+  const preservedName = "GHL_MARKETPLACE_CLIENT_SECRET";
+  const provider = fakeProvider([
+    exactRecord("PUBLIC_FLAG", environment.PUBLIC_FLAG),
+    exactRecord("SECRET_VALUE", environment.SECRET_VALUE),
+    exactRecord(preservedName, "provider-withheld-sensitive-value", {
+      id: "env_preserved_ghl_client_secret",
+      type: "sensitive",
+      decrypted: false,
+    }),
+  ]);
+  const proof = await synchronizePortfolio({
+    provider,
+    environmentPortfolio: environment,
+    sensitivePortfolio: sensitiveKeys,
+    preservedSensitivePortfolio: new Set([preservedName]),
+    providerSensitiveNames: [preservedName],
+  });
+  assert.equal(proof.status, "PASS");
+  assert.equal(proof.finalUnexpectedEnvironmentCount, 0);
+  assert.equal(proof.preservedSensitiveEnvironmentCount, 1);
+  assert.deepEqual(proof.preservedSensitiveEnvironmentNames, [preservedName]);
+  assert.equal(proof.preservedSensitiveValuesRead, false);
+  assert.equal(proof.preservedSensitiveValuesWritten, false);
+  assert.equal(proof.providerCredentialNamesPresent, true);
+  assert.equal(
+    provider.calls.some(
+      (call) =>
+        call.method !== "GET" &&
+        JSON.stringify(call.body ?? {}).includes(preservedName),
+    ),
+    false,
+  );
 }
 
 {
@@ -545,5 +583,5 @@ async function synchronizePortfolio({
 }
 
 console.log(
-  "Vercel environment sync contract: PASS (exact metadata; decrypted:true encrypted-value readback with exact-ID selective fallback and bounded semantic retry; sensitive-value exact-ID rewrite plus provider acknowledgement; production-safe request bodies; missing/value drift batched upsert; bounded Retry-After/X-RateLimit-Reset; deterministic 4xx; ambiguous 408/409/5xx/transport readback; secret-free exact 91/81/10 proof)",
+  "Vercel environment sync contract: PASS (exact managed metadata; read-free/write-free preservation of approved sensitive provider records; decrypted:true encrypted-value readback with exact-ID selective fallback and bounded semantic retry; sensitive-value exact-ID rewrite plus provider acknowledgement; production-safe request bodies; missing/value drift batched upsert; bounded Retry-After/X-RateLimit-Reset; deterministic 4xx; ambiguous 408/409/5xx/transport readback; secret-free exact 91/81/10 proof)",
 );

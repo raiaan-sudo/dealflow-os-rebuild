@@ -711,6 +711,11 @@ assert.match(runner, /finalReadableValueDigestMatchCount !== expectedReadableCou
 assert.match(runner, /finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount/);
 assert.match(runner, /finalExpectedValueDispositionCount !== 96/);
 assert.match(runner, /finalUnexpectedEnvironmentCount !== 0/);
+assert.match(runner, /PRESERVED_GHL_PROVIDER_ENV_NAMES/);
+assert.match(runner, /preservedSensitiveEnvironmentCount/);
+assert.match(runner, /preservedSensitiveValuesRead !== false/);
+assert.match(runner, /preservedSensitiveValuesWritten !== false/);
+assert.match(runner, /providerCredentialNamesPresent !== true/);
 assert.match(runner, /assertExactHostedEnvironmentProof\(hostedEnvironmentProof\)/);
 const hostedSecretNameSource = runner.slice(
   runner.indexOf("const HOSTED_SECRET_ENV_NAMES"),
@@ -1489,6 +1494,7 @@ assert.match(runner, /record\.evidenceSha256/);
 assert.match(runner, /record\.summarySha256/);
 assert.match(runner, /synchronizeExactVercelEnvironment/);
 assert.match(runner, /expectedCount: 96/);
+assert.match(runner, /preservedSensitiveNames: new Set\(PRESERVED_GHL_PROVIDER_ENV_NAMES\)/);
 assert.match(runner, /batchSize: 20/);
 const hostedEnvironmentConfigurationSource = runner.slice(
   runner.indexOf("async function configureHostedStagingEnvironment("),

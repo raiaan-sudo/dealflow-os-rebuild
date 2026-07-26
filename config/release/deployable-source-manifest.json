@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1130,
-  "deployableSourceSha256": "1b9d6b2f038237477bcdc8ec45c7a15bec80871839a7f3cccf845c086f66f6e9",
+  "deployableSourceSha256": "183d0a2b3155e496abba788a27f84fb5e081c4b6318f64bf2ff29d90e5d090c1",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 300086,
+      "size": 301328,
       "mode": 33188,
-      "sha256": "838b4ada1a3a389ace8759f8981eb5e9ef22215cd193a2dd43ef5f9cc642bc66"
+      "sha256": "44b7bbc890e96b912f6b2f8780dd4c3517001b8aff870c38140943e92f416537"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 135984,
+      "size": 136392,
       "mode": 33188,
-      "sha256": "9f4e72c3f649fec42391e4ee4e3fa0d2b8698a9444e9cfa61681fa581e519e02"
+      "sha256": "4df9b71bb35963c94bf75ba0b26d0f4d735f8745089b44d1b41e5d59a8518c87"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1314,9 +1314,9 @@
     },
     {
       "path": "scripts/staging/test-vercel-environment-sync-contract.mjs",
-      "size": 19238,
+      "size": 20680,
       "mode": 33188,
-      "sha256": "f988db25c59059c8006d0db3afdd800ffa30699d0ea1bf9f2a50ffb53321aef3"
+      "sha256": "c4c1c88758872c7bdf9ff16dd222f95afec82dfb630ff2c66714d716596a339e"
     },
     {
       "path": "scripts/staging/test-vercel-staging-protection-contract.mjs",
@@ -1356,9 +1356,9 @@
     },
     {
       "path": "scripts/staging/vercel-environment-sync-contract.mjs",
-      "size": 27826,
+      "size": 30070,
       "mode": 33188,
-      "sha256": "172c3349d7e94c2144b801b13a045dd5d816234c23cb42336093688f8a6c040f"
+      "sha256": "f203b19fb1acea54a93f06d4b94ec5fbbf4ad1337f9eb29788017ddb1ef808f3"
     },
     {
       "path": "scripts/staging/vercel-staging-protection-contract.mjs",

@@ -180,6 +180,7 @@ function validateInputs({
   expectedOrganizationIdFingerprint,
   environment,
   sensitiveKeys,
+  preservedSensitiveNames,
   expectedCount,
   batchSize,
 }) {
@@ -213,6 +214,16 @@ function validateInputs({
   }
   if (!(sensitiveKeys instanceof Set) || [...sensitiveKeys].some((key) => !names.includes(key))) {
     throw new Error("Sensitive environment key classification is invalid");
+  }
+  if (
+    !(preservedSensitiveNames instanceof Set) ||
+    [...preservedSensitiveNames].some(
+      (key) =>
+        !ENVIRONMENT_KEY_PATTERN.test(key) ||
+        names.includes(key),
+    )
+  ) {
+    throw new Error("Preserved sensitive environment key classification is invalid");
   }
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 25) {
     throw new Error("Vercel environment write batch size is outside the bounded contract");
@@ -395,11 +406,21 @@ async function readExactInventory(
   return { records, byName };
 }
 
-function classifyInventory(inventory, names, environment, sensitiveKeys) {
+function classifyInventory(
+  inventory,
+  names,
+  environment,
+  sensitiveKeys,
+  preservedSensitiveNames,
+) {
   const expectedNameSet = new Set(names);
   const unexpectedNames = inventory.records
     .map((record) => record.key)
-    .filter((name) => !expectedNameSet.has(name))
+    .filter(
+      (name) =>
+        !expectedNameSet.has(name) &&
+        !preservedSensitiveNames.has(name),
+    )
     .sort();
   if (unexpectedNames.length > 0) {
     throw new Error(
@@ -433,6 +454,24 @@ function classifyInventory(inventory, names, environment, sensitiveKeys) {
   return { states, unexpectedNames };
 }
 
+function assertExactPreservedSensitiveInventory(
+  inventory,
+  preservedSensitiveNames,
+) {
+  for (const key of preservedSensitiveNames) {
+    const records = inventory.byName.get(key) ?? [];
+    if (
+      records.length !== 1 ||
+      !exactStructure(records[0], "sensitive") ||
+      records[0].value !== undefined
+    ) {
+      throw new Error(
+        `The preserved sensitive Vercel environment record ${key} is not exact`,
+      );
+    }
+  }
+}
+
 function desiredRecord(key, environment, sensitiveKeys, { patchExisting = false } = {}) {
   const sensitive = sensitiveKeys.has(key);
   return {
@@ -458,15 +497,16 @@ function exactDesiredState(
   environment,
   sensitiveKeys,
   acknowledgedSensitiveKeys,
+  preservedSensitiveNames,
 ) {
-  const expected = new Set(keys);
+  const expected = new Set([...keys, ...preservedSensitiveNames]);
   if (
-    inventory.records.length !== keys.length ||
+    inventory.records.length !== expected.size ||
     inventory.records.some((record) => !expected.has(record.key))
   ) {
     return false;
   }
-  return keys.every((key) => {
+  const managedExact = keys.every((key) => {
     const records = inventory.byName.get(key) ?? [];
     if (records.length !== 1) return false;
     const record = records[0];
@@ -474,6 +514,15 @@ function exactDesiredState(
     return sensitiveKeys.has(key)
       ? acknowledgedSensitiveKeys.has(key)
       : sha256(record.value) === sha256(environment[key]);
+  });
+  if (!managedExact) return false;
+  return [...preservedSensitiveNames].every((key) => {
+    const records = inventory.byName.get(key) ?? [];
+    return (
+      records.length === 1 &&
+      exactStructure(records[0], "sensitive") &&
+      records[0].value === undefined
+    );
   });
 }
 
@@ -653,6 +702,7 @@ export async function synchronizeExactVercelEnvironment({
   expectedOrganizationIdFingerprint,
   environment,
   sensitiveKeys,
+  preservedSensitiveNames = new Set(),
   expectedCount,
   providerSensitiveNames = [],
   fetchImpl = fetch,
@@ -672,9 +722,21 @@ export async function synchronizeExactVercelEnvironment({
     expectedOrganizationIdFingerprint,
     environment,
     sensitiveKeys,
+    preservedSensitiveNames,
     expectedCount,
     batchSize,
   });
+  if (
+    !Array.isArray(providerSensitiveNames) ||
+    providerSensitiveNames.some((key) => !ENVIRONMENT_KEY_PATTERN.test(key)) ||
+    [...preservedSensitiveNames].some(
+      (key) => !providerSensitiveNames.includes(key),
+    )
+  ) {
+    throw new Error(
+      "Preserved sensitive names must be exact provider credential names",
+    );
+  }
   if (
     typeof fetchImpl !== "function" ||
     typeof delayImpl !== "function" ||
@@ -710,7 +772,17 @@ export async function synchronizeExactVercelEnvironment({
     acknowledgedSensitiveKeys: new Set(),
   };
   const initialInventory = await readExactInventory(context, counters, sensitiveKeys);
-  const initial = classifyInventory(initialInventory, names, environment, sensitiveKeys);
+  assertExactPreservedSensitiveInventory(
+    initialInventory,
+    preservedSensitiveNames,
+  );
+  const initial = classifyInventory(
+    initialInventory,
+    names,
+    environment,
+    sensitiveKeys,
+    preservedSensitiveNames,
+  );
   const missing = initial.states.filter((state) => state.status === "missing");
   const recreateSensitiveTypeDrift = initial.states.filter(
     (state) =>
@@ -794,6 +866,7 @@ export async function synchronizeExactVercelEnvironment({
     environment,
     sensitiveKeys,
     context.acknowledgedSensitiveKeys,
+    preservedSensitiveNames,
   )) {
     throw new Error("The isolated Vercel staging environment is not exact after synchronization");
   }
@@ -802,6 +875,11 @@ export async function synchronizeExactVercelEnvironment({
     names,
     environment,
     sensitiveKeys,
+    preservedSensitiveNames,
+  );
+  assertExactPreservedSensitiveInventory(
+    finalInventory,
+    preservedSensitiveNames,
   );
   const initialByKey = new Map(initial.states.map((state) => [state.key, state.status]));
   return Object.freeze({
@@ -835,13 +913,21 @@ export async function synchronizeExactVercelEnvironment({
       context.acknowledgedSensitiveKeys.size,
     finalExpectedValueDispositionCount: names.length,
     finalUnexpectedEnvironmentCount: finalClassification.unexpectedNames.length,
+    preservedSensitiveEnvironmentCount: preservedSensitiveNames.size,
+    preservedSensitiveEnvironmentNames: Object.freeze(
+      [...preservedSensitiveNames].sort(),
+    ),
+    preservedSensitiveValuesRead: false,
+    preservedSensitiveValuesWritten: false,
     exactTarget: "production",
     exactTypePortfolioProven: true,
     exactBranchScope: null,
     exactCustomEnvironmentScopeCount: 0,
     secretValuesPersistedToEvidence: false,
     valueDigestsPersistedToEvidence: false,
-    providerCredentialNamesPresent: names.some((name) => providerSensitiveNames.includes(name)),
+    providerCredentialNamesPresent: finalInventory.records.some((record) =>
+      providerSensitiveNames.includes(record.key)
+    ),
     variables: Object.freeze(names.map((key) => Object.freeze({
       key,
       target: "production",

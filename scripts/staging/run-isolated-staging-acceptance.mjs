@@ -358,7 +358,25 @@ async function cleanupDelay(delayMs) {
   }
   await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
 }
+const PRESERVED_GHL_PROVIDER_ENV_NAMES = Object.freeze([
+  "GHL_MARKETPLACE_APP_ID",
+  "GHL_MARKETPLACE_CLIENT_ID",
+  "GHL_MARKETPLACE_CLIENT_SECRET",
+  "GHL_MARKETPLACE_INSTALL_URL",
+  "GHL_MARKETPLACE_PROVIDER_ATTESTATION",
+  "GHL_MARKETPLACE_REDIRECT_URI",
+  "GHL_MARKETPLACE_SCOPES",
+  "GHL_MARKETPLACE_SYNTHETIC_ACCOUNT_ATTESTATION",
+  "GHL_MARKETPLACE_TOKEN_ENCRYPTION_KEY",
+  "GHL_MARKETPLACE_TOKEN_KEY_VERSION",
+  "GHL_PROVIDER_BASE_URL",
+  "GHL_PROVIDER_ENVIRONMENT",
+  "GHL_SANDBOX_ISOLATED_DATABASE",
+  "GHL_SANDBOX_ISOLATED_SUPABASE_PROJECT_REF",
+  "GHL_SANDBOX_PROVIDER_ATTESTATION",
+]);
 const PROVIDER_SENSITIVE_ENV_NAMES = [
+  ...PRESERVED_GHL_PROVIDER_ENV_NAMES,
   "META_ACCESS_TOKEN",
   "META_APP_SECRET",
   "META_SYSTEM_USER_ACCESS_TOKEN",
@@ -1981,6 +1999,7 @@ async function configureHostedStagingEnvironment(
     expectedOrganizationIdFingerprint: EXPECTED_VERCEL_ORG_ID_FINGERPRINT,
     environment,
     sensitiveKeys: HOSTED_SECRET_ENV_NAMES,
+    preservedSensitiveNames: new Set(PRESERVED_GHL_PROVIDER_ENV_NAMES),
     expectedCount: 96,
     providerSensitiveNames: PROVIDER_SENSITIVE_ENV_NAMES,
     fetchImpl: fetch,
@@ -2005,13 +2024,19 @@ function assertExactHostedEnvironmentProof(proof) {
     proof.finalSensitiveValueWriteAcknowledgementCount !== expectedSensitiveCount ||
     proof.finalExpectedValueDispositionCount !== 96 ||
     proof.finalUnexpectedEnvironmentCount !== 0 ||
+    proof.preservedSensitiveEnvironmentCount !==
+      PRESERVED_GHL_PROVIDER_ENV_NAMES.length ||
+    JSON.stringify(proof.preservedSensitiveEnvironmentNames) !==
+      JSON.stringify([...PRESERVED_GHL_PROVIDER_ENV_NAMES].sort()) ||
+    proof.preservedSensitiveValuesRead !== false ||
+    proof.preservedSensitiveValuesWritten !== false ||
     proof.exactTarget !== "production" ||
     proof.exactTypePortfolioProven !== true ||
     proof.exactBranchScope !== null ||
     proof.exactCustomEnvironmentScopeCount !== 0 ||
     proof.secretValuesPersistedToEvidence !== false ||
     proof.valueDigestsPersistedToEvidence !== false ||
-    proof.providerCredentialNamesPresent !== false ||
+    proof.providerCredentialNamesPresent !== true ||
     !Array.isArray(proof.variables) ||
     proof.variables.length !== 96
   ) {
@@ -5937,7 +5962,10 @@ async function main() {
     safety: {
       productionOrSharedTargetAccepted: false,
       realCustomerDataAccepted: false,
-      providerCredentialsPresent: false,
+      providerCredentialsPresentInAcceptanceProcess: false,
+      preservedGhlProviderCredentialNameCount:
+        PRESERVED_GHL_PROVIDER_ENV_NAMES.length,
+      preservedGhlProviderCredentialsReadOrWrittenByEnvironmentSync: false,
       providerWritesEnabled: false,
       advertisingSpendAuthorized: false,
       realCommunicationsAuthorized: false,
