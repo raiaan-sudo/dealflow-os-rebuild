@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1130,
-  "deployableSourceSha256": "b95fbe927281cedabcb4edd20932b1758152968e126d0e8b35c6bb7aa01a437c",
+  "deployableSourceSha256": "1b9d6b2f038237477bcdc8ec45c7a15bec80871839a7f3cccf845c086f66f6e9",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -84,9 +84,9 @@
     },
     {
       "path": "config/security/privileged-tenancy-matrix.v1.json",
-      "size": 10049,
+      "size": 10053,
       "mode": 33188,
-      "sha256": "56855bdd149aa4784576bb9dec38ecfa631b28f64a046876205a4bca22af821b"
+      "sha256": "f7f38bb0f0b7f6efc4fb317376dcf10e3f3baecb26d38b658ac561ec8ccde965"
     },
     {
       "path": "config/security/supabase-prod-ca-2021.crt",
@@ -6608,7 +6608,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "78d5fd09ab2dbea35629b92608323307ce82cf87b629a6899630be71bada1bd0"
+      "sha256": "ea1595165869b1f402b18faed0626866470e766cb70bc596a46bea1d2e9758d3"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
