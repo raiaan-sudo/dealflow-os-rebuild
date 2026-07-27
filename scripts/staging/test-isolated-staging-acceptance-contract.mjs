@@ -879,7 +879,7 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 127/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 128/);
 assert.match(runner, /20260725010000_enable_ghl_marketplace_first_install_bootstrap\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
@@ -2616,5 +2616,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; immutable historical 104-to-120, 120-to-121, 121-to-122, and 122-to-123 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 127-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; immutable historical 104-to-120, 120-to-121, 121-to-122, and 122-to-123 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 128-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

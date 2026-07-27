@@ -419,7 +419,7 @@ assert.match(source, /successorCreditReplayIntent: "e3000000-0000-4000-8000-0000
 assert.match(source, /successorCreditRequest: "e3000000-0000-4000-8000-000000000003"/);
 assert.match(source, /checkoutSessionId: "cs_test_df_successor_credit_pending_20260716"/);
 assert.match(source, /successorProviderIndependent: \{/);
-assert.match(source, /exactMigrationChainRequired: 127/);
+assert.match(source, /exactMigrationChainRequired: 128/);
 assert.match(source, /20260725010000_enable_ghl_marketplace_first_install_bootstrap\.sql/);
 assert.match(successorContract, /SUCCESSOR_SCHEMA_VERSION = "20260720010000"/);
 for (const table of [

@@ -196,7 +196,7 @@ assert.equal(classifyGhlLifecycleOutcome({
 const migrations = readdirSync("supabase/migrations")
   .filter((file) => /^\d{14}_.+\.sql$/.test(file))
   .sort();
-assert.equal(migrations.length, 127);
+assert.equal(migrations.length, 128);
 assert.deepEqual(migrations.slice(-10), [
   "20260717081000_expand_campaign_lifecycle_authority.sql",
   "20260717082000_provider_aware_funnel_publication.sql",

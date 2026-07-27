@@ -2859,7 +2859,7 @@ async function main() {
       financialFixture: successorFinancialFixture,
       serviceOnlySchema: successorServiceOnlySchema,
       hostedGates: SUCCESSOR_HOSTED_GATES,
-      exactMigrationChainRequired: 127,
+      exactMigrationChainRequired: 128,
       finalMigration: "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
       providerMutationPerformed: false,
     },

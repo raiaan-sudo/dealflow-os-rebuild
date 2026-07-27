@@ -17,6 +17,10 @@ const providerAwarePublicationMigrationPath = path.join(
   repoRoot,
   "supabase/migrations/20260717082000_provider_aware_funnel_publication.sql",
 );
+const preinstalledLocationReuseMigrationPath = path.join(
+  repoRoot,
+  "supabase/migrations/20260727010000_reuse_preinstalled_ghl_marketplace_location.sql",
+);
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-ghl-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
@@ -230,6 +234,10 @@ const mappingId = "40000000-0000-4000-8000-000000000001";
 try {
   assert.ok(fs.existsSync(migrationPath), "GHL migration is missing");
   assert.ok(fs.existsSync(ambiguousDispatchMigrationPath), "GHL ambiguous-dispatch migration is missing");
+  assert.ok(
+    fs.existsSync(preinstalledLocationReuseMigrationPath),
+    "GHL preinstalled-location reuse migration is missing",
+  );
   assertCommandSucceeded(
     dockerSync(["image", "inspect", image], { timeout: 15_000 }),
     "Cached Supabase PostgreSQL image is unavailable",
@@ -1042,6 +1050,16 @@ try {
     fs.readFileSync(providerAwarePublicationMigrationPath, "utf8"),
     "GHL provider-aware publication migration failed",
   );
+  psql(`
+    alter table public.ghl_location_mappings
+      add column if not exists retired_at timestamptz null,
+      add column if not exists retirement_reason text null,
+      add column if not exists retired_by text null;
+  `, "GHL preinstalled-location compatibility columns failed");
+  psql(
+    fs.readFileSync(preinstalledLocationReuseMigrationPath, "utf8"),
+    "GHL preinstalled-location reuse migration failed",
+  );
 
   const ambiguousProvisioningRunId = "60000000-0000-4000-8000-000000000001";
   const ambiguousLocationOutboxId = "60000000-0000-4000-8000-000000000002";
@@ -1844,6 +1862,7 @@ try {
   const activationId = "50000000-0000-4000-8000-000000000003";
   const sandboxInstallationId = "50000000-0000-4000-8000-000000000004";
   const sandboxManifestId = "50000000-0000-4000-8000-000000000005";
+  const paidMappingId = "50000000-0000-4000-8000-000000000006";
   const firstCampaignId = "50000000-0000-4000-8000-000000000007";
   const secondCampaignId = "50000000-0000-4000-8000-000000000008";
   const thirdCampaignId = "50000000-0000-4000-8000-000000000009";
@@ -1968,6 +1987,18 @@ try {
       ),
       'approved', timezone('utc', now())
     );
+    insert into public.ghl_workspace_tenants (
+      organization_id, tenant_kind, partner_id, status
+    ) values (
+      '${paidOrganizationId}', 'direct_realtor', null, 'active'
+    );
+    insert into public.ghl_location_mappings (
+      id, organization_id, installation_id, environment, provider_location_id,
+      provisioning_owner, status
+    ) values (
+      '${paidMappingId}', '${paidOrganizationId}', '${sandboxInstallationId}', 'sandbox',
+      'paid-sandbox-location', 'platform', 'provisioning'
+    );
   `, "Paid GHL activation fixture failed");
 
   psqlMustFail(`
@@ -1995,6 +2026,32 @@ try {
   const [, activationStatus, provisioningRunId] = activationReceipt.split("|");
   assert.equal(activationStatus, "provisioning_requested");
   assert.match(provisioningRunId, /^[0-9a-f-]{36}$/i);
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|', run.state, run.location_mapping_id::text,
+        (run.state_metadata ->> 'preinstalled_location_reused'),
+        mapping.snapshot_manifest_id::text
+      )
+      from public.ghl_provisioning_runs run
+      join public.ghl_location_mappings mapping
+        on mapping.id = run.location_mapping_id
+       and mapping.organization_id = run.organization_id
+      where run.id = '${provisioningRunId}';
+    `, "Preinstalled GHL location reuse proof failed"),
+    `snapshot_install_requested|${paidMappingId}|true|${sandboxManifestId}`,
+    "Paid activation did not reuse and bind the exact OAuth-proven GHL location",
+  );
+  assert.equal(
+    psql(`
+      select count(*)::text
+      from public.ghl_provider_outbox
+      where provisioning_run_id = '${provisioningRunId}'
+        and operation = 'location_create';
+    `, "Duplicate-location outbox absence proof failed"),
+    "0",
+    "Paid activation created a provider-location mutation outbox",
+  );
 
   psqlMustFail(`
     select count(*) from public.claim_next_ghl_provisioning_run_v1(
@@ -2005,17 +2062,12 @@ try {
     update public.ghl_runtime_controls set provisioning_writes_enabled = true where environment = 'sandbox';
   `, "Opening synthetic personalization control failed");
 
-  const paidMappingId = "50000000-0000-4000-8000-000000000006";
   psql(`
-    insert into public.ghl_location_mappings (
-      id, organization_id, installation_id, environment, provider_location_id,
-      provisioning_owner, snapshot_manifest_id, status,
-      snapshot_verified_at, required_objects_verified_at
-    ) values (
-      '${paidMappingId}', '${paidOrganizationId}', '${sandboxInstallationId}', 'sandbox',
-      'paid-sandbox-location', 'platform', '${sandboxManifestId}', 'active',
-      timezone('utc', now()), timezone('utc', now())
-    );
+    update public.ghl_location_mappings set
+      status = 'active',
+      snapshot_verified_at = timezone('utc', now()),
+      required_objects_verified_at = timezone('utc', now())
+    where id = '${paidMappingId}';
     begin;
     set local session_replication_role = replica;
     update public.ghl_provisioning_runs set

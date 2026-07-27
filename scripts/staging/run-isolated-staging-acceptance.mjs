@@ -126,7 +126,7 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 127;
+const EXPECTED_MIGRATION_COUNT = 128;
 const EXPECTED_FINAL_MIGRATION =
   "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
@@ -537,7 +537,7 @@ Required execution environment:
 
 Exactly one migration mode is required. Resume mode is read-only. Historical
 104-to-120 and 122-to-123 transitions remain immutable proof and cannot be run
-from the current 127-migration checkout; use fresh apply or exact-existing
+from the current 128-migration checkout; use fresh apply or exact-existing
 read-only verification.`;
 }
 
@@ -1636,7 +1636,7 @@ async function runSeed(
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 127 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 128 ||
     parsed.successorProviderIndependent?.finalMigration !==
       "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
@@ -5862,12 +5862,12 @@ async function main() {
   }
   if (options.applyForwardMigration) {
     throw new Error(
-      "The current 127 candidate cannot execute historical forward modes; use fresh apply or read-only exact-existing verification",
+      "The current 128 candidate cannot execute historical forward modes; use fresh apply or read-only exact-existing verification",
     );
   }
   if (options.applySuccessorMigration) {
     throw new Error(
-      "The current 127 candidate cannot execute the historical 122-to-123 successor mode; use fresh apply or read-only exact-existing verification",
+      "The current 128 candidate cannot execute the historical 122-to-123 successor mode; use fresh apply or read-only exact-existing verification",
     );
   }
   approvedStagingEvidenceParent =

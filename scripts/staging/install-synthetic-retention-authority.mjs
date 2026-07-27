@@ -56,7 +56,7 @@ const expectedProjectFingerprint =
 const expectedProjectSafeSuffix = "qibh";
 const expectedVercelProjectIdFingerprint =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
-const expectedMigrationCount = 127;
+const expectedMigrationCount = 128;
 const expectedFinalMigration =
   "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql";
 const expectedLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
@@ -221,7 +221,7 @@ function captureMigrationIdentity() {
     files.at(-1) !== expectedFinalMigration ||
     new Set(files.map((name) => name.slice(0, 14))).size !== files.length
   ) {
-    throw new Error("The exact 127-migration authority-hardened portfolio is required");
+    throw new Error("The exact 128-migration authority-hardened portfolio is required");
   }
   const digest = createHash("sha256");
   const records = files.map((name) => {

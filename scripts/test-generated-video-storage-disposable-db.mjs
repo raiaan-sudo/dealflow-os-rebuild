@@ -124,7 +124,7 @@ function bindSql(overrides = {}) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 127, "test expects the exact 127-migration candidate");
+  assert.equal(migrations.length, 128, "test expects the exact 128-migration candidate");
   assert.equal(migrations.at(-1), REQUIRED_FINAL_MIGRATION, "test expects the exact final migration");
   assert.match(readFileSync(PROPOSAL, "utf8"), /bind_generated_video_storage_v1/);
   adapter.preflight();

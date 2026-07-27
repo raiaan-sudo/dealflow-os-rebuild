@@ -167,7 +167,7 @@ function projectionReceipt({
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 127, "proof expects the exact 127-migration candidate");
+  assert.equal(migrations.length, 128, "proof expects the exact 128-migration candidate");
   assert.equal(migrations.at(-1), FINAL_MIGRATION, "proof expects the exact final migration");
   adapter.preflight();
   if (adapter.psql("select exists(select 1 from pg_roles where rolname='postgres');") !== "t") {

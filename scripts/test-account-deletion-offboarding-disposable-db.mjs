@@ -99,7 +99,7 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 127, "test expects the exact 127-migration candidate");
+  assert.equal(migrations.length, 128, "test expects the exact 128-migration candidate");
   assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
@@ -831,7 +831,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 127 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, account-deletion-only GHL append-only receipt cleanup, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 128 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, account-deletion-only GHL append-only receipt cleanup, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }
