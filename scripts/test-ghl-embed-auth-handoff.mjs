@@ -141,6 +141,16 @@ assert.doesNotMatch(routeSource, /signInWithPassword/);
 assert.doesNotMatch(routeSource, /\.from\(["']platform_operator_grants["']\)/);
 assert.match(
   routeSource,
+  /provisioningMappings\.length === 1[\s\S]+createGhlMarketplaceEmbedBootstrapClaim[\s\S]+status: "connection_required"/,
+  "an interrupted first-install must issue a fresh short-lived authorization claim",
+);
+assert.doesNotMatch(
+  routeSource,
+  /provisioningMappings\.length === 1[\s\S]{0,400}ghl_embed_connection_pending/,
+  "a provisioning mapping must not deadlock OAuth recovery",
+);
+assert.match(
+  routeSource,
   /operatorResult\.data === false/,
   "embed authority must fail closed when the service-only operator probe is not exactly false",
 );

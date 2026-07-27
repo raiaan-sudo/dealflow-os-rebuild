@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1130,
-  "deployableSourceSha256": "183d0a2b3155e496abba788a27f84fb5e081c4b6318f64bf2ff29d90e5d090c1",
+  "deployableSourceSha256": "598dee9ee3a3a4ba26e328d0c6b3e11d93ab1b91e0e1eb7c20760f06c8b594b3",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1644,9 +1644,9 @@
     },
     {
       "path": "scripts/test-ghl-embed-auth-handoff.mjs",
-      "size": 6132,
+      "size": 6552,
       "mode": 33188,
-      "sha256": "4121420bb02da05bb2ef279134949091a0dc4114ef5d7f9c9baba78807d038d9"
+      "sha256": "191594d4121c27dd8f52136b7191e3b6252e8f2b04955dd1ce0e725dbf687fe0"
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
@@ -2910,9 +2910,9 @@
     },
     {
       "path": "src/app/api/integrations/ghl/embed-context/route.ts",
-      "size": 23004,
+      "size": 23451,
       "mode": 33188,
-      "sha256": "34d34b2d53ffb691266d31b8fcd25b4c73dc6e4948d65dcf09cb29cc67dfa133"
+      "sha256": "e16f5a6b79f6cf3955235980f00120d9107cd035fe570f133d4040fcb6f84e8f"
     },
     {
       "path": "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",

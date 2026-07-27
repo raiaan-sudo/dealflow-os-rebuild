@@ -248,15 +248,24 @@ export async function POST(request: Request) {
         return deny("ghl_embed_location_unbound");
       }
       if (provisioningMappings.length === 1) {
+        const claim = await createGhlMarketplaceEmbedBootstrapClaim({
+          providerEnvironment: resolveGhlLifecycleEnvironment(),
+          partnerId: hostContext.partnerId,
+          domain: hostContext.domain,
+          companyId: signedContext.companyId,
+          locationId: signedContext.activeLocation,
+          userId: signedContext.userId,
+          normalizedEmail: signedContext.email,
+          parentOrigin,
+          payloadDigest,
+        });
         return NextResponse.json(
           {
-            status: "connection_pending",
-            code: "ghl_embed_connection_pending",
+            status: "connection_required",
+            nextPath: claim.nextPath,
+            claimToken: claim.claimToken,
           },
-          {
-            status: 202,
-            headers: { "Cache-Control": "no-store, max-age=0" },
-          },
+          { headers: { "Cache-Control": "no-store, max-age=0" } },
         );
       }
       const claim = await createGhlMarketplaceEmbedBootstrapClaim({
