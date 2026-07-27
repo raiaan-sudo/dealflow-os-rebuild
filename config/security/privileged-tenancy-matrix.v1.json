@@ -9,7 +9,7 @@
       "src/lib"
     ],
     "migrationRoot": "supabase/migrations",
-    "finalMigration": "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
+    "finalMigration": "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql",
     "expectedMigrationCount": 127
   },
   "invariant": "Every privileged or tenant-bypass path must bind an exact actor, organization or explicitly classified global authority, and resource before access or mutation. Unknown surfaces fail closed.",

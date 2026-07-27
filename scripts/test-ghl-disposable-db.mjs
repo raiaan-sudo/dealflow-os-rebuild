@@ -21,6 +21,10 @@ const preinstalledLocationReuseMigrationPath = path.join(
   repoRoot,
   "supabase/migrations/20260727010000_reuse_preinstalled_ghl_marketplace_location.sql",
 );
+const provisioningLeaseRevisionMigrationPath = path.join(
+  repoRoot,
+  "supabase/migrations/20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql",
+);
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-ghl-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
@@ -237,6 +241,10 @@ try {
   assert.ok(
     fs.existsSync(preinstalledLocationReuseMigrationPath),
     "GHL preinstalled-location reuse migration is missing",
+  );
+  assert.ok(
+    fs.existsSync(provisioningLeaseRevisionMigrationPath),
+    "GHL provisioning lease-revision migration is missing",
   );
   assertCommandSucceeded(
     dockerSync(["image", "inspect", image], { timeout: 15_000 }),
@@ -1059,6 +1067,10 @@ try {
   psql(
     fs.readFileSync(preinstalledLocationReuseMigrationPath, "utf8"),
     "GHL preinstalled-location reuse migration failed",
+  );
+  psql(
+    fs.readFileSync(provisioningLeaseRevisionMigrationPath, "utf8"),
+    "GHL provisioning lease-revision migration failed",
   );
 
   const ambiguousProvisioningRunId = "60000000-0000-4000-8000-000000000001";
@@ -2061,6 +2073,62 @@ try {
   psql(`
     update public.ghl_runtime_controls set provisioning_writes_enabled = true where environment = 'sandbox';
   `, "Opening synthetic personalization control failed");
+
+  const revisionBeforeLease = Number(
+    psql(
+      `select revision::text from public.ghl_provisioning_runs where id = '${provisioningRunId}';`,
+      "Pre-claim provisioning revision read failed",
+    ),
+  );
+  const claimedLease = psql(`
+    select concat_ws(
+      '|',
+      revision::text,
+      lease_generation::text,
+      locked_by,
+      lease_token::text
+    )
+    from public.claim_next_ghl_provisioning_run_v1(
+      'sandbox', 'revision-fenced-worker', timezone('utc', now()), 60000
+    );
+  `, "Revision-fenced provisioning claim failed");
+  const [
+    claimedRevision,
+    claimedLeaseGeneration,
+    claimedWorker,
+    claimedLeaseToken,
+  ] = claimedLease.split("|");
+  assert.equal(Number(claimedRevision), revisionBeforeLease + 1);
+  assert.equal(Number(claimedLeaseGeneration), 1);
+  assert.equal(claimedWorker, "revision-fenced-worker");
+  assert.match(claimedLeaseToken, /^[0-9a-f-]{36}$/i);
+  assert.equal(
+    psql(`
+      select public.release_ghl_provisioning_run_claim_v1(
+        '${provisioningRunId}',
+        'revision-fenced-worker',
+        '${claimedLeaseToken}',
+        ${claimedLeaseGeneration},
+        timezone('utc', now())
+      )::text;
+    `, "Revision-fenced provisioning release failed"),
+    "true",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|',
+        revision::text,
+        (locked_by is null)::text,
+        (lease_token is null)::text,
+        (locked_until is null)::text
+      )
+      from public.ghl_provisioning_runs
+      where id = '${provisioningRunId}';
+    `, "Post-release provisioning fence read failed"),
+    `${revisionBeforeLease + 2}|true|true|true`,
+    "Provisioning lease release did not advance the revision and clear every lease field",
+  );
 
   psql(`
     update public.ghl_location_mappings set

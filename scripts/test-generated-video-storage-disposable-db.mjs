@@ -9,7 +9,7 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const REQUIRED_FINAL_MIGRATION = "20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql";
+const REQUIRED_FINAL_MIGRATION = "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql";
 const PROPOSAL = process.env.GENERATED_VIDEO_STORAGE_MIGRATION_PROPOSAL
   ?? join(MIGRATIONS, "20260713025000_add_generated_video_canonical_storage.sql");
 const TRANSACTION_OWNER = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -124,7 +124,7 @@ function bindSql(overrides = {}) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 128, "test expects the exact 128-migration candidate");
+  assert.equal(migrations.length, 129, "test expects the exact 129-migration candidate");
   assert.equal(migrations.at(-1), REQUIRED_FINAL_MIGRATION, "test expects the exact final migration");
   assert.match(readFileSync(PROPOSAL, "utf8"), /bind_generated_video_storage_v1/);
   adapter.preflight();

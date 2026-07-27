@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1131,
-  "deployableSourceSha256": "db39ac78e5d063a33b5c47fb3d0f3e63e47dfeefbfcb1fb9b0698856f7371527",
+  "entryCount": 1132,
+  "deployableSourceSha256": "0f770cf0525f9e246d8b5c07286718d5edd4c6911b063afeea95a262cb42b78e",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -84,9 +84,9 @@
     },
     {
       "path": "config/security/privileged-tenancy-matrix.v1.json",
-      "size": 10053,
+      "size": 10050,
       "mode": 33188,
-      "sha256": "f7f38bb0f0b7f6efc4fb317376dcf10e3f3baecb26d38b658ac561ec8ccde965"
+      "sha256": "2833890d5cce540ebe5e056761826add86e7362a8029fa55bb8394bcfbb217fb"
     },
     {
       "path": "config/security/supabase-prod-ca-2021.crt",
@@ -810,9 +810,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 110698,
+      "size": 110766,
       "mode": 33188,
-      "sha256": "44b068d4a57a6104fab8bc002c55821493d1647d1fa4ff80b6da74ecf045ac64"
+      "sha256": "dc3af4865354ce409c7b680491c5a5957a4f0c629e7158668fa4846c8f049802"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -918,9 +918,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 25559,
+      "size": 25556,
       "mode": 33188,
-      "sha256": "9caef6b43461547059f57b6f993dd879aa97401b000ac83f6bff05810afdfab5"
+      "sha256": "3b73a9b761429021e1425aa9b8d149f0eaf02641c748bf16bb804d22ebc5e5e6"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -960,15 +960,15 @@
     },
     {
       "path": "scripts/schema/check-forward-reconstruction.mjs",
-      "size": 21772,
+      "size": 21840,
       "mode": 33188,
-      "sha256": "26c09a361ee54a98639f56d0ef3e656cad69d008ec22d17d8052400133ea78f2"
+      "sha256": "1553d998a8db114cd36cd1bf17d7d56d989637b2fe27836db5e879e2efb17cb6"
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 113643,
+      "size": 113640,
       "mode": 33188,
-      "sha256": "8bcaaefbf5da96dc99966d81bb50f04952e9ee5c248f93a3478eb272e3633556"
+      "sha256": "32820e8c621f1e62f8e1f7aee1b8a35ace7eb19754894c059b8f903d64ad5bd7"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -992,7 +992,7 @@
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
       "size": 186931,
       "mode": 33188,
-      "sha256": "045517e037f70724a5fa5d352003e9c9e16efb0604773a1b407c8d4f971094f5"
+      "sha256": "b5555194045030128b3e12afcefd00e9d6957e0153637296453293514653c4b4"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1056,9 +1056,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 85254,
+      "size": 85251,
       "mode": 33188,
-      "sha256": "23b9cb4a0f7ce87953e3bd607a365a4bbfc1fe07fca6bf37badd2176d3b6c04e"
+      "sha256": "44ea9b85723ae9c383ee1a1265d53856ed38f7da2ba4f355101094e409aa745e"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1098,9 +1098,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 301328,
+      "size": 301322,
       "mode": 33188,
-      "sha256": "7aa6008fd06ea196bc81a3be5b537b307d40ba81abe5518c98e4002fb7a13ede"
+      "sha256": "e17101b3bd64c98f9a80a611b9982497caafbd7cf012b6b174f1a52999062fe5"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1154,7 +1154,7 @@
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
       "size": 62047,
       "mode": 33188,
-      "sha256": "e50dc87ba70d5c4368cf336b61738e62756198c75f4d35cb1f1211b0f665cf55"
+      "sha256": "643b6f73871f5a389fc08b171ca3d5fdc417b00585ad63e2a827ab2147a29860"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1218,9 +1218,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 11424,
+      "size": 11421,
       "mode": 33188,
-      "sha256": "0d8443011faf5361b333ecf33b043f2a743088063ff4573dc6ee850a6292a010"
+      "sha256": "565662bee1adb9e880b4a67f52a2495f62416e37e7b99f08467b9f8f7338fafd"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 136392,
+      "size": 136389,
       "mode": 33188,
-      "sha256": "8171f7286d5960ab49c78a0871a2b25e07c89b76ff831d8068663bbe81ceba14"
+      "sha256": "2f2caee4add6e18f7a55d02e2f35a501a863adfdc66e2639b8816230092e3a6e"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1416,9 +1416,9 @@
     },
     {
       "path": "scripts/test-account-deletion-offboarding-disposable-db.mjs",
-      "size": 50658,
+      "size": 50655,
       "mode": 33188,
-      "sha256": "1b20677a0d7b035d1f85e676694eb577e5ae66d94a93c3a03ba6bd6aa00b3f70"
+      "sha256": "4af8c2c0d4681077ec01524069776e38c53bde80d3a062a2b40a41ca7763297b"
     },
     {
       "path": "scripts/test-admin-page-authorization-contract.mjs",
@@ -1578,9 +1578,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 32341,
+      "size": 32338,
       "mode": 33188,
-      "sha256": "c8da5c15e278c3396fb5111d128fe13ec4b51da5651a939e7245e8878e114494"
+      "sha256": "140657367d4a710ce4f086e29b379e1b3a5ecf50fe279b8560861969de7cc6fc"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",
@@ -1602,15 +1602,15 @@
     },
     {
       "path": "scripts/test-generated-static-deletion-disposable-db.mjs",
-      "size": 15482,
+      "size": 15479,
       "mode": 33188,
-      "sha256": "c7b423c8698c3d5fa7b9619dc232090a6e347fe7a58163819721af954165caf0"
+      "sha256": "13afe814928aa4d7a6297672f51c609e622711d7e48b98dc59046ffd552e27d4"
     },
     {
       "path": "scripts/test-generated-video-storage-disposable-db.mjs",
-      "size": 14257,
+      "size": 14254,
       "mode": 33188,
-      "sha256": "0c8197a1ed9aef0bb2511e35d31d947598e8300aef3cab40f475618ebf295879"
+      "sha256": "69698d20a637b5548807c769ef95e20c989df716b8ca7054d24fef1e69770301"
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
@@ -1632,9 +1632,9 @@
     },
     {
       "path": "scripts/test-ghl-disposable-db.mjs",
-      "size": 102008,
+      "size": 104187,
       "mode": 33188,
-      "sha256": "c900f8409052cdc789d04ea8837be1774852845ae3044acbef32a0bc3c31cfcd"
+      "sha256": "8918aeb131bd4ea8999aed79c656d7b57d7e03666234a04e45919ee8ab6bddb0"
     },
     {
       "path": "scripts/test-ghl-embed-auth-handoff-disposable-db.mjs",
@@ -1656,9 +1656,9 @@
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
-      "size": 84647,
+      "size": 84644,
       "mode": 33188,
-      "sha256": "a71221f87136934966176f172d860c177033e6ed95bfe7013fe355389ba1d556"
+      "sha256": "167fb5c64a026707bbef15cc2f992eca1e9e155e307b2b43e550c69b8fac97ca"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation.ts",
@@ -1710,9 +1710,9 @@
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
-      "size": 53655,
+      "size": 53652,
       "mode": 33188,
-      "sha256": "de85e31a8975681e895bd56ea0c73ec9a61ebfef2f2ca2c92fa39f419e2bdc8c"
+      "sha256": "c8ddc95ed4c6fb54287f5f07766588674ea1d397922152615914d36bf13537fd"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-route.mjs",
@@ -1794,9 +1794,9 @@
     },
     {
       "path": "scripts/test-integrated-migration-chain-disposable-db.mjs",
-      "size": 50636,
+      "size": 50704,
       "mode": 33188,
-      "sha256": "d38f1b422688cc286bb6be48832958eb36ec7dcb974de35c978d4dfc5ba4ebb5"
+      "sha256": "bcc1f82fe76855b4949918cd046a856347e6811dc297b9306de1282801377fd8"
     },
     {
       "path": "scripts/test-internal-sms-notifications.mjs",
@@ -1806,9 +1806,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 33860,
+      "size": 33857,
       "mode": 33188,
-      "sha256": "c1364847e0c7cf68f4d58d651d56666b2e7be694fa2f26899179a594e6e0ce84"
+      "sha256": "c0b9060ee85396f1771a64826e6eb6bb0efe2be0d52f983be255e339c61d5b72"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
@@ -1958,7 +1958,7 @@
       "path": "scripts/test-migration-read-only-contract.mjs",
       "size": 7157,
       "mode": 33188,
-      "sha256": "511df59538b8b62ba1683d3ade31c64a7f35316f11a3c955dbe99192490f5c3a"
+      "sha256": "3167baf0a7719418b50c089badc713d5a87f58857f82d1adc17f3b1432020d76"
     },
     {
       "path": "scripts/test-native-postgres-test-adapter.mjs",
@@ -2028,9 +2028,9 @@
     },
     {
       "path": "scripts/test-post-audit-successor-contract.ts",
-      "size": 8591,
+      "size": 8609,
       "mode": 33188,
-      "sha256": "817903c57a0578a9535f2876e794cf60beab1e8015570e2aa71d2ba8735fa0de"
+      "sha256": "02c1bc9eb7c4fcc72a15f67d67b4ad5f418b83a00f5794ac62a46679d6a70665"
     },
     {
       "path": "scripts/test-privacy-consent-dsar-contract.mjs",
@@ -2046,9 +2046,9 @@
     },
     {
       "path": "scripts/test-privileged-tenancy-disposable-db.mjs",
-      "size": 21050,
+      "size": 21047,
       "mode": 33188,
-      "sha256": "c685267cb7fe2f995ebe0ce6d68c4f0828993960f9750ec0d8e99d23cbfcd780"
+      "sha256": "c0adaba1f6de7e5b507c6667f09b3f9b8084f1a4350a42ac3a456ff3e077dcd9"
     },
     {
       "path": "scripts/test-privileged-tenancy-matrix.mjs",
@@ -6575,6 +6575,12 @@
       "sha256": "36c440a2e8109705e1e893e94aa1a95357ad180439743145793cd6c5696a66f0"
     },
     {
+      "path": "supabase/migrations/20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql",
+      "size": 3623,
+      "mode": 33188,
+      "sha256": "f3cb3d3898108a37b9b5ce66c09de55fff5c8c65be4404d6940870d38006d350"
+    },
+    {
       "path": "supabase/reconciliation/README.md",
       "size": 3525,
       "mode": 33188,
@@ -6614,7 +6620,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "6a83b7da76cec540c00baefe6cc65f6f951f8601f4deb250b40f6713e25ab28e"
+      "sha256": "6ff6f8bad1d405e88cfe9317505656ab920ccb60a1970b611cf133ed20fd56f4"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
