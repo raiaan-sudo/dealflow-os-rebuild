@@ -267,6 +267,12 @@ const adapter = new GhlSandboxAdapter({
       if (String(url).includes("/forms/?locationId=")) {
         return new Response('{"forms":[{"id":"sandbox-form","locationId":"sandbox-location"}],"total":1}', { status: 200 });
       }
+      if (String(url).includes("/locations/sandbox-location/tags")) {
+        return new Response(
+          '{"tags":[{"id":"sandbox-tag","name":"dealflow"}]}',
+          { status: 200, headers: { "x-request-id": "request-tag-1" } },
+        );
+      }
       throw new Error(`Unexpected adapter URL: ${url}`);
     },
     sleep: async () => {},
@@ -584,11 +590,18 @@ const preinstalledSnapshot = await adapter.installSnapshot({
   },
 });
 assert.equal(preinstalledSnapshot.outcome, "succeeded");
-assert.equal(preinstalledSnapshot.providerReference, "snapshot-push-1");
+assert.equal(
+  preinstalledSnapshot.providerReference,
+  "sandbox-snapshot:sandbox-location",
+);
 const documentedStatusRequest = capturedRequests.find(({ url }) =>
   url.includes("/snapshots/snapshot-status/")
 );
-assert.equal(documentedStatusRequest.init.headers.Version, "v3");
+assert.equal(
+  documentedStatusRequest,
+  undefined,
+  "a preinstalled location must be verified by required-object reads, not a nonexistent push receipt",
+);
 
 async function readSnapshotStatusShape(payload) {
   const requests = [];

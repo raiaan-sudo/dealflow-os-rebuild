@@ -387,6 +387,46 @@ try {
   {
     const clock = makeClock();
     const repository = new MemoryGhlProvisioningRepository([directTenant]);
+    const provider = new FakeGhlAdapter({ snapshotInstallOutcome: "succeeded" });
+    const dependencies = {
+      repository,
+      provider,
+      writeGate: { enabled: true, adapterKind: "fake" },
+      isolatedDatabase: true,
+      databaseUrl: "http://127.0.0.1:54321",
+      now: clock.now,
+    };
+    const request = fixtureRequest(
+      "workspace-a",
+      "payment-preinstalled-required-object-verification",
+    );
+    request.snapshotManifest.installationMode = "preinstalled";
+    const run = await requestGhlProvisioning(request, dependencies);
+    const ready = await driveToTerminal(
+      run,
+      dependencies,
+      executeNextGhlProvisioningStep,
+    );
+    assert.equal(ready.state, "ready");
+    assert.ok(ready.snapshotVerifiedAt);
+    assert.ok(ready.requiredObjectsVerifiedAt);
+    assert.equal(
+      provider.calls.some((call) => call.operation === "snapshot_status"),
+      false,
+      "preinstalled snapshots must not poll the snapshot-push status endpoint",
+    );
+    assert.equal(
+      provider.calls.filter(
+        (call) => call.operation === "required_objects_verify",
+      ).length,
+      1,
+      "preinstalled snapshots require one final exact object-inventory verification",
+    );
+  }
+
+  {
+    const clock = makeClock();
+    const repository = new MemoryGhlProvisioningRepository([directTenant]);
     const provider = new FakeGhlAdapter({ snapshotStatuses: ["pending"] });
     const dependencies = {
       repository,

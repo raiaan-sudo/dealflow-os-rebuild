@@ -906,32 +906,38 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         httpStatus: null,
       };
     }
-    const status = await this.getSnapshotStatus({
+    // A preinstalled snapshot has no later "push" receipt to poll. HighLevel's
+    // snapshot-status endpoint reports pushes, and returns 422 for a location
+    // whose snapshot was loaded when the sub-account was created. Verify the
+    // approved manifest through its exact required-object inventory instead.
+    const verification = await this.verifyRequiredObjects({
       providerLocationId: input.providerLocationId,
       manifest: input.manifest,
     });
-    if (status.outcome === "ready" || status.outcome === "pending") {
+    if (verification.outcome === "verified") {
       return {
-        outcome: status.outcome === "ready" ? "succeeded" : "accepted",
-        providerRequestId: status.providerRequestId,
-        providerReference: status.providerReference,
+        outcome: "succeeded",
+        providerRequestId: verification.providerRequestId,
+        providerReference:
+          `${input.manifest.providerSnapshotId}:${input.providerLocationId}`,
         httpStatus: 200,
       };
     }
-    if ("errorCode" in status) {
+    if (verification.outcome === "missing") {
       return {
-        outcome: status.outcome,
-        errorCode: status.errorCode,
-        safeMessage: status.safeMessage,
-        providerRequestId: status.providerRequestId,
-        httpStatus: null,
+        outcome: "operator_action_required",
+        errorCode: "ghl_preinstalled_required_objects_missing",
+        safeMessage:
+          `The preinstalled GHL snapshot is missing ${verification.missingKeys.length} required object(s).`,
+        providerRequestId: verification.providerRequestId,
+        httpStatus: 200,
       };
     }
     return {
-      outcome: "operator_action_required",
-      errorCode: "ghl_snapshot_status_invalid",
-      safeMessage: "GHL snapshot status could not be interpreted safely.",
-      providerRequestId: null,
+      outcome: verification.outcome,
+      errorCode: verification.errorCode,
+      safeMessage: verification.safeMessage,
+      providerRequestId: verification.providerRequestId,
       httpStatus: null,
     };
   }

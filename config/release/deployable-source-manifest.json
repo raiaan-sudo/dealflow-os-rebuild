@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1132,
-  "deployableSourceSha256": "0f770cf0525f9e246d8b5c07286718d5edd4c6911b063afeea95a262cb42b78e",
+  "deployableSourceSha256": "3bfffad373117908bb629ae3bb308f5c50d9743c0d2ea9c6fcaa1a7be6933ff8",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1740,9 +1740,9 @@
     },
     {
       "path": "scripts/test-ghl-sandbox-integration.mjs",
-      "size": 43160,
+      "size": 43533,
       "mode": 33188,
-      "sha256": "aa71f1d47a7e603799742d70310c4fe66c2c16076d13c55d1051367f7b615a43"
+      "sha256": "c0e71bce87fabf9b63597e28201ffbcb961a7759d3383988932d8d81d3e771f9"
     },
     {
       "path": "scripts/test-ghl-signed-user-context.mjs",
@@ -1752,9 +1752,9 @@
     },
     {
       "path": "scripts/test-ghl-tenant-provisioning.mjs",
-      "size": 42057,
+      "size": 43401,
       "mode": 33188,
-      "sha256": "39ca63d07c4f12f81d566257e8ff773f3cae93daf552d05f97b3120b7114cea9"
+      "sha256": "a61591fc80b4f925a865351685afc1b0f1547ed64077808a207fa2f3026a4cab"
     },
     {
       "path": "scripts/test-ghl-write-ambiguity.ts",
@@ -4362,9 +4362,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/sandbox-adapter.ts",
-      "size": 83014,
+      "size": 83461,
       "mode": 33188,
-      "sha256": "ecffeffb45ea96c4ec89a6805657374b818449912632cc1eb9fa99eebdd2db04"
+      "sha256": "292a51d64cc23a75c1056da44416b7292b8fa28381e4ea202062209119aa564c"
     },
     {
       "path": "src/lib/integrations/gohighlevel/sandbox-gate.ts",
@@ -5172,9 +5172,9 @@
     },
     {
       "path": "src/lib/services/ghl-provisioning-service.ts",
-      "size": 60950,
+      "size": 62004,
       "mode": 33188,
-      "sha256": "9de8418526c951ecbf797427b169d528e27618d1f10ad3d0fb42f1d2ef5569b8"
+      "sha256": "df0532a9f9fcb1ae7f9e8cb5d5a9bce0d065b0612143104aa1328e79781c3e87"
     },
     {
       "path": "src/lib/services/ghl-sandbox-authority-service.ts",

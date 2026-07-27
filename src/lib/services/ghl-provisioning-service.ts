@@ -1203,6 +1203,11 @@ async function executeSnapshotInstall(
   });
 
   if (!("errorCode" in result)) {
+    const verifiedAt =
+      run.snapshotManifest.installationMode === "preinstalled"
+      && result.outcome === "succeeded"
+        ? nowFrom(dependencies)
+        : null;
     await recordProviderOutcome(outbox, {
       outcome: result.outcome,
       outboxStatus: "succeeded",
@@ -1210,12 +1215,27 @@ async function executeSnapshotInstall(
       providerReference: result.providerReference,
       httpStatus: result.httpStatus,
       responseFingerprint: null,
-      metadata: { snapshotVersion: run.snapshotManifest.snapshotVersion },
+      metadata: {
+        snapshotVersion: run.snapshotManifest.snapshotVersion,
+        verificationMode: verifiedAt
+          ? "preinstalled_required_objects"
+          : "snapshot_push_receipt",
+      },
     }, dependencies);
+    if (verifiedAt && run.locationMappingId) {
+      await dependencies.repository.markLocationVerified({
+        mappingId: run.locationMappingId,
+        snapshotVerifiedAt: verifiedAt,
+      });
+    }
     const next = transitionGhlProvisioning(
       run,
       "snapshot_installing",
-      { lastErrorCode: null, lastErrorMessage: null },
+      {
+        snapshotVerifiedAt: verifiedAt,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      },
       nowFrom(dependencies),
     );
     return saveTransition(dependencies.repository, run, next);
@@ -1254,6 +1274,24 @@ async function checkSnapshotStatus(
     );
   }
 
+  if (
+    run.snapshotManifest.installationMode === "preinstalled"
+    && run.snapshotVerifiedAt
+  ) {
+    const next = transitionGhlProvisioning(
+      run,
+      run.state === "snapshot_installing"
+        ? "snapshot_verifying"
+        : "required_objects_verifying",
+      {
+        nextRetryAt: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      },
+      nowFrom(dependencies),
+    );
+    return saveTransition(dependencies.repository, run, next);
+  }
   if (run.state === "snapshot_verifying" && run.snapshotVerifiedAt) {
     const next = transitionGhlProvisioning(
       run,
