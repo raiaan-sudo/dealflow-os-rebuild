@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1132,
-  "deployableSourceSha256": "fac8a85d74120494e48db221670ab922f87a27301fd9a8aec5d51a7121440ded",
+  "deployableSourceSha256": "1bb89683a3f58691ba1bb50264d3e45bd36753b22062ee4f788d489b9ce5c4be",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -86,7 +86,7 @@
       "path": "config/security/privileged-tenancy-matrix.v1.json",
       "size": 10050,
       "mode": 33188,
-      "sha256": "2833890d5cce540ebe5e056761826add86e7362a8029fa55bb8394bcfbb217fb"
+      "sha256": "0d2b52a972b82176769f077d8883d1a8c09d44b93d8b08d1118304e25379056f"
     },
     {
       "path": "config/security/supabase-prod-ca-2021.crt",
@@ -228,9 +228,9 @@
     },
     {
       "path": "docs/dealflow-completion/NATIVE_POSTGRES_DISPOSABLE_TESTS.md",
-      "size": 3822,
+      "size": 4191,
       "mode": 33188,
-      "sha256": "976a67f3acfa6cf6fb994eb5b063d684563cb651b97126c5af4915a1430f196d"
+      "sha256": "a9cc1be35e2134118866ea074a4fea77dff763b319b82adc0591fdc86e47da84"
     },
     {
       "path": "docs/dealflow-completion/OPTIMIZATION_POLICY.md",
@@ -852,9 +852,9 @@
     },
     {
       "path": "scripts/lib/final-verification-environment.mjs",
-      "size": 1724,
+      "size": 1953,
       "mode": 33188,
-      "sha256": "5e112548e1e48738b82b1d9cf973129c152ecd8c0c78f3ad3e4c96844ff3f707"
+      "sha256": "be4a3b445c9876e3639cbe00ac57162c98606ebd70776707c6f3d0f7f88ab9e1"
     },
     {
       "path": "scripts/lib/final-verification-evidence-contract.mjs",
@@ -1566,9 +1566,9 @@
     },
     {
       "path": "scripts/test-disposable-postgres-harness-contract.mjs",
-      "size": 10603,
+      "size": 10897,
       "mode": 33188,
-      "sha256": "d4e080873119403e3f17bdf367c47524dae74353649191bb7b2473ab2664ba94"
+      "sha256": "45cc1c3d5e56fb9451f52c8b61647b6db40307d482321fd27cdfb1f6a0e3c5d1"
     },
     {
       "path": "scripts/test-final-catalog-acl-oracle-contract.mjs",

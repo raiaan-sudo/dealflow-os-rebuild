@@ -45,12 +45,17 @@ DEALFLOW_DISPOSABLE_DB_MODE=native
 DEALFLOW_NATIVE_PGBIN=/absolute/path/to/postgresql-17.6/bin
 DEALFLOW_NATIVE_PGHOST=/absolute/path/to/private/socket-directory
 DEALFLOW_NATIVE_PGPORT=6543
-DEALFLOW_NATIVE_PGUSER=local_test_superuser
+DEALFLOW_NATIVE_PGUSER=supabase_admin
 ```
 
 The PostgreSQL server must already be running under the current user. Its
 cluster, socket, and port must be dedicated to this verification run. Do not
 point the adapter at a shared, linked, staging, or production database.
+Standalone adapter and disposable-suite tests can use another safe database
+owner. The canonical final verifier requires the isolated cluster to be
+initialized with database superuser `supabase_admin`, because the frozen
+Supabase catalog/ACL oracle includes that managed owner identity and must remain
+an exact comparison rather than an environment-normalized approximation.
 
 ## Verification
 

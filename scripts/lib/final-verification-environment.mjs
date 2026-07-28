@@ -38,6 +38,11 @@ export function requireFinalVerificationNativeEnvironment(environment) {
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(values.DEALFLOW_NATIVE_PGUSER)) {
     throw new Error("Final verification requires a safe DEALFLOW_NATIVE_PGUSER identifier.");
   }
+  if (values.DEALFLOW_NATIVE_PGUSER !== "supabase_admin") {
+    throw new Error(
+      "Final verification requires DEALFLOW_NATIVE_PGUSER=supabase_admin so the frozen Supabase catalog/ACL oracle is owner-identical.",
+    );
+  }
   return Object.freeze({
     mode: "native",
     pgbin: values.DEALFLOW_NATIVE_PGBIN,

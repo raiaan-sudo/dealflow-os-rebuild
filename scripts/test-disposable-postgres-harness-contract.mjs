@@ -76,6 +76,15 @@ assert.throws(
   /1024 through 65535/,
 );
 assert.throws(
+  () =>
+    requireFinalVerificationNativeEnvironment({
+      ...validFinalEnvironment,
+      DEALFLOW_NATIVE_PGUSER: "local_test_superuser",
+    }),
+  /DEALFLOW_NATIVE_PGUSER=supabase_admin/,
+  "canonical final verification must preserve the frozen Supabase owner identity",
+);
+assert.throws(
   () => requireFinalVerificationNativeEnvironment({ ...validFinalEnvironment, DEALFLOW_NATIVE_PGHOST: "relative/socket" }),
   /absolute DEALFLOW_NATIVE_PGHOST/,
 );
