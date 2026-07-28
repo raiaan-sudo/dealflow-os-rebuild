@@ -56,7 +56,12 @@ function parsePsqlUsername(args, fallback) {
 }
 
 export function nativeCompatiblePostgresUsername(username, nativeSuperuser) {
-  if (username === "postgres") return nativeSuperuser;
+  // The disposable Supabase image is bootstrapped with `supabase_admin` as its
+  // cluster superuser, while ordinary PostgreSQL images use `postgres`. Native
+  // mode must translate both container-owner identities to the dedicated local
+  // test-cluster owner; API roles such as `authenticated` remain exact so RLS
+  // simulations still exercise the intended permissions.
+  if (username === "postgres" || username === "supabase_admin") return nativeSuperuser;
   return username;
 }
 

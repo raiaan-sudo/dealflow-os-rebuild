@@ -54,6 +54,11 @@ assert.equal(
   "Docker's default postgres connection must map to the configured native superuser",
 );
 assert.equal(
+  nativeCompatiblePostgresUsername("supabase_admin", "local_test_superuser"),
+  "local_test_superuser",
+  "Supabase image owner connections must map to the configured native superuser",
+);
+assert.equal(
   nativeCompatiblePostgresUsername("authenticated", "supabase_admin"),
   "authenticated",
   "non-superuser role simulations must remain exact",
