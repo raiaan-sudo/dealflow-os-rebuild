@@ -439,6 +439,19 @@ const records = [];
 let failed = false;
 let invariantFailure = null;
 
+function cleanupGeneratedCommandArtifacts(command) {
+  if (command !== "npm run test:e2e:safe") return;
+  const generatedBrowserBuild = path.join(root, ".next-safe-e2e");
+  if (!fs.existsSync(generatedBrowserBuild)) return;
+  const stat = fs.lstatSync(generatedBrowserBuild);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(
+      "Refusing to clean an unexpected safe-browser build artifact",
+    );
+  }
+  fs.rmSync(generatedBrowserBuild, { recursive: true, force: false });
+}
+
 for (let index = 0; index < commands.length; index += 1) {
   const [executable, args] = commands[index];
   const command = [executable, ...args].join(" ");
@@ -463,6 +476,12 @@ for (let index = 0; index < commands.length; index += 1) {
     maxBuffer: 64 * 1024 * 1024,
     timeout: 15 * 60_000,
   });
+  let generatedArtifactCleanupError = null;
+  try {
+    cleanupGeneratedCommandArtifacts(command);
+  } catch (error) {
+    generatedArtifactCleanupError = error;
+  }
   const completedAt = new Date();
   const commandExitCode = result.status ?? (result.error ? 1 : 0);
   const fatalResourceDiagnostic = detectFinalVerificationFatalResourceDiagnostic(
@@ -484,6 +503,7 @@ for (let index = 0; index < commands.length; index += 1) {
   }
   const exitCode =
     commandExitCode === 0 &&
+    !generatedArtifactCleanupError &&
     !invariantError &&
     !fatalResourceDiagnostic &&
     !postCommandDiskHeadroomFailed
@@ -518,12 +538,16 @@ for (let index = 0; index < commands.length; index += 1) {
       `disk_free_bytes_after: ${diskFreeBytesAfter}`,
       `disk_headroom_settlement_wait_ms: ${diskHeadroomSettlement.waitedMs}`,
       `fatal_resource_diagnostic: ${fatalResourceDiagnostic ?? "none"}`,
+      `generated_artifact_cleanup: ${generatedArtifactCleanupError ? "failed" : "passed"}`,
       `post_command_disk_headroom: ${postCommandDiskHeadroomFailed ? "failed" : "passed"}`,
       `post_command_repository_invariant: ${invariantError ? "failed" : "passed"}`,
       "",
       result.stdout ?? "",
       result.stderr ?? "",
       result.error ? `runner_error: ${result.error.message}` : "",
+      generatedArtifactCleanupError
+        ? `generated_artifact_cleanup_error: ${generatedArtifactCleanupError.message}`
+        : "",
       invariantError ? `repository_invariant_error: ${invariantError.message}` : "",
     ].join("\n"),
   );

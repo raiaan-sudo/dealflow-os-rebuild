@@ -839,6 +839,10 @@ for (const marker of [
   "disk_free_bytes_after_initial:",
   "disk_headroom_settlement_wait_ms:",
   "fatal_resource_diagnostic:",
+  'command !== "npm run test:e2e:safe"',
+  'path.join(root, ".next-safe-e2e")',
+  "stat.isSymbolicLink() || !stat.isDirectory()",
+  "generated_artifact_cleanup:",
   "post_command_disk_headroom:",
 ]) {
   assert.ok(source.includes(marker), `Final verification runner is missing: ${marker}`);

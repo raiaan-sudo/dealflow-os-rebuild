@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1132,
-  "deployableSourceSha256": "3bfffad373117908bb629ae3bb308f5c50d9743c0d2ea9c6fcaa1a7be6933ff8",
+  "deployableSourceSha256": "fac8a85d74120494e48db221670ab922f87a27301fd9a8aec5d51a7121440ded",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -840,9 +840,9 @@
     },
     {
       "path": "scripts/lib/disposable-postgres-harness.mjs",
-      "size": 9856,
+      "size": 10266,
       "mode": 33188,
-      "sha256": "9dd768ebf94d07e88edb900beb1bf71a623db6151ef89226d17850114c21426d"
+      "sha256": "37ade342cc784d54792c95bb5a562a6b89fea54736a04275ce736ca682f6d2c0"
     },
     {
       "path": "scripts/lib/final-verification-command-contract.mjs",
@@ -918,9 +918,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 25556,
+      "size": 26494,
       "mode": 33188,
-      "sha256": "3b73a9b761429021e1425aa9b8d149f0eaf02641c748bf16bb804d22ebc5e5e6"
+      "sha256": "7d96f13e2be559cd4452729e36a8b594707e75d8863eb306074795872cf3004b"
     },
     {
       "path": "scripts/run-rls-fixture-smoke.mjs",
@@ -1566,9 +1566,9 @@
     },
     {
       "path": "scripts/test-disposable-postgres-harness-contract.mjs",
-      "size": 10400,
+      "size": 10603,
       "mode": 33188,
-      "sha256": "eb328ae6106014d65807fd976372b12f1ad5b7366acf757abca60db696d9066b"
+      "sha256": "d4e080873119403e3f17bdf367c47524dae74353649191bb7b2473ab2664ba94"
     },
     {
       "path": "scripts/test-final-catalog-acl-oracle-contract.mjs",
@@ -1578,9 +1578,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 32338,
+      "size": 32501,
       "mode": 33188,
-      "sha256": "140657367d4a710ce4f086e29b379e1b3a5ecf50fe279b8560861969de7cc6fc"
+      "sha256": "8136329d584847fd30357f87533a23cf63ac232aed7ad095d2969010b6d0b662"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",
