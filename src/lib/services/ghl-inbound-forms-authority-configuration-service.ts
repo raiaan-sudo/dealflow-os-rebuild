@@ -468,7 +468,12 @@ export async function configureGhlInboundFormsAuthorities(input: {
   // provider checks. This RPC replaces every current attestation, validates the
   // exact complete mapping set, and reopens the gate atomically. Any failure
   // rolls back the rotation while the earlier committed fence remains closed.
-  const runtime = await input.client.rpc("configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v1", {
+  // PostgreSQL identifiers are limited to 63 bytes. The original 64-byte SQL
+  // identifier is stored by PostgreSQL without its trailing "1", and
+  // PostgREST exposes that canonical stored name. SQL callers tolerate the
+  // oversized spelling because PostgreSQL truncates it during parsing, while
+  // PostgREST RPC routing requires the exact stored identifier.
+  const runtime = await input.client.rpc("configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v", {
     p_environment: input.environment,
     p_bindings: verifiedBindings,
     p_enable_periodic_sweep: input.enablePeriodicSweep === true,

@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1132,
-  "deployableSourceSha256": "1bb89683a3f58691ba1bb50264d3e45bd36753b22062ee4f788d489b9ce5c4be",
+  "deployableSourceSha256": "9f8c287e89dfbe41b092c4c990253b8b60396e2cea314e4d4623f72cb400515b",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -1668,9 +1668,9 @@
     },
     {
       "path": "scripts/test-ghl-inbound-forms-authority-configuration.ts",
-      "size": 24587,
+      "size": 24584,
       "mode": 33188,
-      "sha256": "b3e05f1669996ff6e111e2b1180e84d9d20046c00e491b6789c722d8e20d7552"
+      "sha256": "faa92cc608d3d6e7f0b93ab44f525d7e97a33074360c785c1a3bdc82ce27e153"
     },
     {
       "path": "scripts/test-ghl-launch-readiness-polling.ts",
@@ -5106,9 +5106,9 @@
     },
     {
       "path": "src/lib/services/ghl-inbound-forms-authority-configuration-service.ts",
-      "size": 18904,
+      "size": 19270,
       "mode": 33188,
-      "sha256": "7ce6e6c0687804d0af405a0cdb659c7dc9040f2625591f55fc8df5bfd631bcb9"
+      "sha256": "5a9fc3d430baf23687cc06089549ea85baf419e2c13e7f1d53f13eeedfd69225"
     },
     {
       "path": "src/lib/services/ghl-lead-effect-service.ts",

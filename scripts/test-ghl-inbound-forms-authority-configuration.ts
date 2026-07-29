@@ -321,7 +321,7 @@ function makeClient(options: {
           error: null,
         };
       }
-      if (name === "configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v1") {
+      if (name === "configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v") {
         configureCalls += 1;
         return { data: true, error: null };
       }
@@ -440,7 +440,7 @@ const successResult = await configureGhlInboundFormsAuthorities({
   client: {
     ...success.client,
     rpc: async (name: string, params: Record<string, unknown>) => {
-      if (name === "configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v1") {
+      if (name === "configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v") {
         order.push("batch-bind-and-open");
         assert.deepEqual(params.p_bindings, [
           {
@@ -503,7 +503,7 @@ assert.deepEqual(successRpcNames.slice(0, 4), [
   "drain_ghl_inbound_form_sweep_claims_v1",
   "drain_ghl_inbound_form_reconciliation_claims_v1",
 ]);
-assert.equal(successRpcNames.at(-1), "configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v1");
+assert.equal(successRpcNames.at(-1), "configure_ghl_inbound_forms_read_authorities_with_sweep_proof_v");
 assert.equal(successResult.runtimeEnabled, true);
 assert.equal(successResult.sweepRuntimeEnabled, true);
 assert.equal(successResult.providerMutationAttempted, false);
