@@ -822,6 +822,8 @@ for (const marker of [
   'blockedCount: environmentOnlyDeferrals.length',
   'process.exitCode = 2',
   'SAFE_E2E_QA_AUTH: "false"',
+  '"PLAYWRIGHT_BROWSERS_PATH"',
+  'PLAYWRIGHT_SKIP_BROWSER_GC: "1"',
   'SUPABASE_SCHEMA_CHECK_MODE: "local"',
   "assertExactFinalVerificationCommandPortfolio",
   "formatFinalVerificationCommandTuple",

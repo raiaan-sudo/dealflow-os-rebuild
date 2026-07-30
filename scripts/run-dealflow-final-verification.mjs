@@ -227,11 +227,13 @@ function safeEnvironment() {
     "DEALFLOW_NATIVE_PGHOST",
     "DEALFLOW_NATIVE_PGPORT",
     "DEALFLOW_NATIVE_PGUSER",
+    "PLAYWRIGHT_BROWSERS_PATH",
   ];
   const env = {
     CI: "true",
     NO_COLOR: "1",
     NEXT_TELEMETRY_DISABLED: "1",
+    PLAYWRIGHT_SKIP_BROWSER_GC: "1",
     SUPABASE_SCHEMA_CHECK_MODE: "local",
     SAFE_E2E_QA_AUTH: "false",
     SAFE_E2E_OUTPUT_DIR: path.join(outputDirectory, "browser-proof"),

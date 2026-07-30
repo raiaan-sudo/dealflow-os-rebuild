@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1156,
-  "deployableSourceSha256": "d407da36ab2f15f2d58d4ce17ab856641d49c88f22a54f7f51577100349df3d1",
+  "deployableSourceSha256": "74647352f9cc6beb8c34db9f9d57425afefd614055e6fc345b9c1dbdb84f9ffb",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -984,9 +984,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 26494,
+      "size": 26563,
       "mode": 33188,
-      "sha256": "7d96f13e2be559cd4452729e36a8b594707e75d8863eb306074795872cf3004b"
+      "sha256": "f5e29492a65bcdd470ed24867f0694802815317806a14aba31adcc83f9a7bfc1"
     },
     {
       "path": "scripts/run-durable-system-worker.ts",
@@ -1170,9 +1170,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 301396,
+      "size": 302194,
       "mode": 33188,
-      "sha256": "69186e03d9771c760d746e5f1d2d364f5374a0c1f179652eab217fde5abbe3b5"
+      "sha256": "5584289147ba340897e8171302267c43caddb8c239e476d1c25f058472457b3b"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1302,9 +1302,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 137397,
+      "size": 137622,
       "mode": 33188,
-      "sha256": "0553acf890e12e4194f0ab009b9c2329156fed1274c9b81df1848cb566019f18"
+      "sha256": "3166cb00856321dfae810be0dd4efba4dd16546c5bbc1b79b3b8ea81d9978edf"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1662,9 +1662,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 32501,
+      "size": 32570,
       "mode": 33188,
-      "sha256": "8136329d584847fd30357f87533a23cf63ac232aed7ad095d2969010b6d0b662"
+      "sha256": "c225f6320c953a502bd900d0799ba610c3382879166cab7ad44491c623e5a5f2"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",

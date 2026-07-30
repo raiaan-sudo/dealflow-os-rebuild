@@ -599,6 +599,27 @@ function requiredEnvironment(name, minimumLength = 1) {
   return value;
 }
 
+function requiredPlaywrightBrowsersPath() {
+  const supplied = requiredEnvironment("PLAYWRIGHT_BROWSERS_PATH");
+  if (!isAbsolute(supplied)) {
+    throw new Error("PLAYWRIGHT_BROWSERS_PATH must be absolute");
+  }
+  const resolved = realpathSync(supplied);
+  const stat = lstatSync(resolved);
+  if (
+    resolved !== supplied ||
+    !stat.isDirectory() ||
+    stat.isSymbolicLink() ||
+    (stat.mode & 0o022) !== 0 ||
+    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+  ) {
+    throw new Error(
+      "PLAYWRIGHT_BROWSERS_PATH must be a canonical owner-controlled directory",
+    );
+  }
+  return resolved;
+}
+
 function captureExactStagingProjectRecord(expectedProjectRef) {
   const suppliedPath = requiredEnvironment("DEALFLOW_STAGING_PROJECT_RECORD");
   if (!isAbsolute(suppliedPath)) {
@@ -1166,6 +1187,7 @@ function assertFailClosedExecutionEnvironment() {
   if (requiredEnvironment("QA_EMAIL").toLowerCase() !== EXPECTED_QA_EMAIL) {
     throw new Error("QA_EMAIL is not the exact non-admin synthetic harness identity");
   }
+  requiredPlaywrightBrowsersPath();
   requiredEnvironment("NEXT_PUBLIC_SUPABASE_ANON_KEY", 32);
   requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY", 32);
   requiredStrongStagingSecret("STAGING_QA_PASSWORD", 16);
@@ -5544,6 +5566,7 @@ function multiRoleBrowserEnvironment(
   );
   return {
     CI: "1",
+    PLAYWRIGHT_BROWSERS_PATH: requiredPlaywrightBrowsersPath(),
     PLAYWRIGHT_SKIP_BROWSER_GC: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     QA_ISOLATED_SUPABASE_PROJECT_REF: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
@@ -5579,6 +5602,7 @@ function safeProductBrowserEnvironment(
   }];
   return {
     CI: "1",
+    PLAYWRIGHT_BROWSERS_PATH: requiredPlaywrightBrowsersPath(),
     PLAYWRIGHT_SKIP_BROWSER_GC: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     QA_AUTH_HARNESS_ENABLED: "true",
