@@ -541,6 +541,28 @@ async function installFailClosedNetworkBoundary(
         url.pathname === "/auth/v1/token" &&
         url.searchParams.size === 1 &&
         url.searchParams.get("grant_type") === "password";
+      let isExactServerPasswordSignIn = false;
+      if (
+        sameOrigin &&
+        method === "POST" &&
+        url.pathname === "/api/auth/session" &&
+        url.search === "" &&
+        url.hash === "" &&
+        testTitle ===
+          "new direct realtor is authenticated but remains unpaid and launch-blocked" &&
+        request.headers()["content-type"]?.startsWith("application/json")
+      ) {
+        try {
+          const payload = request.postDataJSON() as Record<string, unknown>;
+          isExactServerPasswordSignIn =
+            Object.keys(payload).sort().join(",") === "action,email,password" &&
+            payload.action === "sign-in" &&
+            payload.email === ROLE_EMAILS.newDirect &&
+            payload.password === requiredEnvironment("STAGING_QA_PASSWORD");
+        } catch {
+          isExactServerPasswordSignIn = false;
+        }
+      }
       const isAllowedAuthRequest = isAllowedAuthRead || isExactPasswordSignIn;
       const exactTurnstileTestRequest = isAllowedStagingTurnstileRequest(
         url.toString(),
@@ -570,6 +592,7 @@ async function installFailClosedNetworkBoundary(
       if (
         !["GET", "HEAD", "OPTIONS"].includes(method) &&
         !isExactPasswordSignIn &&
+        !isExactServerPasswordSignIn &&
         !exactTurnstileTestRequest
       ) {
         diagnostics.blockedMutations.push(`${method} ${url.pathname}`);
