@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1155,
-  "deployableSourceSha256": "674e9492eda4db3391ab93a30286c5676912e72fda7359d5c7da7340f9222928",
+  "deployableSourceSha256": "6e858d9143c2a4a9dcd1886bcfa95a64d3414d1b5ad244cb054923992874fa14",
   "entries": [
     {
       "path": ".dockerignore",
@@ -54,9 +54,9 @@
     },
     {
       "path": "Dockerfile.worker",
-      "size": 3000,
+      "size": 3077,
       "mode": 33188,
-      "sha256": "9e28a43bc43b2c9cba95aece7f3030a26796f8e32916baf1cb0626b3cc454aed"
+      "sha256": "38834dc4683583fece5e427c37708a14c166d3a7b3a5f8482cb78b4fcfcb73d6"
     },
     {
       "path": "LICENSE.md",
