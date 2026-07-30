@@ -21,6 +21,11 @@ const ARTIFACT_RELATIVE_PATH =
   "public/.well-known/dealflow-hosted-build-identity.json";
 const STAGING_HOST_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1";
+const PRODUCTION_HOST_ATTESTATION =
+  "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1";
+const PRODUCTION_PROJECT_NAME = "dealflow-os-rebuild";
+const PRODUCTION_PROJECT_ID_SHA256 =
+  "953855c9a0ab60a58f966cfd7a212e2a6a3db722a589468a6934b79fc265e8b9";
 const STAGING_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const STAGING_PROJECT_ID_SHA256 =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde";
@@ -87,7 +92,9 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
     typeof configuration.name !== "string" ||
     !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name) ||
     (target.kind === "exact_staging" &&
-      configuration.name !== STAGING_PROJECT_NAME)
+      configuration.name !== STAGING_PROJECT_NAME) ||
+    (target.kind === "exact_production" &&
+      configuration.name !== PRODUCTION_PROJECT_NAME)
   ) {
     return null;
   }
@@ -120,7 +127,10 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
       status: "PASS",
       transformation: "vercel_canonical_config_normalization_v1",
       injectedProjectNameMatched:
-        target.kind !== "exact_staging" || configuration.name === STAGING_PROJECT_NAME,
+        (target.kind !== "exact_staging" ||
+          configuration.name === STAGING_PROJECT_NAME) &&
+        (target.kind !== "exact_production" ||
+          configuration.name === PRODUCTION_PROJECT_NAME),
       injectedVersion: configuration.version,
       hostedBytesSha256: sha256(file.contents),
       recoveredSourceSha256: sha256(recoveredSourceBytes),
@@ -280,12 +290,28 @@ function classifyBuildTarget() {
     ) &&
     sha256(normalizedEnvironmentValue("VERCEL_PROJECT_ID")) ===
       STAGING_PROJECT_ID_SHA256;
+  const exactProduction =
+    vercelEnvironment === "production" &&
+    deploymentTarget === "production" &&
+    exactProjectBinding(
+      "DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID",
+      "DEALFLOW_PRODUCTION_HOST_ATTESTATION",
+      PRODUCTION_HOST_ATTESTATION,
+    ) &&
+    sha256(normalizedEnvironmentValue("VERCEL_PROJECT_ID")) ===
+      PRODUCTION_PROJECT_ID_SHA256;
 
   if (vercelEnvironment === "production") {
     if (deploymentTarget === "production") {
-      throw new Error(
-        "Hosted production build lacks a builder-verified protected external release trust root",
-      );
+      if (!exactProduction) {
+        throw new Error(
+          "Hosted production build requires the immutable exact DealFlow production project binding and host attestation",
+        );
+      }
+      return Object.freeze({
+        hosted: true,
+        kind: "exact_production",
+      });
     }
     if (!exactStaging) {
       throw new Error(
@@ -386,7 +412,8 @@ function verifyAndGenerateArtifact(root) {
       expectedTrackedPaths: canonicalTrackedDeployablePaths(root),
     });
   }
-  const exactHostedRelease = target.kind === "exact_staging";
+  const exactHostedRelease =
+    target.kind === "exact_staging" || target.kind === "exact_production";
   const release = exactHostedRelease ? exactReleaseIdentity() : null;
   if (
     exactHostedRelease &&

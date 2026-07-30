@@ -41,6 +41,8 @@ const deployment = context.module.exports;
 const canonicalStagingProjectId = String(
   JSON.parse(fs.readFileSync(".vercel/project.json", "utf8")).projectId,
 );
+const canonicalProductionProjectId =
+  "prj_3FUgh87aRdp4sNDrYzOEsXDyQERm";
 
 const canonicalStaging = {
   VERCEL_ENV: "production",
@@ -67,6 +69,7 @@ assert.equal(deployment.isExactIsolatedStagingVercelHost({
 }), false);
 
 const selfAssertedProduction = {
+  VERCEL: "1",
   VERCEL_ENV: "production",
   DEALFLOW_DEPLOYMENT_TARGET: "production",
   VERCEL_PROJECT_ID: "self-asserted-production-project",
@@ -76,6 +79,29 @@ const selfAssertedProduction = {
 };
 assert.equal(deployment.isExactProductionVercelHost(selfAssertedProduction), false);
 assert.equal(deployment.getDeploymentTarget(selfAssertedProduction), "unknown");
+const canonicalProduction = {
+  VERCEL: "1",
+  VERCEL_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "production",
+  VERCEL_PROJECT_ID: canonicalProductionProjectId,
+  DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: canonicalProductionProjectId,
+  DEALFLOW_PRODUCTION_HOST_ATTESTATION:
+    deployment.DEALFLOW_PRODUCTION_HOST_ATTESTATION_VALUE,
+};
+assert.equal(deployment.isExactProductionVercelHost(canonicalProduction), true);
+assert.equal(deployment.getDeploymentTarget(canonicalProduction), "production");
+assert.equal(deployment.isExactProductionVercelHost({
+  ...canonicalProduction,
+  VERCEL: undefined,
+}), false);
+assert.equal(deployment.isExactProductionVercelHost({
+  ...canonicalProduction,
+  VERCEL_ENV: "preview",
+}), false);
+assert.equal(deployment.isExactProductionVercelHost({
+  ...canonicalProduction,
+  DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: "stale-expected-project",
+}), false);
 assert.equal(
   deployment.getDeploymentTarget({ DEALFLOW_DEPLOYMENT_TARGET: "production" }),
   "unknown",
@@ -96,5 +122,5 @@ assert.equal(
 );
 
 console.log(
-  "deployment target authority: PASS (canonical staging only; wrong/stale/preview staging rejected; production env self-attestation and local production rejected; generic previews preserved)",
+  "deployment target authority: PASS (canonical production and staging accepted only on their pinned Vercel projects; forged, wrong, stale, preview, and local production claims rejected; generic previews preserved)",
 );

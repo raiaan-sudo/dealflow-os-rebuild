@@ -110,6 +110,8 @@
     "test:durable-worker": "node ./scripts/test-durable-worker-contract.mjs && tsx ./scripts/test-durable-worker-authority.ts",
     "test:production-migration-broker": "node ./scripts/test-production-migration-broker-contract.mjs && node ./scripts/test-release-guard-v5-migration-admission.mjs",
     "test:production-migration-broker-db": "node ./scripts/test-integrated-migration-chain-disposable-db.mjs",
+    "release:evidence:broker": "node ./scripts/production/build-release-evidence-broker.mjs",
+    "test:release-evidence-broker": "node ./scripts/production/test-release-evidence-broker-contract.mjs",
     "test:campaign-dashboard-metric-truth": "node ./scripts/test-campaign-dashboard-metric-truth.mjs",
     "test:post-audit-successor": "tsx ./scripts/test-post-audit-successor-contract.ts",
     "test:dashboard-lineage-db": "node ./scripts/test-dashboard-campaign-lineage-disposable-db.mjs && node ./scripts/test-legacy-org-member-policy-repair-disposable-db.mjs",

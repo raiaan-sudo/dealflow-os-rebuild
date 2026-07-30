@@ -39,6 +39,8 @@ const canonicalStagingProjectId = String(
   JSON.parse(readFileSync(join(root, ".vercel", "project.json"), "utf8"))
     .projectId,
 );
+const canonicalProductionProjectId =
+  "prj_3FUgh87aRdp4sNDrYzOEsXDyQERm";
 const vercelConfiguration = JSON.parse(
   readFileSync(join(root, "vercel.json"), "utf8"),
 );
@@ -121,6 +123,19 @@ function exactStagingEnvironment(manifest, manifestSha256) {
   };
 }
 
+function exactProductionEnvironment(manifest, manifestSha256) {
+  return {
+    VERCEL: "1",
+    VERCEL_ENV: "production",
+    DEALFLOW_DEPLOYMENT_TARGET: "production",
+    VERCEL_PROJECT_ID: canonicalProductionProjectId,
+    DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: canonicalProductionProjectId,
+    DEALFLOW_PRODUCTION_HOST_ATTESTATION:
+      "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1",
+    ...releaseEnvironment(manifest, manifestSha256),
+  };
+}
+
 function writeManifest(manifest) {
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
@@ -182,6 +197,44 @@ try {
   assert.equal(
     stagingArtifact.vercelConfigurationNormalization.transformation,
     "exact_source_bytes",
+  );
+  const production = run({
+    env: exactProductionEnvironment(manifest, manifestSha256),
+  });
+  assert.equal(production.status, 0, `${production.stderr}\n${production.stdout}`);
+  const productionArtifact = JSON.parse(readFileSync(artifactPath, "utf8"));
+  assert.equal(productionArtifact.status, "HOSTED_SOURCE_VERIFIED");
+  assert.equal(productionArtifact.targetClassification, "exact_production");
+  assert.equal(productionArtifact.expectedIdentityMatched, true);
+  assert.equal(productionArtifact.deployablePathSetVerified, true);
+  assert.equal(productionArtifact.predeployPathSetProofBound, true);
+  const normalizedProductionVercelConfiguration = {
+    ...vercelConfiguration,
+    name: "dealflow-os-rebuild",
+    version: 2,
+  };
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(normalizedProductionVercelConfiguration)}\n`,
+  );
+  const normalizedProduction = run({
+    env: exactProductionEnvironment(manifest, manifestSha256),
+  });
+  assert.equal(
+    normalizedProduction.status,
+    0,
+    `${normalizedProduction.stderr}\n${normalizedProduction.stdout}`,
+  );
+  const normalizedProductionArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(
+    normalizedProductionArtifact.vercelConfigurationNormalization.transformation,
+    "vercel_canonical_config_normalization_v1",
+  );
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
   );
 
   const normalizedVercelConfiguration = {
@@ -309,7 +362,10 @@ try {
     },
   });
   assert.notEqual(selfAssertedProduction.status, 0);
-  assert.match(selfAssertedProduction.stderr, /protected external release trust root/);
+  assert.match(
+    selfAssertedProduction.stderr,
+    /immutable exact DealFlow production project binding/,
+  );
 
   for (const vercelEnvironment of ["preview", "development"]) {
     const generic = run({
@@ -446,5 +502,5 @@ try {
 }
 
 console.log(
-  "hosted build identity generator: PASS (exact Git deployable path set, deterministic Vercel config normalization, immutable staging binding, fail-closed production trust, self-matching spoof rejection, generic preview non-regression, tamper/omission/extra/symlink rejection, and predeploy path-proof binding)",
+  "hosted build identity generator: PASS (exact Git deployable path set, deterministic Vercel config normalization, immutable production and staging project bindings, self-matching spoof rejection, generic preview non-regression, tamper/omission/extra/symlink rejection, and predeploy path-proof binding)",
 );

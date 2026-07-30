@@ -60,7 +60,8 @@ for (const marker of [
   "git_tracked_files_minus_vercelignore_and_manifest",
   "HOSTED_SOURCE_VERIFIED",
   "STAGING_PROJECT_ID_SHA256",
-  "protected external release trust root",
+  "PRODUCTION_PROJECT_ID_SHA256",
+  "DEALFLOW_PRODUCTION_HOST_ATTESTATION",
   "predeployPathSetProofBound",
   "Deployable source resolves outside the repository",
 ]) {

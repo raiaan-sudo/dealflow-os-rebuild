@@ -20,6 +20,8 @@ export const DEALFLOW_PRODUCTION_HOST_ATTESTATION_VALUE =
   "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1" as const;
 export const DEALFLOW_STAGING_HOST_ATTESTATION_VALUE =
   "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1" as const;
+export const DEALFLOW_CANONICAL_PRODUCTION_VERCEL_PROJECT_ID_SHA256 =
+  "953855c9a0ab60a58f966cfd7a212e2a6a3db722a589468a6934b79fc265e8b9" as const;
 export const DEALFLOW_CANONICAL_STAGING_VERCEL_PROJECT_ID_SHA256 =
   "d0fa02eaf7e533f2a17a0b87c039c6a1686e5467840d2b8c2f2dca2758d95fde" as const;
 
@@ -128,11 +130,20 @@ function hasExactProjectIdentity(
 }
 
 export function isExactProductionVercelHost(env: Record<string, string | undefined> = process.env) {
-  // Repository-authored environment variables cannot establish production
-  // release authority. This remains closed until a protected external release
-  // trust artifact is independently verified at runtime.
-  void env;
-  return false;
+  // This proves only the immutable Vercel project/target boundary. It does not
+  // authorize a release or provider effects: those remain behind the protected
+  // external release guard, owner authority, and capability-specific controls.
+  return env.VERCEL === "1" &&
+    env.VERCEL_ENV?.trim().toLowerCase() === "production" &&
+    env.DEALFLOW_DEPLOYMENT_TARGET?.trim().toLowerCase() === "production" &&
+    sha256Ascii(env.VERCEL_PROJECT_ID?.trim() ?? "") ===
+      DEALFLOW_CANONICAL_PRODUCTION_VERCEL_PROJECT_ID_SHA256 &&
+    hasExactProjectIdentity(
+      env,
+      "DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID",
+      "DEALFLOW_PRODUCTION_HOST_ATTESTATION",
+      DEALFLOW_PRODUCTION_HOST_ATTESTATION_VALUE,
+    );
 }
 
 export function isExactIsolatedStagingVercelHost(env: Record<string, string | undefined> = process.env) {
