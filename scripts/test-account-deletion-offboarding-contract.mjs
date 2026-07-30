@@ -244,9 +244,12 @@ assert.ok(
 );
 const vercel = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
 assert.ok(
-  vercel.crons.some((entry) => entry.path === "/api/internal/system-jobs" && entry.schedule === "*/1 * * * *"),
-  "the authenticated shared system-jobs route must remain scheduled",
+  !vercel.crons.some((entry) => entry.path === "/api/internal/system-jobs"),
+  "generic provider/deletion ownership must not remain on Vercel cron",
 );
+const durableWorker = fs.readFileSync(path.join(root, "scripts/run-durable-system-worker.ts"), "utf8");
+assert.match(durableWorker, /processScheduledAccountDeletionWork/);
+assert.match(durableWorker, /workerIdentityPrefix/);
 const migration = fs.readFileSync(migrationPath, "utf8");
 assert.match(migration, /approved_authority_hash text null/);
 assert.match(migration, /approved_at timestamptz null/);

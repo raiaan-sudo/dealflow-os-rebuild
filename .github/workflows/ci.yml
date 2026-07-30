@@ -53,6 +53,54 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: HttpOnly authentication boundary
+        run: npm run test:auth-cookie-hardening
+
+      - name: Durable worker and exact migration broker
+        run: npm run test:durable-worker && npm run test:production-migration-broker
+
+      - name: Build and boot exact durable worker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          node node_modules/@higgsfield/cli/install.js
+          HIGGSFIELD_SHA="$(sha256sum node_modules/@higgsfield/cli/vendor/hf | cut -d ' ' -f 1)"
+          docker pull node:24.14.1-bookworm
+          NODE_IMAGE="$(docker image inspect node:24.14.1-bookworm --format '{{index .RepoDigests 0}}')"
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          docker build \
+            --file Dockerfile.worker \
+            --build-arg "NODE_IMAGE=${NODE_IMAGE}" \
+            --build-arg "DEALFLOW_SOURCE_COMMIT=${SOURCE_COMMIT}" \
+            --build-arg "DEALFLOW_SOURCE_TREE=${SOURCE_TREE}" \
+            --build-arg "HIGGSFIELD_CLI_SHA256=${HIGGSFIELD_SHA}" \
+            --tag "dealflow-worker-ci:${SOURCE_COMMIT}" .
+          OAUTH_ROOT="$(mktemp -d)"
+          mkdir -p "${OAUTH_ROOT}/config"
+          chmod 700 "${OAUTH_ROOT}" "${OAUTH_ROOT}/config"
+          printf '%s\n' '{"schema":"dealflow.encrypted-worker-volume-attestation.v1","encryptedAtRest":true,"mountIdSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}' > "${OAUTH_ROOT}/.dealflow-encrypted-volume-attestation.json"
+          chmod 600 "${OAUTH_ROOT}/.dealflow-encrypted-volume-attestation.json"
+          ATTESTATION_SHA="$(sha256sum "${OAUTH_ROOT}/.dealflow-encrypted-volume-attestation.json" | cut -d ' ' -f 1)"
+          sudo chown -R 10001:10001 "${OAUTH_ROOT}"
+          CONTAINER="$(docker run -d --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            -p 127.0.0.1:18080:8080 \
+            -v "${OAUTH_ROOT}:/var/lib/dealflow/higgsfield:rw" \
+            -e "DEALFLOW_WORKER_GENERATION=${SOURCE_COMMIT}" \
+            -e "DEALFLOW_RELEASE_COMMIT=${SOURCE_COMMIT}" \
+            -e "DEALFLOW_WORKER_INSTANCE_ID=ci-worker" \
+            -e "DEALFLOW_WORKER_EXECUTION_STATE=quiesced" \
+            -e "DEALFLOW_PROVIDER_EXECUTION_STATE=quiesced" \
+            -e "DEALFLOW_HIGGSFIELD_VOLUME_ATTESTATION_SHA256=${ATTESTATION_SHA}" \
+            "dealflow-worker-ci:${SOURCE_COMMIT}")"
+          trap 'docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true; sudo rm -rf "${OAUTH_ROOT}"' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:18080/health/live >/dev/null && break
+            test "${attempt}" -lt 30
+            sleep 1
+          done
+          test "$(docker inspect "${CONTAINER}" --format '{{.State.Running}}')" = "true"
+
       - name: Build
         run: npm run build
 

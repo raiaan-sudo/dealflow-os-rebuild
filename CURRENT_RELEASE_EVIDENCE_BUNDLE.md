@@ -11,11 +11,13 @@ reported context and cannot change the snapshot verdict.
 
 The sole cryptographic production gate is `npm run release:guard`. A downstream
 release consumer may treat its result as authoritative only when the manifest
-uses `dealflow.release-guard.v4` and reports all of the following:
+uses `dealflow.release-guard.v5` and reports all of the following:
 
 - `gate.mode = release`;
 - `gate.enforced = true`;
-- `gate.decision = PASS`;
+- `gate.decision = PRE_MUTATION_ADMISSION_PASS`;
+- `gate.admissionStage = post_deploy_pre_alias_provider`;
+- `gate.mandatoryPostDeployRerunValidated = true`;
 - `gate.decisionAuthority = PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD`; and
 - `gate.allEvidenceValidated = true`.
 

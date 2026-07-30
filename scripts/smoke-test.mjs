@@ -138,6 +138,7 @@ function runOfflineChecks() {
   const metaLaunchService = "src/lib/services/meta-launch-service.ts";
   const imageProvider = "src/lib/integrations/creative/image-provider.ts";
   const loginForm = "src/components/auth/login-form.tsx";
+  const authSessionRoute = "src/app/api/auth/session/route.ts";
   const authCallback = "src/app/auth/callback/route.ts";
   const middleware = "src/proxy.ts";
   const ciGateSource = fileExists(".github/workflows/ci.yml")
@@ -230,9 +231,10 @@ function runOfflineChecks() {
   assertIncludes(leadTurnstile, "LEAD_CAPTURE_ACTION", "Lead capture Turnstile action binding", "server validation requires the lead_capture action");
   assertIncludes(leadTurnstile, "allowedHostnames.includes", "Lead capture Turnstile hostname binding", "server validation requires an explicitly allowed hostname");
   assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client", "public customer funnels render the verification widget when configured");
-  assertIncludes(loginForm, "supabase.auth.signInWithPassword({\n          email,\n          password,\n          options:", "Signin Turnstile token support", "Supabase Auth password sign-in can receive a Turnstile token");
+  assertIncludes(authSessionRoute, "supabase.auth.signInWithPassword({", "Server-side signin", "password sign-in establishes only an HttpOnly server session");
+  assertIncludes(loginForm, 'action: "sign-in"', "Signin Turnstile token support", "sign-in sends the Turnstile token to the protected server auth boundary");
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
-  assertIncludes(loginForm, "resetPasswordForEmail", "Forgot password support", "login page can request a Supabase password reset link");
+  assertIncludes(authSessionRoute, "resetPasswordForEmail", "Forgot password support", "the server auth boundary can request a password reset link");
   assertIncludes(loginForm, 'getAuthCallbackUrl("recovery", redirectedFrom)', "Password recovery callback", "password reset links use the server-side PKCE callback");
   assertIncludes(authCallback, "supabase.auth.exchangeCodeForSession(code)", "Password recovery completion", "the server callback exchanges the one-time recovery code before update-password mode");
   assertIncludes(middleware, "https://challenges.cloudflare.com", "Turnstile CSP allowlist", "production CSP allows Cloudflare Turnstile script, frame, and verification traffic");

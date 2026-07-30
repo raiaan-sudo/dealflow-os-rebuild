@@ -98,8 +98,10 @@ Production must not set the synthetic-account attestation. The exact app,
 client, redirect, install URL, scope set, and AES-256-GCM key/version are the
 secret-managed `GHL_MARKETPLACE_*` values listed in `.env.example`; changing
 any binding requires an explicit reconnect and a new one-time callback state.
-The protected one-minute `/api/internal/system-jobs` runner is the authoritative
-runtime entrypoint. It evaluates application gates before a claim; claim RPCs
+The generation-fenced durable worker is the authoritative generic provider
+runtime. Vercel no longer schedules `/api/internal/system-jobs`; that route is
+retained only for bounded manual/staging compatibility. The durable worker
+evaluates application gates before a claim; claim RPCs
 check database controls atomically; workers re-read those controls immediately
 before provider construction so a post-claim kill-switch flip performs zero
 provider calls. `/api/internal/ghl-worker` delegates to the same service. The

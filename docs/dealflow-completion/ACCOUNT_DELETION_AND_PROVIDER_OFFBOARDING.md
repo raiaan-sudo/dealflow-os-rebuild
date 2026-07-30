@@ -59,10 +59,12 @@ deletion, and final completion. Claims use bounded leases and generations.
 Retries are bounded. Ambiguous provider writes reconcile before replay.
 Exhaustion or missing authority becomes `operator_required`.
 
-The existing authenticated Vercel cron calls `/api/internal/system-jobs` every
-minute. Account deletion is an isolated, bounded stage in that runner and takes
-at most five claims per invocation. When execution is disabled it returns a
-truthful no-claim result without failing unrelated stages. When enabled it uses
+The generation-fenced durable worker owns `/api/internal/system-jobs` work;
+Vercel no longer schedules that generic route. The dedicated GHL form sweep is
+the only retained one-minute Vercel cron. Account deletion is an isolated,
+bounded worker stage and takes at most five claims per cycle. When execution is
+disabled it returns a truthful no-claim result without failing unrelated
+stages. When enabled it uses
 the same database lease, claim token, generation, predecessor, retry, and legal
 hold fences as the manual internal worker; there is no separate unauthenticated
 cron route.

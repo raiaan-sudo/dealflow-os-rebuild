@@ -46,6 +46,10 @@ const refresherSource = fs.readFileSync(
 const appLayoutSource = fs.readFileSync("src/app/(app)/layout.tsx", "utf8");
 const nextConfigSource = fs.readFileSync("next.config.mjs", "utf8");
 const loginFormSource = fs.readFileSync("src/components/auth/login-form.tsx", "utf8");
+const authSessionRouteSource = fs.readFileSync(
+  "src/app/api/auth/session/route.ts",
+  "utf8",
+);
 const loginPageSource = fs.readFileSync("src/app/(auth)/login/page.tsx", "utf8");
 const partnerDomainSource = fs.readFileSync(
   "src/lib/white-label/verified-partner-domain.ts",
@@ -245,7 +249,8 @@ if (!loginPageSource.includes("loadVerifiedPartnerDomainContext") ||
     !loginPageSource.includes("branding={partnerContext?.branding}")) {
   failures.push("Login branding must remain server-bound to the verified partner host.");
 }
-if (!loginFormSource.includes("partner_attribution_token") ||
+if (!loginFormSource.includes("partnerAttributionToken") ||
+    !authSessionRouteSource.includes("partner_attribution_token") ||
     !loginFormSource.includes("requestEmbeddedAuthStorageAccess") ||
     !loginFormSource.includes("document.requestStorageAccess") ||
     !loginFormSource.includes("window.self !== window.top")) {

@@ -1,0 +1,24 @@
+services:
+  dealflow-worker:
+    image: ${DEALFLOW_WORKER_IMAGE:?digest-pinned worker image required}
+    restart: unless-stopped
+    read_only: true
+    init: true
+    stop_grace_period: 600s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - "127.0.0.1:${DEALFLOW_WORKER_HOST_HEALTH_PORT:-8080}:8080"
+    env_file:
+      - ${DEALFLOW_WORKER_ENV_FILE:?owner-only worker environment file required}
+    volumes:
+      - dealflow_higgsfield_oauth:/var/lib/dealflow/higgsfield:rw
+
+volumes:
+  dealflow_higgsfield_oauth:
+    external: true
+    name: ${DEALFLOW_HIGGSFIELD_ENCRYPTED_VOLUME:?encrypted persistent OAuth volume required}

@@ -5,6 +5,7 @@ export function getSupabaseAuthCookieOptions(): CookieOptionsWithName {
 
   return {
     path: "/",
+    httpOnly: true,
     sameSite: isProduction ? "none" : "lax",
     secure: isProduction,
     partitioned: isProduction,

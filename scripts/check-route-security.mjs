@@ -25,12 +25,17 @@ const expectedPublicApiRoutes = new Map([
   ["/api/access-keys/checkout", new Set(["POST"])],
   ["/api/access-keys/preclaim", new Set(["POST"])],
   ["/api/access-keys/reveal-ack", new Set(["POST"])],
+  ["/api/auth/session", new Set(["POST", "DELETE"])],
   ["/api/integrations/ghl/embed-context", new Set(["GET", "POST"])],
   ["/api/integrations/ghl/webhook", new Set(["POST"])],
   ["/api/support/delivery-callback", new Set(["POST"])],
 ]);
 
 const expectedPublicApiMethodGuards = new Map([
+  ["/api/auth/session", new Map([
+    ["POST", ["assertExactAuthOrigin", "enforceAuthRateLimit", "createServerSupabase"]],
+    ["DELETE", ["assertExactAuthOrigin", "enforceAuthRateLimit", "createServerSupabase"]],
+  ])],
   ["/api/integrations/ghl/embed-context", new Map([
     ["GET", ["verifyGhlEmbedCapability"]],
     ["POST", ["isExactVerifiedPartnerRequestOrigin", "decryptGhlSignedUserContext"]],
@@ -400,7 +405,11 @@ function checkPublicAllowlist(publicApiRoutes, routeAnalyses) {
 }
 
 function hasSameOriginGuard(facts) {
-  return facts.calls.has("assertSameOriginRequest") || facts.calls.has("assertInternalSystemRequest");
+  return (
+    facts.calls.has("assertSameOriginRequest") ||
+    facts.calls.has("assertExactAuthOrigin") ||
+    facts.calls.has("assertInternalSystemRequest")
+  );
 }
 
 function checkPrivateGetApiGuards(routeAnalyses, publicApiRoutes) {

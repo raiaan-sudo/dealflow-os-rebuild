@@ -16,7 +16,7 @@ already passed its last database fence.
 | Provider/effect class | Superseded risk | Candidate boundary |
 |---|---|---|
 | Meta launch/CAPI | old launch/effect worker can issue a late request or combine mutable retry inputs | v2 claim, immutable launch-input digest, lineage-bound receipts, consent/effect fences |
-| GHL provisioning/lead effects | old outbox worker can duplicate location/contact/opportunity work | fake-only current candidate; future real path must use token/generation claim and provider idempotency/receipt reconciliation |
+| GHL provisioning/lead effects | old outbox worker can duplicate location/contact/opportunity work | real Marketplace/runtime path uses token/generation claims, tenant-bound installation authority, provider idempotency, and receipt reconciliation; synthetic transport remains isolated and disabled in production |
 | Twilio SMS/compliance | old delivery path can bypass monotonic receipt or atomic STOP/START state | SMS v2 create/callback/settlement and direct-DML denial |
 | Stripe billing/provider usage/access activation | old webhook/usage worker can project stale state, mix mode, or compensate twice | v2 webhook claim, authoritative refresh, atomic projection, provider-usage CAS, durable top-up/access intents |
 | Creative generation/storage | old worker can spend/retry under stale org/asset/provider identity | exact org/campaign attempt, immutable storage identity, provider-usage attempt, bounded terminalization |
@@ -37,16 +37,22 @@ The release guard's mandatory old-worker classes are:
 3. Keep every live provider/communication/spend gate off.
 4. Query authoritative platform/runtime state for the exact old and target
    deployment identities; do not infer zero from logs or elapsed time.
-5. Generate one fresh `dealflow.release-evidence.v2` drain manifest with exactly
+5. Generate one fresh `dealflow.release-evidence.v3` drain manifest with exactly
    the five required classes and active count `0` for each.
-6. Bind provider/project/deployment, target commit, source workflow/run, and
-   completion time. Sign the canonical payload with an Ed25519 authority pinned
-   only in the protected external policy whose path/digest are independently
-   supplied by the out-of-band runner. Target-added keys are ignored.
-7. Generate the separately signed environment attestation for the same exact
-   deployment. Any mismatch is `NO_GO`.
+6. Bind provider/project/deployment/environment, target commit, target tree,
+   deployable-source digest, deployable-manifest digest, deployment time, source
+   workflow/run, and completion time. Sign the canonical payload with an
+   Ed25519 authority pinned only in the protected external policy whose
+   path/digest are independently supplied by the out-of-band runner.
+   Target-added keys are ignored.
+7. After the dormant exact-target deployment exists, rerun the drain and
+   separately signed environment attestations before attaching any alias or
+   enabling any provider effect. Both must identify the same deployment, use
+   `admissionStage=post_deploy_pre_alias_provider`, and explicitly prove
+   `aliasesAttached=false` and `providerEffectsEnabled=false`. Any mismatch is
+   `NO_GO`.
 8. Apply contract migrations only after both attestations verify.
-9. Deploy only the exact v2 candidate, then run schema/RLS/privilege,
+9. Deploy only the exact sealed successor candidate admitted by Guard v5, then run schema/RLS/privilege,
    claim/heartbeat/settlement, stale-generation, ambiguity, direct-DML, and
    provider-gate negatives.
 10. Provider canary/enablement remains a later separate authorization.

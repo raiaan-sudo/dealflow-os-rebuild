@@ -32,8 +32,8 @@ const metaStatusSync = fs.readFileSync("src/lib/integrations/meta/status-sync.ts
 const metaCampaignSync = fs.readFileSync("src/lib/services/meta-campaign-sync-service.ts", "utf8");
 const fulfillmentMonitor = fs.readFileSync("src/lib/services/fulfillment-monitor-service.ts", "utf8");
 const supabaseCookieOptions = fs.readFileSync("src/lib/supabase/cookie-options.ts", "utf8");
-const supabaseBrowserClient = fs.readFileSync("src/lib/supabase/client.ts", "utf8");
 const supabaseServerClient = fs.readFileSync("src/lib/supabase/server.ts", "utf8");
+const authSessionRoute = fs.readFileSync("src/app/api/auth/session/route.ts", "utf8");
 const qaAuthSessionRoute = fs.readFileSync("src/app/api/internal/qa-auth-session/route.ts", "utf8");
 const proxy = fs.readFileSync("src/proxy.ts", "utf8");
 const trackingAttributionSource = fs.readFileSync("src/lib/integrations/meta/tracking-attribution.ts", "utf8");
@@ -190,9 +190,13 @@ assert.match(fulfillmentMonitor, /metaReportingStatus/, "fulfillment monitor mus
 
 assert.match(supabaseCookieOptions, /sameSite:\s*isProduction\s*\?\s*"none"\s*:\s*"lax"/, "Supabase auth cookies must use SameSite=None in production for GHL iframe sign-in");
 assert.match(supabaseCookieOptions, /secure:\s*isProduction/, "Supabase auth cookies must be Secure when SameSite=None is used in production");
-assert.match(supabaseBrowserClient, /cookieOptions:\s*getSupabaseAuthCookieOptions\(\)/, "browser Supabase client must use shared iframe-compatible auth cookie options");
+assert.match(supabaseCookieOptions, /httpOnly:\s*true/, "Supabase session cookies must not be readable by browser JavaScript");
+assert.match(supabaseCookieOptions, /partitioned:\s*isProduction/, "embedded production auth cookies must be partitioned");
+assert.equal(fs.existsSync("src/lib/supabase/client.ts"), false, "browser Supabase auth client must not retain direct session-cookie access");
+assert.match(authSessionRoute, /createServerSupabase\(cookieSink\)/, "interactive auth must establish sessions through the server cookie boundary");
 assert.match(supabaseServerClient, /cookieOptions:\s*getSupabaseAuthCookieOptions\(\)/, "server Supabase client must use shared iframe-compatible auth cookie options");
 assert.match(proxy, /cookieOptions:\s*getSupabaseAuthCookieOptions\(\)/, "proxy Supabase client must keep refreshed sessions iframe compatible");
 assert.doesNotMatch(qaAuthSessionRoute, /SameSite=Lax;\s*Secure/, "QA auth harness must not hard-code Lax cookies that fail inside GHL iframe proof runs");
+assert.match(qaAuthSessionRoute, /HttpOnly; SameSite=\$\{sameSite\}\$\{secure\}\$\{partitioned\}/, "QA auth harness must reproduce HttpOnly partitioned production cookie behavior");
 
 console.log("lead tracking health regression checks passed");

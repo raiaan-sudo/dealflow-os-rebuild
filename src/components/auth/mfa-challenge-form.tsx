@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { getSafeAuthRedirectPath } from "@/lib/auth/safe-redirect";
-import { createClient } from "@/lib/supabase/client";
+
+type MfaStatusResponse = {
+  success?: boolean;
+  verifiedFactorId?: string | null;
+  assuranceLevel?: string | null;
+};
 
 export function MfaChallengeForm({ redirectedFrom }: { redirectedFrom?: string }) {
   const { href, t } = useProductI18n();
@@ -16,29 +21,30 @@ export function MfaChallengeForm({ redirectedFrom }: { redirectedFrom?: string }
   useEffect(() => {
     let active = true;
     void (async () => {
-      const client = createClient();
-      if (!client) {
+      try {
+        const response = await fetch("/api/auth/mfa", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => null) as MfaStatusResponse | null;
+        if (!active) return;
+        if (!response.ok || !result?.success) {
+          setError(t("auth.mfaUnavailable"));
+        } else if (result.assuranceLevel === "aal2") {
+          window.location.replace(getSafeAuthRedirectPath(
+            redirectedFrom,
+            window.location.origin,
+            href("/dashboard"),
+          ));
+        } else {
+          setFactorId(result.verifiedFactorId ?? null);
+          if (!result.verifiedFactorId) setError(t("auth.mfaEnrollmentRequired"));
+        }
+      } catch {
         if (active) setError(t("auth.mfaUnavailable"));
-        return;
+      } finally {
+        if (active) setPending(false);
       }
-      const [factorsResult, assuranceResult] = await Promise.all([
-        client.auth.mfa.listFactors(),
-        client.auth.mfa.getAuthenticatorAssuranceLevel(),
-      ]);
-      if (!active) return;
-      if (factorsResult.error || assuranceResult.error) {
-        setError(t("auth.mfaUnavailable"));
-      } else if (assuranceResult.data.currentLevel === "aal2") {
-        window.location.replace(getSafeAuthRedirectPath(
-          redirectedFrom,
-          window.location.origin,
-          href("/dashboard"),
-        ));
-      } else {
-        setFactorId(factorsResult.data.totp[0]?.id ?? null);
-        if (!factorsResult.data.totp[0]) setError(t("auth.mfaEnrollmentRequired"));
-      }
-      setPending(false);
     })();
     return () => { active = false; };
   }, [href, redirectedFrom, t]);
@@ -49,15 +55,21 @@ export function MfaChallengeForm({ redirectedFrom }: { redirectedFrom?: string }
       setError(t("auth.mfaCodeInvalid"));
       return;
     }
-    const client = createClient();
-    if (!client) {
-      setError(t("auth.mfaUnavailable"));
-      return;
-    }
     setPending(true);
     setError(null);
-    const result = await client.auth.mfa.challengeAndVerify({ factorId, code });
-    if (result.error) {
+    try {
+      const response = await fetch("/api/auth/mfa", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "verify", factorId, code }),
+      });
+      if (!response.ok) {
+        throw new Error("mfa_code_invalid");
+      }
+    } catch {
       setError(t("auth.mfaCodeInvalid"));
       setPending(false);
       return;

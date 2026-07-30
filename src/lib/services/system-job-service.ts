@@ -622,9 +622,25 @@ async function updateSystemJob(
   return parseSystemJob(data as SystemJobRow);
 }
 
-export async function claimNextPendingSystemJob() {
+function normalizedWorkerIdentityPrefix(
+  value: string | undefined,
+  fallback: string,
+) {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return /^[a-z0-9](?:[a-z0-9:._-]{0,126}[a-z0-9])?$/.test(normalized)
+    ? normalized
+    : fallback;
+}
+
+export async function claimNextPendingSystemJob(
+  workerIdentityPrefix?: string,
+) {
   const supabase = getJobClient();
-  const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${crypto.randomUUID()}`;
+  const prefix = normalizedWorkerIdentityPrefix(
+    workerIdentityPrefix,
+    `vercel:${process.env.VERCEL_REGION ?? "local"}`,
+  );
+  const workerId = `${prefix}:${crypto.randomUUID()}`;
   const { data, error } = await (supabase as any).rpc("claim_next_system_job_v2", {
     p_worker_id: workerId,
     p_lease_ms: SYSTEM_JOB_LEASE_MS,
@@ -656,9 +672,16 @@ export async function claimNextPendingSystemJob() {
   return claimedJob;
 }
 
-async function claimNextPendingSystemJobKind(kind: "meta_reporting_sync") {
+async function claimNextPendingSystemJobKind(
+  kind: "meta_reporting_sync",
+  workerIdentityPrefix?: string,
+) {
   const supabase = getJobClient();
-  const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${kind}:${crypto.randomUUID()}`;
+  const prefix = normalizedWorkerIdentityPrefix(
+    workerIdentityPrefix,
+    `vercel:${process.env.VERCEL_REGION ?? "local"}`,
+  );
+  const workerId = `${prefix}:${kind}:${crypto.randomUUID()}`;
   const { data, error } = await (supabase as any).rpc(
     "claim_next_system_job_kind_v1",
     {
@@ -1477,10 +1500,12 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
 
 export async function runSystemJobWorkerCycle(options?: {
   staleAfterMs?: number;
+  workerIdentityPrefix?: string;
 }) : Promise<SystemJobWorkerCycleResult> {
   const result = await runSystemJobWorkerBatch({
     maxCycles: 1,
     staleAfterMs: options?.staleAfterMs,
+    workerIdentityPrefix: options?.workerIdentityPrefix,
   });
 
   return {
@@ -1492,13 +1517,17 @@ export async function runSystemJobWorkerCycle(options?: {
 export async function runSystemJobWorkerBatch(options?: {
   maxCycles?: number;
   staleAfterMs?: number;
+  workerIdentityPrefix?: string;
+  shouldDeferJob?: (job: SystemJobRecord) => string | null;
 }) : Promise<SystemJobWorkerBatchResult> {
   const maxCycles = Math.min(Math.max(Math.trunc(options?.maxCycles ?? 1), 1), 5);
   const resetCount = await resetStaleProcessingSystemJobs(options?.staleAfterMs);
   const processedJobIds: string[] = [];
 
   for (let cycle = 0; cycle < maxCycles; cycle += 1) {
-    const job = await claimNextPendingSystemJob();
+    const job = await claimNextPendingSystemJob(
+      options?.workerIdentityPrefix,
+    );
 
     if (!job) {
       return {
@@ -1517,6 +1546,37 @@ export async function runSystemJobWorkerBatch(options?: {
         "system_job_claim_lease_missing",
       );
     }
+    const deferReason = options?.shouldDeferJob?.(job) ?? null;
+    if (deferReason) {
+      const { data, error } = await (getJobClient() as any)
+        .from("system_jobs")
+        .update({
+          status: "pending",
+          attempt_count: Math.max(Number(job.attempt_count ?? 1) - 1, 0),
+          locked_by: null,
+          locked_until: null,
+          lease_token: null,
+          lease_heartbeat_at: null,
+          next_run_at: new Date(Date.now() + 60_000).toISOString(),
+          last_error_code: deferReason,
+          error_message: "Provider authority is temporarily unavailable; job was deferred without an attempt.",
+        })
+        .eq("id", job.id)
+        .eq("status", "processing")
+        .eq("locked_by", lease.workerId)
+        .eq("lease_token", lease.token)
+        .eq("lease_generation", lease.generation)
+        .select("id")
+        .maybeSingle();
+      if (error || !data) {
+        throw new ApiError(
+          409,
+          "Deferred system job lease was lost.",
+          "system_job_lease_lost",
+        );
+      }
+      continue;
+    }
 
     await processSystemJob(job.id, lease);
     processedJobIds.push(job.id);
@@ -1534,6 +1594,7 @@ export async function runSystemJobWorkerKindBatch(options: {
   kind: "meta_reporting_sync";
   maxCycles: number;
   concurrency: number;
+  workerIdentityPrefix?: string;
 }): Promise<SystemJobWorkerBatchResult> {
   const maxCycles = Math.min(Math.max(Math.trunc(options.maxCycles), 1), 50);
   const concurrency = Math.min(Math.max(Math.trunc(options.concurrency), 1), 5);
@@ -1545,7 +1606,10 @@ export async function runSystemJobWorkerKindBatch(options: {
     while (true) {
       if (claimSlotsTaken >= maxCycles) return;
       claimSlotsTaken += 1;
-      const job = await claimNextPendingSystemJobKind(options.kind);
+      const job = await claimNextPendingSystemJobKind(
+        options.kind,
+        options.workerIdentityPrefix,
+      );
       if (!job) {
         emptyClaims += 1;
         return;

@@ -308,9 +308,10 @@ export async function POST(request: Request) {
     for (const [name, value] of cookieMap) {
       const sameSite = authCookieOptions.sameSite === "none" ? "None" : "Lax";
       const secure = authCookieOptions.secure ? "; Secure" : "";
+      const partitioned = authCookieOptions.partitioned ? "; Partitioned" : "";
       response.headers.append(
         "Set-Cookie",
-        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; HttpOnly; SameSite=${sameSite}${secure}`,
+        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; HttpOnly; SameSite=${sameSite}${secure}${partitioned}`,
       );
     }
 

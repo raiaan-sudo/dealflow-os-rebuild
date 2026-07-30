@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const route = fs.readFileSync("src/app/api/internal/system-jobs/route.ts", "utf8");
+const durableWorker = fs.readFileSync("scripts/run-durable-system-worker.ts", "utf8");
 const sweepRoute = fs.readFileSync("src/app/api/internal/ghl-form-sweep/route.ts", "utf8");
 const sweepService = fs.readFileSync("src/lib/services/ghl-periodic-form-sweep-service.ts", "utf8");
 const service = fs.readFileSync("src/lib/services/system-job-service.ts", "utf8");
@@ -44,9 +45,13 @@ for (const marker of [
 }
 
 assert.deepEqual(vercel.crons, [
-  { path: "/api/internal/system-jobs", schedule: "*/1 * * * *" },
   { path: "/api/internal/ghl-form-sweep", schedule: "*/1 * * * *" },
 ]);
+assert.doesNotMatch(JSON.stringify(vercel), /\/api\/internal\/system-jobs/);
+assert.match(durableWorker, /enqueueDueMetaReportingSyncJobs\(50\)/);
+assert.match(durableWorker, /kind: "meta_reporting_sync"/);
+assert.match(durableWorker, /maxCycles: 25/);
+assert.match(durableWorker, /concurrency: 5/);
 assert.match(route, /export const maxDuration = 300/);
 assert.match(route, /SYSTEM_JOBS_WORK_BUDGET_MS = 240_000/);
 assert.match(sweepRoute, /export const maxDuration = 300/);
@@ -73,5 +78,5 @@ assert.ok(
 );
 
 console.log(
-  `reporting/GHL worker capacity contract: PASS (reporting ${provenWorkerCapacityPerMinute}/min >= ${requiredPerMinute}/min for ${targetCampaigns}; GHL ${provenGhlSweepCapacityPerMinute}/min >= ${requiredGhlRoutesPerMinuteWithHeadroom}/min for ${targetGhlRoutes} with headroom; dedicated 300s/240s cron budgets)`,
+  `reporting/GHL worker capacity contract: PASS (durable reporting ${provenWorkerCapacityPerMinute}/cycle >= ${requiredPerMinute}/min for ${targetCampaigns}; GHL ${provenGhlSweepCapacityPerMinute}/min >= ${requiredGhlRoutesPerMinuteWithHeadroom}/min for ${targetGhlRoutes} with headroom; only GHL sweep remains on Vercel cron)`,
 );

@@ -132,7 +132,7 @@ export function browserCookiesForOrigin(session, origin, projectRef) {
   return validateSyntheticBrowserCookieChunks(session.cookies, projectRef).map((cookie) => ({
     ...cookie,
     url: parsedOrigin.origin,
-    httpOnly: false,
+    httpOnly: true,
     secure: true,
     sameSite: /** @type {"None"} */ ("None"),
     expires: session.expiresAt,

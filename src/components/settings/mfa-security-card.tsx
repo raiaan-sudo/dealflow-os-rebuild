@@ -4,9 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/client";
 
 type Enrollment = { factorId: string; qrCode: string } | null;
+type MfaStatusResponse = {
+  success?: boolean;
+  verifiedFactorId?: string | null;
+  assuranceLevel?: string | null;
+};
+type MfaEnrollmentResponse = {
+  success?: boolean;
+  factorId?: string;
+  qrCode?: string;
+};
 
 export function MfaSecurityCard() {
   const { t } = useProductI18n();
@@ -19,15 +28,14 @@ export function MfaSecurityCard() {
   const [message, setMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const client = createClient();
-    if (!client) throw new Error("mfa_unavailable");
-    const [factorsResult, assuranceResult] = await Promise.all([
-      client.auth.mfa.listFactors(),
-      client.auth.mfa.getAuthenticatorAssuranceLevel(),
-    ]);
-    if (factorsResult.error || assuranceResult.error) throw new Error("mfa_unavailable");
-    setVerifiedFactorId(factorsResult.data.totp[0]?.id ?? null);
-    setAssuranceLevel(assuranceResult.data.currentLevel);
+    const response = await fetch("/api/auth/mfa", {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    const result = await response.json().catch(() => null) as MfaStatusResponse | null;
+    if (!response.ok || !result?.success) throw new Error("mfa_unavailable");
+    setVerifiedFactorId(result.verifiedFactorId ?? null);
+    setAssuranceLevel(result.assuranceLevel ?? null);
   }, []);
 
   useEffect(() => {
@@ -39,55 +47,57 @@ export function MfaSecurityCard() {
   }, [refresh, t]);
 
   async function beginEnrollment() {
-    const client = createClient();
-    if (!client) return setError(t("auth.mfaUnavailable"));
     setPending(true);
     setError(null);
     setMessage(null);
-    const factors = await client.auth.mfa.listFactors();
-    if (factors.error) {
-      setError(t("auth.mfaUnavailable"));
-      setPending(false);
-      return;
-    }
-    for (const factor of factors.data.all.filter((item) => item.factor_type === "totp" && item.status === "unverified")) {
-      const cleanup = await client.auth.mfa.unenroll({ factorId: factor.id });
-      if (cleanup.error) {
-        setError(t("auth.mfaEnrollmentFailed"));
-        setPending(false);
-        return;
+    try {
+      const response = await fetch("/api/auth/mfa", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "begin-enrollment" }),
+      });
+      const result = await response.json().catch(() => null) as MfaEnrollmentResponse | null;
+      if (!response.ok || !result?.success || !result.factorId || !result.qrCode) {
+        throw new Error("mfa_enrollment_failed");
       }
-    }
-    const result = await client.auth.mfa.enroll({
-      factorType: "totp",
-      friendlyName: "DealFlow Authenticator",
-    });
-    if (result.error || result.data.type !== "totp") {
+      setEnrollment({ factorId: result.factorId, qrCode: result.qrCode });
+    } catch {
       setError(t("auth.mfaEnrollmentFailed"));
-    } else {
-      setEnrollment({ factorId: result.data.id, qrCode: result.data.totp.qr_code });
+    } finally {
+      setPending(false);
     }
-    setPending(false);
   }
 
   async function verify() {
     const factorId = enrollment?.factorId ?? verifiedFactorId;
     if (!factorId || !/^\d{6}$/.test(code)) return setError(t("auth.mfaCodeInvalid"));
-    const client = createClient();
-    if (!client) return setError(t("auth.mfaUnavailable"));
     setPending(true);
     setError(null);
     setMessage(null);
-    const result = await client.auth.mfa.challengeAndVerify({ factorId, code });
-    if (result.error) {
-      setError(t("auth.mfaCodeInvalid"));
-    } else {
+    try {
+      const response = await fetch("/api/auth/mfa", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "verify", factorId, code }),
+      });
+      if (!response.ok) {
+        throw new Error("mfa_code_invalid");
+      }
       setEnrollment(null);
       setCode("");
       setMessage(t(enrollment ? "auth.mfaEnrollmentComplete" : "auth.mfaVerificationComplete"));
       await refresh().catch(() => setError(t("auth.mfaUnavailable")));
+    } catch {
+      setError(t("auth.mfaCodeInvalid"));
+    } finally {
+      setPending(false);
     }
-    setPending(false);
   }
 
   return (

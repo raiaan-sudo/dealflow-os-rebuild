@@ -55,7 +55,7 @@ fs.appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({
   sourceMode: sourcePath ? (fs.statSync(sourcePath).mode & 0o777) : null
 }) + "\\n");
 if (args.includes("cost")) {
-  const credits = mode === "high-cost" ? 13 : 12.5;
+  const credits = mode === "high-cost" ? 5.1 : 5;
   process.stdout.write(JSON.stringify({ credits }));
 } else if (args.includes("create")) {
   if (mode === "auth-failure") {
@@ -101,7 +101,7 @@ if (args.includes("cost")) {
     resolution: "720p",
     durationSeconds: 5,
     generateAudio: false,
-    maxProviderCredits: 12.5,
+    maxProviderCredits: 5,
   };
   const image = {
     bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -133,7 +133,7 @@ if (args.includes("cost")) {
     status: "queued",
     resultUrl: null,
     model: "seedance_2_0_mini",
-    providerCreditsEstimated: 12.5,
+    providerCreditsEstimated: 5,
     cliVersion: "1.1.19",
   });
 

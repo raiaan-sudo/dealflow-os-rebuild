@@ -2,10 +2,6 @@
   "installCommand": "npm ci --ignore-scripts --no-audit --no-fund",
   "crons": [
     {
-      "path": "/api/internal/system-jobs",
-      "schedule": "*/1 * * * *"
-    },
-    {
       "path": "/api/internal/ghl-form-sweep",
       "schedule": "*/1 * * * *"
     }

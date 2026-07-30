@@ -25,7 +25,7 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-release-guard-"
 const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-release-evidence-"));
 const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-release-output-"));
 const trustRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-release-trust-"));
-const evidenceSchemaVersion = "dealflow.release-evidence.v2";
+const evidenceSchemaVersion = "dealflow.release-evidence.v3";
 const trustPolicySchemaVersion = "dealflow.release-trust-policy.v1";
 const externalTrustPolicySchemaVersion = "dealflow.external-release-trust-policy.v1";
 const externalTrustPathEnv = "DEALFLOW_RELEASE_TRUST_POLICY_PATH";
@@ -37,6 +37,7 @@ const deployment = {
   projectId: "fixture-project",
   deploymentId: "fixture-deployment-20260711",
 };
+const admissionStage = "post_deploy_pre_alias_provider";
 const authorityIdentity = {
   authorityId: "fixture-release-authority",
   keyId: "fixture-ed25519-20260711",
@@ -237,6 +238,65 @@ function sha256(contents) {
   return createHash("sha256").update(contents).digest("hex");
 }
 
+function writeFixtureDeployableManifest(seed) {
+  writeRepositoryFile(
+    "config/release/deployable-source-manifest.json",
+    `${JSON.stringify(
+      {
+        schemaVersion: "dealflow.deployable-source-manifest.v1",
+        generatedFrom: "git_tracked_files_minus_vercelignore_and_manifest",
+        entryCount: 1,
+        deployableSourceSha256: sha256(`deployable:${seed}`),
+        entries: [
+          {
+            path: "package-lock.json",
+            size: 48,
+            mode: 33188,
+            sha256: sha256('{"lockfileVersion":3,"name":"guard-fixture"}\n'),
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+function releaseIdentityForCommit(targetCommit) {
+  const targetTree = run("git", ["rev-parse", `${targetCommit}^{tree}`]).stdout.trim();
+  const manifest = JSON.parse(
+    run("git", [
+      "show",
+      `${targetCommit}:config/release/deployable-source-manifest.json`,
+    ]).stdout,
+  );
+  const manifestBytes = run(
+    "git",
+    ["show", `${targetCommit}:config/release/deployable-source-manifest.json`],
+  ).stdout;
+  return {
+    targetCommit,
+    targetTree,
+    deployableSourceSha256: manifest.deployableSourceSha256,
+    deployableManifestSha256: sha256(manifestBytes),
+  };
+}
+
+function deploymentForIdentity(identity, deployedAt) {
+  return {
+    ...deployment,
+    environment: "production",
+    targetCommit: identity.targetCommit,
+    targetTree: identity.targetTree,
+    deployableSourceSha256: identity.deployableSourceSha256,
+    deployableManifestSha256: identity.deployableManifestSha256,
+    deployedAt,
+    admissionStage,
+    aliasesAttached: false,
+    providerEffectsEnabled: false,
+  };
+}
+
 function canonicalJson(value) {
   if (value === null || typeof value === "boolean" || typeof value === "string") {
     return JSON.stringify(value);
@@ -274,7 +334,7 @@ function assertNoGo(result, code) {
 }
 
 function commonEvidence(
-  targetCommit,
+  targetIdentity,
   evidenceType,
   command,
   completedAt,
@@ -283,7 +343,10 @@ function commonEvidence(
   return {
     schemaVersion: evidenceSchemaVersion,
     evidenceType,
-    targetCommit,
+    targetCommit: targetIdentity.targetCommit,
+    targetTree: targetIdentity.targetTree,
+    deployableSourceSha256: targetIdentity.deployableSourceSha256,
+    deployableManifestSha256: targetIdentity.deployableManifestSha256,
     command,
     executed: true,
     exitCode: 0,
@@ -305,6 +368,14 @@ function mergeManifest(base, patch) {
 
 function createEvidence(targetCommit, options = {}) {
   const completedAt = options.completedAt ?? new Date().toISOString();
+  const targetIdentity = releaseIdentityForCommit(targetCommit);
+  const targetTimestamp = Date.parse(
+    run("git", ["show", "-s", "--format=%cI", targetCommit]).stdout.trim(),
+  );
+  const deployedAt =
+    options.deployedAt ??
+    new Date(Math.max(targetTimestamp, Date.parse(completedAt) - 1_000)).toISOString();
+  const exactDeployment = deploymentForIdentity(targetIdentity, deployedAt);
   const evidenceAuthority = options.authorityIdentity ?? authorityIdentity;
   const buildOutput = Buffer.from("build completed successfully\n", "utf8");
   const testOutput = Buffer.from("all deterministic tests passed\n", "utf8");
@@ -318,7 +389,7 @@ function createEvidence(targetCommit, options = {}) {
     build: mergeManifest(
       {
         ...commonEvidence(
-          targetCommit,
+          targetIdentity,
           "build",
           "npm run build",
           completedAt,
@@ -331,7 +402,7 @@ function createEvidence(targetCommit, options = {}) {
     test: mergeManifest(
       {
         ...commonEvidence(
-          targetCommit,
+          targetIdentity,
           "test",
           "npm run test:dealflow-completion",
           completedAt,
@@ -344,7 +415,7 @@ function createEvidence(targetCommit, options = {}) {
     schema: mergeManifest(
       {
         ...commonEvidence(
-          targetCommit,
+          targetIdentity,
           "schema-validation",
           "SUPABASE_SCHEMA_CHECK_MODE=remote npm run schema:check",
           completedAt,
@@ -358,7 +429,7 @@ function createEvidence(targetCommit, options = {}) {
     visual: mergeManifest(
       {
         ...commonEvidence(
-          targetCommit,
+          targetIdentity,
           "visual",
           "npm run test:visual-regression",
           completedAt,
@@ -371,13 +442,13 @@ function createEvidence(targetCommit, options = {}) {
     drain: mergeManifest(
       {
         ...commonEvidence(
-          targetCommit,
+          targetIdentity,
           "old-worker-drain",
           "node scripts/verify-old-worker-drain.mjs",
           completedAt,
           evidenceAuthority,
         ),
-        deployment,
+        deployment: exactDeployment,
         checks: workerClasses.map((workerClass) => ({ workerClass, activeCount: 0 })),
       },
       options.patches?.drain,
@@ -385,13 +456,13 @@ function createEvidence(targetCommit, options = {}) {
     environment: mergeManifest(
       {
         ...commonEvidence(
-          targetCommit,
+          targetIdentity,
           "deployment-environment",
           "deployment-authority inspect-safe-environment",
           completedAt,
           evidenceAuthority,
         ),
-        deployment,
+        deployment: exactDeployment,
         environment: {
           containsSecretValues: false,
           stripeLiveMode: true,
@@ -510,10 +581,13 @@ try {
     "docs/dealflow-completion/release-trust-policy.json",
     candidateTrustPolicyContents,
   );
+  writeFixtureDeployableManifest("baseline");
   const baseline = commit("baseline");
 
   writeRepositoryFile("src/release-target.txt", "target\n");
+  writeFixtureDeployableManifest("target");
   const target = commit("target authorized only by protected external test authority");
+  const targetIdentity = releaseIdentityForCommit(target);
   const signedPaths = createEvidence(target, { privateKey });
   const releaseArguments = [
     scriptPath,
@@ -530,10 +604,12 @@ try {
   assert.equal(first.stderr, "");
 
   const manifest = JSON.parse(first.stdout);
-  assert.equal(manifest.schemaVersion, "dealflow.release-guard.v4");
+  assert.equal(manifest.schemaVersion, "dealflow.release-guard.v5");
   assert.equal(manifest.gate.mode, "release");
   assert.equal(manifest.gate.enforced, true);
-  assert.equal(manifest.gate.decision, "PASS");
+  assert.equal(manifest.gate.decision, "PRE_MUTATION_ADMISSION_PASS");
+  assert.equal(manifest.gate.admissionStage, admissionStage);
+  assert.equal(manifest.gate.mandatoryPostDeployRerunValidated, true);
   assert.equal(
     manifest.gate.decisionAuthority,
     "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD",
@@ -602,8 +678,26 @@ try {
   assert.equal(manifest.suppliedEvidence.buildEvidence.attestation.signatureVerified, true);
   assert.equal(manifest.suppliedEvidence.drainEvidence.attestation.signatureVerified, true);
   assert.equal(manifest.suppliedEvidence.environmentEvidence.attestation.signatureVerified, true);
-  assert.deepEqual(manifest.suppliedEvidence.drainEvidence.deployment, deployment);
-  assert.deepEqual(manifest.suppliedEvidence.environmentEvidence.deployment, deployment);
+  assert.deepEqual(
+    manifest.suppliedEvidence.drainEvidence.deployment,
+    deploymentForIdentity(
+      targetIdentity,
+      manifest.suppliedEvidence.drainEvidence.deployment.deployedAt,
+    ),
+  );
+  assert.deepEqual(
+    manifest.suppliedEvidence.environmentEvidence.deployment,
+    manifest.suppliedEvidence.drainEvidence.deployment,
+  );
+  assert.equal(manifest.release.targetTree, targetIdentity.targetTree);
+  assert.equal(
+    manifest.release.deployableSourceSha256,
+    targetIdentity.deployableSourceSha256,
+  );
+  assert.equal(
+    manifest.release.deployableManifestSha256,
+    targetIdentity.deployableManifestSha256,
+  );
   assert.equal(
     manifest.suppliedEvidence.environmentEvidence.environment.containsSecretValues,
     false,
@@ -923,7 +1017,10 @@ try {
     privateKey,
     patches: {
       environment: {
-        deployment: { ...deployment, projectId: "caller-selected-project" },
+        deployment: {
+          ...deploymentForIdentity(targetIdentity, new Date().toISOString()),
+          projectId: "caller-selected-project",
+        },
       },
     },
   });
@@ -947,7 +1044,10 @@ try {
     privateKey,
     patches: {
       drain: {
-        deployment: { ...deployment, deploymentId: "different-deployment" },
+        deployment: {
+          ...deploymentForIdentity(targetIdentity, new Date().toISOString()),
+          deploymentId: "different-deployment",
+        },
       },
     },
   });
@@ -965,6 +1065,93 @@ try {
       { allowFailure: true },
     ),
     "release_guard_exact_deployment_mismatch",
+  );
+
+  const baselineIdentity = releaseIdentityForCommit(baseline);
+  const baselineDeployment = {
+    ...deploymentForIdentity(baselineIdentity, new Date().toISOString()),
+    deploymentId: "fixture-baseline-deployment",
+    // This is the adversarial shape guard v4 missed: the manifest claims the
+    // successor commit while the deployed tree and artifact remain baseline.
+    targetCommit: target,
+  };
+  const baselineDeploymentMasqueradePaths = createEvidence(target, {
+    privateKey,
+    patches: {
+      drain: { deployment: baselineDeployment },
+      environment: { deployment: baselineDeployment },
+    },
+  });
+  assertNoGo(
+    run(
+      process.execPath,
+      [
+        scriptPath,
+        "--baseline",
+        baseline,
+        "--target",
+        target,
+        ...evidenceArguments(baselineDeploymentMasqueradePaths),
+      ],
+      { allowFailure: true },
+    ),
+    "release_guard_deployment_release_identity_mismatch",
+  );
+
+  const postAliasEvidencePaths = createEvidence(target, {
+    privateKey,
+    patches: {
+      drain: {
+        deployment: {
+          ...deploymentForIdentity(targetIdentity, new Date().toISOString()),
+          aliasesAttached: true,
+        },
+      },
+      environment: {
+        deployment: {
+          ...deploymentForIdentity(targetIdentity, new Date().toISOString()),
+          aliasesAttached: true,
+        },
+      },
+    },
+  });
+  assertNoGo(
+    run(
+      process.execPath,
+      [
+        scriptPath,
+        "--baseline",
+        baseline,
+        "--target",
+        target,
+        ...evidenceArguments(postAliasEvidencePaths),
+      ],
+      { allowFailure: true },
+    ),
+    "release_guard_invalid_post_deploy_admission_boundary",
+  );
+
+  const targetCommitTimestamp = Date.parse(
+    run("git", ["show", "-s", "--format=%cI", target]).stdout.trim(),
+  );
+  const preDeployEvidencePaths = createEvidence(target, {
+    privateKey,
+    deployedAt: new Date(targetCommitTimestamp - 1_000).toISOString(),
+  });
+  assertNoGo(
+    run(
+      process.execPath,
+      [
+        scriptPath,
+        "--baseline",
+        baseline,
+        "--target",
+        target,
+        ...evidenceArguments(preDeployEvidencePaths),
+      ],
+      { allowFailure: true },
+    ),
+    "release_guard_invalid_post_deploy_timestamp",
   );
 
   const unsafeFlagPaths = createEvidence(target, {
@@ -1372,7 +1559,9 @@ try {
     "release_guard_candidate_policy_digest_mismatch",
   );
 
-  console.log("Release guard authority and exact-deployment contract tests passed.");
+  console.log(
+    "Release guard v5 authority, exact-target deployment, and post-deploy admission contract tests passed.",
+  );
 } finally {
   fs.rmSync(tempRoot, { force: true, recursive: true });
   fs.rmSync(evidenceRoot, { force: true, recursive: true });

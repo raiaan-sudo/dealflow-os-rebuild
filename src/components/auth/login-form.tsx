@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { getSafeAuthRedirectPath } from "@/lib/auth/safe-redirect";
 import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import type { ProductMessageKey } from "@/lib/i18n/messages";
@@ -30,6 +29,33 @@ type LoginFormProps = {
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
+
+type ServerAuthResponse = {
+  success?: boolean;
+  requiresMfa?: boolean;
+  sessionEstablished?: boolean;
+  redirectUrl?: string;
+};
+
+async function postServerAuth(
+  payload: Record<string, unknown>,
+): Promise<ServerAuthResponse> {
+  const response = await fetch("/api/auth/session", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => null) as ServerAuthResponse | null;
+
+  if (!response.ok || !result?.success) {
+    throw new Error("Authentication request was not accepted.");
+  }
+
+  return result;
+}
 
 function customerSafeAuthErrorMessage(
   error: unknown,
@@ -145,13 +171,6 @@ export function LoginForm({
     setError(null);
     setMessage(null);
 
-    const supabase = createClient();
-
-    if (!supabase) {
-      setError(t("auth.error.unavailable"));
-      return;
-    }
-
     setIsPending(true);
 
     try {
@@ -160,16 +179,16 @@ export function LoginForm({
         window.location.origin,
         href("/onboarding?fresh=1"),
       );
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const result = await postServerAuth({
+        action: "oauth",
         provider,
-        options: {
-          redirectTo: getAuthCallbackUrl("oauth", nextPath),
-        },
+        redirectTo: getAuthCallbackUrl("oauth", nextPath),
       });
 
-      if (oauthError) {
-        throw oauthError;
+      if (!result.redirectUrl) {
+        throw new Error("Authentication provider is unavailable.");
       }
+      window.location.assign(result.redirectUrl);
     } catch (caughtError) {
       setError(customerSafeAuthErrorMessage(caughtError, t));
       setIsPending(false);
@@ -186,13 +205,6 @@ export function LoginForm({
     setError(null);
     setMessage(null);
 
-    const supabase = createClient();
-
-    if (!supabase) {
-      setError(t("auth.error.unavailable"));
-      return;
-    }
-
     setIsPending(true);
 
     try {
@@ -203,14 +215,12 @@ export function LoginForm({
       await requestEmbeddedAuthStorageAccess();
 
       if (mode === "reset-password") {
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        await postServerAuth({
+          action: "request-password-reset",
+          email,
           redirectTo: getAuthCallbackUrl("recovery", redirectedFrom),
           captchaToken: turnstileEnabled ? turnstileToken : undefined,
         });
-
-        if (resetError) {
-          throw resetError;
-        }
 
         setMessage(t("auth.message.resetSent"));
         resetTurnstile();
@@ -218,11 +228,7 @@ export function LoginForm({
       }
 
       if (mode === "update-password") {
-        const { error: updateError } = await supabase.auth.updateUser({ password });
-
-        if (updateError) {
-          throw updateError;
-        }
+        await postServerAuth({ action: "update-password", password });
 
         setMessage(t("auth.message.updated"));
         setMode("sign-in");
@@ -230,39 +236,19 @@ export function LoginForm({
       }
 
       if (mode === "sign-in") {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        const signIn = await postServerAuth({
+          action: "sign-in",
           email,
           password,
-          options: {
-            captchaToken: turnstileEnabled ? turnstileToken : undefined,
-          },
+          captchaToken: turnstileEnabled ? turnstileToken : undefined,
         });
-
-        if (signInError) {
-          throw signInError;
-        }
-
-        const session =
-          signInData.session ??
-          (await supabase.auth.getSession()).data.session;
-
-        if (!session) {
-          throw new Error(t("auth.error.session"));
-        }
 
         const nextPath = getSafeAuthRedirectPath(
           redirectedFrom,
           window.location.origin,
           href("/onboarding?fresh=1"),
         );
-        const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (assurance.error) {
-          throw assurance.error;
-        }
-        if (
-          assurance.data.nextLevel === "aal2" &&
-          assurance.data.currentLevel !== "aal2"
-        ) {
+        if (signIn.requiresMfa) {
           const challengeUrl = new URL(href("/mfa"), window.location.origin);
           challengeUrl.searchParams.set("redirectedFrom", nextPath);
           window.location.assign(challengeUrl.toString());
@@ -302,28 +288,19 @@ export function LoginForm({
         accessKeyPartnerSlug = preclaimPayload.partnerSlug ?? null;
       }
 
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      const signUp = await postServerAuth({
+        action: "sign-up",
         email,
         password,
-        options: {
-          captchaToken: turnstileEnabled ? turnstileToken : undefined,
-          emailRedirectTo: getAuthCallbackUrl("signup", redirectedFrom),
-          data: {
-            full_name: fullName,
-            ...(partnerAttribution?.bindingToken
-              ? { partner_attribution_token: partnerAttribution.bindingToken }
-              : {}),
-            ...(accessKeyClaimToken ? { access_key_claim_token: accessKeyClaimToken } : {}),
-            ...(accessKeyPartnerSlug ? { access_key_partner_slug: accessKeyPartnerSlug } : {}),
-          },
-        },
+        fullName,
+        captchaToken: turnstileEnabled ? turnstileToken : undefined,
+        redirectTo: getAuthCallbackUrl("signup", redirectedFrom),
+        partnerAttributionToken: partnerAttribution?.bindingToken ?? undefined,
+        accessKeyClaimToken: accessKeyClaimToken ?? undefined,
+        accessKeyPartnerSlug: accessKeyPartnerSlug ?? undefined,
       });
 
-      if (signUpError) {
-        throw signUpError;
-      }
-
-      if (signUpData.session) {
+      if (signUp.sessionEstablished) {
         window.location.assign(
           getSafeAuthRedirectPath(
             redirectedFrom,

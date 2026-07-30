@@ -1,0 +1,67 @@
+ARG NODE_IMAGE
+FROM ${NODE_IMAGE} AS source-verifier
+ARG NODE_IMAGE
+ARG DEALFLOW_SOURCE_COMMIT
+ARG DEALFLOW_SOURCE_TREE
+
+WORKDIR /source
+COPY . .
+RUN node -e "if (!/@sha256:[a-f0-9]{64}$/.test(process.env.NODE_IMAGE || '')) process.exit(1)" \
+ && test "$(node --version)" = "v24.14.1" \
+ && command -v git >/dev/null \
+ && test "$(git rev-parse HEAD)" = "${DEALFLOW_SOURCE_COMMIT}" \
+ && test "$(git rev-parse 'HEAD^{tree}')" = "${DEALFLOW_SOURCE_TREE}" \
+ && git diff --quiet --exit-code \
+ && git diff --cached --quiet --exit-code \
+ && test -z "$(git ls-files --deleted --modified)" \
+ && git rev-parse HEAD > /source/.dealflow-worker-generation \
+ && chmod 0444 /source/.dealflow-worker-generation
+
+FROM ${NODE_IMAGE}
+ARG NODE_IMAGE
+ARG DEALFLOW_SOURCE_COMMIT
+ARG DEALFLOW_SOURCE_TREE
+ARG HIGGSFIELD_CLI_SHA256
+
+WORKDIR /app
+RUN node -e "if (!/@sha256:[a-f0-9]{64}$/.test(process.env.NODE_IMAGE || '')) process.exit(1)" \
+ && test "$(node --version)" = "v24.14.1"
+
+COPY --from=source-verifier /source/package.json /source/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+ && test "$(node -p "require('./node_modules/@higgsfield/cli/package.json').version")" = "1.1.19" \
+ && node node_modules/@higgsfield/cli/install.js \
+ && test "${HIGGSFIELD_CLI_SHA256}" = "$(sha256sum node_modules/@higgsfield/cli/vendor/hf | cut -d ' ' -f 1)"
+
+COPY --from=source-verifier /source/tsconfig.json /source/tsconfig.typecheck.json ./
+COPY --from=source-verifier /source/config/authority/dealflow-owner-decisions.v1.json ./config/authority/dealflow-owner-decisions.v1.json
+COPY --from=source-verifier /source/src ./src
+COPY --from=source-verifier /source/scripts ./scripts
+COPY --from=source-verifier /source/.dealflow-worker-generation /app/.dealflow-worker-generation
+
+RUN test "$(cat /app/.dealflow-worker-generation)" = "${DEALFLOW_SOURCE_COMMIT}" \
+ && test -n "${DEALFLOW_SOURCE_TREE}" \
+ && chown -R root:root /app \
+ && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin dealflow
+
+ENV NODE_ENV=production \
+    NODE_OPTIONS=--conditions=react-server \
+    HIGGSFIELD_CLI_PATH=/app/node_modules/@higgsfield/cli/vendor/hf \
+    HIGGSFIELD_MAX_PROVIDER_CREDITS=5 \
+    HIGGSFIELD_CONFIG_HOME=/var/lib/dealflow/higgsfield/config \
+    DEALFLOW_WORKER_GENERATION_FILE=/app/.dealflow-worker-generation \
+    DEALFLOW_HIGGSFIELD_OAUTH_MOUNT=/var/lib/dealflow/higgsfield \
+    DEALFLOW_WORKER_HEALTH_PORT=8080
+
+LABEL io.agentdealflow.runtime="durable-system-worker" \
+      io.agentdealflow.source-commit="${DEALFLOW_SOURCE_COMMIT}" \
+      io.agentdealflow.source-tree="${DEALFLOW_SOURCE_TREE}"
+
+VOLUME ["/var/lib/dealflow/higgsfield"]
+EXPOSE 8080
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=4 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+
+USER 10001:10001
+CMD ["node", "--import", "tsx", "scripts/run-durable-system-worker.ts"]

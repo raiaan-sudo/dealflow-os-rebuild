@@ -5,6 +5,7 @@ import {
   access,
   chmod,
   mkdtemp,
+  readFile,
   rm,
   stat,
   writeFile,
@@ -17,6 +18,9 @@ import { downloadVerifiedCreativeImage } from "@/lib/creative-content-integrity"
 const execFileAsync = promisify(execFile);
 const OFFICIAL_CLI_VERSION = "1.1.19";
 const MAX_CLI_OUTPUT_BYTES = 4 * 1024 * 1024;
+export const HIGGSFIELD_MAX_PROVIDER_CREDITS_PER_JOB = 5;
+const HIGGSFIELD_OAUTH_EXPIRY_WARNING_MS = 72 * 60 * 60_000;
+const HIGGSFIELD_OAUTH_EXPIRY_BLOCK_MS = 6 * 60 * 60_000;
 
 export type HiggsfieldCliConfig = {
   cliPath: string;
@@ -108,7 +112,9 @@ function classifyCliFailure(error: unknown) {
   );
 }
 
-async function verifyCliAuthority(config: HiggsfieldCliConfig) {
+export async function verifyHiggsfieldCliAuthority(
+  config: HiggsfieldCliConfig,
+) {
   const cliPath = resolvedCliPath(config.cliPath);
   if (
     !isAbsolute(cliPath) ||
@@ -116,7 +122,8 @@ async function verifyCliAuthority(config: HiggsfieldCliConfig) {
     !/^[a-f0-9]{64}$/.test(config.cliSha256) ||
     !["480p", "720p"].includes(config.resolution) ||
     !Number.isFinite(config.maxProviderCredits) ||
-    config.maxProviderCredits <= 0
+    config.maxProviderCredits <= 0 ||
+    config.maxProviderCredits > HIGGSFIELD_MAX_PROVIDER_CREDITS_PER_JOB
   ) {
     throw new HiggsfieldCliError(
       "Higgsfield official CLI configuration is incomplete.",
@@ -154,12 +161,110 @@ async function verifyCliAuthority(config: HiggsfieldCliConfig) {
   }
 }
 
+function findCredentialExpiry(
+  value: unknown,
+  depth = 0,
+): number | null {
+  if (depth > 5 || !value || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const expiry = findCredentialExpiry(entry, depth + 1);
+      if (expiry !== null) return expiry;
+    }
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of [
+    "expires_at",
+    "expiresAt",
+    "expiry",
+    "expiration",
+    "token_expires_at",
+    "tokenExpiresAt",
+  ]) {
+    const candidate = record[key];
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      const epochMs = candidate < 10_000_000_000 ? candidate * 1_000 : candidate;
+      if (epochMs > 0) return epochMs;
+    }
+    if (typeof candidate === "string" && candidate.trim()) {
+      const numeric = Number(candidate);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        return numeric < 10_000_000_000 ? numeric * 1_000 : numeric;
+      }
+      const parsed = Date.parse(candidate);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  for (const child of Object.values(record)) {
+    const expiry = findCredentialExpiry(child, depth + 1);
+    if (expiry !== null) return expiry;
+  }
+  return null;
+}
+
+export async function inspectHiggsfieldCliHealth(
+  config: HiggsfieldCliConfig,
+  options: { nowMs?: number } = {},
+) {
+  await verifyHiggsfieldCliAuthority(config);
+  const credentialPath = join(
+    config.configHome,
+    ".config",
+    "higgsfield",
+    "credentials.json",
+  );
+  let credentialDocument: unknown;
+  try {
+    credentialDocument = JSON.parse(await readFile(credentialPath, "utf8"));
+  } catch {
+    throw new HiggsfieldCliError(
+      "Higgsfield OAuth credentials are not valid JSON.",
+      "configuration",
+    );
+  }
+  const nowMs = options.nowMs ?? Date.now();
+  const expiresAtMs = findCredentialExpiry(credentialDocument);
+  if (expiresAtMs === null) {
+    return {
+      ready: false,
+      status: "expiry_not_declared" as const,
+      operatorActionRequired: true,
+      expiresInSeconds: null,
+      cliVersion: OFFICIAL_CLI_VERSION,
+    };
+  }
+  const expiresInMs = expiresAtMs - nowMs;
+  if (expiresInMs <= HIGGSFIELD_OAUTH_EXPIRY_BLOCK_MS) {
+    return {
+      ready: false,
+      status:
+        expiresInMs <= 0
+          ? ("oauth_expired" as const)
+          : ("oauth_expiring_soon" as const),
+      operatorActionRequired: true,
+      expiresInSeconds: Math.max(0, Math.floor(expiresInMs / 1_000)),
+      cliVersion: OFFICIAL_CLI_VERSION,
+    };
+  }
+  return {
+    ready: true,
+    status:
+      expiresInMs <= HIGGSFIELD_OAUTH_EXPIRY_WARNING_MS
+        ? ("oauth_rotation_due" as const)
+        : ("ready" as const),
+    operatorActionRequired: expiresInMs <= HIGGSFIELD_OAUTH_EXPIRY_WARNING_MS,
+    expiresInSeconds: Math.floor(expiresInMs / 1_000),
+    cliVersion: OFFICIAL_CLI_VERSION,
+  };
+}
+
 async function runCliJson(
   config: HiggsfieldCliConfig,
   args: string[],
   timeoutMs: number,
 ) {
-  await verifyCliAuthority(config);
+  await verifyHiggsfieldCliAuthority(config);
   const cliPath = resolvedCliPath(config.cliPath);
   try {
     const { stdout } = await execFileAsync(

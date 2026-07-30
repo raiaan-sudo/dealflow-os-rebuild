@@ -1,3 +1,5 @@
+import { isVerifiedDurableWorkerProductionRuntime } from "@/lib/durable-worker-runtime-attestation";
+
 export type DeploymentTarget =
   | "production"
   | "staging"
@@ -172,7 +174,11 @@ export function getDeploymentTarget(
     return vercelEnvironment;
   }
 
-  if (explicitTarget === "production") return "unknown";
+  if (explicitTarget === "production") {
+    return isVerifiedDurableWorkerProductionRuntime(env)
+      ? "production"
+      : "unknown";
+  }
 
   if (explicitTarget && EXPLICIT_TARGETS.has(explicitTarget as DeploymentTarget)) {
     return explicitTarget as DeploymentTarget;

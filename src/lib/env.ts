@@ -528,7 +528,7 @@ export function getHiggsfieldGenerationEnv() {
 
   if (cliEnabled || cliPath || cliSha256 || configHome || workspaceId) {
     const maxProviderCredits = Number(
-      process.env.HIGGSFIELD_MAX_PROVIDER_CREDITS ?? "12.5",
+      process.env.HIGGSFIELD_MAX_PROVIDER_CREDITS ?? "5",
     );
     return {
       authMode: "official_cli_oauth" as const,
@@ -543,7 +543,8 @@ export function getHiggsfieldGenerationEnv() {
         Boolean(cliSha256 && /^[a-f0-9]{64}$/.test(cliSha256)) &&
         Boolean(configHome) &&
         Number.isFinite(maxProviderCredits) &&
-        maxProviderCredits > 0,
+        maxProviderCredits > 0 &&
+        maxProviderCredits <= 5,
       model,
       resolution:
         process.env.HIGGSFIELD_VIDEO_RESOLUTION === "480p"
@@ -591,8 +592,10 @@ export function validateHiggsfieldGenerationEnv() {
       ],
       ["HIGGSFIELD_CONFIG_HOME", env.configHome],
       [
-        "HIGGSFIELD_MAX_PROVIDER_CREDITS must be greater than zero",
-        Number.isFinite(env.maxProviderCredits) && env.maxProviderCredits > 0,
+        "HIGGSFIELD_MAX_PROVIDER_CREDITS must be greater than zero and at most 5",
+        Number.isFinite(env.maxProviderCredits) &&
+          env.maxProviderCredits > 0 &&
+          env.maxProviderCredits <= 5,
       ],
     ]
       .filter(([, value]) => !value)

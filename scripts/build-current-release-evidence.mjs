@@ -44,10 +44,10 @@ const PRODUCTION_TRUST = Object.freeze({
 });
 const RELEASE_DECISION_AUTHORITY = Object.freeze({
   authority: "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD",
-  schemaVersion: "dealflow.release-guard.v4",
+  schemaVersion: "dealflow.release-guard.v5",
   command: "npm run release:guard",
   requiredMode: "release",
-  requiredDecision: "PASS",
+  requiredDecision: "PRE_MUTATION_ADMISSION_PASS",
   requiresAllEvidenceValidated: true,
   requiresProtectedExternalTrustRoot: true,
   builderRole: "NON_AUTHORIZING_EVIDENCE_SNAPSHOT",

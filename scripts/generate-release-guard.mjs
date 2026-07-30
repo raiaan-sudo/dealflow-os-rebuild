@@ -8,7 +8,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 
-const SCHEMA_VERSION = "dealflow.release-guard.v4";
+const SCHEMA_VERSION = "dealflow.release-guard.v5";
 const RELEASE_MODE = "release";
 const AUDIT_PREVIEW_MODE = "audit-preview";
 const REQUIRED_TARGET_PATHS = {
@@ -16,9 +16,15 @@ const REQUIRED_TARGET_PATHS = {
   packageLock: "package-lock.json",
   migrationsDirectory: "supabase/migrations",
   trustPolicy: "docs/dealflow-completion/release-trust-policy.json",
+  deployableSourceManifest: "config/release/deployable-source-manifest.json",
 };
 
-const RELEASE_EVIDENCE_SCHEMA_VERSION = "dealflow.release-evidence.v2";
+const RELEASE_EVIDENCE_SCHEMA_VERSION = "dealflow.release-evidence.v3";
+const DEPLOYABLE_SOURCE_MANIFEST_SCHEMA_VERSION =
+  "dealflow.deployable-source-manifest.v1";
+const PRE_MUTATION_ADMISSION_DECISION = "PRE_MUTATION_ADMISSION_PASS";
+const POST_DEPLOY_ADMISSION_STAGE = "post_deploy_pre_alias_provider";
+const PRODUCTION_ENVIRONMENT = "production";
 const RELEASE_TRUST_POLICY_SCHEMA_VERSION = "dealflow.release-trust-policy.v1";
 const EXTERNAL_TRUST_POLICY_SCHEMA_VERSION = "dealflow.external-release-trust-policy.v1";
 const EXTERNAL_TRUST_POLICY_PATH_ENV = "DEALFLOW_RELEASE_TRUST_POLICY_PATH";
@@ -27,6 +33,8 @@ const EXTERNAL_TRUST_PREVIOUS_SHA256_ENV =
   "DEALFLOW_RELEASE_TRUST_PREVIOUS_POLICY_SHA256";
 const SIGNATURE_ALGORITHM = "ed25519";
 const OWNER_DECISION_AUTHORITY_PURPOSE = "owner-decision-authority";
+const RELEASE_GUARD_ENVELOPE_AUTHORITY_PURPOSE =
+  "release-guard-v5-envelope";
 const OWNER_DECISION_TEMPLATE_PATH =
   "config/authority/dealflow-owner-decisions.v1.json";
 const REQUIRED_SECRET_STRENGTH_POLICIES = [
@@ -142,7 +150,7 @@ const USAGE = `Usage:
 
 Release mode is the default and is fail-closed: all six evidence classes are
 required, the worktree must be clean, and --target must be the full SHA of HEAD.
-Each evidence option accepts one dealflow.release-evidence.v2 JSON manifest.
+Each evidence option accepts one dealflow.release-evidence.v3 JSON manifest.
 Release evidence must be Ed25519-signed by an authority pinned in a protected
 policy outside the repository. Release mode reads its absolute path and expected
 digest only from ${EXTERNAL_TRUST_POLICY_PATH_ENV} and
@@ -153,7 +161,10 @@ generation >1 additionally requires ${EXTERNAL_TRUST_PREVIOUS_SHA256_ENV}.
 Use --mode audit-preview only for explicitly
 non-gating structural inspection; unsigned preview evidence can never PASS.
 Repository lockfile, migration, trust-policy, and environment-name data are read
-from the resolved target commit.`;
+from the resolved target commit. All evidence binds the exact target commit,
+tree, deployable-source digest, and deployable-manifest digest. Old-worker drain
+and environment evidence must be regenerated after the dormant target deployment
+exists and while aliases and provider effects remain disabled.`;
 
 class ReleaseGuardError extends Error {
   constructor(code, message) {
@@ -573,7 +584,9 @@ function parseExternalAuthorities(policy) {
     if (
       !Array.isArray(allowedAuthorityPurposes) ||
       allowedAuthorityPurposes.some(
-        (entry) => entry !== OWNER_DECISION_AUTHORITY_PURPOSE,
+        (entry) =>
+          entry !== OWNER_DECISION_AUTHORITY_PURPOSE &&
+          entry !== RELEASE_GUARD_ENVELOPE_AUTHORITY_PURPOSE,
       ) ||
       new Set(allowedAuthorityPurposes).size !== allowedAuthorityPurposes.length
     ) {
@@ -958,6 +971,79 @@ function targetBlobEntry(root, targetSha, targetPath) {
   };
 }
 
+function parseTargetReleaseIdentity(root, targetSha) {
+  const targetTree = runGit(root, ["rev-parse", `${targetSha}^{tree}`]).stdout.trim();
+  if (!/^[a-f0-9]{40,64}$/.test(targetTree)) {
+    fail(
+      "release_guard_invalid_target_tree",
+      "The exact target commit did not resolve to a valid Git tree.",
+    );
+  }
+
+  const manifestBytes = readTargetBlob(
+    root,
+    targetSha,
+    REQUIRED_TARGET_PATHS.deployableSourceManifest,
+  );
+  let manifest;
+  try {
+    manifest = assertPlainObject(
+      JSON.parse(manifestBytes.toString("utf8")),
+      "Deployable source manifest",
+    );
+  } catch (error) {
+    if (error instanceof ReleaseGuardError) throw error;
+    fail(
+      "release_guard_invalid_deployable_source_manifest",
+      "The target deployable source manifest is not valid JSON.",
+    );
+  }
+  if (
+    manifest.schemaVersion !== DEPLOYABLE_SOURCE_MANIFEST_SCHEMA_VERSION ||
+    manifest.generatedFrom !==
+      "git_tracked_files_minus_vercelignore_and_manifest" ||
+    !Number.isSafeInteger(manifest.entryCount) ||
+    manifest.entryCount < 1 ||
+    !Array.isArray(manifest.entries) ||
+    manifest.entries.length !== manifest.entryCount ||
+    !isSha256(manifest.deployableSourceSha256)
+  ) {
+    fail(
+      "release_guard_invalid_deployable_source_manifest",
+      "The target deployable source manifest is malformed.",
+    );
+  }
+  let previousPath = "";
+  for (const rawEntry of manifest.entries) {
+    const entry = assertPlainObject(rawEntry, "Deployable source manifest entry");
+    if (
+      typeof entry.path !== "string" ||
+      entry.path.length < 1 ||
+      entry.path.startsWith("/") ||
+      entry.path.includes("\\") ||
+      entry.path.split("/").includes("..") ||
+      entry.path <= previousPath ||
+      !Number.isSafeInteger(entry.size) ||
+      entry.size < 0 ||
+      !Number.isSafeInteger(entry.mode) ||
+      !isSha256(entry.sha256)
+    ) {
+      fail(
+        "release_guard_invalid_deployable_source_manifest",
+        "The target deployable source manifest contains an invalid, duplicate, or unsorted entry.",
+      );
+    }
+    previousPath = entry.path;
+  }
+
+  return Object.freeze({
+    targetCommit: targetSha,
+    targetTree,
+    deployableSourceSha256: manifest.deployableSourceSha256.toLowerCase(),
+    deployableManifestSha256: hashBuffer(manifestBytes),
+  });
+}
+
 function listTargetFiles(root, targetSha, targetDirectory) {
   const result = runGit(
     root,
@@ -1171,7 +1257,7 @@ function validateEvidenceAttestation(manifest, expectedType, authority, mode) {
 function validateCommonEvidence(
   manifest,
   expectedType,
-  targetSha,
+  targetIdentity,
   targetTimestampMs,
   trustPolicy,
   mode,
@@ -1188,10 +1274,28 @@ function validateCommonEvidence(
       `Expected ${expectedType} evidence but received a different evidence type.`,
     );
   }
-  if (typeof manifest.targetCommit !== "string" || manifest.targetCommit.toLowerCase() !== targetSha) {
+  if (
+    typeof manifest.targetCommit !== "string" ||
+    manifest.targetCommit.toLowerCase() !== targetIdentity.targetCommit
+  ) {
     fail(
       "release_guard_evidence_target_mismatch",
       `${expectedType} evidence is not bound to the exact resolved target commit.`,
+    );
+  }
+  if (
+    typeof manifest.targetTree !== "string" ||
+    manifest.targetTree.toLowerCase() !== targetIdentity.targetTree ||
+    !isSha256(manifest.deployableSourceSha256) ||
+    manifest.deployableSourceSha256.toLowerCase() !==
+      targetIdentity.deployableSourceSha256 ||
+    !isSha256(manifest.deployableManifestSha256) ||
+    manifest.deployableManifestSha256.toLowerCase() !==
+      targetIdentity.deployableManifestSha256
+  ) {
+    fail(
+      "release_guard_evidence_release_identity_mismatch",
+      `${expectedType} evidence is not bound to the exact target tree and deployable artifact digests.`,
     );
   }
   if (
@@ -1276,7 +1380,10 @@ function validateCommonEvidence(
   return {
     schemaVersion: RELEASE_EVIDENCE_SCHEMA_VERSION,
     evidenceType: expectedType,
-    targetCommit: targetSha,
+    targetCommit: targetIdentity.targetCommit,
+    targetTree: targetIdentity.targetTree,
+    deployableSourceSha256: targetIdentity.deployableSourceSha256,
+    deployableManifestSha256: targetIdentity.deployableManifestSha256,
     command: manifest.command,
     executed: true,
     exitCode: 0,
@@ -1581,13 +1688,58 @@ function validateExactKeys(value, expectedKeys, label) {
   }
 }
 
-function validateDeploymentIdentity(rawDeployment, trustPolicy, label) {
+function validateDeploymentIdentity(
+  rawDeployment,
+  trustPolicy,
+  targetIdentity,
+  targetTimestampMs,
+  evidenceCompletedAt,
+  label,
+) {
   const deployment = assertPlainObject(rawDeployment, label);
-  validateExactKeys(deployment, ["deploymentId", "projectId", "provider"], label);
+  validateExactKeys(
+    deployment,
+    [
+      "admissionStage",
+      "aliasesAttached",
+      "deployableManifestSha256",
+      "deployableSourceSha256",
+      "deployedAt",
+      "deploymentId",
+      "environment",
+      "projectId",
+      "provider",
+      "providerEffectsEnabled",
+      "targetCommit",
+      "targetTree",
+    ],
+    label,
+  );
   const normalized = {
     provider: sanitizedIdentifier(deployment.provider, `${label} provider`),
     projectId: sanitizedIdentifier(deployment.projectId, `${label} projectId`),
     deploymentId: sanitizedIdentifier(deployment.deploymentId, `${label} deploymentId`),
+    environment: sanitizedIdentifier(deployment.environment, `${label} environment`),
+    targetCommit:
+      typeof deployment.targetCommit === "string"
+        ? deployment.targetCommit.toLowerCase()
+        : "",
+    targetTree:
+      typeof deployment.targetTree === "string"
+        ? deployment.targetTree.toLowerCase()
+        : "",
+    deployableSourceSha256:
+      typeof deployment.deployableSourceSha256 === "string"
+        ? deployment.deployableSourceSha256.toLowerCase()
+        : "",
+    deployableManifestSha256:
+      typeof deployment.deployableManifestSha256 === "string"
+        ? deployment.deployableManifestSha256.toLowerCase()
+        : "",
+    admissionStage: deployment.admissionStage,
+    aliasesAttached: deployment.aliasesAttached,
+    providerEffectsEnabled: deployment.providerEffectsEnabled,
+    deployedAt: deployment.deployedAt,
   };
   if (
     trustPolicy.expectedProject &&
@@ -1599,10 +1751,52 @@ function validateDeploymentIdentity(rawDeployment, trustPolicy, label) {
       `${label} does not identify the exact project pinned by the target trust policy.`,
     );
   }
+  if (
+    normalized.targetCommit !== targetIdentity.targetCommit ||
+    normalized.targetTree !== targetIdentity.targetTree ||
+    normalized.deployableSourceSha256 !== targetIdentity.deployableSourceSha256 ||
+    normalized.deployableManifestSha256 !==
+      targetIdentity.deployableManifestSha256
+  ) {
+    fail(
+      "release_guard_deployment_release_identity_mismatch",
+      `${label} is not the deployment of the exact target commit, tree, and deployable artifact.`,
+    );
+  }
+  if (
+    normalized.environment !== PRODUCTION_ENVIRONMENT ||
+    normalized.admissionStage !== POST_DEPLOY_ADMISSION_STAGE ||
+    normalized.aliasesAttached !== false ||
+    normalized.providerEffectsEnabled !== false
+  ) {
+    fail(
+      "release_guard_invalid_post_deploy_admission_boundary",
+      `${label} must prove the production deployment after deploy and before aliases or provider effects.`,
+    );
+  }
+  const deployedAtMs = Date.parse(normalized.deployedAt);
+  const completedAtMs = Date.parse(evidenceCompletedAt);
+  if (
+    !Number.isFinite(deployedAtMs) ||
+    !Number.isFinite(completedAtMs) ||
+    deployedAtMs < targetTimestampMs ||
+    deployedAtMs > completedAtMs
+  ) {
+    fail(
+      "release_guard_invalid_post_deploy_timestamp",
+      `${label} evidence must be rerun after the exact target deployment exists.`,
+    );
+  }
   return normalized;
 }
 
-function validateEnvironmentEvidence(evidenceFile, common, trustPolicy) {
+function validateEnvironmentEvidence(
+  evidenceFile,
+  common,
+  trustPolicy,
+  targetIdentity,
+  targetTimestampMs,
+) {
   validateExactKeys(
     evidenceFile.parsed,
     [
@@ -1619,12 +1813,18 @@ function validateEnvironmentEvidence(evidenceFile, common, trustPolicy) {
       "sourceRun",
       "status",
       "targetCommit",
+      "targetTree",
+      "deployableSourceSha256",
+      "deployableManifestSha256",
     ],
     "Deployment environment evidence",
   );
   const deployment = validateDeploymentIdentity(
     evidenceFile.parsed.deployment,
     trustPolicy,
+    targetIdentity,
+    targetTimestampMs,
+    common.completedAt,
     "Environment attestation deployment",
   );
   const environment = assertPlainObject(
@@ -1731,10 +1931,19 @@ function validateEnvironmentEvidence(evidenceFile, common, trustPolicy) {
   };
 }
 
-function validateDrainEvidence(evidenceFile, common, trustPolicy) {
+function validateDrainEvidence(
+  evidenceFile,
+  common,
+  trustPolicy,
+  targetIdentity,
+  targetTimestampMs,
+) {
   const deployment = validateDeploymentIdentity(
     evidenceFile.parsed.deployment,
     trustPolicy,
+    targetIdentity,
+    targetTimestampMs,
+    common.completedAt,
     "Old-worker drain deployment",
   );
   if (!Array.isArray(evidenceFile.parsed.checks)) {
@@ -1799,7 +2008,7 @@ function evidenceManifest(root, requestedPaths, expectedType, context) {
   const common = validateCommonEvidence(
     evidenceFile.parsed,
     expectedType,
-    context.targetSha,
+    context.targetIdentity,
     context.targetTimestampMs,
     context.trustPolicy,
     context.mode,
@@ -1813,13 +2022,25 @@ function evidenceManifest(root, requestedPaths, expectedType, context) {
   if (expectedType === "old-worker-drain") {
     return {
       provided: true,
-      ...validateDrainEvidence(evidenceFile, common, context.trustPolicy),
+      ...validateDrainEvidence(
+        evidenceFile,
+        common,
+        context.trustPolicy,
+        context.targetIdentity,
+        context.targetTimestampMs,
+      ),
     };
   }
   if (expectedType === "deployment-environment") {
     return {
       provided: true,
-      ...validateEnvironmentEvidence(evidenceFile, common, context.trustPolicy),
+      ...validateEnvironmentEvidence(
+        evidenceFile,
+        common,
+        context.trustPolicy,
+        context.targetIdentity,
+        context.targetTimestampMs,
+      ),
     };
   }
   return { provided: true, ...validateArtifactEvidence(root, evidenceFile, common) };
@@ -1956,6 +2177,7 @@ function generateManifest(root, parsed) {
   if (!Number.isFinite(targetTimestampMs)) {
     fail("release_guard_invalid_commit", "Target commit timestamp is invalid.");
   }
+  const targetIdentity = parseTargetReleaseIdentity(root, targetSha);
   const candidatePolicy = parseTrustPolicy(root, targetSha);
   const externalTrustPolicy = parseExternalTrustPolicy(
     root,
@@ -1991,7 +2213,7 @@ function generateManifest(root, parsed) {
   const featureFlagNames = parseFeatureFlagNames(environmentExampleText);
   const failSafeDefaultNames = validateFailSafeEnvironmentDefaults(environmentExampleText);
   const evidenceContext = {
-    targetSha,
+    targetIdentity,
     targetTimestampMs,
     trustPolicy: externalTrustPolicy,
     mode: parsed.mode,
@@ -2053,7 +2275,16 @@ function generateManifest(root, parsed) {
     gate: {
       mode: parsed.mode,
       enforced: parsed.mode === RELEASE_MODE,
-      decision: parsed.mode === RELEASE_MODE ? "PASS" : "NON_GATING_PREVIEW",
+      decision:
+        parsed.mode === RELEASE_MODE
+          ? PRE_MUTATION_ADMISSION_DECISION
+          : "NON_GATING_PREVIEW",
+      admissionStage:
+        parsed.mode === RELEASE_MODE ? POST_DEPLOY_ADMISSION_STAGE : null,
+      mandatoryPostDeployRerunValidated:
+        parsed.mode === RELEASE_MODE &&
+        evidence.drainEvidence.validated === true &&
+        evidence.environmentEvidence.validated === true,
       decisionAuthority:
         parsed.mode === RELEASE_MODE
           ? "PROTECTED_EXTERNAL_TRUST_RELEASE_GUARD"
@@ -2074,6 +2305,9 @@ function generateManifest(root, parsed) {
     release: {
       baseline: baselineSha,
       target: targetSha,
+      targetTree: targetIdentity.targetTree,
+      deployableSourceSha256: targetIdentity.deployableSourceSha256,
+      deployableManifestSha256: targetIdentity.deployableManifestSha256,
       targetCommitterTimestamp: targetTimestamp,
       ancestryVerified: true,
       repositoryContentSource: "resolved_target_commit",

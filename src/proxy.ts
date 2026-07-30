@@ -69,6 +69,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/access-keys/checkout",
   "/api/access-keys/preclaim",
   "/api/access-keys/reveal-ack",
+  "/api/auth/session",
   "/api/integrations/ghl/embed-context",
   "/api/integrations/ghl/webhook",
   "/api/support/delivery-callback",
@@ -952,16 +953,17 @@ export async function proxy(request: NextRequest) {
   const supabase = createServerClient(supabaseEnv.url, supabaseEnv.anonKey, {
     cookieOptions: getSupabaseAuthCookieOptions(),
     cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
+      getAll() {
+        return request.cookies.getAll();
       },
-      set(name, value, options) {
-        request.cookies.set({ name, value, ...options });
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        request.cookies.set({ name, value: "", ...options });
-        response.cookies.set({ name, value: "", ...options });
+      setAll(cookiesToSet, headers) {
+        for (const { name, value, options } of cookiesToSet) {
+          request.cookies.set({ name, value, ...options });
+          response.cookies.set({ name, value, ...options });
+        }
+        for (const [name, value] of Object.entries(headers)) {
+          response.headers.set(name, value);
+        }
       },
     },
   });

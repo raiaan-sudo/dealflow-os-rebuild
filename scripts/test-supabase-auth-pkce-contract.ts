@@ -12,6 +12,8 @@ const callbackRoute = read("src/app/auth/callback/route.ts");
 const loginForm = read("src/components/auth/login-form.tsx");
 const loginPage = read("src/app/(auth)/login/page.tsx");
 const proxy = read("src/proxy.ts");
+const sessionRoute = read("src/app/api/auth/session/route.ts");
+const cookieOptions = read("src/lib/supabase/cookie-options.ts");
 
 assert.match(callbackRoute, /createServerSupabase\(response\)/, "callback must write the exchanged session into response cookies");
 assert.match(callbackRoute, /exchangeCodeForSession\(code\)/, "callback must exchange the one-time PKCE code server-side");
@@ -29,6 +31,11 @@ assert.match(proxy, /"\/auth\/callback"/, "PKCE callback must remain reachable b
 assert.match(loginForm, /getAuthCallbackUrl\("oauth"/, "OAuth must return through the server callback");
 assert.match(loginForm, /getAuthCallbackUrl\("signup"/, "email confirmation must return through the server callback");
 assert.match(loginForm, /getAuthCallbackUrl\("recovery"/, "password recovery must return through the server callback");
+assert.match(loginForm, /postServerAuth/, "interactive authentication must use the server cookie boundary");
+assert.doesNotMatch(loginForm, /createBrowserClient|supabase\.auth/, "login UI must not read or write session cookies");
+assert.match(sessionRoute, /signInWithOAuth/, "OAuth initiation must create its PKCE verifier server-side");
+assert.match(sessionRoute, /createServerSupabase\(cookieSink\)/, "server auth must retain cookie writes for the browser response");
+assert.match(cookieOptions, /httpOnly:\s*true/, "PKCE and session cookies must be HttpOnly");
 assert.match(loginPage, /requestedMode === "update-password"/, "recovery callback must restore update-password UX without a URL token");
 assert.doesNotMatch(loginForm, /window\.location\.hash/, "login UI must not inspect auth fragments");
 assert.doesNotMatch(loginForm, /\baccess_token\b|\brefresh_token\b/, "login UI must not receive auth tokens from URLs");
