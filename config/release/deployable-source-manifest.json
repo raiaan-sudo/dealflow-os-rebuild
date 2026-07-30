@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1155,
-  "deployableSourceSha256": "96475ab510feb5e29b2bda416af13e40d7687f25c5377a2cd5ff57c22f453b78",
+  "deployableSourceSha256": "674e9492eda4db3391ab93a30286c5676912e72fda7359d5c7da7340f9222928",
   "entries": [
     {
       "path": ".dockerignore",
@@ -1446,9 +1446,9 @@
     },
     {
       "path": "scripts/test-access-key-checkout-signup.mjs",
-      "size": 10244,
+      "size": 11578,
       "mode": 33188,
-      "sha256": "0cd7718870ffb5ddf051406dcfe99dffda23ca3967ad79a4c662357e266486f7"
+      "sha256": "c58002ddbc0c9cb1c95120edba976133caa9df365705fccfa4bfc81f6f46f507"
     },
     {
       "path": "scripts/test-access-key-commercial-activation.mjs",
@@ -1620,9 +1620,9 @@
     },
     {
       "path": "scripts/test-deployment-target-authority.mjs",
-      "size": 2809,
+      "size": 3599,
       "mode": 33188,
-      "sha256": "d9b14ff4572a53f879bb7f72bc6af4b28abe8e817e108131c2563a219e1a360b"
+      "sha256": "2a7db85fd2c6656d36c177ee877b48cbf2eedac4e1fc8b010fc0aa1558b30a37"
     },
     {
       "path": "scripts/test-direct-ghl-embed-sso-disposable-db.mjs",
@@ -1818,9 +1818,9 @@
     },
     {
       "path": "scripts/test-ghl-sandbox-integration.mjs",
-      "size": 43533,
+      "size": 44274,
       "mode": 33188,
-      "sha256": "c0e71bce87fabf9b63597e28201ffbcb961a7759d3383988932d8d81d3e771f9"
+      "sha256": "57a1005a2a04fa10235ae2dc9dc3d385a293dac392a3cba492aeaf0dcd5345ed"
     },
     {
       "path": "scripts/test-ghl-signed-user-context.mjs",
@@ -1830,9 +1830,9 @@
     },
     {
       "path": "scripts/test-ghl-tenant-provisioning.mjs",
-      "size": 43401,
+      "size": 44178,
       "mode": 33188,
-      "sha256": "a61591fc80b4f925a865351685afc1b0f1547ed64077808a207fa2f3026a4cab"
+      "sha256": "bbac66f25de602e78e91293d620bf86b38f449c74c853a1c2b47bc8e272f2dd4"
     },
     {
       "path": "scripts/test-ghl-write-ambiguity.ts",
@@ -1908,9 +1908,9 @@
     },
     {
       "path": "scripts/test-launch-truth-and-schedule.mjs",
-      "size": 43695,
+      "size": 44214,
       "mode": 33188,
-      "sha256": "7c2710253b250f4fe0d8f1c5f1c7acb975b0aa6e9b4371c51fc19eb431f301ac"
+      "sha256": "a9476fcedd3db44bc3c804396805a5cbbd5da2493af733c0519c4e670362c363"
     },
     {
       "path": "scripts/test-lead-effect-fencing-disposable-db.mjs",
@@ -1956,15 +1956,15 @@
     },
     {
       "path": "scripts/test-meta-budget-safety.mjs",
-      "size": 15242,
+      "size": 15428,
       "mode": 33188,
-      "sha256": "7142107ccb70e9e0cbdc5a7d72bc31dd7c0a474e3b84df280983007c59bb4e56"
+      "sha256": "ba9d3a69b7c904570de19e5e59762510662bfdd071a8a072b14644a7e495097a"
     },
     {
       "path": "scripts/test-meta-campaign-activation-contract.mjs",
-      "size": 52889,
+      "size": 53075,
       "mode": 33188,
-      "sha256": "2951e4c132f5da9638d55efdb0341b805eb623192545db97b0cb98f3a3da5263"
+      "sha256": "9f1c0fb8781a373bb4d493afa9d971a285239497aa9d777815efe05a3c254682"
     },
     {
       "path": "scripts/test-meta-campaign-activation-disposable-db.mjs",
@@ -2172,9 +2172,9 @@
     },
     {
       "path": "scripts/test-provider-safety-boundaries.mjs",
-      "size": 13478,
+      "size": 13719,
       "mode": 33188,
-      "sha256": "dd1ccb24c0233edfb29523b4b1b13e258409d615db728afea557b54d7e3f81a0"
+      "sha256": "4f7e5c49545d2c9af804aafa8dd72d5f1c21f5cf26a71f265abfdca68ff176c0"
     },
     {
       "path": "scripts/test-public-funnel-language.ts",
@@ -2190,9 +2190,9 @@
     },
     {
       "path": "scripts/test-release-guard-v5-migration-admission.mjs",
-      "size": 6296,
+      "size": 6569,
       "mode": 33188,
-      "sha256": "52b205d40b9fa982f931acb1843776b7fd756fbeb38799008b8819c9bf1fc891"
+      "sha256": "6a259547dcbf399050cce95b2cb1bc3d2678d739377ddd77ca8cdde153965d0f"
     },
     {
       "path": "scripts/test-release-guard.mjs",

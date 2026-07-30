@@ -9,6 +9,7 @@ const repoRoot = process.cwd();
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-ghl-sandbox-"));
 const tsc = path.join(repoRoot, "node_modules", ".bin", "tsc");
 const sourceFiles = [
+  "src/lib/durable-worker-runtime-attestation.ts",
   "src/lib/integrations/gohighlevel/types.ts",
   "src/lib/integrations/gohighlevel/state-machine.ts",
   "src/lib/integrations/gohighlevel/write-gate.ts",
@@ -28,21 +29,39 @@ const sourceFiles = [
   "src/lib/services/ghl-sandbox-outbox-service.ts",
 ];
 
+const tsconfigPath = path.join(buildDir, "tsconfig.json");
+fs.writeFileSync(tsconfigPath, JSON.stringify({
+  compilerOptions: {
+    target: "ES2022",
+    module: "commonjs",
+    moduleResolution: "node",
+    strict: true,
+    esModuleInterop: true,
+    skipLibCheck: true,
+    types: ["node"],
+    typeRoots: [path.join(repoRoot, "node_modules", "@types")],
+    rootDir: path.join(repoRoot, "src"),
+    outDir: buildDir,
+    baseUrl: repoRoot,
+    paths: { "@/*": ["src/*"] },
+  },
+  files: sourceFiles.map((file) => path.join(repoRoot, file)),
+}));
 const compile = spawnSync(tsc, [
   "--pretty", "false",
-  "--target", "ES2022",
-  "--module", "commonjs",
-  "--moduleResolution", "node",
-  "--strict",
-  "--esModuleInterop",
-  "--skipLibCheck",
-  "--rootDir", "src",
-  "--outDir", buildDir,
-  ...sourceFiles,
+  "--project", tsconfigPath,
 ], { cwd: repoRoot, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
 if (compile.status !== 0) {
   throw new Error(`GHL sandbox target compilation failed:\n${compile.stdout}${compile.stderr}`);
 }
+const compiledDeploymentTarget = path.join(buildDir, "lib", "deployment-target.js");
+fs.writeFileSync(
+  compiledDeploymentTarget,
+  fs.readFileSync(compiledDeploymentTarget, "utf8").replace(
+    'require("@/lib/durable-worker-runtime-attestation")',
+    'require("./durable-worker-runtime-attestation")',
+  ),
+);
 
 const require = createRequire(import.meta.url);
 const integration = require(path.join(buildDir, "lib", "integrations", "gohighlevel", "index.js"));

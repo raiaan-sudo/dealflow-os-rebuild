@@ -4,12 +4,24 @@ import fs from "node:fs";
 import ts from "typescript";
 import vm from "node:vm";
 
-function loadTsModule(file, exportNames) {
+function loadTsModule(file, exportNames, mocks = {}) {
   const source = fs.readFileSync(file, "utf8");
   const transpiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const context = { module: { exports: {} }, exports: {}, Intl, Date, URL, TypeError };
+  const context = {
+    module: { exports: {} },
+    exports: {},
+    Intl,
+    Date,
+    URL,
+    TypeError,
+    process,
+    require(specifier) {
+      if (Object.hasOwn(mocks, specifier)) return mocks[specifier];
+      throw new Error(`Unexpected test import: ${specifier}`);
+    },
+  };
   context.exports = context.module.exports;
   vm.runInNewContext(transpiled, context, { filename: file });
   return Object.fromEntries(exportNames.map((name) => [name, context.module.exports[name]]));
@@ -100,6 +112,13 @@ const { getNextEligibleLaunchAt, LAUNCH_TIME_ZONE } = loadTsModule(
   "src/lib/launch-schedule.ts",
   ["getNextEligibleLaunchAt", "LAUNCH_TIME_ZONE"],
 );
+const durableWorkerRuntimeAttestation = loadTsModule(
+  "src/lib/durable-worker-runtime-attestation.ts",
+  [
+    "installVerifiedDurableWorkerRuntime",
+    "isVerifiedDurableWorkerProductionRuntime",
+  ],
+);
 const deploymentTargetExports = loadTsModule(
   "src/lib/deployment-target.ts",
   [
@@ -107,6 +126,10 @@ const deploymentTargetExports = loadTsModule(
     "isExactIsolatedStagingVercelHost",
     "isExactProductionVercelHost",
   ],
+  {
+    "@/lib/durable-worker-runtime-attestation":
+      durableWorkerRuntimeAttestation,
+  },
 );
 const canonicalStagingProjectId = String(
   JSON.parse(fs.readFileSync(".vercel/project.json", "utf8")).projectId,

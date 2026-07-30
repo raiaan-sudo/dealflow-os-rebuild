@@ -38,7 +38,12 @@ class ApiError extends Error {
   }
 }
 
-const deployment = loadTs("src/lib/deployment-target.ts");
+const durableWorkerRuntimeAttestation = loadTs(
+  "src/lib/durable-worker-runtime-attestation.ts",
+);
+const deployment = loadTs("src/lib/deployment-target.ts", {
+  "@/lib/durable-worker-runtime-attestation": durableWorkerRuntimeAttestation,
+});
 const budget = loadTs("src/lib/integrations/meta/budget-safety.ts", {
   "@/lib/api/route": { ApiError },
   "@/lib/deployment-target": deployment,

@@ -13,6 +13,7 @@ const recoveryMigration = read("supabase/migrations/20260710235993_harden_access
 const env = read("src/lib/env.ts");
 const accessKeyService = read("src/lib/services/access-key-service.ts");
 const loginForm = read("src/components/auth/login-form.tsx");
+const authSessionRoute = read("src/app/api/auth/session/route.ts");
 const appContext = read("src/lib/services/app-context.ts");
 const stripeWebhookRoute = read("src/app/api/stripe/webhook/route.ts");
 const billingService = read("src/lib/services/billing-service.ts");
@@ -64,8 +65,16 @@ assert.doesNotMatch(accessKeyService, /STRIPE_FORCE_TEST_MODE/, "access-key pref
 
 assert.match(loginForm, /id="access-key"/, "signup form must expose optional access-key field");
 assert.match(loginForm, /\/api\/access-keys\/preclaim/, "signup must preclaim access key before Supabase signup");
-assert.match(loginForm, /access_key_claim_token/, "signup metadata must carry claim token");
+assert.match(loginForm, /accessKeyClaimToken:\s*accessKeyClaimToken \?\? undefined/, "signup must hand the preclaim token to the server-only auth endpoint");
+assert.match(loginForm, /accessKeyPartnerSlug:\s*accessKeyPartnerSlug \?\? undefined/, "signup must hand validated partner attribution to the server-only auth endpoint");
+assert.match(authSessionRoute, /action:\s*z\.literal\("sign-up"\)/, "server-only auth endpoint must validate sign-up requests");
+assert.match(authSessionRoute, /accessKeyClaimToken:\s*z\.string\(\)\.min\(1\)\.max\(4_096\)\.optional\(\)/, "server-only auth endpoint must bound the preclaim token");
+assert.match(authSessionRoute, /access_key_claim_token:\s*body\.accessKeyClaimToken/, "server-only signup must map the preclaim token into protected auth metadata");
+assert.match(authSessionRoute, /access_key_partner_slug:\s*body\.accessKeyPartnerSlug/, "server-only signup must map validated partner attribution into protected auth metadata");
+assert.match(authSessionRoute, /supabase\.auth\.signUp\(/, "server-only auth endpoint must own the Supabase signup call");
+assert.doesNotMatch(loginForm, /supabase\.auth\.signUp\(/, "browser signup must not call Supabase auth directly");
 assert.doesNotMatch(loginForm, /access_key:\s*normalizedAccessKey|access_key_raw|raw_access_key/, "signup metadata must not carry raw key");
+assert.doesNotMatch(authSessionRoute, /accessKey\b|access_key_raw|raw_access_key/, "server signup must never accept or persist the raw access key");
 
 assert.match(appContext, /claimPendingAccessKeyForCurrentUser/, "app context must claim pending key after workspace bootstrap");
 assert.match(stripeWebhookRoute, /isAccessKeyCheckoutSessionObject/, "Stripe webhook must detect access-key checkout sessions");

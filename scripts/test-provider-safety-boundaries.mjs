@@ -28,7 +28,18 @@ function loadTypeScriptModule(file, dependencies = new Map()) {
   return loaded.exports;
 }
 
-const deployment = loadTypeScriptModule("src/lib/deployment-target.ts");
+const durableWorkerRuntimeAttestation = loadTypeScriptModule(
+  "src/lib/durable-worker-runtime-attestation.ts",
+);
+const deployment = loadTypeScriptModule(
+  "src/lib/deployment-target.ts",
+  new Map([
+    [
+      "@/lib/durable-worker-runtime-attestation",
+      durableWorkerRuntimeAttestation,
+    ],
+  ]),
+);
 const deniedAnalyticsAuthority = Object.freeze({
   authorized: false,
   capability: "vercel_analytics",

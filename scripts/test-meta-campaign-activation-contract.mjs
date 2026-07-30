@@ -25,7 +25,12 @@ function loadTs(file, mocks = {}) {
   return context.module.exports;
 }
 
-const deployment = loadTs("src/lib/deployment-target.ts");
+const durableWorkerRuntimeAttestation = loadTs(
+  "src/lib/durable-worker-runtime-attestation.ts",
+);
+const deployment = loadTs("src/lib/deployment-target.ts", {
+  "@/lib/durable-worker-runtime-attestation": durableWorkerRuntimeAttestation,
+});
 const canonicalStagingProjectId = String(
   JSON.parse(fs.readFileSync(".vercel/project.json", "utf8")).projectId,
 );

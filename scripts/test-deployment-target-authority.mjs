@@ -6,11 +6,35 @@ import ts from "typescript";
 import vm from "node:vm";
 
 const file = "src/lib/deployment-target.ts";
+const attestationFile = "src/lib/durable-worker-runtime-attestation.ts";
+const attestationSource = fs.readFileSync(attestationFile, "utf8");
+const attestationTranspiled = ts.transpileModule(attestationSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const attestationContext = {
+  module: { exports: {} },
+  exports: {},
+  process: { env: {} },
+};
+attestationContext.exports = attestationContext.module.exports;
+vm.runInNewContext(attestationTranspiled, attestationContext, {
+  filename: attestationFile,
+});
 const source = fs.readFileSync(file, "utf8");
 const transpiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const context = { module: { exports: {} }, exports: {}, process: { env: {} } };
+const context = {
+  module: { exports: {} },
+  exports: {},
+  process: { env: {} },
+  require(specifier) {
+    if (specifier === "@/lib/durable-worker-runtime-attestation") {
+      return attestationContext.module.exports;
+    }
+    throw new Error(`Unexpected test import: ${specifier}`);
+  },
+};
 context.exports = context.module.exports;
 vm.runInNewContext(transpiled, context, { filename: file });
 const deployment = context.module.exports;

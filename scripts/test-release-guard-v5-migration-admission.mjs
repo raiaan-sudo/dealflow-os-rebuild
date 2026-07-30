@@ -121,6 +121,14 @@ assert.throws(verify, /signature_invalid/);
 const ref = "abcdefghijklmnopphxm";
 const host = "aws-0-us-east-1.pooler.supabase.com";
 const username = `postgres.${ref}`;
+const testConnectionForUsername = (databaseUsername) => {
+  const connection = new URL(["postgresql:", "", "localhost", "postgres"].join("/"));
+  connection.hostname = host;
+  connection.port = "5432";
+  connection.username = databaseUsername;
+  connection.password = "fixture-password";
+  return connection.toString();
+};
 const record = {
   safeSuffix: "phxm",
   databaseHostSha256: sha256(host),
@@ -129,7 +137,7 @@ const record = {
 };
 assert.equal(
   verifyMigrationDatabaseTarget({
-    connection: `postgresql://${username}:unused@${host}:5432/postgres`,
+    connection: testConnectionForUsername(username),
     projectRecord: record,
     production: true,
     expectedProjectFingerprint: sha256(ref),
@@ -138,7 +146,7 @@ assert.equal(
 );
 assert.throws(
   () => verifyMigrationDatabaseTarget({
-    connection: `postgresql://postgres.zzzzzzzzzzzzzzzzphxm:unused@${host}:5432/postgres`,
+    connection: testConnectionForUsername("postgres.zzzzzzzzzzzzzzzzphxm"),
     projectRecord: record,
     production: true,
     expectedProjectFingerprint: sha256(ref),
@@ -147,7 +155,7 @@ assert.throws(
 );
 assert.throws(
   () => verifyMigrationDatabaseTarget({
-    connection: `postgresql://postgres:unused@${host}:5432/postgres`,
+    connection: testConnectionForUsername("postgres"),
     projectRecord: record,
     production: true,
     expectedProjectFingerprint: sha256(ref),

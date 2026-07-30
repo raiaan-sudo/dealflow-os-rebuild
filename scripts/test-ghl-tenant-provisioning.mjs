@@ -9,6 +9,7 @@ const repoRoot = process.cwd();
 const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-ghl-foundation-"));
 const tsc = path.join(repoRoot, "node_modules", ".bin", "tsc");
 const sourceFiles = [
+  "src/lib/durable-worker-runtime-attestation.ts",
   "src/lib/integrations/gohighlevel/capabilities.ts",
   "src/lib/integrations/gohighlevel/fake-adapter.ts",
   "src/lib/integrations/gohighlevel/index.ts",
@@ -27,17 +28,27 @@ const implementationFiles = [
 ];
 
 function compileTestTarget() {
+  const tsconfigPath = path.join(buildDir, "tsconfig.json");
+  fs.writeFileSync(tsconfigPath, JSON.stringify({
+    compilerOptions: {
+      target: "ES2022",
+      module: "commonjs",
+      moduleResolution: "node",
+      strict: true,
+      esModuleInterop: true,
+      skipLibCheck: true,
+      types: ["node"],
+      typeRoots: [path.join(repoRoot, "node_modules", "@types")],
+      rootDir: path.join(repoRoot, "src"),
+      outDir: buildDir,
+      baseUrl: repoRoot,
+      paths: { "@/*": ["src/*"] },
+    },
+    files: sourceFiles.map((file) => path.join(repoRoot, file)),
+  }));
   const result = spawnSync(tsc, [
     "--pretty", "false",
-    "--target", "ES2022",
-    "--module", "commonjs",
-    "--moduleResolution", "node",
-    "--strict",
-    "--esModuleInterop",
-    "--skipLibCheck",
-    "--rootDir", "src",
-    "--outDir", buildDir,
-    ...sourceFiles,
+    "--project", tsconfigPath,
   ], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -47,6 +58,14 @@ function compileTestTarget() {
   if (result.status !== 0) {
     throw new Error(`GHL test target compilation failed:\n${result.stdout}${result.stderr}`);
   }
+  const compiledDeploymentTarget = path.join(buildDir, "lib", "deployment-target.js");
+  fs.writeFileSync(
+    compiledDeploymentTarget,
+    fs.readFileSync(compiledDeploymentTarget, "utf8").replace(
+      'require("@/lib/durable-worker-runtime-attestation")',
+      'require("./durable-worker-runtime-attestation")',
+    ),
+  );
 }
 
 function makeClock(start = "2026-07-10T17:00:00.000Z") {
