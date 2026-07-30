@@ -1317,9 +1317,12 @@ assert.match(vercelAliasPropagationContract, /class ExactAliasPropagationHardFai
 assert.match(vercelAliasPropagationContract, /now = \(\) => performance\.now\(\)/);
 assert.match(vercelAliasPropagationContract, /mappingProof = await verifyMapping\(\{/);
 assert.ok(
-  (vercelAliasPropagationContract.match(/if \(now\(\) >= deadline\)/g) ?? []).length >= 3,
-  "the hard propagation deadline must be rechecked after probe and mapping work",
+  (vercelAliasPropagationContract.match(/if \(now\(\) >= deadline\)/g) ?? []).length >= 1,
+  "non-ready propagation observations must remain bounded by the hard deadline",
 );
+assert.match(vercelAliasPropagationContract, /remainingBeforeMappingMs/);
+assert.match(vercelAliasPropagationContract, /Math\.min\(requestTimeoutMaximumMs, remainingBeforeMappingMs\)/);
+assert.match(vercelAliasPropagationTest, /readyAfterSuspendedClock/);
 assert.match(vercelAliasPropagationContract, /await delay\(Math\.min\(pollIntervalMs, remainingMs\)\)/);
 assert.match(vercelAliasPropagationTest, /status: 200, disposition: "AUTHORIZED_HTTP_200"/);
 assert.match(vercelAliasPropagationTest, /status: 503, disposition: "DEALFLOW_APPLICATION_GATE"/);

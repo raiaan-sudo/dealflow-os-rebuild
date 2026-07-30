@@ -350,7 +350,21 @@ assert.equal(immediateResult.observations.length, 1);
 assert.equal(immediateResult.observations[0].classification, "READY_EXACT_DEALFLOW_GATE");
 assert.equal(immediate.state.mappingCalls, 1);
 assert.deepEqual(immediate.state.delays, []);
-assert.deepEqual(immediate.state.mappingTimeouts, [180_000]);
+assert.deepEqual(immediate.state.mappingTimeouts, [15_000]);
+
+const readyAfterSuspendedClock = createFakeRun(
+  [exactObservation({ disposition: "DEALFLOW_APPLICATION_GATE" })],
+  { timeoutMs: 5_000, probeAdvanceMs: 25_000 },
+);
+const readyAfterSuspendedClockResult = await readyAfterSuspendedClock.run();
+assert.equal(readyAfterSuspendedClockResult.observations.length, 1);
+assert.equal(
+  readyAfterSuspendedClockResult.observations[0].classification,
+  "READY_EXACT_DEALFLOW_GATE",
+);
+assert.equal(readyAfterSuspendedClock.state.mappingCalls, 1);
+assert.deepEqual(readyAfterSuspendedClock.state.mappingTimeouts, [15_000]);
+assert.deepEqual(readyAfterSuspendedClock.state.delays, []);
 
 const protectedImmediate = createFakeRun([protectedObservation()]);
 const protectedImmediateResult = await protectedImmediate.run();
@@ -588,14 +602,15 @@ const lateProbe = createFakeRun(
   [exactObservation({ disposition: "DEALFLOW_APPLICATION_GATE" })],
   { timeoutMs: 100, pollIntervalMs: 50, probeAdvanceMs: 101 },
 );
-await assert.rejects(lateProbe.run(), ExactAliasPropagationTimeoutError);
-assert.equal(lateProbe.state.mappingCalls, 0);
+await lateProbe.run();
+assert.equal(lateProbe.state.mappingCalls, 1);
+assert.deepEqual(lateProbe.state.mappingTimeouts, [15_000]);
 
 const lateMapping = createFakeRun(
   [exactObservation({ disposition: "DEALFLOW_APPLICATION_GATE" })],
   { timeoutMs: 100, pollIntervalMs: 50, mappingAdvanceMs: 101 },
 );
-await assert.rejects(lateMapping.run(), ExactAliasPropagationTimeoutError);
+await lateMapping.run();
 assert.deepEqual(lateMapping.state.mappingTimeouts, [100]);
 
 for (const invalidOptions of [

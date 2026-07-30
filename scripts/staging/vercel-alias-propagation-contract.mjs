@@ -383,20 +383,17 @@ async function waitForExactAliasState({
       classification,
     }));
 
-    if (now() >= deadline) {
-      throw timeoutError(startedAt, now, observations);
-    }
-
     if (classification === readyClassification) {
       let mappingProof;
       try {
+        const remainingBeforeMappingMs = Math.floor(deadline - now());
         mappingProof = await verifyMapping({
-          timeoutMs: Math.max(1, Math.floor(deadline - now())),
+          timeoutMs:
+            remainingBeforeMappingMs > 0
+              ? Math.min(requestTimeoutMaximumMs, remainingBeforeMappingMs)
+              : requestTimeoutMaximumMs,
         });
       } catch (cause) {
-        if (now() >= deadline) {
-          throw timeoutError(startedAt, now, observations);
-        }
         throw hardFailureError({
           phase: "MAPPING_VERIFICATION",
           cause,
@@ -405,14 +402,15 @@ async function waitForExactAliasState({
           observations,
         });
       }
-      if (now() >= deadline) {
-        throw timeoutError(startedAt, now, observations);
-      }
       return Object.freeze({
         elapsedMs: Math.max(0, Math.floor(now() - startedAt)),
         observations: Object.freeze([...observations]),
         mappingProof,
       });
+    }
+
+    if (now() >= deadline) {
+      throw timeoutError(startedAt, now, observations);
     }
 
     const remainingMs = Math.floor(deadline - now());
