@@ -42,7 +42,7 @@ COPY --from=source-verifier /source/.dealflow-worker-generation /app/.dealflow-w
 RUN test "$(cat /app/.dealflow-worker-generation)" = "${DEALFLOW_SOURCE_COMMIT}" \
  && test -n "${DEALFLOW_SOURCE_TREE}" \
  && chown -R root:root /app \
- && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin dealflow
+ && useradd --no-create-home --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin dealflow
 
 ENV NODE_ENV=production \
     NODE_OPTIONS=--conditions=react-server \
