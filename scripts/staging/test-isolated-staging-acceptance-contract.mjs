@@ -731,10 +731,18 @@ const browserBypassEnvironmentSource = runner.slice(
 );
 assert.match(multiRoleEnvironmentSource, /STAGING_QA_PASSWORD/);
 assert.match(multiRoleEnvironmentSource, /SAFE_E2E_INTERNAL_SECRET/);
+assert.match(
+  multiRoleEnvironmentSource,
+  /PLAYWRIGHT_SKIP_BROWSER_GC:\s*"1"/,
+);
 assert.doesNotMatch(multiRoleEnvironmentSource, /STAGING_ACCEPTANCE_INTERNAL_SECRET/);
 assert.doesNotMatch(multiRoleEnvironmentSource, /PARTNER_ATTRIBUTION_SIGNING_SECRET/);
 assert.doesNotMatch(multiRoleEnvironmentSource, /INTERNAL_ADMIN_EMAILS/);
 assert.match(safeEnvironmentSource, /SAFE_E2E_INTERNAL_SECRET/);
+assert.match(
+  safeEnvironmentSource,
+  /PLAYWRIGHT_SKIP_BROWSER_GC:\s*"1"/,
+);
 assert.doesNotMatch(safeEnvironmentSource, /STAGING_QA_PASSWORD/);
 assert.doesNotMatch(safeEnvironmentSource, /PARTNER_ATTRIBUTION_SIGNING_SECRET/);
 assert.doesNotMatch(safeEnvironmentSource, /INTERNAL_ADMIN_EMAILS/);

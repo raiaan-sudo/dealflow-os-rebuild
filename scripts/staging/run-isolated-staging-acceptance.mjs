@@ -5544,6 +5544,7 @@ function multiRoleBrowserEnvironment(
   );
   return {
     CI: "1",
+    PLAYWRIGHT_SKIP_BROWSER_GC: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     QA_ISOLATED_SUPABASE_PROJECT_REF: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
     STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
@@ -5578,6 +5579,7 @@ function safeProductBrowserEnvironment(
   }];
   return {
     CI: "1",
+    PLAYWRIGHT_SKIP_BROWSER_GC: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     QA_AUTH_HARNESS_ENABLED: "true",
     QA_ISOLATED_SUPABASE_PROJECT_REF: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
