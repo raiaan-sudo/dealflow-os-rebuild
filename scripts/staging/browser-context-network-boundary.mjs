@@ -378,7 +378,7 @@ export function isExactLocalNextDevelopmentWebSocket(rawUrl) {
       url.port === "3410" &&
       url.username === "" &&
       url.password === "" &&
-      url.pathname === "/_next/webpack-hmr" &&
+      ["/_next/webpack-hmr", "/_next/hmr"].includes(url.pathname) &&
       exactDevelopmentSearch &&
       url.hash === ""
     );

@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1168,
-  "deployableSourceSha256": "527259ca1b4a47c64e48e031ff703271c1228e28788586e70de14957ea9c08af",
+  "deployableSourceSha256": "6ebda7b229912e3eca1399216d559f8ea055945b0ce630a61d19e853b6ea36ab",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -726,9 +726,9 @@
     },
     {
       "path": "playwright.safe.config.ts",
-      "size": 4116,
+      "size": 4145,
       "mode": 33188,
-      "sha256": "03cbae0875d01db1627d35176e49a94736b35e9043193e4a9cb8ae03b9054675"
+      "sha256": "8dbdd13257859ca1e1ab31952578039c0fb087508caaa6f99654aceb02f45f27"
     },
     {
       "path": "playwright.staging.config.ts",
@@ -1128,9 +1128,9 @@
     },
     {
       "path": "scripts/staging/browser-context-network-boundary.mjs",
-      "size": 15338,
+      "size": 15360,
       "mode": 33188,
-      "sha256": "43dcfc2eb20ae9cadb730f8a24e013d83d5069e2d667bd077c3c86f22572dcb4"
+      "sha256": "eebb4068201a202113e85520239d804c0a9f7b46405dc09092e09eab554ebe31"
     },
     {
       "path": "scripts/staging/browser-session-bundle-contract.mjs",
@@ -1290,9 +1290,9 @@
     },
     {
       "path": "scripts/staging/test-browser-context-network-boundary.mjs",
-      "size": 25825,
+      "size": 26074,
       "mode": 33188,
-      "sha256": "0acff95607ec6b84182374ee7248a01632a99980b1569b9c3e10f42f24e207fc"
+      "sha256": "c16138e815d50aca02cef4813f10da34ef10174271632153c021da361e640ec1"
     },
     {
       "path": "scripts/staging/test-browser-session-bundle-contract.mjs",
@@ -6918,9 +6918,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 29864,
+      "size": 29914,
       "mode": 33188,
-      "sha256": "00e2894c995e09d15f8f08d558e9bc45488258768c82bb817caa539f4bf475ad"
+      "sha256": "a52f9768bda534f7bc661ce72e33d1d1b45e0fc786972680d3889ac038646b15"
     },
     {
       "path": "tests/performance/README.md",

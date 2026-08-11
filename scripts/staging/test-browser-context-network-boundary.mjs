@@ -158,6 +158,12 @@ assert.equal(
   ),
   true,
 );
+assert.equal(
+  isExactLocalNextDevelopmentWebSocket(
+    "ws://127.0.0.1:3410/_next/hmr?id=synthetic",
+  ),
+  true,
+);
 for (const rejected of [
   "wss://127.0.0.1:3410/_next/webpack-hmr?id=x",
   "ws://localhost:3410/_next/webpack-hmr?id=x",
@@ -166,6 +172,9 @@ for (const rejected of [
   "ws://127.0.0.1:3410/_next/webpack-hmr?id=x&extra=y",
   "ws://127.0.0.1:3410/_next/webpack-hmr?other=x",
   "ws://127.0.0.1:3410/not-hmr?id=x",
+  "ws://localhost:3410/_next/hmr?id=x",
+  "wss://127.0.0.1:3410/_next/hmr?id=x",
+  "ws://127.0.0.1:3410/_next/hmr?id=x&extra=y",
 ]) {
   assert.equal(isExactLocalNextDevelopmentWebSocket(rejected), false);
 }

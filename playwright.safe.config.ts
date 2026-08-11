@@ -101,7 +101,8 @@ export default defineConfig({
   ],
   webServer: shouldStartServer
     ? {
-        command: "npm run dev -- --hostname 127.0.0.1 --port 3410",
+        command:
+          "npm run build && npm run start -- --hostname 127.0.0.1 --port 3410",
         url: baseURL,
         timeout: 120_000,
         reuseExistingServer: !process.env.CI,

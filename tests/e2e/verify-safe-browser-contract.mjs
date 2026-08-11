@@ -658,6 +658,7 @@ requireAll(
     "WebSocket evidence must not retain credentials",
     "ws://127.0.0.1:3410/_next/webpack-hmr",
     "ws://127.0.0.1:3410/_next/webpack-hmr?id=synthetic",
+    "ws://127.0.0.1:3410/_next/hmr?id=synthetic",
     "staging access gate leaked to",
     "https://user:secret@forbidden.example/oauth/callback?token=secret#secret",
     "https://forbidden.example/oauth/callback",
