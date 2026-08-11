@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1168,
-  "deployableSourceSha256": "6ebda7b229912e3eca1399216d559f8ea055945b0ce630a61d19e853b6ea36ab",
+  "deployableSourceSha256": "05f6bd13b8769f425aa31d3a746c8a561b47d1060767bebadc381e055434b859",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -170,7 +170,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "9b1766c7ebc59712c68d04a9fbcc605f8021a90e3c95a46fc939dbcaf286b710"
+      "sha256": "2ef511a50fc13f41a2a5e37889c29645ae48660daaa928743d3a72d7a9a303c0"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -282,9 +282,9 @@
     },
     {
       "path": "docs/dealflow-completion/PART1_CANDIDATE_CLOSURE.md",
-      "size": 1340,
+      "size": 1506,
       "mode": 33188,
-      "sha256": "7787346ac82bec7660884b2bf0e6cb56aecf1f09fcc407650664cf3be092c4c5"
+      "sha256": "061780e8f02d04aa485b095822ebf6402ea449193a52bdcd69800c7602d7d7af"
     },
     {
       "path": "docs/dealflow-completion/PART2_HANDOFF.md",
@@ -366,15 +366,15 @@
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85255,
+      "size": 85251,
       "mode": 33188,
-      "sha256": "3e071298c374a5d0fbdcd80d8731034ad501fceee257ba74833a7711fd2aea9b"
+      "sha256": "0d6bdd6a0a97c385d2acde59778f41446f2e92c8bc6abc6ddcc006b2bd7f121d"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
-      "size": 3698,
+      "size": 3694,
       "mode": 33188,
-      "sha256": "9104334efdfca7a6ed9cc2453a6f8229b9fac3de5269f06c3c27139c7b948a0a"
+      "sha256": "97a89f3e7bee09d877457c38ebc1c4703d8e8bb64e162212dbeb2c0d00edc45e"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
