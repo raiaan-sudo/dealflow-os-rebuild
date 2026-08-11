@@ -4,6 +4,7 @@ import {
   KPI_SEMANTIC_VERSION,
   canKpiContractPowerDashboard,
   getKpiSemanticDefinition,
+  getKpiPresentationState,
   listUnconfiguredKpiOwnerDecisions,
   type KpiKey,
 } from "../src/lib/analytics/kpi-semantic-contract";
@@ -31,6 +32,19 @@ assert.equal(KPI_SEMANTIC_CONTRACT.dashboardAuthority, false);
 assert.equal(KPI_SEMANTIC_CONTRACT.ownerApproval.state, "unconfigured_owner_decision");
 assert.equal(KPI_SEMANTIC_CONTRACT.ownerApproval.evidenceReference, null);
 assert.equal(canKpiContractPowerDashboard(), false);
+for (const state of [
+  { instrumentationState: "implemented" as const, observationAvailable: true, observationFresh: true, refreshFailed: false },
+  { instrumentationState: "partial" as const, observationAvailable: true, observationFresh: true, refreshFailed: false },
+  { instrumentationState: "implemented" as const, observationAvailable: true, observationFresh: false, refreshFailed: false },
+  { instrumentationState: "implemented" as const, observationAvailable: true, observationFresh: true, refreshFailed: true },
+  { instrumentationState: "missing" as const, observationAvailable: false, observationFresh: false, refreshFailed: true },
+]) {
+  assert.equal(
+    getKpiPresentationState(state),
+    "unavailable",
+    "an unsigned candidate KPI contract must never present current business truth",
+  );
+}
 
 assert.deepEqual(
   KPI_SEMANTIC_CONTRACT.definitions.map(({ key }) => key),

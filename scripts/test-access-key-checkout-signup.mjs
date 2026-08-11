@@ -27,6 +27,10 @@ const adminRevokeRoute = read("src/app/api/admin/access-keys/[id]/revoke/route.t
 const adminAccessKeysPage = read("src/app/(app)/admin/access-keys/page.tsx");
 const checkoutPage = read("src/app/access/checkout/page.tsx");
 const partnerCheckoutPage = read("src/app/p/[partnerSlug]/checkout/page.tsx");
+const cancelPage = read("src/app/access-key/cancel/page.tsx");
+const revealPanel = read("src/components/access-keys/access-key-reveal-panel.tsx");
+const legacySignupPage = read("src/app/signup/page.tsx");
+const localizedLegacySignupPage = read("src/app/[locale]/signup/page.tsx");
 
 assert.equal(
   packageJson.scripts["test:access-key-checkout-signup"],
@@ -75,6 +79,18 @@ assert.match(authSessionRoute, /supabase\.auth\.signUp\(/, "server-only auth end
 assert.doesNotMatch(loginForm, /supabase\.auth\.signUp\(/, "browser signup must not call Supabase auth directly");
 assert.doesNotMatch(loginForm, /access_key:\s*normalizedAccessKey|access_key_raw|raw_access_key/, "signup metadata must not carry raw key");
 assert.doesNotMatch(authSessionRoute, /accessKey\b|access_key_raw|raw_access_key/, "server signup must never accept or persist the raw access key");
+
+for (const source of [cancelPage, revealPanel]) {
+  assert.match(source, /href="\/login\?mode=sign-up"/, "active signup links must target the canonical sign-up mode");
+  assert.doesNotMatch(source, /href="\/signup"/, "active signup links must not depend on the legacy path");
+  assert.doesNotMatch(source, /accessKey=|claimToken=|redirect=|returnTo=/, "signup links must not expose key material or reflect redirect targets");
+}
+assert.match(legacySignupPage, /redirect\("\/login\?mode=sign-up"\)/, "legacy signup path must redirect server-side to the canonical flow");
+assert.doesNotMatch(legacySignupPage, /searchParams|headers\(|cookies\(/, "legacy signup redirect must ignore arbitrary request state");
+assert.match(localizedLegacySignupPage, /isProductLocale\(locale\)/, "localized signup compatibility path must validate the locale");
+assert.match(localizedLegacySignupPage, /notFound\(\)/, "unknown signup locales must fail closed");
+assert.match(localizedLegacySignupPage, /redirect\(`\/\$\{locale\}\/login\?mode=sign-up`\)/, "localized signup compatibility path must preserve only a validated locale");
+assert.match(proxy, /"\/signup"/, "the legacy signup compatibility path must remain intentionally public");
 
 assert.match(appContext, /claimPendingAccessKeyForCurrentUser/, "app context must claim pending key after workspace bootstrap");
 assert.match(stripeWebhookRoute, /isAccessKeyCheckoutSessionObject/, "Stripe webhook must detect access-key checkout sessions");

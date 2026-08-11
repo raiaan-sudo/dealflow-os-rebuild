@@ -19,7 +19,7 @@ export default function AccessKeyCancelPage() {
             Restart checkout
           </Link>
           <Link
-            href="/signup"
+            href="/login?mode=sign-up"
             className="inline-flex h-12 items-center justify-center rounded-df-control border border-white/10 bg-white/[0.05] px-5 text-base font-semibold text-white transition hover:border-cyan-300/35"
           >
             Create account

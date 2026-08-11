@@ -61,6 +61,11 @@ const registrySource = fs.readFileSync(
   "utf8",
 );
 const contractsSource = fs.readFileSync("src/lib/integrations/contracts.ts", "utf8");
+const operationalInventory = JSON.parse(
+  fs.readFileSync("config/operational-system-inventory.v1.json", "utf8"),
+);
+const releaseEvidenceBuilder = fs.readFileSync("scripts/build-current-release-evidence.mjs", "utf8");
+const releaseGuard = fs.readFileSync("scripts/generate-release-guard.mjs", "utf8");
 for (const creativeProviderPath of [
   "src/lib/integrations/creative/image-provider.ts",
   "src/lib/integrations/creative/avatar-provider.ts",
@@ -98,4 +103,42 @@ for (const dimension of [
   assert.match(registrySource, new RegExp(`"${dimension}"`));
 }
 
-console.log("Provider readiness truth contract passed (configuration is not live readiness).");
+assert.equal(operationalInventory.purpose, "whole_product_readiness_truth");
+assert.equal(operationalInventory.aggregateReleaseAuthority, false);
+assert.equal(operationalInventory.localPart1CanProveExternalReadiness, false);
+assert.deepEqual(
+  operationalInventory.systems.map(({ id }) => id),
+  [
+    "supabase",
+    "stripe",
+    "gohighlevel",
+    "meta",
+    "openai",
+    "higgsfield",
+    "heygen_fallback",
+    "elevenlabs",
+    "twilio",
+    "vercel",
+    "turnstile",
+    "support_delivery",
+    "observability",
+  ],
+  "whole-product readiness must account for every operational dependency exactly once",
+);
+assert.equal(new Set(operationalInventory.systems.map(({ id }) => id)).size, 13);
+assert.deepEqual(operationalInventory.part1ReadinessTemplate, {
+  configured: "NOT_PROVEN",
+  reachable: "NOT_OBSERVED",
+  authenticated: "BLOCKED_EXTERNAL_AUTHORITY",
+  functional: "NOT_PROVEN",
+  accepted: "BLOCKED_EXTERNAL_AUTHORITY",
+  observedAt: null,
+  evidenceAuthority: "PART1_LOCAL_SOURCE_AND_CONTRACT_ONLY",
+});
+assert.ok(operationalInventory.part2RequiredEvidence.length >= 6);
+assert.doesNotMatch(releaseEvidenceBuilder, /from ["'][^"']*provider-registry/);
+assert.doesNotMatch(releaseGuard, /from ["'][^"']*provider-registry/);
+assert.match(releaseEvidenceBuilder, /const verdict = "NO_GO"/);
+assert.match(releaseEvidenceBuilder, /builderCanAuthorizeProduction: false/);
+
+console.log("Provider readiness truth contract passed (13 operational systems; configuration is not live or whole-product readiness).");

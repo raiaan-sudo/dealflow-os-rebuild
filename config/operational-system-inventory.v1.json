@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "inventoryId": "dealflow-whole-product-operational-systems-v1",
+  "purpose": "whole_product_readiness_truth",
+  "aggregateReleaseAuthority": false,
+  "localPart1CanProveExternalReadiness": false,
+  "statusLegend": {
+    "NOT_OBSERVED": "No current external observation was authorized in Part 1.",
+    "NOT_PROVEN": "Evidence does not prove this dimension.",
+    "BLOCKED_EXTERNAL_AUTHORITY": "The dimension requires owner-controlled external authority reserved for Part 2 or Part 3."
+  },
+  "systems": [
+    { "id": "supabase", "label": "Supabase database and auth" },
+    { "id": "stripe", "label": "Stripe billing" },
+    { "id": "gohighlevel", "label": "GoHighLevel tenant provisioning and CRM" },
+    { "id": "meta", "label": "Meta ads, leadgen, reporting, and optimization" },
+    { "id": "openai", "label": "OpenAI text and image generation" },
+    { "id": "higgsfield", "label": "Higgsfield video generation" },
+    { "id": "heygen_fallback", "label": "HeyGen legacy video fallback" },
+    { "id": "elevenlabs", "label": "ElevenLabs voice generation" },
+    { "id": "twilio", "label": "Twilio messaging" },
+    { "id": "vercel", "label": "Vercel application hosting" },
+    { "id": "turnstile", "label": "Cloudflare Turnstile abuse protection" },
+    { "id": "support_delivery", "label": "Support notification delivery" },
+    { "id": "observability", "label": "Monitoring and observability" }
+  ],
+  "part1ReadinessTemplate": {
+    "configured": "NOT_PROVEN",
+    "reachable": "NOT_OBSERVED",
+    "authenticated": "BLOCKED_EXTERNAL_AUTHORITY",
+    "functional": "NOT_PROVEN",
+    "accepted": "BLOCKED_EXTERNAL_AUTHORITY",
+    "observedAt": null,
+    "evidenceAuthority": "PART1_LOCAL_SOURCE_AND_CONTRACT_ONLY"
+  },
+  "part2RequiredEvidence": [
+    "current configuration-name and deployment identity readback",
+    "authorized reachability and authentication receipt",
+    "synthetic nonproduction functional canary",
+    "provider-specific acceptance and cleanup receipt",
+    "timestamped evidence bound to the exact candidate",
+    "whole-product reconciliation with zero silently omitted systems"
+  ]
+}

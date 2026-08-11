@@ -587,3 +587,23 @@ export function canKpiContractPowerDashboard(): boolean {
     authorityState.ownerApproval.state !== "unconfigured_owner_decision"
   );
 }
+
+export type KpiPresentationState =
+  | "unavailable"
+  | "partial"
+  | "stale"
+  | "failed_refresh"
+  | "available";
+
+export function getKpiPresentationState(input: {
+  instrumentationState: InstrumentationState;
+  observationAvailable: boolean;
+  observationFresh: boolean;
+  refreshFailed: boolean;
+}): KpiPresentationState {
+  if (!canKpiContractPowerDashboard() || !input.observationAvailable) return "unavailable";
+  if (input.refreshFailed) return "failed_refresh";
+  if (!input.observationFresh) return "stale";
+  if (input.instrumentationState !== "implemented") return "partial";
+  return "available";
+}

@@ -131,6 +131,7 @@
     "test:support-external-delivery": "node ./scripts/test-support-external-delivery.mjs",
     "test:migration-read-only-contract": "node ./scripts/test-migration-read-only-contract.mjs",
     "test:provider-readiness-truth": "node ./scripts/test-provider-readiness-truth.mjs",
+    "test:environment-contract": "node ./scripts/test-runtime-environment-contract.mjs",
     "test:provider-safety-boundaries": "node ./scripts/test-provider-safety-boundaries.mjs",
     "test:zero-external-effects": "tsx ./scripts/test-zero-external-effects.ts",
     "test:continuous-reporting-optimizer": "node ./scripts/test-continuous-reporting-optimizer.mjs",
@@ -176,7 +177,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.11.0",
-    "next": "16.2.11",
+    "next": "16.3.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1",
@@ -191,14 +192,17 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
-    "postcss": "8.5.22",
+    "eslint-config-next": "16.3.0",
+    "postcss": "8.5.26",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.23.0",
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "8.5.22",
+    "brace-expansion@1": "1.1.18",
+    "brace-expansion@5": "5.0.9",
+    "js-yaml@4": "4.3.1",
+    "postcss": "8.5.26",
     "sharp": "0.35.3"
   }
 }

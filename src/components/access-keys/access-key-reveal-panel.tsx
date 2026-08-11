@@ -87,7 +87,7 @@ export function AccessKeyRevealPanel({
       </div>
 
       <Link
-        href="/signup"
+        href="/login?mode=sign-up"
         className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-df-control bg-df-primary px-5 text-base font-semibold text-slate-950 shadow-df-button transition hover:-translate-y-0.5"
       >
         <KeyRound className="h-4 w-4" />

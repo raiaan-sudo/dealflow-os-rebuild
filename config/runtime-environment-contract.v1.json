@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "contractId": "dealflow-runtime-environment-v1",
+  "authority": "name_and_classification_only",
+  "valuesAllowed": false,
+  "sourceScopes": [
+    "src/**",
+    "next.config.mjs",
+    "scripts/run-durable-system-worker.ts",
+    "scripts/generate-hosted-build-identity.mjs",
+    "scripts/production/**"
+  ],
+  "classificationOrder": [
+    "platformSupplied",
+    "releaseGenerated",
+    "toolingOnly",
+    "deprecatedAliases",
+    "applicationDocumented"
+  ],
+  "platformSupplied": [
+    "HOME",
+    "NEXT_RUNTIME",
+    "NODE_ENV",
+    "PATH",
+    "VERCEL",
+    "VERCEL_ENV",
+    "VERCEL_PROJECT_ID",
+    "VERCEL_REGION",
+    "VERCEL_URL"
+  ],
+  "releaseGenerated": [
+    "NEXT_PUBLIC_DEALFLOW_DEPENDENCY_LOCK_SHA256",
+    "NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_FILE_COUNT",
+    "NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_MANIFEST_SHA256",
+    "NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_SOURCE_SHA256",
+    "NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT",
+    "NEXT_PUBLIC_DEALFLOW_RELEASE_TREE",
+    "NEXT_PUBLIC_DEALFLOW_TRACKED_FILE_COUNT",
+    "NEXT_PUBLIC_DEALFLOW_TRACKED_WORKTREE_SHA256",
+    "NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT",
+    "NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256"
+  ],
+  "toolingOnly": [
+    "DEALFLOW_DATABASE_PASSWORD_KEYCHAIN_ACCOUNT",
+    "DEALFLOW_DATABASE_PASSWORD_KEYCHAIN_SERVICE",
+    "DEALFLOW_DATABASE_URL",
+    "DEALFLOW_MIGRATION_PROJECT_RECORD",
+    "DEALFLOW_NATIVE_PSQL",
+    "DEALFLOW_NATIVE_PSQL_SHA256",
+    "DEALFLOW_NATIVE_PSQL_VERSION",
+    "DEALFLOW_NEXT_DIST_DIR",
+    "DEALFLOW_PRODUCTION_SHAPE_REHEARSAL",
+    "DEALFLOW_RELEASE_GUARD_V5_PATH",
+    "DEALFLOW_RELEASE_GUARD_V5_SIGNATURE_PATH",
+    "DEALFLOW_RELEASE_TRUST_POLICY_PATH",
+    "DEALFLOW_RELEASE_TRUST_POLICY_SHA256",
+    "NEXT_BUILD_CPUS"
+  ],
+  "deprecatedAliases": {
+    "APP_URL": "NEXT_PUBLIC_APP_URL",
+    "ARCADS_AVATAR_ID": "HEYGEN_AVATAR_ID",
+    "ARCADS_VOICE_ID": "HEYGEN_VOICE_ID",
+    "HF_API_KEY": "HIGGSFIELD_API_KEY",
+    "HF_API_SECRET": "HIGGSFIELD_API_SECRET",
+    "HF_CREDENTIALS": "HIGGSFIELD_CREDENTIALS",
+    "HF_KEY": "HIGGSFIELD_API_KEY",
+    "OPENAI_BASE_URL": "AI_BASE_URL",
+    "OPENAI_MODEL": "AI_MODEL"
+  },
+  "externallyConsumedDocumentedNames": [
+    "DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION",
+    "GHL_PRODUCTION_AGENCY_TOKEN",
+    "GHL_PRODUCTION_INBOUND_FORMS_AUTHORIZATION",
+    "GHL_PRODUCTION_INBOUND_FORMS_BINDINGS_JSON",
+    "GHL_PRODUCTION_LOCATION_ACCOUNT_1_TOKEN",
+    "GHL_SANDBOX_AGENCY_TOKEN",
+    "GHL_SANDBOX_INBOUND_FORMS_AUTHORIZATION",
+    "GHL_SANDBOX_INBOUND_FORMS_BINDINGS_JSON",
+    "GHL_SANDBOX_LOCATION_ACCOUNT_1_TOKEN",
+    "META_AD_ACCOUNT_ID",
+    "STAGING_PARTNER_APP_URL",
+    "STAGING_QA_PASSWORD",
+    "STAGING_SECOND_PARTNER_APP_URL"
+  ],
+  "publicClientPrefix": "NEXT_PUBLIC_",
+  "secretNameFragments": [
+    "API_KEY",
+    "AUTH_TOKEN",
+    "CREDENTIAL",
+    "ENCRYPTION_KEY",
+    "PASSWORD",
+    "SECRET",
+    "SIGNING_SECRET",
+    "TOKEN"
+  ],
+  "negativeScenarios": [
+    "missing_required_value",
+    "partial_provider_configuration",
+    "conflicting_aliases",
+    "empty_value",
+    "invalid_url",
+    "invalid_host_allowlist",
+    "invalid_mode",
+    "production_test_mode_disagreement",
+    "public_secret_exposure",
+    "feature_flag_without_authority",
+    "environment_only_owner_or_release_authority",
+    "unknown_application_runtime_name",
+    "stale_env_example_name"
+  ],
+  "invariants": {
+    "optionalProvidersDefaultDisabled": true,
+    "partialConfigurationFailsClosed": true,
+    "credentialAloneCannotEnableProvider": true,
+    "environmentCannotGrantOwnerAuthority": true,
+    "environmentCannotGrantReleaseAuthority": true,
+    "publicClientValuesCannotBeSecrets": true
+  }
+}
