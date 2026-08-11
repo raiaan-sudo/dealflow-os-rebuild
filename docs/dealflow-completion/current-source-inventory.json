@@ -1,0 +1,2461 @@
+{
+  "schemaVersion": "dealflow.current-source-inventory.v1",
+  "generatedAt": "2026-08-11T22:50:00.000Z",
+  "implementationCommit": "a050238d307fef3896825dd4c51686f8fef42679",
+  "implementationTree": "606f0f6a3f7a1045e28cc18238d164c8c045b9d0",
+  "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
+  "trackedFileCount": 1181,
+  "migrationCount": 129,
+  "classCounts": {
+    "aggregate": 6,
+    "api_route": 79,
+    "cron": 1,
+    "http_handler": 104,
+    "migration": 129,
+    "operational_system": 13,
+    "page": 60,
+    "release_guard": 3,
+    "webhook_or_callback": 9,
+    "worker": 1
+  },
+  "aggregateCounts": {
+    "ci_workflow": 2,
+    "component": 68,
+    "documentation": 94,
+    "library_module": 292,
+    "script": 269,
+    "test": 211
+  },
+  "records": [
+    {
+      "class": "aggregate",
+      "identity": "ci_workflow",
+      "path": "<tracked-source>",
+      "detail": "2"
+    },
+    {
+      "class": "aggregate",
+      "identity": "component",
+      "path": "<tracked-source>",
+      "detail": "68"
+    },
+    {
+      "class": "aggregate",
+      "identity": "documentation",
+      "path": "<tracked-source>",
+      "detail": "94"
+    },
+    {
+      "class": "aggregate",
+      "identity": "library_module",
+      "path": "<tracked-source>",
+      "detail": "292"
+    },
+    {
+      "class": "aggregate",
+      "identity": "script",
+      "path": "<tracked-source>",
+      "detail": "269"
+    },
+    {
+      "class": "aggregate",
+      "identity": "test",
+      "path": "<tracked-source>",
+      "detail": "211"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/access-keys/checkout",
+      "path": "src/app/api/access-keys/checkout/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/access-keys/preclaim",
+      "path": "src/app/api/access-keys/preclaim/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/access-keys/reveal-ack",
+      "path": "src/app/api/access-keys/reveal-ack/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/account-deletion",
+      "path": "src/app/api/account-deletion/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/activation/events",
+      "path": "src/app/api/activation/events/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/admin/access-keys/[id]/revoke",
+      "path": "src/app/api/admin/access-keys/[id]/revoke/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/assets/[id]",
+      "path": "src/app/api/assets/[id]/route.ts",
+      "detail": "DELETE|GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/auth/mfa",
+      "path": "src/app/api/auth/mfa/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/auth/session",
+      "path": "src/app/api/auth/session/route.ts",
+      "detail": "DELETE|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/autonomy",
+      "path": "src/app/api/autonomy/route.ts",
+      "detail": "GET|PATCH"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/autonomy/run",
+      "path": "src/app/api/autonomy/run/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/billing/checkout",
+      "path": "src/app/api/billing/checkout/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/billing/credits",
+      "path": "src/app/api/billing/credits/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/billing/credits/checkout",
+      "path": "src/app/api/billing/credits/checkout/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/billing/portal",
+      "path": "src/app/api/billing/portal/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/billing/status",
+      "path": "src/app/api/billing/status/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/build-campaign",
+      "path": "src/app/api/build-campaign/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaign/actions",
+      "path": "src/app/api/campaign/actions/route.ts",
+      "detail": "GET|PATCH"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaign/creative-performance",
+      "path": "src/app/api/campaign/creative-performance/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaign/drafts",
+      "path": "src/app/api/campaign/drafts/route.ts",
+      "detail": "GET|PATCH"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaign/launch-audit",
+      "path": "src/app/api/campaign/launch-audit/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaign/runtime",
+      "path": "src/app/api/campaign/runtime/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns",
+      "path": "src/app/api/campaigns/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]",
+      "path": "src/app/api/campaigns/[id]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/assets",
+      "path": "src/app/api/campaigns/[id]/assets/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/build-assets",
+      "path": "src/app/api/campaigns/[id]/build-assets/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/generate-static-ads",
+      "path": "src/app/api/campaigns/[id]/generate-static-ads/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/generate-video",
+      "path": "src/app/api/campaigns/[id]/generate-video/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/launch",
+      "path": "src/app/api/campaigns/[id]/launch/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/meta-activation",
+      "path": "src/app/api/campaigns/[id]/meta-activation/route.ts",
+      "detail": "DELETE|GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/optimization-policy",
+      "path": "src/app/api/campaigns/[id]/optimization-policy/route.ts",
+      "detail": "DELETE|GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/optimize",
+      "path": "src/app/api/campaigns/[id]/optimize/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/publish",
+      "path": "src/app/api/campaigns/[id]/publish/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/schedule-launch",
+      "path": "src/app/api/campaigns/[id]/schedule-launch/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/[id]/select-ad",
+      "path": "src/app/api/campaigns/[id]/select-ad/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/campaigns/create",
+      "path": "src/app/api/campaigns/create/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/client-errors",
+      "path": "src/app/api/client-errors/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/dashboard",
+      "path": "src/app/api/dashboard/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/feedback",
+      "path": "src/app/api/feedback/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/generate-creatives",
+      "path": "src/app/api/generate-creatives/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/generate-funnel",
+      "path": "src/app/api/generate-funnel/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/crm/marketplace/callback",
+      "path": "src/app/api/integrations/crm/marketplace/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/ghl/embed-context",
+      "path": "src/app/api/integrations/ghl/embed-context/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/ghl/marketplace/bootstrap",
+      "path": "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/ghl/marketplace/callback",
+      "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/ghl/marketplace/connect",
+      "path": "src/app/api/integrations/ghl/marketplace/connect/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/ghl/webhook",
+      "path": "src/app/api/integrations/ghl/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/meta/callback",
+      "path": "src/app/api/integrations/meta/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/meta/connect",
+      "path": "src/app/api/integrations/meta/connect/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/meta/leadgen/routes",
+      "path": "src/app/api/integrations/meta/leadgen/routes/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/meta/selections",
+      "path": "src/app/api/integrations/meta/selections/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/meta/status",
+      "path": "src/app/api/integrations/meta/status/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/integrations/meta/sync",
+      "path": "src/app/api/integrations/meta/sync/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/account-deletion-worker",
+      "path": "src/app/api/internal/account-deletion-worker/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/ghl-form-sweep",
+      "path": "src/app/api/internal/ghl-form-sweep/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/ghl-worker",
+      "path": "src/app/api/internal/ghl-worker/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/qa-auth-session",
+      "path": "src/app/api/internal/qa-auth-session/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/release-identity",
+      "path": "src/app/api/internal/release-identity/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/stripe-test-proof",
+      "path": "src/app/api/internal/stripe-test-proof/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/system-jobs",
+      "path": "src/app/api/internal/system-jobs/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/internal/zero-external-effects",
+      "path": "src/app/api/internal/zero-external-effects/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/lead-capture",
+      "path": "src/app/api/lead-capture/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/lead-tracking/browser-pixel",
+      "path": "src/app/api/lead-tracking/browser-pixel/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/meta/data-deletion",
+      "path": "src/app/api/meta/data-deletion/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/meta/leadgen/webhook",
+      "path": "src/app/api/meta/leadgen/webhook/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/onboarding/plan",
+      "path": "src/app/api/onboarding/plan/route.ts",
+      "detail": "DELETE|GET|POST|PUT"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/privacy/requests",
+      "path": "src/app/api/privacy/requests/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/provider-media/higgsfield-source/[assetId]",
+      "path": "src/app/api/provider-media/higgsfield-source/[assetId]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/sms/twilio",
+      "path": "src/app/api/sms/twilio/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/stripe/webhook",
+      "path": "src/app/api/stripe/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/support/delivery-callback",
+      "path": "src/app/api/support/delivery-callback/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/system-jobs",
+      "path": "src/app/api/system-jobs/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/system-jobs/[id]/stream",
+      "path": "src/app/api/system-jobs/[id]/stream/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/webhooks/twilio/status",
+      "path": "src/app/api/webhooks/twilio/status/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/api/workspaces/active",
+      "path": "src/app/api/workspaces/active/route.ts",
+      "detail": "DELETE|POST"
+    },
+    {
+      "class": "api_route",
+      "identity": "/auth/callback",
+      "path": "src/app/auth/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/robots.txt",
+      "path": "src/app/robots.txt/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/sitemap.xml",
+      "path": "src/app/sitemap.xml/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "api_route",
+      "identity": "/staging-private-image-gate-proof-v2/[commit]",
+      "path": "src/app/staging-private-image-gate-proof-v2/[commit]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "cron",
+      "identity": "*/1 * * * * /api/internal/ghl-form-sweep",
+      "path": "vercel.json",
+      "detail": "*/1 * * * *"
+    },
+    {
+      "class": "http_handler",
+      "identity": "DELETE /api/assets/[id]",
+      "path": "src/app/api/assets/[id]/route.ts",
+      "detail": "DELETE"
+    },
+    {
+      "class": "http_handler",
+      "identity": "DELETE /api/auth/session",
+      "path": "src/app/api/auth/session/route.ts",
+      "detail": "DELETE"
+    },
+    {
+      "class": "http_handler",
+      "identity": "DELETE /api/campaigns/[id]/meta-activation",
+      "path": "src/app/api/campaigns/[id]/meta-activation/route.ts",
+      "detail": "DELETE"
+    },
+    {
+      "class": "http_handler",
+      "identity": "DELETE /api/campaigns/[id]/optimization-policy",
+      "path": "src/app/api/campaigns/[id]/optimization-policy/route.ts",
+      "detail": "DELETE"
+    },
+    {
+      "class": "http_handler",
+      "identity": "DELETE /api/onboarding/plan",
+      "path": "src/app/api/onboarding/plan/route.ts",
+      "detail": "DELETE"
+    },
+    {
+      "class": "http_handler",
+      "identity": "DELETE /api/workspaces/active",
+      "path": "src/app/api/workspaces/active/route.ts",
+      "detail": "DELETE"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/account-deletion",
+      "path": "src/app/api/account-deletion/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/assets/[id]",
+      "path": "src/app/api/assets/[id]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/auth/mfa",
+      "path": "src/app/api/auth/mfa/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/autonomy",
+      "path": "src/app/api/autonomy/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/billing/credits",
+      "path": "src/app/api/billing/credits/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/billing/status",
+      "path": "src/app/api/billing/status/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaign/actions",
+      "path": "src/app/api/campaign/actions/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaign/creative-performance",
+      "path": "src/app/api/campaign/creative-performance/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaign/drafts",
+      "path": "src/app/api/campaign/drafts/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaign/launch-audit",
+      "path": "src/app/api/campaign/launch-audit/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaign/runtime",
+      "path": "src/app/api/campaign/runtime/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns",
+      "path": "src/app/api/campaigns/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]",
+      "path": "src/app/api/campaigns/[id]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]/assets",
+      "path": "src/app/api/campaigns/[id]/assets/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]/build-assets",
+      "path": "src/app/api/campaigns/[id]/build-assets/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]/meta-activation",
+      "path": "src/app/api/campaigns/[id]/meta-activation/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]/optimization-policy",
+      "path": "src/app/api/campaigns/[id]/optimization-policy/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]/optimize",
+      "path": "src/app/api/campaigns/[id]/optimize/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/campaigns/[id]/schedule-launch",
+      "path": "src/app/api/campaigns/[id]/schedule-launch/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/dashboard",
+      "path": "src/app/api/dashboard/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/crm/marketplace/callback",
+      "path": "src/app/api/integrations/crm/marketplace/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/ghl/embed-context",
+      "path": "src/app/api/integrations/ghl/embed-context/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/ghl/marketplace/callback",
+      "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/ghl/marketplace/connect",
+      "path": "src/app/api/integrations/ghl/marketplace/connect/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/meta/callback",
+      "path": "src/app/api/integrations/meta/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/meta/connect",
+      "path": "src/app/api/integrations/meta/connect/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/integrations/meta/status",
+      "path": "src/app/api/integrations/meta/status/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/internal/ghl-form-sweep",
+      "path": "src/app/api/internal/ghl-form-sweep/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/internal/release-identity",
+      "path": "src/app/api/internal/release-identity/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/internal/system-jobs",
+      "path": "src/app/api/internal/system-jobs/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/internal/zero-external-effects",
+      "path": "src/app/api/internal/zero-external-effects/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/meta/data-deletion",
+      "path": "src/app/api/meta/data-deletion/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/meta/leadgen/webhook",
+      "path": "src/app/api/meta/leadgen/webhook/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/onboarding/plan",
+      "path": "src/app/api/onboarding/plan/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/privacy/requests",
+      "path": "src/app/api/privacy/requests/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/provider-media/higgsfield-source/[assetId]",
+      "path": "src/app/api/provider-media/higgsfield-source/[assetId]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/system-jobs",
+      "path": "src/app/api/system-jobs/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /api/system-jobs/[id]/stream",
+      "path": "src/app/api/system-jobs/[id]/stream/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /auth/callback",
+      "path": "src/app/auth/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /robots.txt",
+      "path": "src/app/robots.txt/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /sitemap.xml",
+      "path": "src/app/sitemap.xml/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "GET /staging-private-image-gate-proof-v2/[commit]",
+      "path": "src/app/staging-private-image-gate-proof-v2/[commit]/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "http_handler",
+      "identity": "PATCH /api/autonomy",
+      "path": "src/app/api/autonomy/route.ts",
+      "detail": "PATCH"
+    },
+    {
+      "class": "http_handler",
+      "identity": "PATCH /api/campaign/actions",
+      "path": "src/app/api/campaign/actions/route.ts",
+      "detail": "PATCH"
+    },
+    {
+      "class": "http_handler",
+      "identity": "PATCH /api/campaign/drafts",
+      "path": "src/app/api/campaign/drafts/route.ts",
+      "detail": "PATCH"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/access-keys/checkout",
+      "path": "src/app/api/access-keys/checkout/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/access-keys/preclaim",
+      "path": "src/app/api/access-keys/preclaim/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/access-keys/reveal-ack",
+      "path": "src/app/api/access-keys/reveal-ack/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/account-deletion",
+      "path": "src/app/api/account-deletion/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/activation/events",
+      "path": "src/app/api/activation/events/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/admin/access-keys/[id]/revoke",
+      "path": "src/app/api/admin/access-keys/[id]/revoke/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/auth/mfa",
+      "path": "src/app/api/auth/mfa/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/auth/session",
+      "path": "src/app/api/auth/session/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/autonomy/run",
+      "path": "src/app/api/autonomy/run/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/billing/checkout",
+      "path": "src/app/api/billing/checkout/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/billing/credits/checkout",
+      "path": "src/app/api/billing/credits/checkout/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/billing/portal",
+      "path": "src/app/api/billing/portal/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/build-campaign",
+      "path": "src/app/api/build-campaign/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaign/runtime",
+      "path": "src/app/api/campaign/runtime/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns",
+      "path": "src/app/api/campaigns/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/assets",
+      "path": "src/app/api/campaigns/[id]/assets/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/generate-static-ads",
+      "path": "src/app/api/campaigns/[id]/generate-static-ads/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/generate-video",
+      "path": "src/app/api/campaigns/[id]/generate-video/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/launch",
+      "path": "src/app/api/campaigns/[id]/launch/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/optimization-policy",
+      "path": "src/app/api/campaigns/[id]/optimization-policy/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/optimize",
+      "path": "src/app/api/campaigns/[id]/optimize/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/publish",
+      "path": "src/app/api/campaigns/[id]/publish/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/schedule-launch",
+      "path": "src/app/api/campaigns/[id]/schedule-launch/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/[id]/select-ad",
+      "path": "src/app/api/campaigns/[id]/select-ad/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/campaigns/create",
+      "path": "src/app/api/campaigns/create/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/client-errors",
+      "path": "src/app/api/client-errors/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/feedback",
+      "path": "src/app/api/feedback/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/generate-creatives",
+      "path": "src/app/api/generate-creatives/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/generate-funnel",
+      "path": "src/app/api/generate-funnel/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/integrations/ghl/embed-context",
+      "path": "src/app/api/integrations/ghl/embed-context/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/integrations/ghl/marketplace/bootstrap",
+      "path": "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/integrations/ghl/webhook",
+      "path": "src/app/api/integrations/ghl/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/integrations/meta/leadgen/routes",
+      "path": "src/app/api/integrations/meta/leadgen/routes/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/integrations/meta/selections",
+      "path": "src/app/api/integrations/meta/selections/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/integrations/meta/sync",
+      "path": "src/app/api/integrations/meta/sync/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/internal/account-deletion-worker",
+      "path": "src/app/api/internal/account-deletion-worker/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/internal/ghl-form-sweep",
+      "path": "src/app/api/internal/ghl-form-sweep/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/internal/ghl-worker",
+      "path": "src/app/api/internal/ghl-worker/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/internal/qa-auth-session",
+      "path": "src/app/api/internal/qa-auth-session/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/internal/stripe-test-proof",
+      "path": "src/app/api/internal/stripe-test-proof/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/internal/system-jobs",
+      "path": "src/app/api/internal/system-jobs/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/lead-capture",
+      "path": "src/app/api/lead-capture/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/lead-tracking/browser-pixel",
+      "path": "src/app/api/lead-tracking/browser-pixel/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/meta/data-deletion",
+      "path": "src/app/api/meta/data-deletion/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/meta/leadgen/webhook",
+      "path": "src/app/api/meta/leadgen/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/onboarding/plan",
+      "path": "src/app/api/onboarding/plan/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/privacy/requests",
+      "path": "src/app/api/privacy/requests/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/sms/twilio",
+      "path": "src/app/api/sms/twilio/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/stripe/webhook",
+      "path": "src/app/api/stripe/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/support/delivery-callback",
+      "path": "src/app/api/support/delivery-callback/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/webhooks/twilio/status",
+      "path": "src/app/api/webhooks/twilio/status/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "POST /api/workspaces/active",
+      "path": "src/app/api/workspaces/active/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "http_handler",
+      "identity": "PUT /api/onboarding/plan",
+      "path": "src/app/api/onboarding/plan/route.ts",
+      "detail": "PUT"
+    },
+    {
+      "class": "migration",
+      "identity": "20260426000000_forward_foundation_bootstrap",
+      "path": "supabase/migrations/20260426000000_forward_foundation_bootstrap.sql",
+      "detail": "229de085be0720bd620790991527a0a638157b9debc5faefe0cda3b4f35837bc"
+    },
+    {
+      "class": "migration",
+      "identity": "20260426110000_add_campaign_plan_critical_fields",
+      "path": "supabase/migrations/20260426110000_add_campaign_plan_critical_fields.sql",
+      "detail": "ae2d7ed01d0a61889efdb8f2fab2c7755409ee4c256f0a5310d37f84e96cc988"
+    },
+    {
+      "class": "migration",
+      "identity": "20260426110100_create_stripe_webhook_events",
+      "path": "supabase/migrations/20260426110100_create_stripe_webhook_events.sql",
+      "detail": "abcfb104c6c04c2fc896e86dc56c9c0fbf1c0ce153c6e2b986ccdf49b3d30179"
+    },
+    {
+      "class": "migration",
+      "identity": "20260427110000_create_system_jobs",
+      "path": "supabase/migrations/20260427110000_create_system_jobs.sql",
+      "detail": "8f52fcdec5e9544d8611cee854d412ad4b8fc0a6f01e11b104d0cc4fbbb8b0fb"
+    },
+    {
+      "class": "migration",
+      "identity": "20260427120000_create_billing_subscriptions",
+      "path": "supabase/migrations/20260427120000_create_billing_subscriptions.sql",
+      "detail": "70446667521be688db74b8f242ac2140f5eec67724c748afdd66f325f3e8798e"
+    },
+    {
+      "class": "migration",
+      "identity": "20260427130000_add_meta_and_campaign_operator_columns",
+      "path": "supabase/migrations/20260427130000_add_meta_and_campaign_operator_columns.sql",
+      "detail": "098d5ccbade517e989fd000237ff0bab182a1131d94f30931a58bbad0e2547c4"
+    },
+    {
+      "class": "migration",
+      "identity": "20260427140000_harden_stripe_webhook_events",
+      "path": "supabase/migrations/20260427140000_harden_stripe_webhook_events.sql",
+      "detail": "df91ad002991d08b2f609ccd3681db751937805c336f940b632134b9ca0b6d2f"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428002000_add_meta_tracking_columns",
+      "path": "supabase/migrations/20260428002000_add_meta_tracking_columns.sql",
+      "detail": "f96f2be109834315ba1fb34312befb78b645384a9b9229137875bb75900d566c"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428030000_scale_idempotency_and_limits",
+      "path": "supabase/migrations/20260428030000_scale_idempotency_and_limits.sql",
+      "detail": "b7ce03a15adf53ac74c132d3e9208101a78cf288ca8948701ba26a2b72d2ff00"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428033000_create_lead_messages",
+      "path": "supabase/migrations/20260428033000_create_lead_messages.sql",
+      "detail": "323b10025d78c063650e3f7758197c5e4c96a68b36601cbafb05db7b07a2fdd6"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428034000_set_schema_version_20260428",
+      "path": "supabase/migrations/20260428034000_set_schema_version_20260428.sql",
+      "detail": "92fc2c0c36376ab882f828f83068425efc8e08383ba3a07e1e86ab10d9881f63"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428120000_harden_scale_primitives",
+      "path": "supabase/migrations/20260428120000_harden_scale_primitives.sql",
+      "detail": "5e3fbecf045a03c38bd1801c71a138332bb984e79bab8c853166b66110e0947c"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428123000_fix_rate_limit_bucket_shape",
+      "path": "supabase/migrations/20260428123000_fix_rate_limit_bucket_shape.sql",
+      "detail": "d095cc7d5561003bba74b04791b6afde8dc01e7b6b29d7d47b1b1ae2f2dc988d"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428124500_harden_job_claim_dead_letters",
+      "path": "supabase/migrations/20260428124500_harden_job_claim_dead_letters.sql",
+      "detail": "c886bdf0834784a180249f42a7026948b6203d92403e7d9a000e6cb661c786be"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428130000_enable_rls_internal_tables",
+      "path": "supabase/migrations/20260428130000_enable_rls_internal_tables.sql",
+      "detail": "82166725f2510982c0f08409aa9fae983179270c2a6dbdfb9687a49caaab18c7"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428132000_harden_internal_job_runner_access",
+      "path": "supabase/migrations/20260428132000_harden_internal_job_runner_access.sql",
+      "detail": "cb4c8e4fad092e359b538ad9b2d41af2d01dae283f3a1e559f52178a3cecebcb"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428140000_harden_billing_subscription_webhooks",
+      "path": "supabase/migrations/20260428140000_harden_billing_subscription_webhooks.sql",
+      "detail": "b3ed594f57bda05779447218d55124d4d3e22f528187bead34ff3a5f12e7f915"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428162000_harden_lead_message_idempotency",
+      "path": "supabase/migrations/20260428162000_harden_lead_message_idempotency.sql",
+      "detail": "f26ce643c036d771e6d18bc396b773bb315788bda7f91aabf635c1a0daca6bf1"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428163000_harden_billing_event_ordering",
+      "path": "supabase/migrations/20260428163000_harden_billing_event_ordering.sql",
+      "detail": "45267e99d56d82e8f81435cc7531dd26032ffee6dcf1219f4ca9e61b64ab22f0"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428164000_add_public_funnel_publishing_columns",
+      "path": "supabase/migrations/20260428164000_add_public_funnel_publishing_columns.sql",
+      "detail": "fa3ebdd15b5e61a302cdd3be2a14aa059cc2c19724830747c56d38e374268727"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428170000_harden_rpc_and_tenant_rls",
+      "path": "supabase/migrations/20260428170000_harden_rpc_and_tenant_rls.sql",
+      "detail": "838677fcac060deb37229b5f85a1e028ce456e7d3c46f2aef3a5b0a8cf4de293"
+    },
+    {
+      "class": "migration",
+      "identity": "20260428171000_harden_billing_webhook_same_second_ordering",
+      "path": "supabase/migrations/20260428171000_harden_billing_webhook_same_second_ordering.sql",
+      "detail": "b7c3d3429f3d8f068df2d274dd2fc9e6f79ff6df42ef2f9e040a119df500c076"
+    },
+    {
+      "class": "migration",
+      "identity": "20260429100000_fix_billing_ordering_and_operator_resolution",
+      "path": "supabase/migrations/20260429100000_fix_billing_ordering_and_operator_resolution.sql",
+      "detail": "7f7796464e884198723935d78abf7301dbf324e9acde5c84285f01ad09e360ce"
+    },
+    {
+      "class": "migration",
+      "identity": "20260429101000_reset_tenant_rls_policies",
+      "path": "supabase/migrations/20260429101000_reset_tenant_rls_policies.sql",
+      "detail": "4f91c4f4b2685cdab70167849431db85c3cc8894931e6d23c95132e3e8e40fe5"
+    },
+    {
+      "class": "migration",
+      "identity": "20260429190000_harden_provider_usage_idempotency",
+      "path": "supabase/migrations/20260429190000_harden_provider_usage_idempotency.sql",
+      "detail": "a40273472b489b455450d8192b334f22867509c4b5e45426532fbde0c8da787c"
+    },
+    {
+      "class": "migration",
+      "identity": "20260429230000_internal_sms_lead_notifications",
+      "path": "supabase/migrations/20260429230000_internal_sms_lead_notifications.sql",
+      "detail": "aefcb4d76217f24ab0d2912993501651302739d6f43e951426c3dce7863d27dc"
+    },
+    {
+      "class": "migration",
+      "identity": "20260430010000_public_launch_final_hardening",
+      "path": "supabase/migrations/20260430010000_public_launch_final_hardening.sql",
+      "detail": "310a6572d08468a073d7094b791b63981596c45ba9364ed2d29daaeb22917d85"
+    },
+    {
+      "class": "migration",
+      "identity": "20260430060000_harden_membership_insert_policy",
+      "path": "supabase/migrations/20260430060000_harden_membership_insert_policy.sql",
+      "detail": "9b0ca7e370c77194b8fa1933afa1e85e7fa94991d584cde866be819847e8ab23"
+    },
+    {
+      "class": "migration",
+      "identity": "20260430061000_rate_limit_bucket_cleanup_support",
+      "path": "supabase/migrations/20260430061000_rate_limit_bucket_cleanup_support.sql",
+      "detail": "badf5525b30e0ed22437182a70683c2201d79ebef7b99ce2cc6981bf2f426995"
+    },
+    {
+      "class": "migration",
+      "identity": "20260430190000_create_user_credits",
+      "path": "supabase/migrations/20260430190000_create_user_credits.sql",
+      "detail": "04a66cc75d15d8048915fdfeca07cb3aadfe133fd67bf6fcef8ae89c983f8f47"
+    },
+    {
+      "class": "migration",
+      "identity": "20260502010000_harden_schema_metadata_access",
+      "path": "supabase/migrations/20260502010000_harden_schema_metadata_access.sql",
+      "detail": "b038f6437f52cdfc1352483130c3320705edb7a9a0f881ec07c709e95693070f"
+    },
+    {
+      "class": "migration",
+      "identity": "20260502192332_move_rls_membership_helper_private",
+      "path": "supabase/migrations/20260502192332_move_rls_membership_helper_private.sql",
+      "detail": "6fea626ced0935446aab822c2932bcf5db6706e5158236e9a46889ca2ed9def3"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504183000_create_activation_events",
+      "path": "supabase/migrations/20260504183000_create_activation_events.sql",
+      "detail": "3ed595929f13a8127d9ef0092a7de5a8841ff12c418faba449707ed10e319527"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504190000_create_campaign_value_reports",
+      "path": "supabase/migrations/20260504190000_create_campaign_value_reports.sql",
+      "detail": "f3659a3e09cb7dd16f3fe96fe3d4ce93b1b8ef3c854439742a9a0909672b49ac"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504203000_create_billing_cancellation_intents",
+      "path": "supabase/migrations/20260504203000_create_billing_cancellation_intents.sql",
+      "detail": "eb3e07d9f737e7128a763eef8853c824c0077b1dc751e43ef06d7a3f21f1914f"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504210000_create_customer_success_checklists",
+      "path": "supabase/migrations/20260504210000_create_customer_success_checklists.sql",
+      "detail": "309a088c271f6f4b1763ab15f20043ca46febd133f01dd7b7a0df1b5b86c90e5"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504213000_harden_launch_ops_tables_advisors",
+      "path": "supabase/migrations/20260504213000_harden_launch_ops_tables_advisors.sql",
+      "detail": "dce673105512be10eab8f46a6ad1ff0e1b4e8ea0d53e212d0b85d598f18bbf25"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504220000_harden_rls_and_fk_advisors",
+      "path": "supabase/migrations/20260504220000_harden_rls_and_fk_advisors.sql",
+      "detail": "e30398abb3a7a617defe82ec10ed73437b2d4cca1322f634d89ee82df09c9564"
+    },
+    {
+      "class": "migration",
+      "identity": "20260504223000_create_client_error_events",
+      "path": "supabase/migrations/20260504223000_create_client_error_events.sql",
+      "detail": "d51dbd53e32a7303db486873148c69dc706a5c245e6defa1b456238939a6f504"
+    },
+    {
+      "class": "migration",
+      "identity": "20260509020000_create_meta_sync_and_optimization_tables",
+      "path": "supabase/migrations/20260509020000_create_meta_sync_and_optimization_tables.sql",
+      "detail": "ce6a3f8ff8dcf33c9ee2d13b3ac8d2298c834de87d81b1cc481bb8f83bcaba7d"
+    },
+    {
+      "class": "migration",
+      "identity": "20260510014500_enable_generation_credit_overdrafts",
+      "path": "supabase/migrations/20260510014500_enable_generation_credit_overdrafts.sql",
+      "detail": "f43a65347523d6e16a04241312eb8e02f4d6d7bfbf1d17e8fd0f371fd90d3d2f"
+    },
+    {
+      "class": "migration",
+      "identity": "20260510183000_cap_generation_credit_overdrafts",
+      "path": "supabase/migrations/20260510183000_cap_generation_credit_overdrafts.sql",
+      "detail": "87862d8990109b0dff7db50c0952234af81054ff16c8f7f42ee0b3b2007f19ce"
+    },
+    {
+      "class": "migration",
+      "identity": "20260512010000_scope_provider_usage_idempotency",
+      "path": "supabase/migrations/20260512010000_scope_provider_usage_idempotency.sql",
+      "detail": "37d85803f7aad26c64c22360c8d99379fcc8f18055b4cc9b78c1af5c0912cd3b"
+    },
+    {
+      "class": "migration",
+      "identity": "20260519023000_create_scale_monitor_incidents",
+      "path": "supabase/migrations/20260519023000_create_scale_monitor_incidents.sql",
+      "detail": "0c4f601ffae6072257316719a4f572d9bedb4d2dd07da46961e5054516c94525"
+    },
+    {
+      "class": "migration",
+      "identity": "20260519033000_create_autonomy_execution_tables",
+      "path": "supabase/migrations/20260519033000_create_autonomy_execution_tables.sql",
+      "detail": "a34f65fae232d859464c5560d566893f940a0db52750941f38306643f2f9b27a"
+    },
+    {
+      "class": "migration",
+      "identity": "20260519043000_harden_autonomy_anon_access",
+      "path": "supabase/migrations/20260519043000_harden_autonomy_anon_access.sql",
+      "detail": "dd445f75be7c173414cd16781460b3cca34f86dbddaf1ef1b3568695de62d788"
+    },
+    {
+      "class": "migration",
+      "identity": "20260529230000_remove_legacy_single_campaign_constraint",
+      "path": "supabase/migrations/20260529230000_remove_legacy_single_campaign_constraint.sql",
+      "detail": "0a3aff15dbcff550b6adab0dcf8a22bda47a2dd194a32605a02ff6bb2ed9af66"
+    },
+    {
+      "class": "migration",
+      "identity": "20260530170000_create_lead_billing_events",
+      "path": "supabase/migrations/20260530170000_create_lead_billing_events.sql",
+      "detail": "f5b0dec53d06e8b089121f1f5e4c3050b45d3d0e9a287684d61652a0aaee381d"
+    },
+    {
+      "class": "migration",
+      "identity": "20260531160000_create_white_label_partner_infrastructure",
+      "path": "supabase/migrations/20260531160000_create_white_label_partner_infrastructure.sql",
+      "detail": "c5a1e299f067fe4a2cf0e48a20651dc3d895a78a3c3fe534a32b3d60360949bf"
+    },
+    {
+      "class": "migration",
+      "identity": "20260531193000_add_partner_branded_billing_metadata",
+      "path": "supabase/migrations/20260531193000_add_partner_branded_billing_metadata.sql",
+      "detail": "5057a49bb7824bff2f008d377649e1375934c098f25d94ed8c7d35082181b521"
+    },
+    {
+      "class": "migration",
+      "identity": "20260604120000_add_immediate_lead_charge_fields",
+      "path": "supabase/migrations/20260604120000_add_immediate_lead_charge_fields.sql",
+      "detail": "802b1663d481362b5542b4c0357aac4a13c13edf75c81588b5c846a7ecef048a"
+    },
+    {
+      "class": "migration",
+      "identity": "20260605210000_add_lead_capture_strategy",
+      "path": "supabase/migrations/20260605210000_add_lead_capture_strategy.sql",
+      "detail": "f78e77901986f49bfe7af2aee0d7b23b7cd2f0f4015d82d78ee00dfb2b1d1fc2"
+    },
+    {
+      "class": "migration",
+      "identity": "20260614193000_click_to_scale_partner_ghl_sync",
+      "path": "supabase/migrations/20260614193000_click_to_scale_partner_ghl_sync.sql",
+      "detail": "21804ee6f38ef3f34ea92fb51545cc1252132c1d5c164fa46f652aff217346a9"
+    },
+    {
+      "class": "migration",
+      "identity": "20260614203000_seed_click_to_scale_white_label_partner",
+      "path": "supabase/migrations/20260614203000_seed_click_to_scale_white_label_partner.sql",
+      "detail": "a5899bab3c7ef429cd1e7a3014c4e5ec9ae870baabb2897df6c3304da1079c1b"
+    },
+    {
+      "class": "migration",
+      "identity": "20260615100000_create_ghl_provisioning_pipeline",
+      "path": "supabase/migrations/20260615100000_create_ghl_provisioning_pipeline.sql",
+      "detail": "1bc06767178c3b766c2de21d45270b5433857df6c8b5b52c5589640b5a8501f5"
+    },
+    {
+      "class": "migration",
+      "identity": "20260615103000_seed_click_to_scale_ghl_provisioning_config",
+      "path": "supabase/migrations/20260615103000_seed_click_to_scale_ghl_provisioning_config.sql",
+      "detail": "81cb06b2c5b61bac4f5cca1fa9e422fb27816baa87f032281ac409738912d0a8"
+    },
+    {
+      "class": "migration",
+      "identity": "20260615104000_update_click_to_scale_ghl_credential_ref",
+      "path": "supabase/migrations/20260615104000_update_click_to_scale_ghl_credential_ref.sql",
+      "detail": "9046ed47aaa582c29544c5a585ee67f0a869501f257dfc30fe63e4f5a533f249"
+    },
+    {
+      "class": "migration",
+      "identity": "20260615220500_update_click_to_scale_branding",
+      "path": "supabase/migrations/20260615220500_update_click_to_scale_branding.sql",
+      "detail": "3473a3357997ede8728c1c480e088604d248cc009d6577d03d2752e3bbe4f0c7"
+    },
+    {
+      "class": "migration",
+      "identity": "20260705090000_create_billing_access_keys",
+      "path": "supabase/migrations/20260705090000_create_billing_access_keys.sql",
+      "detail": "44f9871f9d5bba9581af187c8d87e1c6272164693b95af582df1df473037f340"
+    },
+    {
+      "class": "migration",
+      "identity": "20260706170000_create_lead_tracking_health",
+      "path": "supabase/migrations/20260706170000_create_lead_tracking_health.sql",
+      "detail": "a39ff515dcd96d68d50b4bc534651983e5bb6995c228d4662111a533f9abba82"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710160000_validate_and_normalize_pre_candidate_shape",
+      "path": "supabase/migrations/20260710160000_validate_and_normalize_pre_candidate_shape.sql",
+      "detail": "a61fb33d7da5d81c251dae3bc5877b0fdc967d794d803a2e0b435b8f4a2622ac"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710170000_create_ghl_tenant_provisioning_foundation",
+      "path": "supabase/migrations/20260710170000_create_ghl_tenant_provisioning_foundation.sql",
+      "detail": "4b454f0375aff1e2de11117d3ca65fe9547ad1e111ec76e3dbfa6c49401ecd39"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710180000_activation_onboarding_contract",
+      "path": "supabase/migrations/20260710180000_activation_onboarding_contract.sql",
+      "detail": "75dd1c6901ef3da47bfce0de5559844ca45293ae48bbdafcba4e1fbd302ab44e"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710234500_harden_jobs_lead_effects_meta_deletion",
+      "path": "supabase/migrations/20260710234500_harden_jobs_lead_effects_meta_deletion.sql",
+      "detail": "31653d888dfbd0812ab7385f646878b613a8e0dadce63502fe1d76d6f173013c"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235000_create_launch_receipts_optimizer_support",
+      "path": "supabase/migrations/20260710235000_create_launch_receipts_optimizer_support.sql",
+      "detail": "5a0a843f08352dc07c96f71e540851b00513604640bc477bbf7cf9ae762872de"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235500_schedule_launch_claim_fencing",
+      "path": "supabase/migrations/20260710235500_schedule_launch_claim_fencing.sql",
+      "detail": "9b36b3c018f0be92ddb9979ea226037952baa53f27cb4f6aa79ff3e3d82b9c74"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235600_harden_sms_delivery_receipts",
+      "path": "supabase/migrations/20260710235600_harden_sms_delivery_receipts.sql",
+      "detail": "d6438b7c15ba28fafb27858353e74defd4772f3317c314857546b9e65fe29e82"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235700_protect_creative_asset_storage_identity",
+      "path": "supabase/migrations/20260710235700_protect_creative_asset_storage_identity.sql",
+      "detail": "c772f69f2b0e952a66cc6308d9e910d8b9797ec6ad9ccd565eaa0aa3333d894a"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235750_fence_lead_campaign_tenant_identity",
+      "path": "supabase/migrations/20260710235750_fence_lead_campaign_tenant_identity.sql",
+      "detail": "fb39dcf51161a519ea6446745c9aedae50a540a10e0d29fffdeccc05a1dbe7de"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235800_harden_meta_oauth_state",
+      "path": "supabase/migrations/20260710235800_harden_meta_oauth_state.sql",
+      "detail": "f42a4ab7eebec2278151f766e5308d0903ad977d8cdc4d3b9568e9621090f5eb"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235900_fence_stripe_webhook_processing",
+      "path": "supabase/migrations/20260710235900_fence_stripe_webhook_processing.sql",
+      "detail": "69b8453b5df1e5a44e7a85904a387351d6527367980f75d8bb3bdeace83ee7c8"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235950_gate_campaign_creation_entitlement",
+      "path": "supabase/migrations/20260710235950_gate_campaign_creation_entitlement.sql",
+      "detail": "8a6cfc13b7da8f89de1d0b8776cea81deb989edca444dbde7b184c8c80468e2c"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235960_harden_campaign_tenant_authority",
+      "path": "supabase/migrations/20260710235960_harden_campaign_tenant_authority.sql",
+      "detail": "7c1600c57b994a6158b71c496faad799eac2292f9673f750e77b91c83ab65dcf"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235970_harden_stripe_protocol_and_credit_intents",
+      "path": "supabase/migrations/20260710235970_harden_stripe_protocol_and_credit_intents.sql",
+      "detail": "4dcb90276f2324c50ec16f7584fb9dc3d5f102cf626139a81340d13dceaeae07"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235980_harden_sms_protocol_and_tenant_fk",
+      "path": "supabase/migrations/20260710235980_harden_sms_protocol_and_tenant_fk.sql",
+      "detail": "9eac301cc62e0ea07cc35c0280933830af1a1d1249adddaa654741c89c621c58"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235990_create_meta_leadgen_ingestion",
+      "path": "supabase/migrations/20260710235990_create_meta_leadgen_ingestion.sql",
+      "detail": "42b843a233dc2848eda9ab603ac21b6ecd6f5be3283937e2135cfb1626e5b57c"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235991_harden_financial_integrity",
+      "path": "supabase/migrations/20260710235991_harden_financial_integrity.sql",
+      "detail": "6151a930d45ddf6fbec5503aaf16e44881b64f93b7b68c6ecbc6a528bb25c4bf"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235992_harden_access_key_reveal_claim",
+      "path": "supabase/migrations/20260710235992_harden_access_key_reveal_claim.sql",
+      "detail": "7c84965876d3f5a2be7164e4ab31cfa67c2d5b4c2760048f441a217e492a9063"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235993_harden_access_key_claim_delivery",
+      "path": "supabase/migrations/20260710235993_harden_access_key_claim_delivery.sql",
+      "detail": "88d28efdba8878839d7a60991037b6329007df7a6f16d6760c6b08af1c6e0c48"
+    },
+    {
+      "class": "migration",
+      "identity": "20260710235994_create_execution_and_creative_app_contracts",
+      "path": "supabase/migrations/20260710235994_create_execution_and_creative_app_contracts.sql",
+      "detail": "f088c6403890b233349df1c68a1e39979ba620af10560667fffda2c7e5f4e0a6"
+    },
+    {
+      "class": "migration",
+      "identity": "20260712213000_create_ghl_sandbox_provider_path",
+      "path": "supabase/migrations/20260712213000_create_ghl_sandbox_provider_path.sql",
+      "detail": "9445ab5b661b5a567597ffcef781e8fe5c82db7369d0c394b77b923f7498c959"
+    },
+    {
+      "class": "migration",
+      "identity": "20260712214000_create_continuous_reporting_and_safe_optimizer",
+      "path": "supabase/migrations/20260712214000_create_continuous_reporting_and_safe_optimizer.sql",
+      "detail": "43e09c65190c07801e712280832fe02de13b971250ff4fe612c717770d0a9b93"
+    },
+    {
+      "class": "migration",
+      "identity": "20260712223000_complete_ghl_activation_and_lifecycle_foundation",
+      "path": "supabase/migrations/20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql",
+      "detail": "5e9001405b9a502861a1d606f3661cc10f3b580dd89f4b4a793cbf91652c5b37"
+    },
+    {
+      "class": "migration",
+      "identity": "20260712235991_create_meta_instant_form_provisioning",
+      "path": "supabase/migrations/20260712235991_create_meta_instant_form_provisioning.sql",
+      "detail": "df62be546cce37ce8c674bc53209f6f78dae4d107bb1c8b7d45d2eb5ed4b155b"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713010000_harden_support_external_delivery",
+      "path": "supabase/migrations/20260713010000_harden_support_external_delivery.sql",
+      "detail": "370649ec26bd117167f51e4f751e473c2364d84c662c95e850d8e32b775fd27a"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713011000_create_customer_authorized_meta_activation",
+      "path": "supabase/migrations/20260713011000_create_customer_authorized_meta_activation.sql",
+      "detail": "e331c5edb991548bd33833b2dae364bd6d2b2ad1c87894ca38aa7a7ee78049de"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713012000_require_meta_activation_preauthorization",
+      "path": "supabase/migrations/20260713012000_require_meta_activation_preauthorization.sql",
+      "detail": "dcebb152d073932da95d6e247919d0f08e8b9d66603b623f8deaca0a362f6951"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713012100_harden_meta_activation_delivery_and_recovery",
+      "path": "supabase/migrations/20260713012100_harden_meta_activation_delivery_and_recovery.sql",
+      "detail": "cd05bb027ed00ffd12866c343bea2fb212902d170160756d4c6b8a6103e64709"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713013000_create_customer_authorized_meta_optimizer_executor",
+      "path": "supabase/migrations/20260713013000_create_customer_authorized_meta_optimizer_executor.sql",
+      "detail": "17aaf48348810f1d2183788bfc91cffdda214b4290e8a7baedc7ccfddc3bb07e"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713014000_scope_ghl_personalization_to_campaign",
+      "path": "supabase/migrations/20260713014000_scope_ghl_personalization_to_campaign.sql",
+      "detail": "91170ec3ac3c01e0fc864e3f3fd7d8c528c215e4db8db213533a98e91b5a2506"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713015000_bind_verified_partner_attribution_atomically",
+      "path": "supabase/migrations/20260713015000_bind_verified_partner_attribution_atomically.sql",
+      "detail": "fd56ce712c36c24c2ce82eb2a47e6cf422e1e5528e0dde7bf8ad18d9fcaf1eb7"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713016000_terminalize_ambiguous_ghl_dispatches",
+      "path": "supabase/migrations/20260713016000_terminalize_ambiguous_ghl_dispatches.sql",
+      "detail": "7f6a04a7b5d7e13ae902c4c84548a50d000ce53592d1f2296f05801076acd32f"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713017000_make_paid_creative_dispatch_recoverable",
+      "path": "supabase/migrations/20260713017000_make_paid_creative_dispatch_recoverable.sql",
+      "detail": "f74f012b31d0946f36cc45184c16a90e9e7170ec1679e32ab020a716ad266f10"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713018000_harden_meta_reporting_and_leadgen_integrity",
+      "path": "supabase/migrations/20260713018000_harden_meta_reporting_and_leadgen_integrity.sql",
+      "detail": "215765666ba5f21cdea68d0d2e63acee7b03abd384f5e105ac1a3df4289bd1ed"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713019000_capture_public_lead_and_outbox_atomically",
+      "path": "supabase/migrations/20260713019000_capture_public_lead_and_outbox_atomically.sql",
+      "detail": "d0bb08006517725573ed1867414d28be87b7b9f7fcf3016723ac4b63e3178a07"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713020000_add_fair_reporting_worker_claim",
+      "path": "supabase/migrations/20260713020000_add_fair_reporting_worker_claim.sql",
+      "detail": "85ea6414fed88f4f0950b5269959d6cb3e1cd7c7610de671a1024f30ab735a11"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713021000_require_paid_activation_for_campaign_creation",
+      "path": "supabase/migrations/20260713021000_require_paid_activation_for_campaign_creation.sql",
+      "detail": "c4032c4c7b4e91e1285f871db6c1201ef0957dd376dc3fe2be3ccc1122795969"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713022000_reconcile_native_ghl_form_submissions",
+      "path": "supabase/migrations/20260713022000_reconcile_native_ghl_form_submissions.sql",
+      "detail": "b4361b385d729a4065703ce2b930efef9070197931823b58dfdef14828cc750d"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713024000_add_durable_ghl_periodic_form_sweeps",
+      "path": "supabase/migrations/20260713024000_add_durable_ghl_periodic_form_sweeps.sql",
+      "detail": "65771bdabe4cd4dc4d6b72c32faa3a1b75c3786d89edea99ef1e314af4666b18"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713025000_add_generated_video_canonical_storage",
+      "path": "supabase/migrations/20260713025000_add_generated_video_canonical_storage.sql",
+      "detail": "dc10cc9b4f697461504e7f9bab85b2c44bd37fafef1b04be7929aa8538dd7189"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713026000_add_account_deletion_and_provider_offboarding",
+      "path": "supabase/migrations/20260713026000_add_account_deletion_and_provider_offboarding.sql",
+      "detail": "2bbb6185300a37eed5ba1cff46e206f270d19848a5f6cb1a0c62bac24213b3ec"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713027000_add_ghl_location_display_name_finalization",
+      "path": "supabase/migrations/20260713027000_add_ghl_location_display_name_finalization.sql",
+      "detail": "54250bb738e21d7f6ce08c86618269960e590d5100e04fd50696716085c4654b"
+    },
+    {
+      "class": "migration",
+      "identity": "20260713028000_harden_account_deletion_retention_authority",
+      "path": "supabase/migrations/20260713028000_harden_account_deletion_retention_authority.sql",
+      "detail": "140e89dfbedc0a330ca33af4a0738afca84203d0f250120ac263978f287544ab"
+    },
+    {
+      "class": "migration",
+      "identity": "20260715010000_move_legacy_org_member_policies_private",
+      "path": "supabase/migrations/20260715010000_move_legacy_org_member_policies_private.sql",
+      "detail": "a2ad6cb4929d908b8bd048f348fe1f35badd2db240b01e9f1b10e8d60579829e"
+    },
+    {
+      "class": "migration",
+      "identity": "20260716010000_require_optimizer_cpl_minimum_lead_sample",
+      "path": "supabase/migrations/20260716010000_require_optimizer_cpl_minimum_lead_sample.sql",
+      "detail": "83ace50e65a8f8445e0308090454c7bd4f850580d7defc575a4a8f9323c9f371"
+    },
+    {
+      "class": "migration",
+      "identity": "20260716180000_harden_credit_top_up_request_idempotency",
+      "path": "supabase/migrations/20260716180000_harden_credit_top_up_request_idempotency.sql",
+      "detail": "1825be59553b694dac292591fcf5febb5d4fd9e21f285fdeee2bb5eab895fe34"
+    },
+    {
+      "class": "migration",
+      "identity": "20260716190000_add_ghl_marketplace_oauth_install_foundation",
+      "path": "supabase/migrations/20260716190000_add_ghl_marketplace_oauth_install_foundation.sql",
+      "detail": "aecd5224183c6a50c8f80ed50f23ebeccf283cab8182cce71f34a80670b19a46"
+    },
+    {
+      "class": "migration",
+      "identity": "20260716200000_harden_stripe_payment_lifecycle",
+      "path": "supabase/migrations/20260716200000_harden_stripe_payment_lifecycle.sql",
+      "detail": "e29627bf1db3419a07b5a9c6acfd8ad059cda9d186bb4a19bae5d62fbf706fae"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717010000_harden_onboarding_draft_integrity",
+      "path": "supabase/migrations/20260717010000_harden_onboarding_draft_integrity.sql",
+      "detail": "e238144605a6397dca6b5f83a672be165327be80eab750c34c71b65bb5cbb301"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717013000_complete_ghl_marketplace_runtime_lifecycle",
+      "path": "supabase/migrations/20260717013000_complete_ghl_marketplace_runtime_lifecycle.sql",
+      "detail": "aae90729f392e05747a547179d18ae3227186cd6cf502801774467544cba6bd5"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717020000_canonicalize_campaign_lifecycle_truth",
+      "path": "supabase/migrations/20260717020000_canonicalize_campaign_lifecycle_truth.sql",
+      "detail": "9968f7d299dd5a2f0de8e455c358391432b5020f150eb577c1cc56039a8d59dd"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717030000_harden_platform_operator_authority",
+      "path": "supabase/migrations/20260717030000_harden_platform_operator_authority.sql",
+      "detail": "4699891dcba38bd21efd874eda79120d597e07b3d43d2c829745b09c9cdfadd4"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717040000_bind_generated_static_storage_tenancy",
+      "path": "supabase/migrations/20260717040000_bind_generated_static_storage_tenancy.sql",
+      "detail": "3e9132b066789836be26fe1a64a2ae2ecac73f72717fa0fd05ceb7d19a27c706"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717050000_create_privacy_consent_dsar_authority",
+      "path": "supabase/migrations/20260717050000_create_privacy_consent_dsar_authority.sql",
+      "detail": "34ddaa16f92cc770f92d8ae77fedc9ce3cb0bd23111c291d5f38818738b796d8"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717060000_install_owner_decision_authority_grants",
+      "path": "supabase/migrations/20260717060000_install_owner_decision_authority_grants.sql",
+      "detail": "e7447581bf01e34f7e1751de46ff1827b064c171e1ceec0f5b16b344d9d06ab8"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717070000_complete_privacy_runtime_and_dynamic_deletion",
+      "path": "supabase/migrations/20260717070000_complete_privacy_runtime_and_dynamic_deletion.sql",
+      "detail": "6a554a72b631d09644ae3b88e985c338e077ad38febf09c1298c46b8b262fa97"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717080000_harden_support_delivery_lifecycle",
+      "path": "supabase/migrations/20260717080000_harden_support_delivery_lifecycle.sql",
+      "detail": "71db8a821e05231ff3af20b18bbb629d8f37861dc3b6616dcde8dd06e8fcf948"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717081000_expand_campaign_lifecycle_authority",
+      "path": "supabase/migrations/20260717081000_expand_campaign_lifecycle_authority.sql",
+      "detail": "5b9861d310456e1a9d90b3ba1b2d85faef4bbd361651282bc9a30a1d478b8b4b"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717082000_provider_aware_funnel_publication",
+      "path": "supabase/migrations/20260717082000_provider_aware_funnel_publication.sql",
+      "detail": "6787041d74216102cc5dcd63f8250981ec1921eafcc663231d6e105999dfebc4"
+    },
+    {
+      "class": "migration",
+      "identity": "20260717090000_create_canonical_lead_outcome_ledger",
+      "path": "supabase/migrations/20260717090000_create_canonical_lead_outcome_ledger.sql",
+      "detail": "3de79eb21cdddddaac9e85dfe9f6d419ec059e2c39e37fd16c07bbd5ab4df2de"
+    },
+    {
+      "class": "migration",
+      "identity": "20260720010000_add_ghl_embed_sso_authority",
+      "path": "supabase/migrations/20260720010000_add_ghl_embed_sso_authority.sql",
+      "detail": "eaec4929b110bf25094e5816e26a5cdb17786a2864ef06ed3b52af6198316542"
+    },
+    {
+      "class": "migration",
+      "identity": "20260722010000_modernize_provider_service_role_claims",
+      "path": "supabase/migrations/20260722010000_modernize_provider_service_role_claims.sql",
+      "detail": "8026fb77bd2d8537831177a8cbb501749bf0a05db323dec182746cd8f22fbe2a"
+    },
+    {
+      "class": "migration",
+      "identity": "20260722020000_persist_ghl_location_token_scope",
+      "path": "supabase/migrations/20260722020000_persist_ghl_location_token_scope.sql",
+      "detail": "97953981112bbf33f9d2e7c1f4d73cce205aa3adc6141164f30d44c5e7a45839"
+    },
+    {
+      "class": "migration",
+      "identity": "20260722030000_support_direct_ghl_embed_sso",
+      "path": "supabase/migrations/20260722030000_support_direct_ghl_embed_sso.sql",
+      "detail": "e963ce3b313b6c6db832ed635394e3d80143371063e9060f4554af312c1a8276"
+    },
+    {
+      "class": "migration",
+      "identity": "20260722040000_add_service_only_operator_grant_probe",
+      "path": "supabase/migrations/20260722040000_add_service_only_operator_grant_probe.sql",
+      "detail": "9a126cd3ac04104c4a165d31a6e14182f93f970dd1f999e1f64ae249c092b070"
+    },
+    {
+      "class": "migration",
+      "identity": "20260722050000_allow_account_deletion_ghl_receipt_cleanup",
+      "path": "supabase/migrations/20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql",
+      "detail": "aa4cc285b1dffaded4f5c109ec13a4b19acda8556e98b3031432c75b93f64f97"
+    },
+    {
+      "class": "migration",
+      "identity": "20260725010000_enable_ghl_marketplace_first_install_bootstrap",
+      "path": "supabase/migrations/20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
+      "detail": "2d3d265fd70e86a7eb67268d60388fed534e95f5218aa22108de2b5aba7c48e6"
+    },
+    {
+      "class": "migration",
+      "identity": "20260727010000_reuse_preinstalled_ghl_marketplace_location",
+      "path": "supabase/migrations/20260727010000_reuse_preinstalled_ghl_marketplace_location.sql",
+      "detail": "36c440a2e8109705e1e893e94aa1a95357ad180439743145793cd6c5696a66f0"
+    },
+    {
+      "class": "migration",
+      "identity": "20260727020000_fix_ghl_provisioning_lease_revision_fencing",
+      "path": "supabase/migrations/20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql",
+      "detail": "f3cb3d3898108a37b9b5ce66c09de55fff5c8c65be4404d6940870d38006d350"
+    },
+    {
+      "class": "operational_system",
+      "identity": "elevenlabs",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "ElevenLabs voice generation"
+    },
+    {
+      "class": "operational_system",
+      "identity": "gohighlevel",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "GoHighLevel tenant provisioning and CRM"
+    },
+    {
+      "class": "operational_system",
+      "identity": "heygen_fallback",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "HeyGen legacy video fallback"
+    },
+    {
+      "class": "operational_system",
+      "identity": "higgsfield",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Higgsfield video generation"
+    },
+    {
+      "class": "operational_system",
+      "identity": "meta",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Meta ads, leadgen, reporting, and optimization"
+    },
+    {
+      "class": "operational_system",
+      "identity": "observability",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Monitoring and observability"
+    },
+    {
+      "class": "operational_system",
+      "identity": "openai",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "OpenAI text and image generation"
+    },
+    {
+      "class": "operational_system",
+      "identity": "stripe",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Stripe billing"
+    },
+    {
+      "class": "operational_system",
+      "identity": "supabase",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Supabase database and auth"
+    },
+    {
+      "class": "operational_system",
+      "identity": "support_delivery",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Support notification delivery"
+    },
+    {
+      "class": "operational_system",
+      "identity": "turnstile",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Cloudflare Turnstile abuse protection"
+    },
+    {
+      "class": "operational_system",
+      "identity": "twilio",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Twilio messaging"
+    },
+    {
+      "class": "operational_system",
+      "identity": "vercel",
+      "path": "config/operational-system-inventory.v1.json",
+      "detail": "Vercel application hosting"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]",
+      "path": "src/app/[locale]/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/build/creatives",
+      "path": "src/app/[locale]/(app)/build/creatives/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/build/funnel",
+      "path": "src/app/[locale]/(app)/build/funnel/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/builder",
+      "path": "src/app/[locale]/(app)/builder/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/campaign-built",
+      "path": "src/app/[locale]/(app)/campaign-built/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/dashboard",
+      "path": "src/app/[locale]/(app)/dashboard/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/data-deletion",
+      "path": "src/app/[locale]/data-deletion/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/launch",
+      "path": "src/app/[locale]/(app)/launch/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/launch-success",
+      "path": "src/app/[locale]/(app)/launch-success/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/launching",
+      "path": "src/app/[locale]/(app)/launching/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/login",
+      "path": "src/app/[locale]/(auth)/login/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/mfa",
+      "path": "src/app/[locale]/(auth)/mfa/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/onboarding",
+      "path": "src/app/[locale]/(app)/onboarding/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/paywall",
+      "path": "src/app/[locale]/(app)/paywall/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/preview",
+      "path": "src/app/[locale]/(app)/preview/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/privacy",
+      "path": "src/app/[locale]/privacy/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/results",
+      "path": "src/app/[locale]/results/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/settings",
+      "path": "src/app/[locale]/(app)/settings/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/signup",
+      "path": "src/app/[locale]/signup/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/support",
+      "path": "src/app/[locale]/(app)/support/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/terms",
+      "path": "src/app/[locale]/terms/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/unlock",
+      "path": "src/app/[locale]/(app)/unlock/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/[locale]/workspace/select",
+      "path": "src/app/[locale]/(auth)/workspace/select/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/access-key/cancel",
+      "path": "src/app/access-key/cancel/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/access-key/success",
+      "path": "src/app/access-key/success/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/access/checkout",
+      "path": "src/app/access/checkout/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/admin/access-keys",
+      "path": "src/app/(app)/admin/access-keys/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/admin/command-center",
+      "path": "src/app/(app)/admin/command-center/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/admin/issues",
+      "path": "src/app/(app)/admin/issues/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/admin/launch-monitor",
+      "path": "src/app/(app)/admin/launch-monitor/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/build/creatives",
+      "path": "src/app/(app)/build/creatives/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/build/funnel",
+      "path": "src/app/(app)/build/funnel/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/builder",
+      "path": "src/app/(app)/builder/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/campaign-built",
+      "path": "src/app/(app)/campaign-built/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/crm/connect",
+      "path": "src/app/crm/connect/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/crm/embed",
+      "path": "src/app/crm/embed/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/dashboard",
+      "path": "src/app/(app)/dashboard/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/data-deletion",
+      "path": "src/app/data-deletion/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/f/[slug]",
+      "path": "src/app/f/[slug]/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/f/[slug]/thank-you",
+      "path": "src/app/f/[slug]/thank-you/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/ghl/embed",
+      "path": "src/app/ghl/embed/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/launch",
+      "path": "src/app/(app)/launch/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/launch-success",
+      "path": "src/app/(app)/launch-success/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/launching",
+      "path": "src/app/(app)/launching/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/login",
+      "path": "src/app/(auth)/login/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/mfa",
+      "path": "src/app/(auth)/mfa/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/onboarding",
+      "path": "src/app/(app)/onboarding/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/p/[partnerSlug]/checkout",
+      "path": "src/app/p/[partnerSlug]/checkout/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/page.tsx",
+      "path": "src/app/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/paywall",
+      "path": "src/app/(app)/paywall/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/preview",
+      "path": "src/app/(app)/preview/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/privacy",
+      "path": "src/app/privacy/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/results",
+      "path": "src/app/results/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/settings",
+      "path": "src/app/(app)/settings/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/signup",
+      "path": "src/app/signup/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/support",
+      "path": "src/app/(app)/support/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/terms",
+      "path": "src/app/terms/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/ui-direction",
+      "path": "src/app/ui-direction/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/unlock",
+      "path": "src/app/(app)/unlock/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "page",
+      "identity": "/workspace/select",
+      "path": "src/app/(auth)/workspace/select/page.tsx",
+      "detail": "Next.js page"
+    },
+    {
+      "class": "release_guard",
+      "identity": "generate-release-guard.mjs",
+      "path": "scripts/generate-release-guard.mjs",
+      "detail": "release guard implementation or regression proof"
+    },
+    {
+      "class": "release_guard",
+      "identity": "test-release-guard-v5-migration-admission.mjs",
+      "path": "scripts/test-release-guard-v5-migration-admission.mjs",
+      "detail": "release guard implementation or regression proof"
+    },
+    {
+      "class": "release_guard",
+      "identity": "test-release-guard.mjs",
+      "path": "scripts/test-release-guard.mjs",
+      "detail": "release guard implementation or regression proof"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/integrations/crm/marketplace/callback",
+      "path": "src/app/api/integrations/crm/marketplace/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/integrations/ghl/marketplace/callback",
+      "path": "src/app/api/integrations/ghl/marketplace/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/integrations/ghl/webhook",
+      "path": "src/app/api/integrations/ghl/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/integrations/meta/callback",
+      "path": "src/app/api/integrations/meta/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/meta/leadgen/webhook",
+      "path": "src/app/api/meta/leadgen/webhook/route.ts",
+      "detail": "GET|POST"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/stripe/webhook",
+      "path": "src/app/api/stripe/webhook/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/support/delivery-callback",
+      "path": "src/app/api/support/delivery-callback/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/api/webhooks/twilio/status",
+      "path": "src/app/api/webhooks/twilio/status/route.ts",
+      "detail": "POST"
+    },
+    {
+      "class": "webhook_or_callback",
+      "identity": "/auth/callback",
+      "path": "src/app/auth/callback/route.ts",
+      "detail": "GET"
+    },
+    {
+      "class": "worker",
+      "identity": "durable_system_worker",
+      "path": "scripts/run-durable-system-worker.ts",
+      "detail": "worker:durable"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1156,
-  "deployableSourceSha256": "74647352f9cc6beb8c34db9f9d57425afefd614055e6fc345b9c1dbdb84f9ffb",
+  "entryCount": 1168,
+  "deployableSourceSha256": "527259ca1b4a47c64e48e031ff703271c1228e28788586e70de14957ea9c08af",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -95,6 +95,18 @@
       "sha256": "725885405e03ddb97dca11f908799315aefa9b5eb8cdedb1c1a73bdc37b9aed9"
     },
     {
+      "path": "config/operational-system-inventory.v1.json",
+      "size": 2141,
+      "mode": 33188,
+      "sha256": "450d8b2592ca8e6a90a0445c3835fb150291a0efa82764858e78680050b40ad3"
+    },
+    {
+      "path": "config/runtime-environment-contract.v1.json",
+      "size": 3685,
+      "mode": 33188,
+      "sha256": "94c8f607d5ae29ecb5a4fe28bf0730d26dffa0d6f7c98411762f0aae1f80b899"
+    },
+    {
       "path": "config/security/privileged-tenancy-matrix.v1.json",
       "size": 10050,
       "mode": 33188,
@@ -150,9 +162,15 @@
     },
     {
       "path": "docs/dealflow-completion/CURRENT_RELEASE_ISSUE_LEDGER.md",
-      "size": 6536,
+      "size": 2462,
       "mode": 33188,
-      "sha256": "f6447dac71de5814b26b2c5deb06a7d465c3cd693fe4eb70af281f81212507d9"
+      "sha256": "93fce15a77833e89bd73a0999b999e467eb5860f3cf8150efed1b7e96185c5a0"
+    },
+    {
+      "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
+      "size": 776,
+      "mode": 33188,
+      "sha256": "9b1766c7ebc59712c68d04a9fbcc605f8021a90e3c95a46fc939dbcaf286b710"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -263,6 +281,18 @@
       "sha256": "d03a0544f9bb340a4c52381a169faf32bd1f7ea2176852c5801934016f6f9206"
     },
     {
+      "path": "docs/dealflow-completion/PART1_CANDIDATE_CLOSURE.md",
+      "size": 1340,
+      "mode": 33188,
+      "sha256": "7787346ac82bec7660884b2bf0e6cb56aecf1f09fcc407650664cf3be092c4c5"
+    },
+    {
+      "path": "docs/dealflow-completion/PART2_HANDOFF.md",
+      "size": 1606,
+      "mode": 33188,
+      "sha256": "cc8a0841311fc76b9b2fc0ac967476e4c33800b7a0eaf53895a413c3e79d7087"
+    },
+    {
       "path": "docs/dealflow-completion/PRODUCTION_59_TO_129_AND_DURABLE_WORKER_RUNBOOK.md",
       "size": 4379,
       "mode": 33188,
@@ -306,9 +336,9 @@
     },
     {
       "path": "docs/dealflow-completion/SYSTEMS_OF_RECORD.md",
-      "size": 9922,
+      "size": 10661,
       "mode": 33188,
-      "sha256": "3d49afb8fb968df03a991bc018496f64f4503695b7076ccd4ed2e225e59894f3"
+      "sha256": "2fd61c230edfb0ba838c7c06e8dca35c7ec71082e022ab9a676ff98a0424f9c5"
     },
     {
       "path": "docs/dealflow-completion/TEST_AND_PROOF_MATRIX.md",
@@ -327,6 +357,24 @@
       "size": 6669,
       "mode": 33188,
       "sha256": "6fbad32bf1ac02f1676e1d4edfa50eb5fac2cfa6ad7bdeca6cc1bc060f26a2db"
+    },
+    {
+      "path": "docs/dealflow-completion/current-source-inventory.csv",
+      "size": 52505,
+      "mode": 33188,
+      "sha256": "7d07392d6f283c8b2095ba6d5337d6d029c9d4849a8b02156c4629b4dd859143"
+    },
+    {
+      "path": "docs/dealflow-completion/current-source-inventory.json",
+      "size": 85255,
+      "mode": 33188,
+      "sha256": "3e071298c374a5d0fbdcd80d8731034ad501fceee257ba74833a7711fd2aea9b"
+    },
+    {
+      "path": "docs/dealflow-completion/current-traceability-summary.json",
+      "size": 3698,
+      "mode": 33188,
+      "sha256": "9104334efdfca7a6ed9cc2453a6f8229b9fac3de5269f06c3c27139c7b948a0a"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -666,15 +714,15 @@
     },
     {
       "path": "package-lock.json",
-      "size": 271289,
+      "size": 271286,
       "mode": 33188,
-      "sha256": "351ce8467e7e48ad6af027238ab981825f1f1c1c025f7d9e8f7ea75d45e49a72"
+      "sha256": "e24faa7b703fbda849b683458ec385d59cf2890c7cc1a48824d9d296771e1d7d"
     },
     {
       "path": "package.json",
-      "size": 19468,
+      "size": 19738,
       "mode": 33188,
-      "sha256": "ee128367a248bc9e04f649b2afb4b84adc66eb8dbdd691f11102639749f74233"
+      "sha256": "65f19d79bf0e732383b594df048ce3652ab21ca72afa602aa6b1ca3749cc0992"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -825,6 +873,12 @@
       "size": 428,
       "mode": 33188,
       "sha256": "b245aaf32ff846e41435baed8d96222d8b5e110a90e994bbe46d2478e86eb5a6"
+    },
+    {
+      "path": "scripts/generate-current-source-inventory.mjs",
+      "size": 8867,
+      "mode": 33188,
+      "sha256": "80c2576af564dc55d4d7f7a667a900243f27056800b7b772f0e41bfa9e9670b9"
     },
     {
       "path": "scripts/generate-dealflow-completion-ledger.mjs",
@@ -1452,9 +1506,9 @@
     },
     {
       "path": "scripts/test-access-key-checkout-signup.mjs",
-      "size": 11578,
+      "size": 13079,
       "mode": 33188,
-      "sha256": "c58002ddbc0c9cb1c95120edba976133caa9df365705fccfa4bfc81f6f46f507"
+      "sha256": "41e78fdb5cbf297e2bd0c5d666b24d0570095e9ca2e0f275993b92a8be23f6d7"
     },
     {
       "path": "scripts/test-access-key-commercial-activation.mjs",
@@ -1908,9 +1962,9 @@
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
-      "size": 5872,
+      "size": 6711,
       "mode": 33188,
-      "sha256": "d174221a63470dcf4aeab32a616318404d5eb583cede9eea37065fce640bf4dd"
+      "sha256": "eb8117a9b59be2dbaf6f5ab079c9ac97ad5ad2d2b5cba2e91d3d7a7383debb36"
     },
     {
       "path": "scripts/test-launch-truth-and-schedule.mjs",
@@ -2172,9 +2226,9 @@
     },
     {
       "path": "scripts/test-provider-readiness-truth.mjs",
-      "size": 3459,
+      "size": 5191,
       "mode": 33188,
-      "sha256": "68bcb3f6c1e6a5d5b4f89e67ec248c38ceb48cb0fcc51da8a092f1128b4dd8e4"
+      "sha256": "9debfaa4184e5c571902d7551f919cc5068977b1465eca8724214691c723da6c"
     },
     {
       "path": "scripts/test-provider-safety-boundaries.mjs",
@@ -2223,6 +2277,12 @@
       "size": 3641,
       "mode": 33188,
       "sha256": "1131b7ca819db85ab348bd22aae0d2dccc7cc4f9dcadb948b098d1de675d0e5f"
+    },
+    {
+      "path": "scripts/test-runtime-environment-contract.mjs",
+      "size": 3918,
+      "mode": 33188,
+      "sha256": "f3788fdff73db4b157643d55c776dac84c5932cff1a3ac7d41b8ec8ac32e0d6f"
     },
     {
       "path": "scripts/test-runtime-owner-decision-authority.ts",
@@ -2747,6 +2807,12 @@
       "sha256": "aae970b0efb661748ba7e1dbe3b01c51da952557f89d14ce454364a53991b9ac"
     },
     {
+      "path": "src/app/[locale]/signup/page.tsx",
+      "size": 434,
+      "mode": 33188,
+      "sha256": "00c7f2ca69c7d254054388b04187ad830b3d8699dd70788cc1b7e2d6677ee04d"
+    },
+    {
       "path": "src/app/[locale]/terms/page.tsx",
       "size": 818,
       "mode": 33188,
@@ -2754,9 +2820,9 @@
     },
     {
       "path": "src/app/access-key/cancel/page.tsx",
-      "size": 1389,
+      "size": 1401,
       "mode": 33188,
-      "sha256": "d1bb65cdc191f131a883d685ba7aa8688b63531a8a0c3c445a719257d843b3ca"
+      "sha256": "c6e358c93e0105db0844c71981b627a44149106b209e3989706ac1f2c3977f27"
     },
     {
       "path": "src/app/access-key/success/page.tsx",
@@ -3347,6 +3413,12 @@
       "sha256": "71ce154f4fc0bb7b2e7633922bc2a68c68f433c600a9786182614f96a8b12a61"
     },
     {
+      "path": "src/app/signup/page.tsx",
+      "size": 127,
+      "mode": 33188,
+      "sha256": "6983af2c82606a47865fabe12b54d03aaf295d3168c197b3f70f04d29d306bc6"
+    },
+    {
       "path": "src/app/sitemap.xml/route.ts",
       "size": 1256,
       "mode": 33188,
@@ -3414,9 +3486,9 @@
     },
     {
       "path": "src/components/access-keys/access-key-reveal-panel.tsx",
-      "size": 3327,
+      "size": 3339,
       "mode": 33188,
-      "sha256": "6471d8c6fc7bf293bc22e600a51da874a0938264fd2f5fbdf8113ba695f25a97"
+      "sha256": "39e7b82fb76c18529310a588dc8b383659360eaea6da46f7b2cdae4ad598230f"
     },
     {
       "path": "src/components/app/artifact-recovery-panel.tsx",
@@ -4056,9 +4128,9 @@
     },
     {
       "path": "src/lib/analytics/kpi-semantic-contract.ts",
-      "size": 26369,
+      "size": 26983,
       "mode": 33188,
-      "sha256": "77c331b9cebc56c2f1320a8a7a45cf838ac8f73d5c4fe688bc9456a31be76881"
+      "sha256": "fbeea64a5c7db51cb6f0d49c6d3e2c0400db01fdddeee46e2c3e8a8428fc7691"
     },
     {
       "path": "src/lib/analytics/lead-outcome-quality.ts",

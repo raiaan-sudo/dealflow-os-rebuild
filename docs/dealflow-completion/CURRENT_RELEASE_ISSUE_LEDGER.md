@@ -1,52 +1,27 @@
 # DealFlow current release issue ledger
 
-> **Superseded current-status snapshot.** This document records the predecessor
-> 104-migration candidate. Current successor truth is
-> [`FINAL_MASTER_SUCCESSOR_STATUS_20260716.md`](FINAL_MASTER_SUCCESSOR_STATUS_20260716.md):
-> unsealed 115-migration / 91-command successor, exact rounds and hosted staging
-> `NOT_YET_RUN`, production `NO_GO` and not authorized.
+Authority date: 2026-08-11
 
-Current verdict: `NO_GO`
-Candidate source seal: `PENDING_FINAL_SEAL`
-Migration identity: `104` files, ending at
-`20260715010000_move_legacy_org_member_policies_private.sql`
-Hosted staging acceptance: `NOT_YET_RUN`
-Production release: `NOT_RELEASED`
+Implementation commit: `a050238d307fef3896825dd4c51686f8fef42679`
 
-This is the authoritative concise status ledger for the current release
-candidate. `ISSUE_LEDGER.md`, `requirement-proof-ledger.json`, and
-`requirement-proof-ledger.csv` are retained historical audit inventories; their
-older candidate identities and row dispositions are not current release proof.
+Implementation tree: `606f0f6a3f7a1045e28cc18238d164c8c045b9d0`
 
-## Current disposition
+Part 1 status: `CANDIDATE_IMPLEMENTED_PENDING_FINAL_SEAL_AND_PROOF`
 
-| ID | Area | Current status | Release truth / required closure |
-|---|---|---|---|
-| REL-001 | Product implementation | `IMPLEMENTED_AND_TARGETED_LOCAL_VERIFIED` | Realtor onboarding, activation, single-plan billing contracts, multilingual product surfaces, white-label isolation, GHL lifecycle, Meta launch/reporting safety, lead capture, creative storage, support, deletion/offboarding, and the authenticated reporting-policy repair have implementation plus targeted local proof. The final clean-seal portfolio must repeat all mandatory checks. |
-| REL-002 | Migration portfolio | `IMPLEMENTED_PENDING_EXACT_SEAL` | The current inventory is exactly 104 migrations: the retained 80-migration foundation plus 24 additive migrations. Migration 101 is account deletion/provider offboarding; migration 102 is GHL location display-name finalization; migration 103 limits retention-policy mutation to database-owner-controlled owner/legal operations while preserving service-role read-only access. Migration 104 fixes the hosted reporting `42501` root cause by moving all 18 retained organization-member policies from the revoked public membership helper to the hardened private helper, without re-exposing the public RPC. Exact final digest and two clean-seal rounds remain pending. |
-| REL-003 | Final source identity | `PENDING_FINAL_SEAL` | Final commit, tree, tracked-content digest, lock digest, migration digest, clean-worktree result, and two identical verification rounds do not exist until integration is committed and rerun cleanly. |
-| REL-004 | Isolated staging harness | `IMPLEMENTED_AND_LOCAL_CONTRACT_VERIFIED` | The broker, deterministic synthetic fixture, provider-independent journeys, multi-role/multi-partner browser plan, safety gates, and evidence sealing contracts pass targeted local checks. This is harness proof, not a hosted acceptance result. |
-| REL-005 | Isolated hosted staging | `STAGING_UNPROVEN` | The exact prior 103-migration staging state has retained read-only proof. The current broker is pinned to that exact pre-state and can apply only migration 104 plus its history receipt in one outer transaction, but that forward mutation has not run. Commit the new candidate, complete two exact-seal rounds, apply or verify all 104 migrations on isolated staging, execute zero-skip authenticated journeys, and seal the hosted evidence. No production alias or shared data may be used. |
-| REL-006 | Stripe | `PROVIDER_TEST_ACCEPTANCE_NOT_YET_RUN` | A safely isolated Stripe test-mode boundary is expected, but hosted checkout, webhook, replay, cancellation, reactivation, credit, and no-live-charge evidence remains to be executed. |
-| REL-007 | GHL | `PROVIDER_BLOCKED` | Local sandbox/production contracts and ambiguity recovery exist. Real isolated Marketplace/PIT authority, exact snapshot/slot ownership, synthetic provider acceptance, webhook lifecycle, and owner-approved offboarding policy are absent. |
-| REL-008 | Meta | `PROVIDER_BLOCKED` | Local OAuth, PAUSED launch, activation, Instant Form, reporting, optimization, and ambiguity contracts exist. Isolated Meta test assets/consent plus end-to-end sandbox action and reconciliation proof are absent. No live ad launch or spend is authorized. |
-| REL-009 | Higgsfield and Twilio | `PROVIDER_BLOCKED` | Higgsfield canonical storage/source-proxy and Twilio safety contracts have local proof. A no-cost isolated Higgsfield acceptance boundary and Twilio test credentials/infrastructure are not proven; paid generation and real communications remain prohibited. |
-| REL-010 | Owner/legal authority | `BLOCKED_OWNER_AUTHORITY` | Retention/deletion policy, GHL ownership/offboarding, provider account authority, support destination/SLA, and production optimizer consent/rulebook cannot be fabricated by code. |
-| REL-011 | Production trust and recovery | `PRODUCTION_PREREQUISITES_UNPROVEN` | Authoritative production schema, backup/PITR/restore proof, protected external release trust, signed zero-old-worker/provider drain, exact environment attestation, independent-domain ancestry/exclusion, canary controls, and forward-recovery evidence are absent. |
-| REL-012 | Production release | `NOT_RELEASED` | Production remains on the unchanged baseline. No production deployment, database migration, provider mutation, customer communication, live billing action, ad spend, or paid generation is claimed. The controlling completion authorization permits a production application deployment and additive migrations only after every mandatory gate above passes for one exact seal; it does not waive any gate or authorize spend, real communications, destructive schema changes, DNS changes, or unsafe provider/customer mutations. |
+Staging/production status: `NO_GO`
 
-## Gate order
+This is the current concise source-status authority. The 864-row requirement ledger and older 104/115-migration documents are retained historical audit evidence; their identities and counts are not current-candidate proof. The generated `current-source-inventory.json` and CSV companions are the exact current inventory authority.
 
-1. Complete the clean source seal and two identical local verification rounds.
-2. Complete exact-seal isolated hosted staging and provider-independent proof.
-3. Complete every safely isolated provider acceptance path; retain explicit
-   blockers where a safe provider boundary or owner authority is unavailable.
-4. Close production authority, backup, trust, drain, environment, ancestry,
-   canary, and forward-recovery prerequisites.
-5. Release only if every controlling-authorization condition remains satisfied
-   and the protected external-trust release guard returns an enforced
-   release-mode `PASS` with every signed evidence class validated. The current
-   evidence builder is a non-authorizing snapshot and always returns `NO_GO`.
+| Area | Part 1 source status | External/release status |
+|---|---|---|
+| Candidate preservation | Exact original `78804a0` preserved in bundle, archive, diff, and patch series | No remote push performed |
+| Signup | Canonical `/login?mode=sign-up`; global and locale-safe `/signup` redirects; no reflected target or key material | Local proof required before final seal |
+| Dependencies | Next 16.3.0, PostCSS 8.5.26, Nano ID 3.3.18; production and full audit target zero vulnerabilities | Registry evidence is time-bound and must be refreshed for future release |
+| Environment | Machine-readable name contract; deterministic zero-unknown/zero-stale validation | Values and current hosted configuration remain Part 2 evidence |
+| Operational readiness | 13-system whole-product inventory; limited six-adapter registry remains explicitly non-aggregate | Every external dimension remains `NOT_OBSERVED`, `NOT_PROVEN`, or `BLOCKED_EXTERNAL_AUTHORITY` |
+| KPI/reporting | 13 definitions retained; five partial and eight missing; dashboard authority false | Owner policy and current runtime lineage remain Part 3/Part 2 work |
+| Owner authority | 43/43 unresolved, zero approved, unsigned, fail-closed | Only owner-controlled signed decisions can close these gates |
+| Migrations | 129 tracked SQL migrations, unchanged by Part 1 implementation | Current production shape and authorized upgrade remain Part 2/3 gates |
+| Release | Local candidate closure only | No deploy, provider action, production mutation, communication, charge, or spend authorized |
 
-No row in this ledger authorizes production or an external provider/customer
-mutation.
+Part 1 is complete only when the documentation-seal commit, two complete qualification rounds, local browser proof, fresh-clone proof, final bundles, and sanitized evidence validation all pass. Until then, do not promote this source-status record to a completion claim.

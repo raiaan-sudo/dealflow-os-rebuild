@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "dealflow.current-traceability.v1",
+  "generatedAt": "2026-08-11T22:50:00.000Z",
+  "implementationCommit": "a050238d307fef3896825dd4c51686f8fef42679",
+  "forward": [
+    {
+      "requirement": "signup_closure",
+      "source": [
+        "src/app/signup/page.tsx",
+        "src/app/[locale]/signup/page.tsx"
+      ],
+      "proof": [
+        "scripts/test-access-key-checkout-signup.mjs"
+      ]
+    },
+    {
+      "requirement": "dependency_closure",
+      "source": [
+        "package.json",
+        "package-lock.json"
+      ],
+      "proof": [
+        "npm audit --omit=dev",
+        "npm audit",
+        "npm run build"
+      ]
+    },
+    {
+      "requirement": "environment_contract",
+      "source": [
+        "config/runtime-environment-contract.v1.json",
+        ".env.example"
+      ],
+      "proof": [
+        "scripts/test-runtime-environment-contract.mjs"
+      ]
+    },
+    {
+      "requirement": "provider_readiness_truth",
+      "source": [
+        "config/operational-system-inventory.v1.json",
+        "src/lib/integrations/provider-registry.ts"
+      ],
+      "proof": [
+        "scripts/test-provider-readiness-truth.mjs"
+      ]
+    },
+    {
+      "requirement": "kpi_fail_closed",
+      "source": [
+        "src/lib/analytics/kpi-semantic-contract.ts"
+      ],
+      "proof": [
+        "scripts/test-kpi-semantic-contract.ts"
+      ]
+    },
+    {
+      "requirement": "owner_authority_fail_closed",
+      "source": [
+        "config/authority/dealflow-owner-decisions.v1.json"
+      ],
+      "proof": [
+        "authority:validate",
+        "test:authority",
+        "test:authority:runtime",
+        "test:authority:grants-db"
+      ]
+    }
+  ],
+  "reverse": [
+    {
+      "source": "src/app/signup/page.tsx",
+      "requirement": "signup_closure",
+      "proof": [
+        "scripts/test-access-key-checkout-signup.mjs"
+      ]
+    },
+    {
+      "source": "src/app/[locale]/signup/page.tsx",
+      "requirement": "signup_closure",
+      "proof": [
+        "scripts/test-access-key-checkout-signup.mjs"
+      ]
+    },
+    {
+      "source": "package.json",
+      "requirement": "dependency_closure",
+      "proof": [
+        "npm audit --omit=dev",
+        "npm audit",
+        "npm run build"
+      ]
+    },
+    {
+      "source": "package-lock.json",
+      "requirement": "dependency_closure",
+      "proof": [
+        "npm audit --omit=dev",
+        "npm audit",
+        "npm run build"
+      ]
+    },
+    {
+      "source": "config/runtime-environment-contract.v1.json",
+      "requirement": "environment_contract",
+      "proof": [
+        "scripts/test-runtime-environment-contract.mjs"
+      ]
+    },
+    {
+      "source": ".env.example",
+      "requirement": "environment_contract",
+      "proof": [
+        "scripts/test-runtime-environment-contract.mjs"
+      ]
+    },
+    {
+      "source": "config/operational-system-inventory.v1.json",
+      "requirement": "provider_readiness_truth",
+      "proof": [
+        "scripts/test-provider-readiness-truth.mjs"
+      ]
+    },
+    {
+      "source": "src/lib/integrations/provider-registry.ts",
+      "requirement": "provider_readiness_truth",
+      "proof": [
+        "scripts/test-provider-readiness-truth.mjs"
+      ]
+    },
+    {
+      "source": "src/lib/analytics/kpi-semantic-contract.ts",
+      "requirement": "kpi_fail_closed",
+      "proof": [
+        "scripts/test-kpi-semantic-contract.ts"
+      ]
+    },
+    {
+      "source": "config/authority/dealflow-owner-decisions.v1.json",
+      "requirement": "owner_authority_fail_closed",
+      "proof": [
+        "authority:validate",
+        "test:authority",
+        "test:authority:runtime",
+        "test:authority:grants-db"
+      ]
+    }
+  ]
+}

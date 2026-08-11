@@ -1,5 +1,11 @@
 # DealFlow systems of record
 
+## Current operational-readiness boundary (2026-08-11)
+
+The canonical whole-product inventory is `config/operational-system-inventory.v1.json`. It accounts for 13 operational systems: Supabase, Stripe, GHL, Meta, OpenAI, Higgsfield, the HeyGen fallback, ElevenLabs, Twilio, Vercel, Turnstile, support delivery, and observability. The six-adapter execution registry is not whole-product readiness authority. Part 1 supplies local source and contract evidence only; every external readiness dimension remains not observed, not proven, or blocked by external authority.
+
+This document describes ownership boundaries. It does not prove a current provider connection, hosted deployment, database shape, KPI observation, or production release.
+
 Status: `INTEGRATED CANDIDATE CONTRACT / FINAL SEAL PENDING / PRODUCTION NOT PROVEN`
 Overall verdict: `NO_GO`
 
