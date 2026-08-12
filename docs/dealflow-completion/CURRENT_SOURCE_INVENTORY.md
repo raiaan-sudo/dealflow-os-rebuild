@@ -1,6 +1,6 @@
 # Current source inventory
 
-Generated from Git-tracked source for implementation commit `b89f05e67d47fe95fc28c7942867aa0dd623578c` (tree `7a6cd150583b65be0f157537b03b7daa00dacf76`). Counts are generated, not hand-entered.
+Generated from Git-tracked source for implementation commit `3ef912fbed8d58ead1a435df185f6d4ff0c53c87` (tree `bb230e3665fddfb930c96b25be0e29f478ca2520`). Counts are generated, not hand-entered.
 
 | Class | Count |
 |---|---:|
