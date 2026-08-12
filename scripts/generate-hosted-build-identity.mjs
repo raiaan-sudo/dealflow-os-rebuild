@@ -127,7 +127,6 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
           configuration.name === STAGING_PROJECT_NAME) &&
         (target.kind !== "exact_production" ||
           configuration.name === PRODUCTION_PROJECT_NAME),
-      injectedProjectNamePresent: typeof configuration.name === "string",
       injectedVersion: configuration.version,
       hostedBytesSha256: sha256(file.contents),
       recoveredSourceSha256: sha256(recoveredSourceBytes),

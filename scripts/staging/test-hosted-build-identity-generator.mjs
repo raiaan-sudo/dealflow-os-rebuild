@@ -417,10 +417,6 @@ try {
     gitIntegratedPreviewArtifact.vercelConfigurationNormalization.transformation,
     "vercel_semantic_config_normalization_v2",
   );
-  assert.equal(
-    gitIntegratedPreviewArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
-    false,
-  );
   writeFileSync(
     join(fixture, "vercel.json"),
     `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
