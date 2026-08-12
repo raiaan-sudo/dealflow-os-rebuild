@@ -24,6 +24,7 @@ import {
 import { getLaunchBlockingReasons, getLaunchRequirements } from "@/lib/services/launch-readiness";
 import { getRequestProductI18n } from "@/lib/i18n/server";
 import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
+import { isMetaProviderIncluded } from "@/lib/release/approved-launch-profile";
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
   return new Promise<T>((resolve) => {
@@ -113,6 +114,7 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
+  const metaProviderIncluded = isMetaProviderIncluded();
   const [record, metaConnection, metaProviderState, metaTrackingState, metaPreflight, billing] = await Promise.all([
     withTimeout(
       resolveActiveCampaignRecord(requestedCampaignId)
@@ -121,26 +123,34 @@ export default async function LaunchAliasPage({
       null,
       4_000,
     ),
-    withTimeout(
-      getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
-      getDefaultMetaConnectionState(),
-      2_500,
-    ),
-    withTimeout(
-      getIntegrationProviderState("meta_marketing_api").catch(() => null),
-      null,
-      2_000,
-    ),
-    withTimeout(
-      getIntegrationProviderState("meta_tracking").catch(() => null),
-      null,
-      2_000,
-    ),
-    withTimeout(
-      validateMetaLaunchSelections().catch(() => null),
-      null,
-      5_000,
-    ),
+    metaProviderIncluded
+      ? withTimeout(
+          getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
+          getDefaultMetaConnectionState(),
+          2_500,
+        )
+      : Promise.resolve(getDefaultMetaConnectionState()),
+    metaProviderIncluded
+      ? withTimeout(
+          getIntegrationProviderState("meta_marketing_api").catch(() => null),
+          null,
+          2_000,
+        )
+      : Promise.resolve(null),
+    metaProviderIncluded
+      ? withTimeout(
+          getIntegrationProviderState("meta_tracking").catch(() => null),
+          null,
+          2_000,
+        )
+      : Promise.resolve(null),
+    metaProviderIncluded
+      ? withTimeout(
+          validateMetaLaunchSelections().catch(() => null),
+          null,
+          5_000,
+        )
+      : Promise.resolve(null),
     withTimeout(
       getBillingSummary().catch(() => null),
       null,
@@ -259,6 +269,37 @@ export default async function LaunchAliasPage({
             </Link>
           </Button>
         </div>
+      </PageShell>
+    );
+  }
+
+  if (!metaProviderIncluded) {
+    return (
+      <PageShell>
+        <WizardSteps current="launch" />
+        <PageHeader
+          eyebrow={t("nav.goLive")}
+          title="Campaign package ready"
+          description="External advertising-provider launch is not included in this release."
+        />
+        <Card className="p-5 sm:p-7">
+          <h2 className="text-xl font-semibold">Your campaign remains available in DealFlow</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
+            Review the selected creative, publish the DealFlow lead funnel, and use the verified
+            GoHighLevel handoff for CRM and booking. DealFlow will not connect to Meta, create an ad,
+            activate spend, or imply that an external campaign is live.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Button asChild>
+              <Link href={`/preview?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`}>
+                Review campaign
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/dashboard">Open dashboard</Link>
+            </Button>
+          </div>
+        </Card>
       </PageShell>
     );
   }

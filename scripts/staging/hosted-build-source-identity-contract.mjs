@@ -59,7 +59,7 @@ function exactNormalization(value) {
     return hasExactKeys(value, ["status", "transformation"]);
   }
   return (
-    value.transformation === "vercel_canonical_config_normalization_v1" &&
+    value.transformation === "vercel_semantic_config_normalization_v2" &&
     hasExactKeys(value, [
       "status",
       "transformation",

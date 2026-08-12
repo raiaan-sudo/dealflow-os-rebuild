@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   apiSuccess,
+  ApiError,
   assertSameOriginRequest,
   handleApiError,
   parseJsonBody,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { provisionMetaLeadgenRouteForCampaign } from "@/lib/services/meta-leadgen-route-service";
+import { isMetaProviderIncluded } from "@/lib/release/approved-launch-profile";
 
 const provisionSchema = z
   .object({
@@ -22,6 +24,9 @@ const provisionSchema = z
 
 export async function POST(request: Request) {
   try {
+    if (!isMetaProviderIncluded()) {
+      throw new ApiError(409, "Meta is not included in this release.", "meta_provider_excluded");
+    }
     assertSameOriginRequest(request);
     const auth = await getAuthenticatedContext();
     const rateLimit = await consumeRateLimit({

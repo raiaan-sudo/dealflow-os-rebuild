@@ -230,7 +230,7 @@ try {
   );
   assert.equal(
     normalizedProductionArtifact.vercelConfigurationNormalization.transformation,
-    "vercel_canonical_config_normalization_v1",
+    "vercel_semantic_config_normalization_v2",
   );
   writeFileSync(
     join(fixture, "vercel.json"),
@@ -268,7 +268,7 @@ try {
   );
   assert.equal(
     normalizedStagingArtifact.vercelConfigurationNormalization.transformation,
-    "vercel_canonical_config_normalization_v1",
+    "vercel_semantic_config_normalization_v2",
   );
   assert.equal(
     normalizedStagingArtifact.vercelConfigurationNormalization.recoveredSourceSha256,
@@ -297,11 +297,6 @@ try {
       name: "dealflow-os-rebuild-selfserve-clean",
       version: 2,
     },
-    {
-      ...vercelConfiguration,
-      version: 2,
-      name: "dealflow-os-rebuild-selfserve-clean",
-    },
   ]) {
     writeFileSync(
       join(fixture, "vercel.json"),
@@ -323,10 +318,34 @@ try {
   const nonCanonicalHostedBytes = run({
     env: exactStagingEnvironment(manifest, manifestSha256),
   });
-  assert.notEqual(nonCanonicalHostedBytes.status, 0);
-  assert.match(
-    nonCanonicalHostedBytes.stderr,
-    /Deployable source file does not match its manifest: vercel.json/,
+  assert.equal(
+    nonCanonicalHostedBytes.status,
+    0,
+    `${nonCanonicalHostedBytes.stderr}\n${nonCanonicalHostedBytes.stdout}`,
+  );
+  const nonCanonicalHostedBytesArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(
+    nonCanonicalHostedBytesArtifact.vercelConfigurationNormalization.transformation,
+    "vercel_semantic_config_normalization_v2",
+  );
+
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify({
+      ...vercelConfiguration,
+      version: 2,
+      name: "dealflow-os-rebuild-selfserve-clean",
+    }, null, 2)}\n`,
+  );
+  const reorderedInjectedKeys = run({
+    env: exactStagingEnvironment(manifest, manifestSha256),
+  });
+  assert.equal(
+    reorderedInjectedKeys.status,
+    0,
+    `${reorderedInjectedKeys.stderr}\n${reorderedInjectedKeys.stdout}`,
   );
 
   writeFileSync(

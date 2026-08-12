@@ -8,6 +8,7 @@ import {
   updateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { isMetaProviderIncluded } from "@/lib/release/approved-launch-profile";
 
 type SelectionBody = {
   externalAccountId?: string;
@@ -18,6 +19,9 @@ type SelectionBody = {
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   try {
+    if (!isMetaProviderIncluded()) {
+      throw new ApiError(409, "Meta is not included in this release.", "meta_provider_excluded");
+    }
     assertSameOriginRequest(request);
     const auth = await getAuthenticatedContext();
     const rateLimit = await consumeRateLimit({

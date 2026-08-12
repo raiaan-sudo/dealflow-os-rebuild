@@ -6,6 +6,7 @@ import {
   getMetaConnectionState,
 } from "@/lib/integrations/meta/service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { isMetaProviderIncluded } from "@/lib/release/approved-launch-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,16 @@ export async function GET() {
   const requestId = crypto.randomUUID();
   try {
     await getAuthenticatedContext();
+
+    if (!isMetaProviderIncluded()) {
+      return apiSuccess({
+        connection: getDefaultMetaConnectionState(),
+        configured: false,
+        oauthConfigured: false,
+        tracking: getDefaultMetaConnectionState().tracking,
+        error: "Meta is not included in this release.",
+      });
+    }
 
     const validation = validateMetaEnv();
     const connection = await withRouteTimeout(

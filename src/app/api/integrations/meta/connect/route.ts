@@ -8,6 +8,7 @@ import {
 import { createMetaOAuthStateBinding } from "@/lib/integrations/meta/oauth-state";
 import { logMetaError } from "@/lib/integrations/meta/error-mapper";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { isMetaProviderIncluded } from "@/lib/release/approved-launch-profile";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
 const REQUIRED_META_OAUTH_SCOPES = [
@@ -33,6 +34,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const requestId = crypto.randomUUID();
+
+  if (!isMetaProviderIncluded()) {
+    const unavailableUrl = new URL("/launch", getPublicAppUrl());
+    unavailableUrl.searchParams.set("meta_error", "provider_not_in_release");
+    return NextResponse.redirect(unavailableUrl);
+  }
 
   try {
     const auth = await getAuthenticatedContext();

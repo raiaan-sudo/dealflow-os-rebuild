@@ -26,7 +26,7 @@ const exactBytesNormalization = Object.freeze({
 });
 const vercelNormalization = Object.freeze({
   status: "PASS",
-  transformation: "vercel_canonical_config_normalization_v1",
+  transformation: "vercel_semantic_config_normalization_v2",
   injectedProjectNameMatched: true,
   injectedVersion: 2,
   hostedBytesSha256: "2".repeat(64),

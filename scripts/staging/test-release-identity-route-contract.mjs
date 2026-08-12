@@ -84,7 +84,7 @@ assert.match(route, /parsed\.expectedIdentityMatched !== true/);
 assert.match(route, /parsed\.deployablePathSetVerified !== true/);
 assert.match(route, /parsed\.predeployPathSetProofBound !== true/);
 assert.match(route, /releaseIdentityMatches\(parsed\.release, expected\)/);
-assert.match(route, /vercel_canonical_config_normalization_v1/);
+assert.match(route, /vercel_semantic_config_normalization_v2/);
 assert.match(route, /exact_source_bytes/);
 assert.match(route, /stat\.isSymbolicLink\(\)/);
 assert.match(route, /BUILD_SOURCE_ARTIFACT_MAX_BYTES/);
@@ -196,7 +196,7 @@ assert.equal(
 const canonicalNormalizationBuildSource = validBuildSource();
 canonicalNormalizationBuildSource.vercelConfigurationNormalization = {
   status: "PASS",
-  transformation: "vercel_canonical_config_normalization_v1",
+  transformation: "vercel_semantic_config_normalization_v2",
   injectedProjectNameMatched: true,
   injectedVersion: 2,
   hostedBytesSha256: "2".repeat(64),
@@ -207,7 +207,7 @@ assert.equal(
     buildSource: canonicalNormalizationBuildSource,
     expectedRelease: verifierRelease,
   }).vercelConfigurationNormalization.transformation,
-  "vercel_canonical_config_normalization_v1",
+  "vercel_semantic_config_normalization_v2",
 );
 
 for (const mutate of [
@@ -230,7 +230,7 @@ for (const mutate of [
   (value) => {
     value.vercelConfigurationNormalization = {
       status: "PASS",
-      transformation: "vercel_canonical_config_normalization_v1",
+      transformation: "vercel_semantic_config_normalization_v2",
       injectedProjectNameMatched: false,
       injectedVersion: 2,
       hostedBytesSha256: "2".repeat(64),

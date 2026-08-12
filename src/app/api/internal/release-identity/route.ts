@@ -191,7 +191,7 @@ function isExactVercelConfigurationNormalization(value: unknown) {
   }
 
   return (
-    value.transformation === "vercel_canonical_config_normalization_v1" &&
+    value.transformation === "vercel_semantic_config_normalization_v2" &&
     hasExactKeys(value, [
       "status",
       "transformation",

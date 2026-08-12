@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "dealflow.approved-launch-profile.v1",
+  "approvedAt": "2026-08-12T21:54:48Z",
+  "effectiveAt": "2026-08-12T21:54:48Z",
+  "approverRole": "owner",
+  "commercialOffer": {
+    "plan": "pro",
+    "priceMinor": 29700,
+    "currency": "usd",
+    "interval": "month",
+    "trialDays": 0,
+    "initialCreditMinor": 1000,
+    "staticGenerationMinor": 100,
+    "videoGenerationMinor": 500,
+    "topUpMinimumMinor": 2500,
+    "topUpMaximumMinor": 100000,
+    "campaignSlots": "unlimited_subject_to_safety_limits",
+    "cancellation": "period_end",
+    "refunds": "manual_or_statutory_only",
+    "guaranteedOutcome": false,
+    "legacyPlans": "reconcile_existing_only"
+  },
+  "providers": {
+    "stripe": "included",
+    "gohighlevel": "included",
+    "openai": "included_bounded",
+    "higgsfield": "included_bounded",
+    "turnstile": "included",
+    "observability": "included",
+    "internalSupport": "included_internal_only",
+    "meta": "paused_excluded",
+    "heygen": "excluded",
+    "elevenlabs": "excluded",
+    "twilioLeadSms": "excluded"
+  },
+  "productScope": {
+    "localBooking": "retired_use_verified_ghl_handoff",
+    "growthAgent": "excluded",
+    "salesCopilot": "excluded",
+    "salesBrain": "excluded",
+    "revenueOs": "excluded",
+    "leadFacingCommunications": "disabled",
+    "metaCapi": "disabled",
+    "metaPixel": "explicit_versioned_opt_in_only"
+  },
+  "operations": {
+    "rpoMinutes": 15,
+    "rtoMinutes": 240,
+    "p0AcknowledgementMinutes": 15,
+    "financialAmbiguityTriageMinutes": 60,
+    "criticalApiP95Milliseconds": 1500,
+    "primaryJourneyP95Milliseconds": 2500,
+    "maximumFiveXxRatePercent": 1,
+    "maximumProviderTestSpendUsd": 20
+  }
+}

@@ -37,7 +37,7 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
       "Guided campaign setup",
       "Offer-led funnel and creative preview",
       "Recommended optimization checklist",
-      "Meta readiness and launch gates",
+      "Campaign readiness and GHL handoff",
       "You approve and apply each step",
     ],
     footer: "Guided by DealFlow, executed by you",
@@ -54,7 +54,7 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
     features: [
       "Guided campaign setup",
       "Offer-led funnel and creative preview",
-      "Meta readiness and launch gates",
+      "Campaign readiness and GHL handoff",
       "Selected creative review before launch",
       "Operator launch workspace",
       "Unlimited active campaigns",

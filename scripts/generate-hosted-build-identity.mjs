@@ -98,17 +98,12 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
   ) {
     return null;
   }
-  const keys = Object.keys(configuration);
-  if (
-    keys.length < 2 ||
-    keys.at(-2) !== "name" ||
-    keys.at(-1) !== "version"
-  ) {
-    return null;
-  }
-  const canonicalHostedBytes = Buffer.from(`${JSON.stringify(configuration)}\n`);
-  if (!file.contents.equals(canonicalHostedBytes)) return null;
-
+  // Vercel's hosted normalization is an implementation detail: it may move
+  // the injected `name` and `version` keys or change insignificant JSON
+  // whitespace. Bind the recovered tracked bytes to the sealed manifest
+  // instead of binding release admission to that incidental serialization.
+  // Unknown keys, changed values, reordered tracked keys, mode drift, or a
+  // different source file still fail the exact size/hash checks below.
   const originalConfiguration = { ...configuration };
   delete originalConfiguration.name;
   delete originalConfiguration.version;
@@ -125,7 +120,7 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
     recoveredSourceBytes,
     evidence: {
       status: "PASS",
-      transformation: "vercel_canonical_config_normalization_v1",
+      transformation: "vercel_semantic_config_normalization_v2",
       injectedProjectNameMatched:
         (target.kind !== "exact_staging" ||
           configuration.name === STAGING_PROJECT_NAME) &&

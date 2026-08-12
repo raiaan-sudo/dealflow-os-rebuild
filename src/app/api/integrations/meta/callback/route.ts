@@ -26,6 +26,7 @@ import {
 } from "@/lib/integrations/meta/error-mapper";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { isMetaProviderIncluded } from "@/lib/release/approved-launch-profile";
 
 type MetaAdAccount = {
   id?: string;
@@ -92,6 +93,15 @@ function getTokenExpiresAt(expiresIn: unknown, nowMs = Date.now()) {
 
 export async function GET(req: NextRequest) {
   const requestId = crypto.randomUUID();
+
+  if (!isMetaProviderIncluded()) {
+    const cookieStore = await cookies();
+    cookieStore.delete(META_STATE_COOKIE);
+    cookieStore.delete(META_RETURN_TO_COOKIE);
+    const unavailableUrl = new URL("/launch", getPublicAppUrl());
+    unavailableUrl.searchParams.set("meta_error", "provider_not_in_release");
+    return NextResponse.redirect(unavailableUrl);
+  }
 
   try {
     const appUrl = getPublicAppUrl();
