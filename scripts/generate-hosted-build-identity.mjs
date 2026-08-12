@@ -89,8 +89,9 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
     Array.isArray(configuration) ||
     typeof configuration !== "object" ||
     configuration.version !== 2 ||
-    typeof configuration.name !== "string" ||
-    !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name) ||
+    (configuration.name != null &&
+      (typeof configuration.name !== "string" ||
+        !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name))) ||
     (target.kind === "exact_staging" &&
       configuration.name !== STAGING_PROJECT_NAME) ||
     (target.kind === "exact_production" &&
@@ -126,6 +127,7 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
           configuration.name === STAGING_PROJECT_NAME) &&
         (target.kind !== "exact_production" ||
           configuration.name === PRODUCTION_PROJECT_NAME),
+      injectedProjectNamePresent: typeof configuration.name === "string",
       injectedVersion: configuration.version,
       hostedBytesSha256: sha256(file.contents),
       recoveredSourceSha256: sha256(recoveredSourceBytes),

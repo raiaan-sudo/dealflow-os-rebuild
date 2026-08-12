@@ -398,6 +398,34 @@ try {
     assert.equal(genericArtifact.release, null);
   }
 
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify({ ...vercelConfiguration, version: 2 })}\n`,
+  );
+  const gitIntegratedPreviewNormalization = run({
+    env: { VERCEL: "1", VERCEL_ENV: "preview" },
+  });
+  assert.equal(
+    gitIntegratedPreviewNormalization.status,
+    0,
+    `${gitIntegratedPreviewNormalization.stderr}\n${gitIntegratedPreviewNormalization.stdout}`,
+  );
+  const gitIntegratedPreviewArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(
+    gitIntegratedPreviewArtifact.vercelConfigurationNormalization.transformation,
+    "vercel_semantic_config_normalization_v2",
+  );
+  assert.equal(
+    gitIntegratedPreviewArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    false,
+  );
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
+  );
+
   for (const env of [
     {
       VERCEL: "1",
