@@ -30,12 +30,21 @@ function sha256(value) {
 }
 
 function migrationPortfolio() {
+  const digest = crypto.createHash("sha256");
   const entries = fs
     .readdirSync(MIGRATIONS)
     .filter((name) => /^\d{14}_[a-z0-9_]+\.sql$/.test(name))
     .sort()
     .map((name) => {
       const body = fs.readFileSync(path.join(MIGRATIONS, name));
+      digest.update(String(Buffer.byteLength(name)));
+      digest.update("\0");
+      digest.update(name);
+      digest.update("\0");
+      digest.update(String(body.byteLength));
+      digest.update("\0");
+      digest.update(body);
+      digest.update("\0");
       return {
         name,
         version: name.slice(0, 14),
@@ -43,12 +52,7 @@ function migrationPortfolio() {
         sha256: sha256(body),
       };
     });
-  const digest = sha256(
-    entries
-      .map((entry) => `${entry.name}\0${entry.bytes}\0${entry.sha256}\n`)
-      .join(""),
-  );
-  return { entries, digest };
+  return { entries, digest: digest.digest("hex") };
 }
 
 function assertPortfolio(portfolio) {

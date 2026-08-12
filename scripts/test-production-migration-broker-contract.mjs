@@ -33,5 +33,9 @@ assert.deepEqual(
   { status: output.status, total: output.total, applied: output.applied, pending: output.pending },
   { status: "PASS", total: 129, applied: 59, pending: 70 },
 );
-assert.match(output.portfolioSha256, /^[0-9a-f]{64}$/);
+assert.equal(
+  output.portfolioSha256,
+  "a10f2771155eafbea20995277347d0b5b53799c3afce028a81d3467bdc88ab33",
+  "production broker must bind the same canonical portfolio digest as qualification, staging, and release evidence",
+);
 console.log("production migration broker contract: PASS");
