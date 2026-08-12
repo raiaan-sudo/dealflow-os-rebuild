@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1169,
-  "deployableSourceSha256": "65a561d47c5648f268c839c9c3bc039bf21564c6aa5b0e098604ebb244e02495",
+  "deployableSourceSha256": "71eea16a155a1794b124fe179d97de540971d6d15f68d3ca9e6a586903fd95b6",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -170,7 +170,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "071802a2ee27084976405d06df81ed953f40889c07d7d957df0c06a481cc2870"
+      "sha256": "49d087454ddb6ae072998e3163d0beb125fa61f201e417a71a98f02f5e36b37d"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -294,9 +294,9 @@
     },
     {
       "path": "docs/dealflow-completion/PART2_STAGING_AUTHORITY_RESEAL.md",
-      "size": 1603,
+      "size": 2287,
       "mode": 33188,
-      "sha256": "3c26a7cff547f5c77a82a2d79310c69b68be48297f66bc37e5debeac9b832402"
+      "sha256": "98bac43a443a64d6c478f2b3a57b9709f0d03ca2665fc472d7156faab1aac094"
     },
     {
       "path": "docs/dealflow-completion/PRODUCTION_59_TO_129_AND_DURABLE_WORKER_RUNBOOK.md",
@@ -374,13 +374,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "df0ef424d994131077319bde8e53d4243e298ca3181c51a2692552e38dca410e"
+      "sha256": "b20fde150d7d2b6bb40f5b040883b5ebeea7a97ce28950081cc24360a1d36c62"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "c8621b715ac004d7b6d87255ef263d81236a0b501a0af16f65f6e5de96b9cb99"
+      "sha256": "fca264af7a995163126cc67c21aefed1cb2f6de8ab59393a91bac3f0fa5a019c"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 302196,
+      "size": 302197,
       "mode": 33188,
-      "sha256": "0931b21db1c3750cd06a9673da22ce415504f47a076710838edef6ca1037e19e"
+      "sha256": "fd26d0e8ad38f094575a5782ccb499963c1ff838a555e3ddaec6fd767d7aaa4c"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1434,9 +1434,9 @@
     },
     {
       "path": "scripts/staging/test-vercel-deployed-image-config-contract.mjs",
-      "size": 4362,
+      "size": 4677,
       "mode": 33188,
-      "sha256": "ab97da0526d2af441c5086ece6e8db94c0c4a4c35cbf5a0888efaca33a58a803"
+      "sha256": "bf58dca75a5200c481d8e39e0cf67959a2e5c4d015c4e89e4e3cb21dfabd0297"
     },
     {
       "path": "scripts/staging/test-vercel-dry-run-source-contract.mjs",
@@ -1476,9 +1476,9 @@
     },
     {
       "path": "scripts/staging/vercel-deployed-image-config-contract.mjs",
-      "size": 7643,
+      "size": 7778,
       "mode": 33188,
-      "sha256": "1adebe9786122e03a417c0e1b915dd100b493cbaec3e43b80f8e3f7c83380b20"
+      "sha256": "c967a5488de0a6762c7b0b324d6a531ebfc74b0cc387ddb339ed08eaecc9105e"
     },
     {
       "path": "scripts/staging/vercel-dry-run-source-contract.mjs",

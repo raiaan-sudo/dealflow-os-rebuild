@@ -25,3 +25,13 @@ execution gate while validating prior evidence against its exact historical
 branch, commit, tree, broker source hash, ancestry, schema digest, structural
 catalog digest, and all 129 migration hashes. This permits legitimate successor
 reseals without weakening prior-proof identity.
+
+The first hosted deployment of the successor seal exposed a third stale
+tooling assertion after the remote build completed: the current Vercel/Next.js
+compiler emits two narrow local image namespaces, `/_next/static/media` and
+`/_next/static/immutable/media`, while the verifier allowed only the former.
+The hosted metadata still proved zero remote patterns, zero legacy domains,
+zero optimizer-eligible manifest assets, and exact safe image settings. The
+successor contract now requires both exact compiler-owned namespaces and still
+rejects every arbitrary local path, extra pattern, remote source, or legacy
+domain. The failed hosted attempt remains preserved in Part 2 evidence.
