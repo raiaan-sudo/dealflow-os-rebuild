@@ -445,7 +445,7 @@ assert.doesNotMatch(
   /EXPECTED_REPO = "\/private\/tmp\//,
   "The staging runner must not bind execution to a disposable repository path",
 );
-assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-release-closure-plan"/);
+assert.match(runner, /EXPECTED_BRANCH = "codex\/dealflow-part1-closure-20260811"/);
 assert.match(runner, /EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean\.vercel\.app"/);
 assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
 assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);

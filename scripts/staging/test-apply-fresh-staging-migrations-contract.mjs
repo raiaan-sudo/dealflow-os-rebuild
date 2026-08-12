@@ -42,7 +42,7 @@ function requireMarker(pattern, label) {
 }
 
 requireMarker(/const exactMigrationCount = 129/, "the exact 129-migration gate");
-requireMarker(/codex\/dealflow-release-closure-plan/, "the exact isolated release branch gate");
+requireMarker(/codex\/dealflow-part1-closure-20260811/, "the exact isolated release branch gate");
 requireMarker(
   /assertExactForward104To120Portfolio/,
   "the exact bounded successor forward authority gate",

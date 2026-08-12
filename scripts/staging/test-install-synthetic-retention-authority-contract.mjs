@@ -31,7 +31,7 @@ assert.equal(
   createHash("sha256").update(trustBundle).digest("hex"),
   "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
 );
-assert.match(source, /expectedBranch = "codex\/dealflow-release-closure-plan"/);
+assert.match(source, /expectedBranch = "codex\/dealflow-part1-closure-20260811"/);
 assert.match(
   source,
   /expectedRepo = realpathSync\([\s\S]*fileURLToPath\(import\.meta\.url\)[\s\S]*"\.\.\/\.\."/,

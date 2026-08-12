@@ -35,7 +35,7 @@ const roundPaths = [resolve(roundOneArg), resolve(roundTwoArg)];
 const expectedRepo = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
 );
-const expectedBranch = "codex/dealflow-release-closure-plan";
+const expectedBranch = "codex/dealflow-part1-closure-20260811";
 const expectedTrustBundleRelativePath =
   "config/security/supabase-prod-ca-2021.crt";
 const expectedTrustBundlePath = resolve(repo, expectedTrustBundleRelativePath);

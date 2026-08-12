@@ -102,7 +102,7 @@ import { FORWARD_122_TO_123_AUTHORITY } from "./forward-122-to-123-contract.mjs"
 const EXPECTED_REPO = realpathSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
 );
-const EXPECTED_BRANCH = "codex/dealflow-release-closure-plan";
+const EXPECTED_BRANCH = "codex/dealflow-part1-closure-20260811";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_STAGING_BASE_URL = `https://${EXPECTED_STAGING_HOST}`;
 const EXPECTED_PARTNER_ONE_HOST =
