@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1169,
-  "deployableSourceSha256": "71eea16a155a1794b124fe179d97de540971d6d15f68d3ca9e6a586903fd95b6",
+  "deployableSourceSha256": "4933497e565f5f89d3126c1e98f38d29a9d28fe113d74101f923d89cfec3cf8a",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -170,7 +170,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "49d087454ddb6ae072998e3163d0beb125fa61f201e417a71a98f02f5e36b37d"
+      "sha256": "a51b10fe404937140ff4a2311676c2b2df6dd3bf84a28151b91e5240bffc75d4"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -374,13 +374,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "b20fde150d7d2b6bb40f5b040883b5ebeea7a97ce28950081cc24360a1d36c62"
+      "sha256": "c156ca6a8929c8237c42046bd774bf088012ece6746e1086e825de92116c83d9"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "fca264af7a995163126cc67c21aefed1cb2f6de8ab59393a91bac3f0fa5a019c"
+      "sha256": "cd039caab5cddec324fccfe09ea9c3e18cacf58f43d35cbfbf5de51583ce1d05"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1002,9 +1002,9 @@
     },
     {
       "path": "scripts/production/run-exact-production-migrations.mjs",
-      "size": 15404,
+      "size": 15601,
       "mode": 33188,
-      "sha256": "05b524305adf5a5f8ba4d6eb50ab139ee6919974058a45c5d05040e3e86ba1bf"
+      "sha256": "955d2083529f2aa1c0bc4b002e36a3d2130746cda7b1ce3c827af465f3f42241"
     },
     {
       "path": "scripts/production/sign-release-guard-v5-envelope.mjs",
@@ -2220,9 +2220,9 @@
     },
     {
       "path": "scripts/test-production-migration-broker-contract.mjs",
-      "size": 1490,
+      "size": 1664,
       "mode": 33188,
-      "sha256": "8a9fe70055e0a09af0c60d8521e5fc891ccbdf400a13002c3ae12ed55d30450b"
+      "sha256": "e1d933721b4dd5be22402b09b6d66672132877f6af000d3ebc774d2cd2b661df"
     },
     {
       "path": "scripts/test-production-route-contract.mjs",
