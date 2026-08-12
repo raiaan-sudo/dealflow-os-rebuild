@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1169,
-  "deployableSourceSha256": "ab9d2801a2db171e57f96974a47447bae88291a0ab7007fb6ca66bc4ddbcab15",
+  "deployableSourceSha256": "c0bdef708e86b85dc5e9d7321fe7499b9c894a89f0347855ce085a87a3c3987b",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -228,9 +228,9 @@
     },
     {
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
-      "size": 19258,
+      "size": 18660,
       "mode": 33188,
-      "sha256": "f384ad6849162e2ce4adc6e4df91fe14f5c4fbab0c247f57cd4d56418a611bbd"
+      "sha256": "3cc466d738065cac25304214a71998f99d53b1755763e02c82ff7211f057a32b"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -374,13 +374,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "aa08f1526d431668a58f14b107b435c4fb21e1677a9fe5d14ab026ebff6aa057"
+      "sha256": "4cc36a26ae3e7ee8a1c018ee25601b8fe1620cd8a3d466346dc3d8f665070617"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "4130815bc82c07c6f02b4bc35efad0eaf1c8fe46ebf79afe488d2e5ab1c33ec3"
+      "sha256": "ec5a5933c3f9344a92e7c4a11cff0c7a789ec623460a030fcce94afb58b8b7b5"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
