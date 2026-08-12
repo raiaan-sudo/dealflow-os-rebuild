@@ -99,6 +99,7 @@ const keychainAccount = "dealflow-staging-20260712";
 const expectedProjectFingerprint =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const expectedProjectSafeSuffix = "qibh";
+const expectedPriorApplicationBranch = "codex/dealflow-release-closure-plan";
 const expectedPriorApplicationCommit = "5978cfc9a80f511cfed02d1d1f810a4720db7cc1";
 const expectedPriorApplicationTree = "7ea61c55363d40d1e23fb35e45029e653e6682a7";
 const expectedPriorManifestSha256 =
@@ -1974,9 +1975,9 @@ function loadAndValidatePriorMigrationProof({
       mutationStatus.safeSuffix !== expectedProjectSafeSuffix ||
       summary.safeSuffix !== expectedProjectSafeSuffix ||
       failure.safeSuffix !== expectedProjectSafeSuffix ||
-      mutationStatus.releaseBranch !== releaseIdentity.branch ||
-      summary.releaseBranch !== releaseIdentity.branch ||
-      failure.releaseBranch !== releaseIdentity.branch ||
+      mutationStatus.releaseBranch !== expectedPriorApplicationBranch ||
+      summary.releaseBranch !== expectedPriorApplicationBranch ||
+      failure.releaseBranch !== expectedPriorApplicationBranch ||
       mutationStatus.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
       summary.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
       failure.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
@@ -2146,8 +2147,8 @@ function loadAndValidatePriorMigrationProof({
     summary.projectFingerprint !== expectedProjectFingerprint ||
     proof.safeSuffix !== expectedProjectSafeSuffix ||
     summary.safeSuffix !== expectedProjectSafeSuffix ||
-    proof.releaseBranch !== releaseIdentity.branch ||
-    summary.releaseBranch !== releaseIdentity.branch ||
+    proof.releaseBranch !== expectedPriorApplicationBranch ||
+    summary.releaseBranch !== expectedPriorApplicationBranch ||
     proof.migrationCount !== expectedCount ||
     summary.migrationCount !== expectedCount ||
     proof.migrationHistoryCount !== expectedCount ||
