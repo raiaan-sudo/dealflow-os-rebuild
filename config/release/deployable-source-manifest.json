@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1168,
-  "deployableSourceSha256": "05f6bd13b8769f425aa31d3a746c8a561b47d1060767bebadc381e055434b859",
+  "entryCount": 1169,
+  "deployableSourceSha256": "ab9d2801a2db171e57f96974a47447bae88291a0ab7007fb6ca66bc4ddbcab15",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -170,7 +170,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "2ef511a50fc13f41a2a5e37889c29645ae48660daaa928743d3a72d7a9a303c0"
+      "sha256": "ecc2efcd7685c4af525af6cbfd1c12976fac684ccf1b76593ac08e36068cb303"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -293,6 +293,12 @@
       "sha256": "cc8a0841311fc76b9b2fc0ac967476e4c33800b7a0eaf53895a413c3e79d7087"
     },
     {
+      "path": "docs/dealflow-completion/PART2_STAGING_AUTHORITY_RESEAL.md",
+      "size": 1054,
+      "mode": 33188,
+      "sha256": "d2802dd2a81e83896e21c301a3df5a0d92a90cf89dffbc3d13873757df040fb7"
+    },
+    {
       "path": "docs/dealflow-completion/PRODUCTION_59_TO_129_AND_DURABLE_WORKER_RUNBOOK.md",
       "size": 4379,
       "mode": 33188,
@@ -362,19 +368,19 @@
       "path": "docs/dealflow-completion/current-source-inventory.csv",
       "size": 52505,
       "mode": 33188,
-      "sha256": "7d07392d6f283c8b2095ba6d5337d6d029c9d4849a8b02156c4629b4dd859143"
+      "sha256": "e9678232f2b6c0df67330e721c70a4dec799d7db477796cf3f640cae385eee51"
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "0d6bdd6a0a97c385d2acde59778f41446f2e92c8bc6abc6ddcc006b2bd7f121d"
+      "sha256": "aa08f1526d431668a58f14b107b435c4fb21e1677a9fe5d14ab026ebff6aa057"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "97a89f3e7bee09d877457c38ebc1c4703d8e8bb64e162212dbeb2c0d00edc45e"
+      "sha256": "4130815bc82c07c6f02b4bc35efad0eaf1c8fe46ebf79afe488d2e5ab1c33ec3"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1116,9 +1122,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 186931,
+      "size": 186933,
       "mode": 33188,
-      "sha256": "b5555194045030128b3e12afcefd00e9d6957e0153637296453293514653c4b4"
+      "sha256": "de65d5d7dbb06a61a5fd684324b9901541cc58a368381d418fb32a68a568ee71"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1182,9 +1188,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 85251,
+      "size": 85253,
       "mode": 33188,
-      "sha256": "44ea9b85723ae9c383ee1a1265d53856ed38f7da2ba4f355101094e409aa745e"
+      "sha256": "42cf07db0d179b947477ad6a7170c7d1f7b81f4a26c3ae442164ee6aaa26e4a2"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1224,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 302194,
+      "size": 302196,
       "mode": 33188,
-      "sha256": "5584289147ba340897e8171302267c43caddb8c239e476d1c25f058472457b3b"
+      "sha256": "0931b21db1c3750cd06a9673da22ce415504f47a076710838edef6ca1037e19e"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1278,9 +1284,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 62047,
+      "size": 62049,
       "mode": 33188,
-      "sha256": "643b6f73871f5a389fc08b171ca3d5fdc417b00585ad63e2a827ab2147a29860"
+      "sha256": "2dc4413ef76acb5e90245b4798983e7898b940a82bc780c013262817fbb33e88"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1344,9 +1350,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 11421,
+      "size": 11423,
       "mode": 33188,
-      "sha256": "565662bee1adb9e880b4a67f52a2495f62416e37e7b99f08467b9f8f7338fafd"
+      "sha256": "ea1e086f9dbe398bd60ee14e9a187938b9a5f06cb443e1a72bf89ea1a4357166"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1356,9 +1362,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 137622,
+      "size": 137624,
       "mode": 33188,
-      "sha256": "3166cb00856321dfae810be0dd4efba4dd16546c5bbc1b79b3b8ea81d9978edf"
+      "sha256": "6c105084536ca583e2b55d799f3d8e216f0c15b5ee6f6b146d56dfd770a586fb"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
