@@ -1,7 +1,7 @@
 {
   "schemaVersion": "dealflow.current-traceability.v1",
-  "generatedAt": "2026-08-12T22:10:54Z",
-  "implementationCommit": "1b0f74e21b8045b8b3fd1c17cd69956f35a59e0a",
+  "generatedAt": "2026-08-12T22:26:13Z",
+  "implementationCommit": "e358cb6c0096b0186858958ec15ecd6d115454d1",
   "forward": [
     {
       "requirement": "signup_closure",
