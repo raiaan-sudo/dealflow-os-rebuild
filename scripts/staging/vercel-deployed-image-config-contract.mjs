@@ -1,8 +1,15 @@
-const EXACT_COMPILED_STATIC_MEDIA_LOCAL_PATTERN = Object.freeze({
-  pathname:
-    "^(?:\\/_next\\/static\\/media(?:\\/(?!\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)|$))$",
-  search: "",
-});
+const EXACT_COMPILED_STATIC_MEDIA_LOCAL_PATTERNS = Object.freeze([
+  Object.freeze({
+    pathname:
+      "^(?:\\/_next\\/static\\/media(?:\\/(?!\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)|$))$",
+    search: "",
+  }),
+  Object.freeze({
+    pathname:
+      "^(?:\\/_next\\/static\\/immutable\\/media(?:\\/(?!\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)|$))$",
+    search: "",
+  }),
+]);
 const EXACT_IMAGE_SIZES = Object.freeze([
   32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 1920, 2048,
   3840,
@@ -62,10 +69,9 @@ export function summarizeDeployedImageConfiguration(images) {
     localPatternCount: Array.isArray(images.localPatterns)
       ? images.localPatterns.length
       : null,
-    onlyCompiledStaticMediaLocalPattern:
-      localPatterns.length === 1 &&
-      JSON.stringify(localPatterns[0]) ===
-        JSON.stringify(EXACT_COMPILED_STATIC_MEDIA_LOCAL_PATTERN),
+    onlyCompiledStaticMediaLocalPatterns:
+      JSON.stringify(localPatterns) ===
+      JSON.stringify(EXACT_COMPILED_STATIC_MEDIA_LOCAL_PATTERNS),
     exactQualityPortfolio:
       JSON.stringify(images.qualities) === JSON.stringify([75]),
     exactSizePortfolio:
@@ -116,9 +122,8 @@ export function assertExactCandidateDeployedImagePortfolioConfiguration({
   }
   if (
     !Array.isArray(localPatterns) ||
-    localPatterns.length !== 1 ||
-    JSON.stringify(localPatterns[0]) !==
-      JSON.stringify(EXACT_COMPILED_STATIC_MEDIA_LOCAL_PATTERN)
+    JSON.stringify(localPatterns) !==
+      JSON.stringify(EXACT_COMPILED_STATIC_MEDIA_LOCAL_PATTERNS)
   ) {
     throw new Error(
       "Deployed image configuration is not limited to Vercel's compiled static-media path",
@@ -172,8 +177,8 @@ export function assertExactCandidateDeployedImagePortfolioConfiguration({
     deployedImageConfigurationPresent: true,
     remotePatternCount: 0,
     domainCount: 0,
-    localPatternCount: 1,
-    onlyCompiledStaticMediaLocalPattern: true,
+    localPatternCount: 2,
+    onlyCompiledStaticMediaLocalPatterns: true,
     optimizerEligibleStaticMediaAssetCount: 0,
     exactQualityPortfolio: [75],
     exactSizePortfolio: [...EXACT_IMAGE_SIZES],

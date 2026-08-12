@@ -10,11 +10,18 @@ import {
 const exactImages = Object.freeze({
   remotePatterns: [],
   domains: [],
-  localPatterns: [{
-    pathname:
-      "^(?:\\/_next\\/static\\/media(?:\\/(?!\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)|$))$",
-    search: "",
-  }],
+  localPatterns: [
+    {
+      pathname:
+        "^(?:\\/_next\\/static\\/media(?:\\/(?!\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)|$))$",
+      search: "",
+    },
+    {
+      pathname:
+        "^(?:\\/_next\\/static\\/immutable\\/media(?:\\/(?!\\.{1,2}(?:\\/|$))(?:(?:(?!(?:^|\\/)\\.{1,2}(?:\\/|$)).)*?)|$))$",
+      search: "",
+    },
+  ],
   qualities: [75],
   sizes: [32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 1920, 2048, 3840],
   dangerouslyAllowSVG: false,
@@ -46,7 +53,7 @@ assert.equal(
 assert.equal(proof.rawDeploymentMetadataPersisted, false);
 assert.equal(proof.deploymentIdPersistedInThisProof, false);
 assert.equal(proof.projectIdPersistedInThisProof, false);
-assert.equal(proof.sanitizedShape.onlyCompiledStaticMediaLocalPattern, true);
+assert.equal(proof.sanitizedShape.onlyCompiledStaticMediaLocalPatterns, true);
 assert.equal(proof.sanitizedShape.rawValuesPersisted, false);
 assert.deepEqual(summarizeDeployedImageConfiguration(undefined), {
   rootType: "undefined",
@@ -60,6 +67,7 @@ for (const [label, images, count = 0] of [
   ["legacy domain", { ...exactImages, domains: ["example.com"] }],
   ["missing compiled local pattern", { ...exactImages, localPatterns: [] }],
   ["broad local pattern", { ...exactImages, localPatterns: [{ pathname: "/**", search: "" }] }],
+  ["missing immutable compiled local pattern", { ...exactImages, localPatterns: exactImages.localPatterns.slice(0, 1) }],
   ["extra local pattern", { ...exactImages, localPatterns: [...exactImages.localPatterns, { pathname: "/logo.svg", search: "" }] }],
   ["eligible static media", exactImages, 1],
   ["wrong quality", { ...exactImages, qualities: [50, 75] }],
@@ -107,5 +115,5 @@ for (const sourcePolicy of [
 }
 
 console.log(
-  "Vercel deployed image config contract: PASS (configuration compatible with later enumerated-source closure, sole compiled static-media namespace, zero manifest-bound eligible assets, no unknown authority keys)",
+  "Vercel deployed image config contract: PASS (configuration compatible with later enumerated-source closure, exact compiled static-media namespaces, zero manifest-bound eligible assets, no unknown authority keys)",
 );

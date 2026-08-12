@@ -3607,8 +3607,8 @@ async function provePostDeployStaticAssetGate(
     hostedExactCandidateEnumeratedImagePortfolioProof?.status !== "PASS" ||
     hostedExactCandidateEnumeratedImagePortfolioProof.remotePatternCount !== 0 ||
     hostedExactCandidateEnumeratedImagePortfolioProof.domainCount !== 0 ||
-    hostedExactCandidateEnumeratedImagePortfolioProof.localPatternCount !== 1 ||
-    hostedExactCandidateEnumeratedImagePortfolioProof.onlyCompiledStaticMediaLocalPattern !== true ||
+    hostedExactCandidateEnumeratedImagePortfolioProof.localPatternCount !== 2 ||
+    hostedExactCandidateEnumeratedImagePortfolioProof.onlyCompiledStaticMediaLocalPatterns !== true ||
     hostedExactCandidateEnumeratedImagePortfolioProof.optimizerEligibleStaticMediaAssetCount !== 0 ||
     hostedExactCandidateEnumeratedImagePortfolioProof.compiledConfigurationCompatibleWithEnumeratedPortfolioClosure !== true ||
     hostedExactCandidateEnumeratedImagePortfolioProof.authoritativeHostedOutputInventoryProven !== false ||
