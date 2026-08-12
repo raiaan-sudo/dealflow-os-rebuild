@@ -300,6 +300,9 @@ const statusRoute = loadTsModuleWithMocks(
         );
       },
     },
+    "@/lib/release/approved-launch-profile": {
+      isMetaProviderIncluded: () => true,
+    },
   },
 );
 for (const denialStatus of [401, 403]) {
@@ -425,6 +428,9 @@ const callbackRoute = loadTsModuleWithMocks(
       },
     },
     "@/lib/integrations/meta/callback-truth": callbackTruth,
+    "@/lib/release/approved-launch-profile": {
+      isMetaProviderIncluded: () => true,
+    },
     "@/lib/integrations/meta/oauth-state": {
       consumeMetaOAuthStateBinding: async () => ({
         returnTo: "/launch?campaignId=offline-campaign",

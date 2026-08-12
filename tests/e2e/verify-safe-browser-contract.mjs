@@ -778,9 +778,11 @@ requireAll(
 requireAll(
   productMessages,
   [
-    '"billing.paywallDescription": "Preview stays free. An active subscription is required before this campaign can launch to Meta."',
-    '"billing.paywallDescription": "L\'aperçu demeure gratuit. Un abonnement actif est requis avant le lancement de cette campagne dans Meta."',
-    '"billing.paywallDescription": "La vista previa sigue siendo gratuita. Se requiere una suscripción activa antes de lanzar esta campaña en Meta."',
+    '"billing.paywallDescription": "Preview stays free. An active subscription is required to activate this campaign workspace."',
+    '"billing.paywallDescription": "L\'aperçu demeure gratuit. Un abonnement actif est requis pour activer cet espace de campagne."',
+    '"billing.paywallDescription": "La vista previa sigue siendo gratuita. Se requiere una suscripción activa para activar este espacio de campaña."',
+    '"billing.paywallBody": "You can keep reviewing the campaign before payment. External advertising-provider launch is not included in this release."',
+    '"billing.planIncludes": "Includes campaign workspaces, creative tools, lead capture, reporting, and GHL handoff."',
   ],
   "Localized paywall catalog",
 );
