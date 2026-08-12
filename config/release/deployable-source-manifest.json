@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1173,
-  "deployableSourceSha256": "5dc224d9201352e68a06feca6312c384f39524cf02a72a94985e66a35697d56b",
+  "entryCount": 1174,
+  "deployableSourceSha256": "422f9388901b3190451d0be423a607f88580036c03e64100596d24ef467bb869",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "9973361d8693379bb55ca8bef9b411762d9bc0fc41b3cf3114ef53737c73313c"
+      "sha256": "c351bc396329bb6bdaabb8e5290c5bec7072e05a46f48227773ce9e78e3f3e45"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -374,19 +374,19 @@
       "path": "docs/dealflow-completion/current-source-inventory.csv",
       "size": 52505,
       "mode": 33188,
-      "sha256": "71c66901a4f73cf3482c3aa736138f0f052a08786d85bee02d6daa6e614495fc"
+      "sha256": "84d355f5f2c28c61baf856ef126ef508f641045946e205bcb543ffc8c09ec4ed"
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85251,
+      "size": 85255,
       "mode": 33188,
-      "sha256": "9354b4aba7829cb3b8418db0ebd5b343ef8623a6bfe943b9f638b4a2ddf18f00"
+      "sha256": "8fbfe99a657e6b813bbd4a622b0a3347e353672c7b434250edda0dfd6695de11"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
-      "size": 3694,
+      "size": 3698,
       "mode": 33188,
-      "sha256": "41f05de2a5b777430f8c67acc9ae12c21df42866a801538d70d89d76278b99fd"
+      "sha256": "0014c7848d54356454975b2632d2c9fd41de6a403f71d59ebf311ef1e409aa9d"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -738,9 +738,9 @@
     },
     {
       "path": "package.json",
-      "size": 19789,
+      "size": 19915,
       "mode": 33188,
-      "sha256": "9c0bf07c5b872377722aa96090f94d9cc60319e38a6b1f0adb7f830196ca1db1"
+      "sha256": "e1fe5a8f52abf9cb6badc00f6d986c3c1d57ac7e8f028cd4087feb0c66968cfd"
     },
     {
       "path": "playwright.safe.config.ts",
@@ -1014,15 +1014,21 @@
     },
     {
       "path": "scripts/production/run-exact-production-migrations.mjs",
-      "size": 16755,
+      "size": 21164,
       "mode": 33188,
-      "sha256": "9224911debf5767a175d75fae2cfa9827872b5b380d4283c1bcf3fbafa5e228d"
+      "sha256": "c489cfa639265ba75e55d9cf72283545f4fbe70c6a60c5761b6626b177937847"
     },
     {
       "path": "scripts/production/sign-release-guard-v5-envelope.mjs",
       "size": 3095,
       "mode": 33188,
       "sha256": "3ac3f027cf95ee10936ba280dd4644818d31dd1eaf31f6cf6fb99eaf897105ff"
+    },
+    {
+      "path": "scripts/production/test-production-shaped-migration-rehearsal.mjs",
+      "size": 15551,
+      "mode": 33188,
+      "sha256": "82a707601ed1a743b0941abbf2f71a7aca11d37206f2bff5db8d34233cb3732e"
     },
     {
       "path": "scripts/production/test-release-evidence-broker-contract.mjs",
@@ -2238,9 +2244,9 @@
     },
     {
       "path": "scripts/test-production-migration-broker-contract.mjs",
-      "size": 2101,
+      "size": 3632,
       "mode": 33188,
-      "sha256": "8cc621d4d76e9931ec83e699bd20776bf2a64385385264e01f7e1035802996a3"
+      "sha256": "e4067ccf9fb3f7258d54a79476346f5b06758f50452765143e8991cda56c0bf0"
     },
     {
       "path": "scripts/test-production-route-contract.mjs",

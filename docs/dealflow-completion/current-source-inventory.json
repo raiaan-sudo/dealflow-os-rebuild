@@ -1,10 +1,10 @@
 {
   "schemaVersion": "dealflow.current-source-inventory.v1",
-  "generatedAt": "2026-08-12T22:26:13Z",
-  "implementationCommit": "e358cb6c0096b0186858958ec15ecd6d115454d1",
-  "implementationTree": "6bcd913bfb2c4b96fc70898fd3747d364abecc56",
+  "generatedAt": "2026-08-12T23:30:00.000Z",
+  "implementationCommit": "46e18f38e3fbd2287fcad9abad4f0f96b8f0021a",
+  "implementationTree": "10f5ae8fba75ce83a9262fc076896fb1a2cee978",
   "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
-  "trackedFileCount": 1186,
+  "trackedFileCount": 1187,
   "migrationCount": 129,
   "classCounts": {
     "aggregate": 6,
@@ -23,8 +23,8 @@
     "component": 68,
     "documentation": 96,
     "library_module": 293,
-    "script": 270,
-    "test": 212
+    "script": 271,
+    "test": 213
   },
   "records": [
     {
@@ -55,13 +55,13 @@
       "class": "aggregate",
       "identity": "script",
       "path": "<tracked-source>",
-      "detail": "270"
+      "detail": "271"
     },
     {
       "class": "aggregate",
       "identity": "test",
       "path": "<tracked-source>",
-      "detail": "212"
+      "detail": "213"
     },
     {
       "class": "api_route",
