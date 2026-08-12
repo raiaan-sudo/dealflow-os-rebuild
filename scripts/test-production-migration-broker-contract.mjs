@@ -2,6 +2,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
+import {
+  assertRecoverableHistory,
+  buildSql,
+  migrationPortfolio,
+  partitionPortfolio,
+} from "./production/run-exact-production-migrations.mjs";
 
 const broker = fs.readFileSync("scripts/production/run-exact-production-migrations.mjs", "utf8");
 const guardVerifier = fs.readFileSync("scripts/production/verify-release-guard-v5.mjs", "utf8");
@@ -10,6 +16,7 @@ for (const marker of [
   "EXPECTED_TOTAL = 129",
   "EXPECTED_PENDING = 70",
   "20260426000000_forward_foundation_bootstrap.sql",
+  "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
   'FIRST_PRODUCTION_VERSION = "20260426110000"',
   'LAST_PRODUCTION_VERSION = "20260706170000"',
   "partitionPortfolio(portfolio)",
@@ -18,6 +25,7 @@ for (const marker of [
   "statement_timeout = '300s'",
   "pg_wal_lsn_diff",
   "FAILED_FIRST_ERROR",
+  "migration_history_recovery_prefix_invalid",
 ]) assert.ok(broker.includes(marker), `migration broker marker missing: ${marker}`);
 for (const marker of [
   "dealflow.release-guard.v5",
@@ -56,5 +64,26 @@ assert.equal(
   output.portfolioSha256,
   "a10f2771155eafbea20995277347d0b5b53799c3afce028a81d3467bdc88ab33",
   "production broker must bind the same canonical portfolio digest as qualification, staging, and release evidence",
+);
+assert.equal(output.foundationPending, true);
+const portfolio = migrationPortfolio();
+const partition = partitionPortfolio(portfolio);
+const baseline = partition.applied.map((entry) => entry.version);
+const firstRecoverable = partition.pending.slice(0, 5).map((entry) => entry.version);
+const recovery = assertRecoverableHistory([...baseline, ...firstRecoverable], portfolio);
+assert.deepEqual(recovery.completedPendingVersions, firstRecoverable);
+assert.equal(recovery.remaining, 65);
+assert.throws(
+  () => assertRecoverableHistory([...baseline, partition.pending[0].version], portfolio),
+  /Foundation and production-shape adoption|recoverable portfolio prefix|Remote migration history/i,
+);
+const recoverySql = buildSql(portfolio, { completedPendingVersions: firstRecoverable });
+assert.ok(!recoverySql.includes("20260426000000_forward_foundation_bootstrap.sql"));
+assert.ok(!recoverySql.includes("dealflow_foundation_guard"));
+assert.equal((recoverySql.match(/^BEGIN;$/gm) ?? []).length, 65);
+assert.doesNotMatch(
+  broker.slice(broker.indexOf("export function buildSql"), broker.indexOf("function readRemoteHistory")),
+  /for \(const entry of pending\) \{/,
+  "production broker must not execute the fresh-only bootstrap as an ordinary pending migration",
 );
 console.log("production migration broker contract: PASS");

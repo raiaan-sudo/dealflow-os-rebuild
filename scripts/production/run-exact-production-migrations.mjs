@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { verifyReleaseGuardV5 } from "./verify-release-guard-v5.mjs";
 import { verifyMigrationDatabaseTarget } from "./migration-target-authority.mjs";
 import { verifyPinnedPsql } from "./verify-pinned-psql.mjs";
@@ -18,6 +19,8 @@ const EXPECTED_SAFE_SUFFIX = "phxm";
 const EXPECTED_PROJECT_FINGERPRINT =
   "ad5e80fbea50d6e2ccc5112a81de18e14f5b44722b07a216a715e78ee6dce321";
 const FOUNDATION = "20260426000000_forward_foundation_bootstrap.sql";
+const PRODUCTION_ADOPTION =
+  "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const FIRST_PRODUCTION_VERSION = "20260426110000";
 const LAST_PRODUCTION_VERSION = "20260706170000";
 
@@ -31,7 +34,7 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function migrationPortfolio() {
+export function migrationPortfolio() {
   const digest = crypto.createHash("sha256");
   const entries = fs
     .readdirSync(MIGRATIONS)
@@ -57,7 +60,7 @@ function migrationPortfolio() {
   return { entries, digest: digest.digest("hex") };
 }
 
-function assertPortfolio(portfolio) {
+export function assertPortfolio(portfolio) {
   if (portfolio.entries.length !== EXPECTED_TOTAL) {
     fail("migration_portfolio_count_mismatch", "Expected exactly 129 migrations.");
   }
@@ -78,7 +81,7 @@ function assertPortfolio(portfolio) {
   }
 }
 
-function partitionPortfolio(portfolio) {
+export function partitionPortfolio(portfolio) {
   const applied = portfolio.entries.filter((entry) =>
     entry.name !== FOUNDATION &&
     entry.version >= FIRST_PRODUCTION_VERSION &&
@@ -151,14 +154,61 @@ function stripOuterTransaction(name, sql) {
   return sql;
 }
 
-function buildSql(portfolio) {
+export function buildSql(portfolio, { completedPendingVersions = [] } = {}) {
   const { pending } = partitionPortfolio(portfolio);
+  const foundation = pending[0];
+  const adoption = pending[1];
+  if (foundation?.name !== FOUNDATION || adoption?.name !== PRODUCTION_ADOPTION) {
+    fail("migration_adoption_order_invalid", "Production foundation adoption ordering is invalid.");
+  }
+  const completed = new Set(completedPendingVersions);
+  const foundationComplete = completed.has(foundation.version);
+  const adoptionComplete = completed.has(adoption.version);
+  if (foundationComplete !== adoptionComplete) {
+    fail(
+      "migration_adoption_atomicity_invalid",
+      "Foundation and production-shape adoption history must be present together.",
+    );
+  }
+  const expectedCompleted = pending
+    .slice(0, completed.size)
+    .map((entry) => entry.version);
+  if (
+    completed.size !== expectedCompleted.length ||
+    expectedCompleted.some((version) => !completed.has(version))
+  ) {
+    fail(
+      "migration_recovery_prefix_invalid",
+      "Completed forward migrations are not an exact portfolio prefix.",
+    );
+  }
   const sections = [
     "\\set ON_ERROR_STOP on",
     "SELECT pg_advisory_lock(hashtextextended('dealflow-exact-production-migrations', 0));",
     "CREATE TEMP TABLE dealflow_migration_observation(name text, elapsed_ms numeric, wal_bytes numeric, lock_count bigint) ON COMMIT PRESERVE ROWS;",
   ];
-  for (const entry of pending) {
+  if (!foundationComplete) {
+    const adoptionBody = stripOuterTransaction(
+      adoption.name,
+      fs.readFileSync(path.join(MIGRATIONS, adoption.name), "utf8"),
+    );
+    sections.push(
+      // The bootstrap is fresh-only DDL and must never run against production.
+      // Adopt its history atomically with the exact pre-candidate validation and
+      // normalization migration so a failed shape check leaves no partial marker.
+      "BEGIN;",
+      "SET LOCAL lock_timeout = '3s';",
+      "SET LOCAL statement_timeout = '300s';",
+      "SELECT clock_timestamp() AS started_at, pg_current_wal_lsn() AS started_lsn, (SELECT count(*) FROM pg_locks WHERE pid=pg_backend_pid()) AS started_locks \\gset",
+      adoptionBody,
+      `INSERT INTO supabase_migrations.schema_migrations(version, statements) VALUES (${sqlLiteral(foundation.version)}, ARRAY[]::text[]);`,
+      `INSERT INTO supabase_migrations.schema_migrations(version, statements) VALUES (${sqlLiteral(adoption.version)}, ARRAY[]::text[]);`,
+      `INSERT INTO dealflow_migration_observation VALUES (${sqlLiteral(foundation.name)}, 0, 0, (SELECT count(*) FROM pg_locks WHERE pid=pg_backend_pid()));`,
+      `INSERT INTO dealflow_migration_observation SELECT ${sqlLiteral(adoption.name)}, extract(epoch FROM (clock_timestamp() - :'started_at'::timestamptz))*1000, pg_wal_lsn_diff(pg_current_wal_lsn(), :'started_lsn'::pg_lsn), (SELECT count(*) FROM pg_locks WHERE pid=pg_backend_pid());`,
+      "COMMIT;",
+    );
+  }
+  for (const entry of pending.slice(Math.max(2, completed.size))) {
     const body = stripOuterTransaction(
       entry.name,
       fs.readFileSync(path.join(MIGRATIONS, entry.name), "utf8"),
@@ -183,7 +233,7 @@ function buildSql(portfolio) {
   return `${sections.join("\n")}\n`;
 }
 
-function assertRemoteHistory(psql, connection, password, expectedVersions) {
+function readRemoteHistory(psql, connection, password) {
   const query =
     "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;";
   const result = spawnSync(psql, [connection, "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", query], {
@@ -192,12 +242,41 @@ function assertRemoteHistory(psql, connection, password, expectedVersions) {
     maxBuffer: 4 * 1024 * 1024,
   });
   if (result.status !== 0) fail("migration_history_query_failed", "Migration history query failed.");
-  const actual = result.stdout.trim().split(/\s+/).filter(Boolean);
+  return result.stdout.trim().split(/\s+/).filter(Boolean);
+}
+
+export function assertRecoverableHistory(actual, portfolio) {
+  const partition = partitionPortfolio(portfolio);
+  const baseline = new Set(partition.applied.map((entry) => entry.version));
+  const pending = partition.pending.map((entry) => entry.version);
+  const pendingSet = new Set(pending);
   if (
-    actual.length !== expectedVersions.length ||
-    actual.some((version, index) => version !== expectedVersions[index])
+    new Set(actual).size !== actual.length ||
+    [...baseline].some((version) => !actual.includes(version)) ||
+    actual.some((version) => !baseline.has(version) && !pendingSet.has(version))
   ) {
-    fail("migration_history_exact_mismatch", "Remote migration history is not the exact expected prefix.");
+    fail("migration_history_exact_mismatch", "Remote migration history contains missing or unknown versions.");
+  }
+  const completedPendingVersions = pending.filter((version) => actual.includes(version));
+  const expectedCount = baseline.size + completedPendingVersions.length;
+  if (
+    actual.length !== expectedCount ||
+    (completedPendingVersions.length === 1) ||
+    completedPendingVersions.some((version, index) => version !== pending[index])
+  ) {
+    fail("migration_history_recovery_prefix_invalid", "Remote migration history is not an exact recoverable portfolio prefix.");
+  }
+  return { completedPendingVersions, remaining: pending.length - completedPendingVersions.length };
+}
+
+function assertFinalRemoteHistory(psql, connection, password, portfolio) {
+  const actual = readRemoteHistory(psql, connection, password);
+  const expected = portfolio.entries.map((entry) => entry.version).sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((version, index) => version !== expected[index])
+  ) {
+    fail("migration_history_exact_mismatch", "Remote migration history is not the exact final portfolio.");
   }
 }
 
@@ -234,7 +313,7 @@ function exactSourceIdentity() {
   return { commit: commit.stdout.trim(), tree: tree.stdout.trim() };
 }
 
-function parseObservations(stdout) {
+export function parseObservations(stdout, expectedCount = EXPECTED_PENDING) {
   const match = stdout.match(
     /DEALFLOW_OBSERVATIONS_BEGIN\s*\n([\s\S]*?)DEALFLOW_OBSERVATIONS_END/,
   );
@@ -258,8 +337,8 @@ function parseObservations(stdout) {
       lockCount: Number(lockCount),
     };
   });
-  if (observations.length !== EXPECTED_PENDING) {
-    fail("migration_observations_incomplete", "Not all 70 migration observations were returned.");
+  if (observations.length !== expectedCount) {
+    fail("migration_observations_incomplete", "Not all expected migration observations were returned.");
   }
   return observations;
 }
@@ -284,8 +363,10 @@ function main() {
     if (
       /^BEGIN\s*;\s*$/im.test(owningBody) ||
       /^COMMIT\s*;\s*$/im.test(owningBody) ||
-      (generatedSql.match(/^BEGIN;$/gm) ?? []).length !== EXPECTED_PENDING ||
-      (generatedSql.match(/^COMMIT;$/gm) ?? []).length !== EXPECTED_PENDING
+      (generatedSql.match(/^BEGIN;$/gm) ?? []).length !== EXPECTED_PENDING - 1 ||
+      (generatedSql.match(/^COMMIT;$/gm) ?? []).length !== EXPECTED_PENDING - 1 ||
+      generatedSql.includes("dealflow_foundation_guard") ||
+      !generatedSql.includes(`VALUES ('${FOUNDATION.slice(0, 14)}', ARRAY[]::text[])`)
     ) {
       fail("migration_transaction_structure_invalid", "Generated migration transactions are not exactly one per file.");
     }
@@ -383,10 +464,11 @@ function main() {
     fail("migration_password_unavailable", "Database password is unavailable from Keychain.");
   }
   const password = passwordResult.stdout.trim();
-  const partition = partitionPortfolio(portfolio);
-  const expectedApplied = partition.applied.map((entry) => entry.version);
-  assertRemoteHistory(resolvedPsql, connection, password, expectedApplied);
-  const sql = buildSql(portfolio);
+  const actualBefore = readRemoteHistory(resolvedPsql, connection, password);
+  const recovery = assertRecoverableHistory(actualBefore, portfolio);
+  const sql = buildSql(portfolio, {
+    completedPendingVersions: recovery.completedPendingVersions,
+  });
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-migrations-"));
   const sqlFile = path.join(temp, "apply.sql");
   fs.writeFileSync(sqlFile, sql, { mode: 0o600 });
@@ -409,21 +491,16 @@ function main() {
     });
     fail("migration_apply_failed", "Migration apply stopped at the first error.");
   }
-  assertRemoteHistory(
-    resolvedPsql,
-    connection,
-    password,
-    portfolio.entries.map((entry) => entry.version),
-  );
-  const observations = parseObservations(apply.stdout);
+  assertFinalRemoteHistory(resolvedPsql, connection, password, portfolio);
+  const observations = parseObservations(apply.stdout, recovery.remaining);
   writeEvidence(normalizedEvidenceDir, "migration-result.json", {
     schema: "dealflow.exact-migration-result.v1",
     mode,
     status: "PASS",
     startedAt,
     finishedAt: new Date().toISOString(),
-    expectedBefore: 59,
-    applied: 70,
+    expectedBefore: actualBefore.length,
+    applied: recovery.remaining,
     verifiedAfter: 129,
     portfolioSha256: portfolio.digest,
     entries: portfolio.entries,
@@ -431,9 +508,11 @@ function main() {
   });
 }
 
-try {
-  main();
-} catch (error) {
-  process.stderr.write(`${error?.code ?? "migration_broker_failed"}\n`);
-  process.exitCode = 1;
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(`${error?.code ?? "migration_broker_failed"}\n`);
+    process.exitCode = 1;
+  }
 }
