@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1173,
-  "deployableSourceSha256": "471d98bb5fe23991fbc350c4e1861d1f49b5d5f28d864271eba81d40c2592685",
+  "deployableSourceSha256": "599c312555d01df66c3eb94db63157db61d4944db4956d1e69387c1573c5c938",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "eec77d5496b1f09d63a7dd5872f88393e107afede32d921503d3e21053c7296d"
+      "sha256": "553fe68f5ee23e10d8e9468b77afaf3d1726e400ed20c0f28054bed3b75c2a48"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "d4204929030fc5a7fd2fdba86e5e3a9af1798d882a091166c4b68c74ece5a446"
+      "sha256": "ee993af0c7d1c68046924c2f7c4f7a4829e5b3d5e2d5ddea8a716858f3b207d4"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "7515f044c9e31db6e97c0e0593a2a70a3ece797cc0fa1578e832b220acb02e05"
+      "sha256": "9b1fb462ce88253a26ce1350b850ad7aee0d4af4f8793df30f3eb312c4e9b4cb"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -2118,9 +2118,9 @@
     },
     {
       "path": "scripts/test-meta-tenant-fencing.mjs",
-      "size": 17486,
+      "size": 17678,
       "mode": 33188,
-      "sha256": "24dfacfd5380d259b4eacae20605a15f4dc3fbed949672c886c5a37685f8c8f3"
+      "sha256": "f9e7f8efed6565949946131f965d554e846269315230af6a39d29c30f9d0f37f"
     },
     {
       "path": "scripts/test-mfa-user-journey-contract.mjs",
@@ -6948,9 +6948,9 @@
     },
     {
       "path": "tests/e2e/verify-safe-browser-contract.mjs",
-      "size": 29914,
+      "size": 30174,
       "mode": 33188,
-      "sha256": "a52f9768bda534f7bc661ce72e33d1d1b45e0fc786972680d3889ac038646b15"
+      "sha256": "d31cedbd43082f84c684464f6361ce3e11c8356568a91c45e562466919e97d5b"
     },
     {
       "path": "tests/performance/README.md",
