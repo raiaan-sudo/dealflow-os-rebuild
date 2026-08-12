@@ -18,6 +18,8 @@ const EXPECTED_SAFE_SUFFIX = "phxm";
 const EXPECTED_PROJECT_FINGERPRINT =
   "ad5e80fbea50d6e2ccc5112a81de18e14f5b44722b07a216a715e78ee6dce321";
 const FOUNDATION = "20260426000000_forward_foundation_bootstrap.sql";
+const FIRST_PRODUCTION_VERSION = "20260426110000";
+const LAST_PRODUCTION_VERSION = "20260706170000";
 
 function fail(code, message) {
   const error = new Error(message);
@@ -65,12 +67,26 @@ function assertPortfolio(portfolio) {
       "The authoritative foundation migration is not first.",
     );
   }
-  if (
-    portfolio.entries.slice(EXPECTED_APPLIED).length !== EXPECTED_PENDING ||
-    new Set(portfolio.entries.map((entry) => entry.version)).size !== EXPECTED_TOTAL
-  ) {
+  const partition = partitionPortfolio(portfolio);
+  if (partition.applied.length !== EXPECTED_APPLIED ||
+    partition.pending.length !== EXPECTED_PENDING ||
+    partition.applied[0]?.version !== FIRST_PRODUCTION_VERSION ||
+    partition.applied.at(-1)?.version !== LAST_PRODUCTION_VERSION ||
+    partition.pending[0]?.name !== FOUNDATION ||
+    new Set(portfolio.entries.map((entry) => entry.version)).size !== EXPECTED_TOTAL) {
     fail("migration_portfolio_delta_mismatch", "The exact 59-to-129 delta is invalid.");
   }
+}
+
+function partitionPortfolio(portfolio) {
+  const applied = portfolio.entries.filter((entry) =>
+    entry.name !== FOUNDATION &&
+    entry.version >= FIRST_PRODUCTION_VERSION &&
+    entry.version <= LAST_PRODUCTION_VERSION,
+  );
+  const appliedVersions = new Set(applied.map((entry) => entry.version));
+  const pending = portfolio.entries.filter((entry) => !appliedVersions.has(entry.version));
+  return { applied, pending };
 }
 
 function parseArgs() {
@@ -136,7 +152,7 @@ function stripOuterTransaction(name, sql) {
 }
 
 function buildSql(portfolio) {
-  const pending = portfolio.entries.slice(EXPECTED_APPLIED);
+  const { pending } = partitionPortfolio(portfolio);
   const sections = [
     "\\set ON_ERROR_STOP on",
     "SELECT pg_advisory_lock(hashtextextended('dealflow-exact-production-migrations', 0));",
@@ -253,6 +269,7 @@ function main() {
   const portfolio = migrationPortfolio();
   assertPortfolio(portfolio);
   if (mode === "self-test") {
+    const partition = partitionPortfolio(portfolio);
     const generatedSql = buildSql(portfolio);
     const owningBody = stripOuterTransaction(
       "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
@@ -273,7 +290,16 @@ function main() {
       fail("migration_transaction_structure_invalid", "Generated migration transactions are not exactly one per file.");
     }
     process.stdout.write(
-      `${JSON.stringify({ status: "PASS", total: 129, applied: 59, pending: 70, portfolioSha256: portfolio.digest })}\n`,
+      `${JSON.stringify({
+        status: "PASS",
+        total: 129,
+        applied: partition.applied.length,
+        pending: partition.pending.length,
+        firstAppliedVersion: partition.applied[0]?.version,
+        lastAppliedVersion: partition.applied.at(-1)?.version,
+        foundationPending: partition.pending[0]?.name === FOUNDATION,
+        portfolioSha256: portfolio.digest,
+      })}\n`,
     );
     return;
   }
@@ -357,8 +383,9 @@ function main() {
     fail("migration_password_unavailable", "Database password is unavailable from Keychain.");
   }
   const password = passwordResult.stdout.trim();
-  const expectedPrefix = portfolio.entries.slice(0, 59).map((entry) => entry.version);
-  assertRemoteHistory(resolvedPsql, connection, password, expectedPrefix);
+  const partition = partitionPortfolio(portfolio);
+  const expectedApplied = partition.applied.map((entry) => entry.version);
+  assertRemoteHistory(resolvedPsql, connection, password, expectedApplied);
   const sql = buildSql(portfolio);
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "dealflow-migrations-"));
   const sqlFile = path.join(temp, "apply.sql");

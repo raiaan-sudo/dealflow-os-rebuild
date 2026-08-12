@@ -10,6 +10,9 @@ for (const marker of [
   "EXPECTED_TOTAL = 129",
   "EXPECTED_PENDING = 70",
   "20260426000000_forward_foundation_bootstrap.sql",
+  'FIRST_PRODUCTION_VERSION = "20260426110000"',
+  'LAST_PRODUCTION_VERSION = "20260706170000"',
+  "partitionPortfolio(portfolio)",
   "pg_advisory_lock",
   "lock_timeout = '3s'",
   "statement_timeout = '300s'",
@@ -30,8 +33,24 @@ const result = spawnSync(
 assert.equal(result.status, 0, result.stderr);
 const output = JSON.parse(result.stdout);
 assert.deepEqual(
-  { status: output.status, total: output.total, applied: output.applied, pending: output.pending },
-  { status: "PASS", total: 129, applied: 59, pending: 70 },
+  {
+    status: output.status,
+    total: output.total,
+    applied: output.applied,
+    pending: output.pending,
+    firstAppliedVersion: output.firstAppliedVersion,
+    lastAppliedVersion: output.lastAppliedVersion,
+    foundationPending: output.foundationPending,
+  },
+  {
+    status: "PASS",
+    total: 129,
+    applied: 59,
+    pending: 70,
+    firstAppliedVersion: "20260426110000",
+    lastAppliedVersion: "20260706170000",
+    foundationPending: true,
+  },
 );
 assert.equal(
   output.portfolioSha256,
