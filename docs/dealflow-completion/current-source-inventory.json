@@ -1,10 +1,10 @@
 {
   "schemaVersion": "dealflow.current-source-inventory.v1",
-  "generatedAt": "2026-08-12T20:32:16Z",
-  "implementationCommit": "f9b3998dd23e26ff25d5f20eab1585f745418224",
-  "implementationTree": "e388beb6a1c9f8d228f8e31bbd833fcfc82b1f78",
+  "generatedAt": "2026-08-12T22:00:06Z",
+  "implementationCommit": "938ddc57fce86a48da2211b4d9e37f362f157366",
+  "implementationTree": "43e76c9f2b0443e80f7d9dcc1d3a9ec8a40e5664",
   "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
-  "trackedFileCount": 1182,
+  "trackedFileCount": 1186,
   "migrationCount": 129,
   "classCounts": {
     "aggregate": 6,
@@ -21,10 +21,10 @@
   "aggregateCounts": {
     "ci_workflow": 2,
     "component": 68,
-    "documentation": 95,
-    "library_module": 292,
-    "script": 269,
-    "test": 211
+    "documentation": 96,
+    "library_module": 293,
+    "script": 270,
+    "test": 212
   },
   "records": [
     {
@@ -43,25 +43,25 @@
       "class": "aggregate",
       "identity": "documentation",
       "path": "<tracked-source>",
-      "detail": "95"
+      "detail": "96"
     },
     {
       "class": "aggregate",
       "identity": "library_module",
       "path": "<tracked-source>",
-      "detail": "292"
+      "detail": "293"
     },
     {
       "class": "aggregate",
       "identity": "script",
       "path": "<tracked-source>",
-      "detail": "269"
+      "detail": "270"
     },
     {
       "class": "aggregate",
       "identity": "test",
       "path": "<tracked-source>",
-      "detail": "211"
+      "detail": "212"
     },
     {
       "class": "api_route",
