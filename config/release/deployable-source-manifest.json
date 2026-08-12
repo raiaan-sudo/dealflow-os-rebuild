@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1169,
-  "deployableSourceSha256": "c0bdef708e86b85dc5e9d7321fe7499b9c894a89f0347855ce085a87a3c3987b",
+  "deployableSourceSha256": "65a561d47c5648f268c839c9c3bc039bf21564c6aa5b0e098604ebb244e02495",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -170,7 +170,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "ecc2efcd7685c4af525af6cbfd1c12976fac684ccf1b76593ac08e36068cb303"
+      "sha256": "071802a2ee27084976405d06df81ed953f40889c07d7d957df0c06a481cc2870"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -294,9 +294,9 @@
     },
     {
       "path": "docs/dealflow-completion/PART2_STAGING_AUTHORITY_RESEAL.md",
-      "size": 1054,
+      "size": 1603,
       "mode": 33188,
-      "sha256": "d2802dd2a81e83896e21c301a3df5a0d92a90cf89dffbc3d13873757df040fb7"
+      "sha256": "3c26a7cff547f5c77a82a2d79310c69b68be48297f66bc37e5debeac9b832402"
     },
     {
       "path": "docs/dealflow-completion/PRODUCTION_59_TO_129_AND_DURABLE_WORKER_RUNBOOK.md",
@@ -374,13 +374,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "4cc36a26ae3e7ee8a1c018ee25601b8fe1620cd8a3d466346dc3d8f665070617"
+      "sha256": "df0ef424d994131077319bde8e53d4243e298ca3181c51a2692552e38dca410e"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "ec5a5933c3f9344a92e7c4a11cff0c7a789ec623460a030fcce94afb58b8b7b5"
+      "sha256": "c8621b715ac004d7b6d87255ef263d81236a0b501a0af16f65f6e5de96b9cb99"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1122,9 +1122,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 186933,
+      "size": 187051,
       "mode": 33188,
-      "sha256": "de65d5d7dbb06a61a5fd684324b9901541cc58a368381d418fb32a68a568ee71"
+      "sha256": "515eb4272344269e0ca26eb2b6178bd12e3f092c109f60f5fc29043a2563155a"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1284,9 +1284,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 62049,
+      "size": 62355,
       "mode": 33188,
-      "sha256": "2dc4413ef76acb5e90245b4798983e7898b940a82bc780c013262817fbb33e88"
+      "sha256": "0e484b31ebd6776e26b0fe9c33d9056f35853ce1a3a205b693b49140463ec7ff"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",

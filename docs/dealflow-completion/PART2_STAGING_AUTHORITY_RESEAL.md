@@ -16,3 +16,12 @@ source manifest, pass the complete local qualification portfolio twice from the
 same retained checkout, and be used as the only source for isolated staging.
 The Part 1 bundle remains immutable and is superseded only for Part 2 staging
 execution by this documented successor.
+
+The first current hosted resume then proved a second fail-closed tooling defect:
+the verifier required the historical exact-129 application proof to report the
+new successor branch name. Commit
+`0c8534b119feb61b8fca8adb20ea8df2502cc7b4` preserves the current-branch
+execution gate while validating prior evidence against its exact historical
+branch, commit, tree, broker source hash, ancestry, schema digest, structural
+catalog digest, and all 129 migration hashes. This permits legitimate successor
+reseals without weakening prior-proof identity.
