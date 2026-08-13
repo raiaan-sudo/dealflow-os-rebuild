@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1174,
-  "deployableSourceSha256": "053a31991d4d15e89317a64515087d0f55dfd6bbfc449d13ebe30aa45d59f5e7",
+  "deployableSourceSha256": "d75ec67930111e1267056626f3636f6354b2f4a6c554a6b3e609f822884a008b",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -906,9 +906,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 110766,
+      "size": 110755,
       "mode": 33188,
-      "sha256": "dc3af4865354ce409c7b680491c5a5957a4f0c629e7158668fa4846c8f049802"
+      "sha256": "c955fd86db863ecb8f865657fa5b6a5adfbd7e1db95ec9d4e9e0939aa036c9cb"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -2246,7 +2246,7 @@
       "path": "scripts/test-production-migration-broker-contract.mjs",
       "size": 3632,
       "mode": 33188,
-      "sha256": "e4067ccf9fb3f7258d54a79476346f5b06758f50452765143e8991cda56c0bf0"
+      "sha256": "5135d49b66eea7440e2586c7d5f87bdd35fbbfcb24ed8db4ed6e99ae423b8971"
     },
     {
       "path": "scripts/test-production-route-contract.mjs",
@@ -2334,9 +2334,9 @@
     },
     {
       "path": "scripts/test-schema-reconciliation-disposable-db.mjs",
-      "size": 51134,
+      "size": 51683,
       "mode": 33188,
-      "sha256": "eef576af7836f1e7de51380a6c080d4d7f3286baf136bd44e659b7eced345b65"
+      "sha256": "316c5e86459b3114f89c999bb82d01fcf6f5a62b87cd8f6d9798164779114ab4"
     },
     {
       "path": "scripts/test-security-config-truth.mjs",
@@ -6420,9 +6420,9 @@
     },
     {
       "path": "supabase/migrations/20260710160000_validate_and_normalize_pre_candidate_shape.sql",
-      "size": 2802982,
+      "size": 2802971,
       "mode": 33188,
-      "sha256": "a61fb33d7da5d81c251dae3bc5877b0fdc967d794d803a2e0b435b8f4a2622ac"
+      "sha256": "8bce86bab50e47d7c534d9d5f031ca94cd85858dafc28b44461698fc3f4b8cb9"
     },
     {
       "path": "supabase/migrations/20260710170000_create_ghl_tenant_provisioning_foundation.sql",
@@ -6872,7 +6872,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "6ff6f8bad1d405e88cfe9317505656ab920ccb60a1970b611cf133ed20fd56f4"
+      "sha256": "25a3b8102ef88d76527b13d6952e9a54f13db1915c9ea97453eb6fb64f5beca5"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
