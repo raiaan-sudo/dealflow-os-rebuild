@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1174,
-  "deployableSourceSha256": "a57ac618ff1aaa134f110541f67e6a53112fff1b95cb23ed4da198a4aff77b1f",
+  "deployableSourceSha256": "053a31991d4d15e89317a64515087d0f55dfd6bbfc449d13ebe30aa45d59f5e7",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "d6099ff993490692482ed429a57bcbff9cf1c26fdf8589a07fd06d818e541e1c"
+      "sha256": "999195b43e7e9bfedd05b92288a471f2c01dd3d43bd91ead65c7f1327c7e5cd9"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -378,15 +378,15 @@
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85255,
+      "size": 85251,
       "mode": 33188,
-      "sha256": "8697221ed45ccdb822d1e82cb24baee669d7232ab2b2297e505a36f60d9dd91c"
+      "sha256": "a67fdfe34d885d6b6667471c4693eaae57d1b7cde8c3e78cab2ed775b53e0a09"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
-      "size": 3698,
+      "size": 3694,
       "mode": 33188,
-      "sha256": "40eaea567f5cabf5db2858868945aa9b8afd6bac24f199dca35b3b1e7795281a"
+      "sha256": "fb52badc35b37da995486ca4b93549ac55d2a5f1806e9931ea69c24ff940662e"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -912,9 +912,9 @@
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
-      "size": 15882,
+      "size": 16096,
       "mode": 33188,
-      "sha256": "21ae38d4360d90807daf634d11815934d888a123b0d0723ae76d3cf99caa4cd0"
+      "sha256": "c657d521cdffba6234735faf51589e6f13725236e786370839e3b6660b492b44"
     },
     {
       "path": "scripts/generate-release-guard.mjs",
@@ -1362,9 +1362,9 @@
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
-      "size": 18865,
+      "size": 19643,
       "mode": 33188,
-      "sha256": "855da190b3ef916c25eb923847337f4e433d334b0505b7dba6edbd80df3c155d"
+      "sha256": "e3fe55401401253e03f098d94d46ecd033d4109c0bbbd222a8478e7da758b9dc"
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
