@@ -224,6 +224,42 @@ const COMMITTED_FORWARD_RECOVERY_SEALS = Object.freeze({
   forward_104_to_120_catalog_rendering: FORWARD_104_TO_120_CATALOG_RECOVERY_SEAL,
 });
 
+// The isolated qibh database received this exact 129-migration application on
+// 2026-07-30. A later source successor changed only the fail-closed UUID text
+// adoption predicate in migration 20260710160000; the migration version set and
+// resulting catalog remained unchanged. This pin allows that one immutable
+// historical application proof to authorize a new read-only catalog reproof.
+// It never treats the historical portfolio digest as the current source digest.
+export const HISTORICAL_129_APPLICATION_AUTHORITY = Object.freeze({
+  applicationCommit: "78804a03702e78d3d1bc9cf5299f910e611b9c4b",
+  applicationTree: "79aacdc6c4c21bfc485e33cbf1129b7d68dbc2e8",
+  releaseBranch: "codex/dealflow-release-closure-plan",
+  manifestSha256: "bb4571128f205e504fbe0c360e361a77b2ea34d0e774fe37eafc3c22fc8943bb",
+  proofSha256: "b2ca403bca7601ae2047184cc846baf3f89fd6ceedca5bfccef167d212e707f5",
+  summarySha256: "40c8b043491bbf260befff8be6ae078c2833a40dae0199d43dacd7c293706e90",
+  brokerSourceSha256: "b5555194045030128b3e12afcefd00e9d6957e0153637296453293514653c4b4",
+  migrationCount: 129,
+  lastCommittedVersion: "20260727020000",
+  historicalMigrationPortfolioSha256:
+    "a10f2771155eafbea20995277347d0b5b53799c3afce028a81d3467bdc88ab33",
+  currentSourceReplayMigrationPortfolioSha256:
+    "41d169dd0426aeb2da8929102e997ab4d41647b0b4e539669b3031cca0512ce8",
+  changedMigrationFile: "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
+  historicalChangedMigrationSha256:
+    "a61fb33d7da5d81c251dae3bc5877b0fdc967d794d803a2e0b435b8f4a2622ac",
+  currentChangedMigrationSha256:
+    "8bce86bab50e47d7c534d9d5f031ca94cd85858dafc28b44461698fc3f4b8cb9",
+  normalizedSchemaSha256:
+    "bb53a8ff8275aa276f90a96e9889662629f90c0d518c16bf1085de726569e6b2",
+  structuralCatalogSha256:
+    "c7f516e5ed4ebe5c9ef362841bd71d51a991f21554f594b026a83e75a16ed461",
+});
+
+export function isExactHistorical129ApplicationAuthority(candidate) {
+  return Boolean(candidate) && Object.entries(HISTORICAL_129_APPLICATION_AUTHORITY)
+    .every(([field, expected]) => candidate[field] === expected);
+}
+
 const APPLICATION_REMOTE_STATES = new Set([
   "EXACT_COMMITTED_PORTFOLIO",
   "EXACT_FORWARD_COMMITTED_PORTFOLIO",

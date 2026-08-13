@@ -11,8 +11,10 @@ import {
   classifyExactCommittedForwardRecoverySeal,
   classifyExactStagingAuthSurface,
   classifyPriorMigrationEvidence,
+  HISTORICAL_129_APPLICATION_AUTHORITY,
   isExactCommittedForwardRecoverySeal,
   isExactCurrentResumeIdentity,
+  isExactHistorical129ApplicationAuthority,
   isExactSafeStagingAuthSurfaceProof,
   isAllowedStagingAuthSurfaceUserCount,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
@@ -70,12 +72,36 @@ requireMarker(
 );
 requireMarker(/Prior migration proof artifact does not match its sealed digest/, "prior artifact digest verification");
 requireMarker(/Prior migration proof does not match the exact pinned prior-state seal/, "exact prior seal pin");
+requireMarker(
+  /SEALED_HISTORICAL_129_APPLICATION_REQUIRES_CURRENT_READ_ONLY_REPROOF/,
+  "historical 129 application separated from current source reproof",
+);
+requireMarker(
+  /sourceReplayMigrationPortfolioSha256: migrationIdentity\.migrationPortfolioSha256/,
+  "current source replay digest retained separately from historical application digest",
+);
 requireMarker(/classifyExactCommittedForwardRecoverySeal/, "dedicated committed-forward recovery seal gate");
 assert.match(priorProofContractSource, /cc3e8c91f0f95a61b4b2f8e0c113367781e80bdf01ccf3a727a64cf664b2b6c7/, "exact failed-forward manifest pin");
 assert.match(priorProofContractSource, /2546b7c44116e0920534ef58f649acd9c037c586/, "exact failed-forward commit pin");
 assert.match(priorProofContractSource, /9c404170b7a5a4708d4685a6c22f540894eabf2e/, "exact failed-forward tree pin");
 assert.match(priorProofContractSource, /6ee6198163dfb51d2f3adf3cfeee5fbbc0611c2ae8bd7aeefd3cac6f474ea467/, "exact 104-to-120 catalog-recovery manifest pin");
 assert.match(priorProofContractSource, /722b9dd21abb0ca6c8d6a709ccfaf8077195557b2f8fceeaa326ea022cebc240/, "exact 104-to-120 catalog-recovery mutation pin");
+assert.equal(
+  isExactHistorical129ApplicationAuthority(HISTORICAL_129_APPLICATION_AUTHORITY),
+  true,
+  "The one exact historical 129 application authority must be accepted",
+);
+for (const field of Object.keys(HISTORICAL_129_APPLICATION_AUTHORITY)) {
+  const value = HISTORICAL_129_APPLICATION_AUTHORITY[field];
+  assert.equal(
+    isExactHistorical129ApplicationAuthority({
+      ...HISTORICAL_129_APPLICATION_AUTHORITY,
+      [field]: typeof value === "number" ? value + 1 : `x${value}`,
+    }),
+    false,
+    `Historical 129 application authority must reject changed ${field}`,
+  );
+}
 requireMarker(/SEALED_FORWARD_103_COMMIT_REQUIRES_READ_ONLY_REPROOF/, "dedicated read-only recovery identity");
 requireMarker(/SEALED_FORWARD_104_TO_120_COMMIT_REQUIRES_READ_ONLY_REPROOF/, "dedicated 104-to-120 read-only recovery identity");
 requireMarker(/5978cfc9a80f511cfed02d1d1f810a4720db7cc1/, "prior application commit pin");

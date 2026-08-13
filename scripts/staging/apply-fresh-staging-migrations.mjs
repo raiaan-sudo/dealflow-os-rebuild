@@ -41,7 +41,9 @@ import {
   classifyExactStagingAuthSurface,
   classifyExactCommittedForwardRecoverySeal,
   classifyPriorMigrationEvidence,
+  HISTORICAL_129_APPLICATION_AUTHORITY,
   isAllowedStagingAuthSurfaceUserCount,
+  isExactHistorical129ApplicationAuthority,
   PRIOR_MIGRATION_APPLICATION_ARTIFACTS,
   PRIOR_MIGRATION_COMMITTED_FORWARD_RECOVERY_ARTIFACTS,
   PRIOR_MIGRATION_READ_ONLY_EXACT_ARTIFACTS,
@@ -1935,6 +1937,50 @@ function loadAndValidatePriorMigrationProof({
       : requireExactPrior122
         ? FORWARD_122_TO_123_AUTHORITY.prior.finalMigration
       : requiredFinalMigration).slice(0, 14);
+  const historicalChangedRecord = proof?.applied?.find(
+    (record) =>
+      record?.file === HISTORICAL_129_APPLICATION_AUTHORITY.changedMigrationFile,
+  );
+  const currentChangedRecord = expectedApplied.find(
+    (record) =>
+      record.file === HISTORICAL_129_APPLICATION_AUTHORITY.changedMigrationFile,
+  );
+  const exactHistorical129Application =
+    !requirePinnedPrior103 &&
+    !requireExactPrior120 &&
+    !requireExactPrior122 &&
+    isExactHistorical129ApplicationAuthority({
+      applicationCommit: proof?.headCommit,
+      applicationTree: proof?.headTree,
+      releaseBranch: proof?.releaseBranch,
+      manifestSha256: sha256(manifestArtifact.contents),
+      proofSha256: sha256(proofArtifact?.contents ?? Buffer.alloc(0)),
+      summarySha256: sha256(summaryArtifact.contents),
+      brokerSourceSha256: proof?.brokerSourceSha256,
+      migrationCount: proof?.migrationCount,
+      lastCommittedVersion: proof?.lastCommittedVersion,
+      historicalMigrationPortfolioSha256: proof?.migrationPortfolioSha256,
+      currentSourceReplayMigrationPortfolioSha256: migrationIdentity.migrationPortfolioSha256,
+      changedMigrationFile: historicalChangedRecord?.file,
+      historicalChangedMigrationSha256: historicalChangedRecord?.sha256,
+      currentChangedMigrationSha256: currentChangedRecord?.sha256,
+      normalizedSchemaSha256: proof?.normalizedSchemaSha256,
+      structuralCatalogSha256:
+        proof?.remoteStateVerification?.state?.structuralCatalogSha256,
+    });
+  const expectedPriorPortfolioSha256 = exactHistorical129Application
+    ? HISTORICAL_129_APPLICATION_AUTHORITY.historicalMigrationPortfolioSha256
+    : expectedPortfolioSha256;
+  const expectedPriorApplied = exactHistorical129Application
+    ? expectedApplied.map((record) =>
+      record.file === HISTORICAL_129_APPLICATION_AUTHORITY.changedMigrationFile
+        ? {
+            ...record,
+            sha256:
+              HISTORICAL_129_APPLICATION_AUTHORITY.historicalChangedMigrationSha256,
+          }
+        : record)
+    : expectedApplied;
   const evidenceTruth = classifyPriorMigrationEvidence({
     actualNames,
     manifest,
@@ -2153,8 +2199,8 @@ function loadAndValidatePriorMigrationProof({
     summary.migrationCount !== expectedCount ||
     proof.migrationHistoryCount !== expectedCount ||
     summary.migrationHistoryCount !== expectedCount ||
-    proof.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
-    summary.migrationPortfolioSha256 !== expectedPortfolioSha256 ||
+    proof.migrationPortfolioSha256 !== expectedPriorPortfolioSha256 ||
+    summary.migrationPortfolioSha256 !== expectedPriorPortfolioSha256 ||
     proof.lastCommittedVersion !== expectedFinalVersion ||
     summary.lastCommittedVersion !== expectedFinalVersion ||
     proof.headCommit !== summary.headCommit ||
@@ -2168,7 +2214,7 @@ function loadAndValidatePriorMigrationProof({
     !/^[a-f0-9]{64}$/.test(
       proof.remoteStateVerification?.state?.structuralCatalogSha256 ?? "",
     ) ||
-    JSON.stringify(proof.applied) !== JSON.stringify(expectedApplied)
+    JSON.stringify(proof.applied) !== JSON.stringify(expectedPriorApplied)
   ) {
     throw new Error(
       requirePinnedPrior103
@@ -2216,6 +2262,7 @@ function loadAndValidatePriorMigrationProof({
     lastCommittedVersion: expectedFinalVersion,
     migrationFiles: expectedApplied,
     migrationPortfolioSha256: proof.migrationPortfolioSha256,
+    sourceReplayMigrationPortfolioSha256: migrationIdentity.migrationPortfolioSha256,
     normalizedSchemaSha256: proof.normalizedSchemaSha256,
     structuralCatalogSha256:
       proof.remoteStateVerification.state.structuralCatalogSha256,
@@ -2226,7 +2273,9 @@ function loadAndValidatePriorMigrationProof({
     evidenceRemoteMutationCompleted: evidenceTruth.evidenceRemoteMutationCompleted,
     portfolioApplicationRemoteMutationCompleted:
       evidenceTruth.portfolioApplicationRemoteMutationCompleted,
-    sourceRemoteStateVerificationStatus: proof.remoteStateVerification.status,
+    sourceRemoteStateVerificationStatus: exactHistorical129Application
+      ? "SEALED_HISTORICAL_129_APPLICATION_REQUIRES_CURRENT_READ_ONLY_REPROOF"
+      : proof.remoteStateVerification.status,
     remoteMutationCompleted: true,
   });
 }
