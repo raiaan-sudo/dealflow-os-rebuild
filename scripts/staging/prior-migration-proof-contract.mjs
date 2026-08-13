@@ -592,7 +592,25 @@ export function isExactCurrentResumeIdentity({
     hex64.test(priorApplication.structuralCatalogSha256 ?? "") &&
     priorApplication.migrationCount === expectedMigrationCount &&
     priorApplication.lastCommittedVersion === expectedFinalVersion &&
-    priorApplication.migrationPortfolioSha256 === expectedMigrationPortfolioSha256 &&
+    (priorApplication.migrationPortfolioSha256 === expectedMigrationPortfolioSha256 ||
+      (
+        priorApplication.sourceRemoteStateVerificationStatus ===
+          "SEALED_HISTORICAL_129_APPLICATION_REQUIRES_CURRENT_READ_ONLY_REPROOF" &&
+        priorApplication.migrationPortfolioSha256 ===
+          HISTORICAL_129_APPLICATION_AUTHORITY.historicalMigrationPortfolioSha256 &&
+        priorApplication.sourceReplayMigrationPortfolioSha256 ===
+          expectedMigrationPortfolioSha256 &&
+        priorApplication.applicationCommit ===
+          HISTORICAL_129_APPLICATION_AUTHORITY.applicationCommit &&
+        priorApplication.applicationTree ===
+          HISTORICAL_129_APPLICATION_AUTHORITY.applicationTree &&
+        priorApplication.manifestSha256 ===
+          HISTORICAL_129_APPLICATION_AUTHORITY.manifestSha256 &&
+        priorApplication.proofSha256 ===
+          HISTORICAL_129_APPLICATION_AUTHORITY.proofSha256 &&
+        priorApplication.summarySha256 ===
+          HISTORICAL_129_APPLICATION_AUTHORITY.summarySha256
+      )) &&
     priorApplication.normalizedSchemaSha256 === expectedNormalizedSchemaSha256 &&
     priorApplication.singleOuterTransaction === true &&
     priorApplication.migrationHistoryReceiptsInsideOuterTransaction === true &&

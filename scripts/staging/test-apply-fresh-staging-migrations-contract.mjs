@@ -1207,6 +1207,49 @@ assert.equal(
   true,
   "Runner must accept a fully bound exact current-120 read-only resume identity",
 );
+const historical129ResumeIdentity = {
+  ...exactResumeIdentity,
+  applicationCommit: HISTORICAL_129_APPLICATION_AUTHORITY.applicationCommit,
+  applicationTree: HISTORICAL_129_APPLICATION_AUTHORITY.applicationTree,
+  manifestSha256: HISTORICAL_129_APPLICATION_AUTHORITY.manifestSha256,
+  proofSha256: HISTORICAL_129_APPLICATION_AUTHORITY.proofSha256,
+  summarySha256: HISTORICAL_129_APPLICATION_AUTHORITY.summarySha256,
+  migrationPortfolioSha256:
+    HISTORICAL_129_APPLICATION_AUTHORITY.historicalMigrationPortfolioSha256,
+  sourceReplayMigrationPortfolioSha256:
+    HISTORICAL_129_APPLICATION_AUTHORITY.currentSourceReplayMigrationPortfolioSha256,
+  sourceRemoteStateVerificationStatus:
+    "SEALED_HISTORICAL_129_APPLICATION_REQUIRES_CURRENT_READ_ONLY_REPROOF",
+};
+assert.equal(
+  isExactCurrentResumeIdentity({
+    priorApplication: historical129ResumeIdentity,
+    expectedMigrationCount: exactResumeIdentity.migrationCount,
+    expectedFinalVersion: exactResumeIdentity.lastCommittedVersion,
+    expectedMigrationPortfolioSha256:
+      HISTORICAL_129_APPLICATION_AUTHORITY.currentSourceReplayMigrationPortfolioSha256,
+    expectedMigrationFiles: exactResumeIdentity.migrationFiles,
+    expectedNormalizedSchemaSha256: exactResumeIdentity.normalizedSchemaSha256,
+  }),
+  true,
+  "Runner must accept the one pinned historical application only when its current source replay digest is exact",
+);
+assert.equal(
+  isExactCurrentResumeIdentity({
+    priorApplication: {
+      ...historical129ResumeIdentity,
+      sourceReplayMigrationPortfolioSha256: "0".repeat(64),
+    },
+    expectedMigrationCount: exactResumeIdentity.migrationCount,
+    expectedFinalVersion: exactResumeIdentity.lastCommittedVersion,
+    expectedMigrationPortfolioSha256:
+      HISTORICAL_129_APPLICATION_AUTHORITY.currentSourceReplayMigrationPortfolioSha256,
+    expectedMigrationFiles: exactResumeIdentity.migrationFiles,
+    expectedNormalizedSchemaSha256: exactResumeIdentity.normalizedSchemaSha256,
+  }),
+  false,
+  "Runner must reject a historical application when the current source replay digest drifts",
+);
 assert.equal(
   isExactCurrentResumeIdentity({
     ...currentResumeArguments,
