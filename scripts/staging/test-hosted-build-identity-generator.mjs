@@ -419,6 +419,29 @@ try {
   );
   writeFileSync(
     join(fixture, "vercel.json"),
+    JSON.stringify(vercelConfiguration),
+  );
+  const gitIntegratedPreviewCompactionOnly = run({
+    env: { VERCEL: "1", VERCEL_ENV: "preview" },
+  });
+  assert.equal(
+    gitIntegratedPreviewCompactionOnly.status,
+    0,
+    `${gitIntegratedPreviewCompactionOnly.stderr}\n${gitIntegratedPreviewCompactionOnly.stdout}`,
+  );
+  const gitIntegratedPreviewCompactionOnlyArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(
+    gitIntegratedPreviewCompactionOnlyArtifact.vercelConfigurationNormalization.transformation,
+    "vercel_semantic_config_normalization_v2",
+  );
+  assert.equal(
+    gitIntegratedPreviewCompactionOnlyArtifact.vercelConfigurationNormalization.injectedVersion,
+    null,
+  );
+  writeFileSync(
+    join(fixture, "vercel.json"),
     `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
   );
 

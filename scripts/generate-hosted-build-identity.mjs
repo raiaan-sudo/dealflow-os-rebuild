@@ -72,9 +72,11 @@ function readExactRegularFile(root, path) {
 }
 
 function recoverVercelNormalizedConfiguration(entry, file, target) {
-  // Vercel parses the uploaded configuration, compacts it, and appends its
-  // project name plus `version: 2` before the hosted build starts. Recover the
-  // tracked canonical bytes only when that exact transformation is observed.
+  // Vercel parses and may compact the uploaded configuration before the hosted
+  // build starts. Depending on the deployment path it may also append its
+  // project name and `version: 2`. Recover the tracked canonical bytes only
+  // when the remaining semantic configuration still matches the sealed
+  // manifest exactly.
   if (entry.path !== "vercel.json" || target?.hosted !== true) return null;
   if (entry.mode !== file.mode) return null;
 
@@ -88,7 +90,8 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
     !configuration ||
     Array.isArray(configuration) ||
     typeof configuration !== "object" ||
-    configuration.version !== 2 ||
+    (configuration.version != null && configuration.version !== 2) ||
+    (target.kind !== "generic_non_release" && configuration.version !== 2) ||
     (configuration.name != null &&
       (typeof configuration.name !== "string" ||
         !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name))) ||
@@ -127,7 +130,7 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
           configuration.name === STAGING_PROJECT_NAME) &&
         (target.kind !== "exact_production" ||
           configuration.name === PRODUCTION_PROJECT_NAME),
-      injectedVersion: configuration.version,
+      injectedVersion: configuration.version ?? null,
       hostedBytesSha256: sha256(file.contents),
       recoveredSourceSha256: sha256(recoveredSourceBytes),
     },
