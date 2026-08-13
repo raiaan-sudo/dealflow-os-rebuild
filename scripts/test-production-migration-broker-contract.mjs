@@ -62,7 +62,7 @@ assert.deepEqual(
 );
 assert.equal(
   output.portfolioSha256,
-  "a10f2771155eafbea20995277347d0b5b53799c3afce028a81d3467bdc88ab33",
+  "41d169dd0426aeb2da8929102e997ab4d41647b0b4e539669b3031cca0512ce8",
   "production broker must bind the same canonical portfolio digest as qualification, staging, and release evidence",
 );
 assert.equal(output.foundationPending, true);

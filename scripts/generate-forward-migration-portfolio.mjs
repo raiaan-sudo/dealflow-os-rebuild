@@ -1506,7 +1506,7 @@ function renderGate(current, publicCurrent, privateAuthority, assertionCatalog) 
 `  actual AS (SELECT tc.relname, ic.relname, pg_catalog.pg_get_indexdef(i.indexrelid,0,false), i.indisvalid FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class ic ON ic.oid=i.indexrelid JOIN pg_catalog.pg_class tc ON tc.oid=i.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=tc.relnamespace WHERE n.nspname='public')\n` +
 `  SELECT detail INTO mismatch FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual) UNION ALL (SELECT * FROM actual EXCEPT SELECT * FROM expected)) d, LATERAL (SELECT row_to_json(d)::text AS detail) j LIMIT 1;\n` +
 `  IF mismatch IS NOT NULL THEN RAISE EXCEPTION 'pre-candidate index mismatch: %', mismatch USING ERRCODE='55000'; END IF;\n` +
-`  IF EXISTS (SELECT 1 FROM public.campaign_plans WHERE user_id IS NOT NULL AND user_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') THEN\n` +
+`  IF EXISTS (SELECT 1 FROM public.campaign_plans WHERE user_id IS NOT NULL AND user_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') THEN\n` +
 `    RAISE EXCEPTION 'pre-candidate gate: campaign_plans.user_id contains non-canonical UUID text' USING ERRCODE='22023';\n` +
 `  END IF;\n` +
 `  IF EXISTS (SELECT 1 FROM public.campaign_plans WHERE user_id IS NOT NULL AND user_id <> (user_id::uuid)::text) THEN\n` +

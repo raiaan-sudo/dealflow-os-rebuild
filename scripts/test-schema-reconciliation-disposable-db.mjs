@@ -865,8 +865,10 @@ if (!blockedReason) {
 }
 
 const USER_ID = "00000000-0000-4000-8000-000000000101";
+const NIL_USER_ID = "00000000-0000-0000-0000-000000000000";
 const ORG_ID = "00000000-0000-4000-8000-000000000201";
 const CAMPAIGN_ID = "00000000-0000-4000-8000-000000000301";
+const NIL_CAMPAIGN_ID = "00000000-0000-4000-8000-000000000302";
 
 if (!blockedReason) {
   try {
@@ -878,12 +880,15 @@ if (!blockedReason) {
         insert into public.organizations(id,name,slug,owner_user_id) values ('${ORG_ID}','Schema proof','schema-proof','${USER_ID}');
         insert into public.campaign_plans(id,user_id,owner_id,plan,organization_id,client_name)
         values ('${CAMPAIGN_ID}','${USER_ID}','sentinel-owner','{}','${ORG_ID}','sentinel-client');
+        insert into public.campaign_plans(id,user_id,owner_id,plan,client_name)
+        values ('${NIL_CAMPAIGN_ID}','${NIL_USER_ID}','${NIL_USER_ID}','{}','nil-uuid-sentinel');
       `, { label: "Insert conversion sentinel" });
       applyMigrations(session, candidateFiles);
       assert.equal(session.psql(`select concat_ws('|',id,user_id,owner_id,client_name) from public.campaign_plans where id='${CAMPAIGN_ID}';`), `${CAMPAIGN_ID}|${USER_ID}|sentinel-owner|sentinel-client`);
+      assert.equal(session.psql(`select concat_ws('|',id,user_id,owner_id,client_name) from public.campaign_plans where id='${NIL_CAMPAIGN_ID}';`), `${NIL_CAMPAIGN_ID}|${NIL_USER_ID}|${NIL_USER_ID}|nil-uuid-sentinel`);
       assert.equal(session.psql("select data_type from information_schema.columns where table_schema='public' and table_name='campaign_plans' and column_name='user_id';"), "uuid");
     });
-    result("08", "sentinel_preservation", "PASS", { convertedUserId: USER_ID, sentinelRowsPreserved: 1 });
+    result("08", "sentinel_preservation", "PASS", { convertedUserId: USER_ID, nilUuidUserId: NIL_USER_ID, sentinelRowsPreserved: 2 });
   } catch (error) {
     failResult("08", "sentinel_preservation", error, error.migrationFailure ? { migration: error.migrationFailure } : {});
   }
