@@ -18,6 +18,8 @@ export const FORWARD_120_TO_121_AUTHORITY = Object.freeze({
     finalMigration: "20260720010000_add_ghl_embed_sso_authority.sql",
     migrationPortfolioSha256:
       "2adf321b77c225023f47914edacbe32cf9edbc212ce9b3a76e62d579ef3c2a92",
+    sourceReplayMigrationPortfolioSha256:
+      "c06263cb5ec7c28ece486e8fd3230faabff269dc0741a4f8d9c0da740a41441b",
     managedStructuralCatalogSha256:
       "afd3b0d494dc85a2d4862e676e39170dec6fa270f516e4f8213603c86d01c250",
     managedStructuralCatalogRecordCount: 8405,
@@ -64,7 +66,8 @@ export function assertExactForward120To121Portfolio(records, migrationDirectory)
   const forwardRecord = records.at(-1);
   if (
     priorRecords.at(-1)?.name !== authority.prior.finalMigration ||
-    portfolioSha256(priorRecords, migrationDirectory) !== authority.prior.migrationPortfolioSha256
+    portfolioSha256(priorRecords, migrationDirectory) !==
+      (authority.prior.sourceReplayMigrationPortfolioSha256 ?? authority.prior.migrationPortfolioSha256)
   ) {
     throw new Error("Successor authority rejects drift in the sealed 120-migration prefix");
   }
@@ -77,7 +80,8 @@ export function assertExactForward120To121Portfolio(records, migrationDirectory)
   };
   if (
     JSON.stringify(actualForward) !== JSON.stringify(authority.forwardMigration) ||
-    portfolioSha256(records, migrationDirectory) !== authority.current.migrationPortfolioSha256
+    portfolioSha256(records, migrationDirectory) !==
+      authority.current.sourceReplayMigrationPortfolioSha256
   ) {
     throw new Error("Successor authority rejects drift in migration 121 or the current portfolio");
   }

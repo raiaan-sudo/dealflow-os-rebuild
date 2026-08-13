@@ -71,6 +71,14 @@ assert.equal(
   "e6ff6049ff5a5c5691c54285850748f0e4190af23f389acde1cab7ead0245e2c",
 );
 assert.equal(
+  FORWARD_104_TO_120_AUTHORITY.prior.sourceReplayMigrationPortfolioSha256,
+  "1eab251ff0996e96d6b6c1008b1bebd036b6aa00f6d31abe888162dc246ea6b5",
+);
+assert.equal(
+  FORWARD_104_TO_120_AUTHORITY.current.sourceReplayMigrationPortfolioSha256,
+  "ca23de948090fa29d03057e79cf839b77385ee95786c34439818bf532ddcccb2",
+);
+assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,
   "dcccf3e9514fa8cade3c88d39a518670f435807ac2d1461ca80c06db5ad10ffc",
 );

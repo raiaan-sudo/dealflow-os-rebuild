@@ -20,6 +20,10 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
       "20260715010000_move_legacy_org_member_policies_private.sql",
     migrationPortfolioSha256:
       "c6d39d8bd4fe39ba8762c968a8010d772c96fa750ea39c2c5a409c4292fe33a5",
+    // Preserve the immutable historical qibh proof above while separately
+    // binding the current replay source after a pre-production gate fix.
+    sourceReplayMigrationPortfolioSha256:
+      "1eab251ff0996e96d6b6c1008b1bebd036b6aa00f6d31abe888162dc246ea6b5",
     normalizedSchemaSha256:
       "67f201df805559a97908e353e6c4e4a2c35df0812eb96cb6b92b50e711f84fe3",
     structuralCatalogSha256:
@@ -43,6 +47,8 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
       "20260717090000_create_canonical_lead_outcome_ledger.sql",
     migrationPortfolioSha256:
       "e6ff6049ff5a5c5691c54285850748f0e4190af23f389acde1cab7ead0245e2c",
+    sourceReplayMigrationPortfolioSha256:
+      "ca23de948090fa29d03057e79cf839b77385ee95786c34439818bf532ddcccb2",
     // Independently reproduced twice on PostgreSQL 17.6: once from a fresh
     // 120-migration database and once from the exact 104 prefix followed by
     // migrations 105-120. The managed catalog uses a pg_catalog-only search
@@ -230,7 +236,7 @@ export function assertExactForward104To120Portfolio(records, migrationDirectory)
   if (
     priorRecords.at(-1)?.name !== FORWARD_104_TO_120_AUTHORITY.prior.finalMigration ||
     portfolioSha256(priorRecords, migrationDirectory) !==
-      FORWARD_104_TO_120_AUTHORITY.prior.migrationPortfolioSha256
+      FORWARD_104_TO_120_AUTHORITY.prior.sourceReplayMigrationPortfolioSha256
   ) {
     throw new Error("Forward authority rejects drift in the exact historical 104-migration prefix");
   }
@@ -247,7 +253,7 @@ export function assertExactForward104To120Portfolio(records, migrationDirectory)
     JSON.stringify(actualForward) !== JSON.stringify(FORWARD_104_TO_120_AUTHORITY.forwardMigrations) ||
     forwardRecords.at(-1)?.name !== FORWARD_104_TO_120_AUTHORITY.current.finalMigration ||
     portfolioSha256(records, migrationDirectory) !==
-      FORWARD_104_TO_120_AUTHORITY.current.migrationPortfolioSha256
+      FORWARD_104_TO_120_AUTHORITY.current.sourceReplayMigrationPortfolioSha256
   ) {
     throw new Error("Forward authority rejects drift in ordered migrations 105 through 120");
   }
