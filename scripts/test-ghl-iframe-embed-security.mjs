@@ -288,7 +288,9 @@ for (const marker of [
 }
 for (const marker of [
   "ApiError, parseJsonBody",
-  "error instanceof Error",
+  "const structuralCode = error && typeof error === \"object\"",
+  "typeof (error as { code?: unknown }).code === \"string\"",
+  "const safeCode = structuralCode ?? (error instanceof Error ? error.message : null)",
   "/^ghl_[a-z0-9_]{1,80}$/.test(safeCode)",
   "return deny(safeCode, error instanceof ApiError ? error.status : 400)",
   'let failureCode = "ghl_embed_request_failed"',

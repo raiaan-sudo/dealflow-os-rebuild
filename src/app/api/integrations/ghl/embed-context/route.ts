@@ -639,11 +639,11 @@ export async function POST(request: Request) {
     response.headers.set("Cache-Control", "no-store, max-age=0");
     return response;
   } catch (error) {
-    const safeCode = error instanceof ApiError
-      ? error.code
-      : error instanceof Error
-        ? error.message
-        : null;
+    const structuralCode = error && typeof error === "object" &&
+      typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : null;
+    const safeCode = structuralCode ?? (error instanceof Error ? error.message : null);
     if (safeCode && /^ghl_[a-z0-9_]{1,80}$/.test(safeCode)) {
       return deny(safeCode, error instanceof ApiError ? error.status : 400);
     }
