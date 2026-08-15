@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1174,
-  "deployableSourceSha256": "788d9920305ee5bb01c96f9273ca49e985d37f92fda326454de2e672f0f5fce1",
+  "deployableSourceSha256": "1f6c2fec33149e89c710db3d5b923823ddedbad4a53606278633f2287d071c81",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "ab25775fb4237b433f41e5526497253d997d412920fa5882d365155d1b363c23"
+      "sha256": "9c45f5bb66341699ae804ac7847a37093faf843a1abc995b7a5a04aba4bb1fc6"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "8339b62fdc3f4ab99af7c897ff77e042e2b34fabd41e83c68917617c5c6116e0"
+      "sha256": "a06354f550a162ccea65582d7d816a6213e5010b6d39e78f5792f3e0b6cd25b0"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "134984cd92e8bef1c51899d5ba05148c2be641b48eb08f57a7e76067d367d78c"
+      "sha256": "e13fa90429cc6f00ea89d958195686e3e2c72831831d83affdd8a1a96b18d975"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1386,9 +1386,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
-      "size": 15518,
+      "size": 15990,
       "mode": 33188,
-      "sha256": "aadf1d22cb356d4cb52c67018828346d6fdbbfc373c138455b8918134b411a79"
+      "sha256": "e73a867c1af49914d747548b582344173cff1b695bf221f867be6191a9a8b7fd"
     },
     {
       "path": "scripts/staging/test-next-static-chunk-path.mjs",
@@ -5826,9 +5826,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 33143,
+      "size": 34618,
       "mode": 33188,
-      "sha256": "f0dcd65134714b148b649e7c7005474c8606d083aca84a9e63d7d00fede4b8e5"
+      "sha256": "024d0840e5cca3a771639ebdd8af803218dde98d6cdcb4459f6a83eac2f41be8"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",
