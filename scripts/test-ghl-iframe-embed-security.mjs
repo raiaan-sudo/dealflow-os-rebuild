@@ -31,6 +31,10 @@ const marketplaceBootstrapRouteSource = fs.readFileSync(
   "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",
   "utf8",
 );
+const marketplaceRuntimeServiceSource = fs.readFileSync(
+  "src/lib/services/ghl-marketplace-runtime-service.ts",
+  "utf8",
+);
 const marketplaceBootstrapMigrationSource = fs.readFileSync(
   "supabase/migrations/20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
   "utf8",
@@ -354,6 +358,16 @@ for (const marker of [
 ]) {
   if (!marketplaceBootstrapRouteSource.includes(marker)) {
     failures.push(`Marketplace first-install route is missing: ${marker}`);
+  }
+}
+for (const marker of [
+  "safeEmbedBootstrapClaimFailureCode",
+  "/^[A-Z0-9]{5,8}$/.test(candidate)",
+  "ghl_embed_bootstrap_claim_db_",
+  "ghl_embed_bootstrap_claim_db_unknown",
+]) {
+  if (!marketplaceRuntimeServiceSource.includes(marker)) {
+    failures.push(`Marketplace embed claim diagnostics are missing: ${marker}`);
   }
 }
 for (const marker of [

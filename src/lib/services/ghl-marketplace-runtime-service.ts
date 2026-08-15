@@ -168,6 +168,15 @@ function oneRow(input: unknown) {
   return input && typeof input === "object" ? input as Record<string, unknown> : null;
 }
 
+function safeEmbedBootstrapClaimFailureCode(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+  return /^[A-Z0-9]{5,8}$/.test(candidate)
+    ? `ghl_embed_bootstrap_claim_db_${candidate.toLowerCase()}`
+    : "ghl_embed_bootstrap_claim_db_unknown";
+}
+
 function requiredProviderId(input: string, code: string) {
   if (!/^[A-Za-z0-9_-]{3,160}$/.test(input)) throw new ApiError(503, "GHL Marketplace configuration is invalid.", code);
   return input;
@@ -281,7 +290,7 @@ export async function createGhlMarketplaceEmbedBootstrapClaim(input: {
     throw new ApiError(
       409,
       "The GHL workspace connection could not be prepared.",
-      "ghl_marketplace_bootstrap_claim_failed",
+      safeEmbedBootstrapClaimFailureCode(error),
     );
   }
   const claimToken = await createGhlEmbedBootstrapClaim({
