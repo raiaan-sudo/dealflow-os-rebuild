@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1174,
-  "deployableSourceSha256": "1f6c2fec33149e89c710db3d5b923823ddedbad4a53606278633f2287d071c81",
+  "deployableSourceSha256": "35eb59eeb5f99d9379d03d45685698bffc2bcc74bfa0362c23e0b95a876afb89",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "9c45f5bb66341699ae804ac7847a37093faf843a1abc995b7a5a04aba4bb1fc6"
+      "sha256": "2532af8403303ec42a20e965ce1f4d5dbf392ddd309e29783cd9b7e22e4369d0"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "a06354f550a162ccea65582d7d816a6213e5010b6d39e78f5792f3e0b6cd25b0"
+      "sha256": "4af14b07dff1d88a51676fa4b2694a336e79f95cd103d399b042510fa31778bc"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "e13fa90429cc6f00ea89d958195686e3e2c72831831d83affdd8a1a96b18d975"
+      "sha256": "5d74dbe67fb3e089ff2fed82f41ff7a1cc110ea802995be8cc069e08f2404ff0"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1266,9 +1266,9 @@
     },
     {
       "path": "scripts/staging/staging-access-gate-scenario.ts",
-      "size": 15269,
+      "size": 18200,
       "mode": 33188,
-      "sha256": "e3b5088dc8e4bad645df91f0b1f8d20f342cc5125882f2da64dc75227db394c9"
+      "sha256": "0e979522266ee494b4fc2268607eda0f2a65f27d2b10027b749e3bec45f0092d"
     },
     {
       "path": "scripts/staging/staging-evidence-root-contract.mjs",
@@ -1386,9 +1386,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
-      "size": 15990,
+      "size": 16428,
       "mode": 33188,
-      "sha256": "e73a867c1af49914d747548b582344173cff1b695bf221f867be6191a9a8b7fd"
+      "sha256": "16b04f7ab9e1d33d0dde724c833fb826b53ed8f53b810539cef14b09657e0e92"
     },
     {
       "path": "scripts/staging/test-next-static-chunk-path.mjs",
@@ -5826,9 +5826,9 @@
     },
     {
       "path": "src/proxy.ts",
-      "size": 34618,
+      "size": 36725,
       "mode": 33188,
-      "sha256": "024d0840e5cca3a771639ebdd8af803218dde98d6cdcb4459f6a83eac2f41be8"
+      "sha256": "cd93490112ee801453b5314cb9e3588e4a4ae6487f0b46b6e223ac751c2a5bf7"
     },
     {
       "path": "src/server/app-render/dynamic-rendering.ts",
