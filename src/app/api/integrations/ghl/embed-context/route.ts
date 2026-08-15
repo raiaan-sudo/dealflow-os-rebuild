@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { parseJsonBody } from "@/lib/api/route";
+import { ApiError, parseJsonBody } from "@/lib/api/route";
 import {
   buildRateLimitResponse,
   consumeRateLimit,
@@ -613,7 +613,13 @@ export async function POST(request: Request) {
     );
     response.headers.set("Cache-Control", "no-store, max-age=0");
     return response;
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      /^ghl_[a-z0-9_]{1,80}$/.test(error.code)
+    ) {
+      return deny(error.code, error.status);
+    }
     return deny("ghl_embed_exchange_failed", 400);
   }
 }

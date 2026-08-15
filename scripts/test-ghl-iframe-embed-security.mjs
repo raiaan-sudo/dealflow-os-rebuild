@@ -283,6 +283,21 @@ for (const marker of [
   if (!exchangeSource.includes(marker)) failures.push(`Embed exchange is missing: ${marker}`);
 }
 for (const marker of [
+  "ApiError, parseJsonBody",
+  "error instanceof ApiError",
+  "/^ghl_[a-z0-9_]{1,80}$/.test(error.code)",
+  "return deny(error.code, error.status)",
+  'return deny("ghl_embed_exchange_failed", 400)',
+]) {
+  if (!exchangeSource.includes(marker)) {
+    failures.push(`Embed exchange sanitized error handling is missing: ${marker}`);
+  }
+}
+if (/return deny\(error\.message/.test(exchangeSource) ||
+    /return NextResponse\.json\(\s*error/.test(exchangeSource)) {
+  failures.push("Embed exchange must not expose arbitrary exception details.");
+}
+for (const marker of [
   "GhlEmbedCapabilityRefresher",
   'headerStore.get("x-dealflow-ghl-embed-parent-origin")',
 ]) {
