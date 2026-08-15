@@ -254,59 +254,72 @@ export async function createGhlMarketplaceEmbedBootstrapClaim(input: {
   payloadDigest: string;
   now?: Date;
 }) {
-  const admin = createAdminClient();
-  if (!admin) {
-    throw new ApiError(
-      503,
-      "GHL Marketplace persistence is unavailable.",
-      "service_role_missing",
+  let failureCode = "ghl_embed_bootstrap_claim_authority_failed";
+  try {
+    const admin = createAdminClient();
+    if (!admin) {
+      throw new ApiError(
+        503,
+        "GHL Marketplace persistence is unavailable.",
+        "service_role_missing",
+      );
+    }
+    failureCode = "ghl_embed_bootstrap_claim_config_failed";
+    const { appId } = getGhlMarketplaceWebhookConfig();
+    const now = input.now ?? new Date();
+    const environment = input.providerEnvironment === "production" ? "production" : "sandbox";
+    const payloadFingerprint = `sha256:${input.payloadDigest}`;
+    failureCode = "ghl_embed_bootstrap_claim_rpc_failed";
+    const { data, error } = await (admin as any).rpc(
+      "register_ghl_marketplace_embed_bootstrap_claim_v1",
+      {
+        p_environment: environment,
+        p_partner_id: input.partnerId,
+        p_app_fingerprint: fingerprintGhlAuthorityValue(appId),
+        p_company_fingerprint: fingerprintGhlAuthorityValue(input.companyId),
+        p_location_fingerprint: fingerprintGhlAuthorityValue(input.locationId),
+        p_user_fingerprint: fingerprintGhlAuthorityValue(input.userId),
+        p_email_fingerprint: fingerprintGhlAuthorityValue(input.normalizedEmail),
+        p_parent_origin_fingerprint: fingerprintGhlAuthorityValue(input.parentOrigin),
+        p_payload_fingerprint: payloadFingerprint,
+        p_provider_company_id: input.companyId,
+        p_provider_location_id: input.locationId,
+        p_provider_user_id: input.userId,
+        p_expires_at: new Date(now.getTime() + BOOTSTRAP_CLAIM_TTL_MS).toISOString(),
+        p_now: now.toISOString(),
+      },
     );
+    const claimId = value(data);
+    if (error || !claimId) {
+      throw new ApiError(
+        409,
+        "The GHL workspace connection could not be prepared.",
+        safeEmbedBootstrapClaimFailureCode(error),
+      );
+    }
+    failureCode = "ghl_embed_bootstrap_claim_token_failed";
+    const claimToken = await createGhlEmbedBootstrapClaim({
+      claimId,
+      payloadDigest: input.payloadDigest,
+      partnerId: input.partnerId,
+      domain: input.domain,
+    }, Math.floor(now.getTime() / 1_000));
+    if (!claimToken) {
+      throw new ApiError(
+        503,
+        "The GHL workspace connection authority is unavailable.",
+        "ghl_marketplace_bootstrap_token_failed",
+      );
+    }
+    return { claimToken, nextPath: "/crm/connect" };
+  } catch (error) {
+    const structuralCode = error && typeof error === "object" &&
+      typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : null;
+    if (structuralCode && /^ghl_[a-z0-9_]{1,80}$/.test(structuralCode)) throw error;
+    throw new ApiError(409, "The GHL workspace connection could not be prepared.", failureCode);
   }
-  const { appId } = getGhlMarketplaceWebhookConfig();
-  const now = input.now ?? new Date();
-  const environment = input.providerEnvironment === "production" ? "production" : "sandbox";
-  const payloadFingerprint = `sha256:${input.payloadDigest}`;
-  const { data, error } = await (admin as any).rpc(
-    "register_ghl_marketplace_embed_bootstrap_claim_v1",
-    {
-      p_environment: environment,
-      p_partner_id: input.partnerId,
-      p_app_fingerprint: fingerprintGhlAuthorityValue(appId),
-      p_company_fingerprint: fingerprintGhlAuthorityValue(input.companyId),
-      p_location_fingerprint: fingerprintGhlAuthorityValue(input.locationId),
-      p_user_fingerprint: fingerprintGhlAuthorityValue(input.userId),
-      p_email_fingerprint: fingerprintGhlAuthorityValue(input.normalizedEmail),
-      p_parent_origin_fingerprint: fingerprintGhlAuthorityValue(input.parentOrigin),
-      p_payload_fingerprint: payloadFingerprint,
-      p_provider_company_id: input.companyId,
-      p_provider_location_id: input.locationId,
-      p_provider_user_id: input.userId,
-      p_expires_at: new Date(now.getTime() + BOOTSTRAP_CLAIM_TTL_MS).toISOString(),
-      p_now: now.toISOString(),
-    },
-  );
-  const claimId = value(data);
-  if (error || !claimId) {
-    throw new ApiError(
-      409,
-      "The GHL workspace connection could not be prepared.",
-      safeEmbedBootstrapClaimFailureCode(error),
-    );
-  }
-  const claimToken = await createGhlEmbedBootstrapClaim({
-    claimId,
-    payloadDigest: input.payloadDigest,
-    partnerId: input.partnerId,
-    domain: input.domain,
-  }, Math.floor(now.getTime() / 1_000));
-  if (!claimToken) {
-    throw new ApiError(
-      503,
-      "The GHL workspace connection authority is unavailable.",
-      "ghl_marketplace_bootstrap_token_failed",
-    );
-  }
-  return { claimToken, nextPath: "/crm/connect" };
 }
 
 async function createGhlMarketplaceOAuthState(input: {

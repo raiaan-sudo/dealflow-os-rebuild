@@ -367,6 +367,10 @@ for (const marker of [
   "/^[A-Z0-9]{5,8}$/.test(candidate)",
   "ghl_embed_bootstrap_claim_db_",
   "ghl_embed_bootstrap_claim_db_unknown",
+  "ghl_embed_bootstrap_claim_authority_failed",
+  "ghl_embed_bootstrap_claim_config_failed",
+  "ghl_embed_bootstrap_claim_rpc_failed",
+  "ghl_embed_bootstrap_claim_token_failed",
 ]) {
   if (!marketplaceRuntimeServiceSource.includes(marker)) {
     failures.push(`Marketplace embed claim diagnostics are missing: ${marker}`);
