@@ -37,6 +37,11 @@ try {
     "Marketplace lifecycle ingestion must remain decoupled from OAuth client secrets",
   );
   assert.match(
+    runtimeServiceSource,
+    /const installUrl = new URL\(config\.installUrl\.toString\(\)\);[\s\S]*?installUrl\.searchParams\.set\("state", state\);[\s\S]*?installUrl,/,
+    "Marketplace authorization must bind the persisted one-time state to the outbound install URL",
+  );
+  assert.match(
     credentialResolverSource,
     /ghl-marketplace-token-set:\(\[0-9a-f\]\{8\}/,
     "Marketplace credentials must use an opaque, exact token-set reference",

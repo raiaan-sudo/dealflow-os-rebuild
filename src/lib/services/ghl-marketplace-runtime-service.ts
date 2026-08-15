@@ -374,10 +374,12 @@ async function createGhlMarketplaceOAuthState(input: {
       "ghl_marketplace_state_create_failed",
     );
   }
+  const installUrl = new URL(config.installUrl.toString());
+  installUrl.searchParams.set("state", state);
   return {
     state,
     expiresAt,
-    installUrl: config.installUrl,
+    installUrl,
     returnPath,
   };
 }
