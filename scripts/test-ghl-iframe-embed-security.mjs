@@ -284,9 +284,9 @@ for (const marker of [
 }
 for (const marker of [
   "ApiError, parseJsonBody",
-  "error instanceof ApiError",
-  "/^ghl_[a-z0-9_]{1,80}$/.test(error.code)",
-  "return deny(error.code, error.status)",
+  "error instanceof Error",
+  "/^ghl_[a-z0-9_]{1,80}$/.test(safeCode)",
+  "return deny(safeCode, error instanceof ApiError ? error.status : 400)",
   'return deny("ghl_embed_exchange_failed", 400)',
 ]) {
   if (!exchangeSource.includes(marker)) {

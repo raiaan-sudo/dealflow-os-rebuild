@@ -614,11 +614,13 @@ export async function POST(request: Request) {
     response.headers.set("Cache-Control", "no-store, max-age=0");
     return response;
   } catch (error) {
-    if (
-      error instanceof ApiError &&
-      /^ghl_[a-z0-9_]{1,80}$/.test(error.code)
-    ) {
-      return deny(error.code, error.status);
+    const safeCode = error instanceof ApiError
+      ? error.code
+      : error instanceof Error
+        ? error.message
+        : null;
+    if (safeCode && /^ghl_[a-z0-9_]{1,80}$/.test(safeCode)) {
+      return deny(safeCode, error instanceof ApiError ? error.status : 400);
     }
     return deny("ghl_embed_exchange_failed", 400);
   }
