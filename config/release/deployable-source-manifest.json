@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1174,
-  "deployableSourceSha256": "d5c6d08fe3a10ae2e05fc9d29647d941942d0552920eb046380c23f1ae74f841",
+  "deployableSourceSha256": "788d9920305ee5bb01c96f9273ca49e985d37f92fda326454de2e672f0f5fce1",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "080dfd3f97b5ef5d4173abcc35a8eae6ed83038b3f567d161c309ee677820650"
+      "sha256": "ab25775fb4237b433f41e5526497253d997d412920fa5882d365155d1b363c23"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "d29a26d597a2249bb5e4ac067e1e37b3e217d6a585d7d41eac7f51c06aa1dfaa"
+      "sha256": "8339b62fdc3f4ab99af7c897ff77e042e2b34fabd41e83c68917617c5c6116e0"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "6f35eb2974a3b6b540147fc6a0cd0d4b85889269302537e1fb012683935b8d4a"
+      "sha256": "134984cd92e8bef1c51899d5ba05148c2be641b48eb08f57a7e76067d367d78c"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1818,9 +1818,9 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 26449,
+      "size": 26628,
       "mode": 33188,
-      "sha256": "1013d4a2903b703554cf2622fc3dafbbe661697602dd46449a273568a6419aee"
+      "sha256": "f9f871177cd5a55bfb8f786ac676173ab1c576f5a692c9bb23c7601d6ccadba6"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
@@ -5388,9 +5388,9 @@
     },
     {
       "path": "src/lib/services/ghl-marketplace-runtime-service.ts",
-      "size": 43878,
+      "size": 44624,
       "mode": 33188,
-      "sha256": "dded1550735962dcd2c0cb405141ed05fdfc359bff94e732bbefcfb6c1f57f68"
+      "sha256": "d492140244bef7a19070c4b848343e3e976efd943d79bbe454bba416e74097ad"
     },
     {
       "path": "src/lib/services/ghl-periodic-form-sweep-service.ts",
