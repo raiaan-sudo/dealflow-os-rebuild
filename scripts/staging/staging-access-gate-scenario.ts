@@ -31,6 +31,7 @@ let path = "/privacy";
 let method = "GET";
 let suppliedSecret: string | null = null;
 let suppliedCookieSecret: string | null = null;
+let requestBody: string | null = null;
 const scenarioHeaders = new Headers();
 const internalSystemJobsSecret =
   "I8!dealflow-isolated-staging-internal-jobs-92Q";
@@ -167,6 +168,27 @@ if (scenario === "authorized") {
   scenarioHeaders.set("referer", "https://dealflow-isolated.example/crm/embed");
   scenarioHeaders.set("sec-fetch-site", "same-origin");
   scenarioHeaders.set("sec-fetch-dest", "empty");
+} else if (scenario === "ghl_connect_entry_cross_site") {
+  path = "/crm/connect";
+  scenarioHeaders.set("sec-fetch-site", "cross-site");
+  scenarioHeaders.set("sec-fetch-dest", "document");
+} else if (scenario === "ghl_connect_static") {
+  path = "/_next/static/chunks/ghl-connect.js";
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/crm/connect");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "script");
+} else if (
+  scenario === "ghl_connect_bootstrap_valid" ||
+  scenario === "ghl_connect_bootstrap_invalid" ||
+  scenario === "ghl_connect_bootstrap_wrong_host_claim"
+) {
+  path = "/api/integrations/ghl/marketplace/bootstrap";
+  method = "POST";
+  scenarioHeaders.set("origin", "https://dealflow-isolated.example");
+  scenarioHeaders.set("referer", "https://dealflow-isolated.example/crm/connect");
+  scenarioHeaders.set("content-type", "application/json");
+  scenarioHeaders.set("sec-fetch-site", "same-origin");
+  scenarioHeaders.set("sec-fetch-dest", "empty");
 } else if (scenario === "ghl_bootstrap_missing_config") {
   path = "/crm/embed";
   delete process.env.STAGING_ACCESS_GATE_SECRET;
@@ -192,6 +214,26 @@ if (scenario === "authorized") {
 
 async function main() {
   const { proxy } = await import("../../src/proxy");
+  if (
+    scenario === "ghl_connect_bootstrap_valid" ||
+    scenario === "ghl_connect_bootstrap_wrong_host_claim"
+  ) {
+    const { createGhlEmbedBootstrapClaim } = await import(
+      "../../src/lib/white-label/ghl-embed-capability"
+    );
+    const claimToken = await createGhlEmbedBootstrapClaim({
+      claimId: "44444444-4444-4444-8444-444444444444",
+      payloadDigest: "b".repeat(64),
+      partnerId: null,
+      domain: scenario === "ghl_connect_bootstrap_valid"
+        ? "dealflow-isolated.example"
+        : "attacker.example",
+    });
+    assert.ok(claimToken);
+    requestBody = JSON.stringify({ claimToken });
+  } else if (scenario === "ghl_connect_bootstrap_invalid") {
+    requestBody = JSON.stringify({ claimToken: "x".repeat(128) });
+  }
   const authenticatedEmbedScenario = scenario.startsWith("ghl_authenticated_");
   let authenticatedEmbedCookies: string | null = null;
   if (authenticatedEmbedScenario) {
@@ -255,12 +297,25 @@ async function main() {
     );
   }
   const response = await proxy(
-    new NextRequest(`https://dealflow-isolated.example${path}`, { headers, method }),
+    new NextRequest(`https://dealflow-isolated.example${path}`, {
+      headers,
+      method,
+      body: requestBody,
+    }),
   );
   const serializedHeaders = JSON.stringify([...response.headers]).toLowerCase();
-  assert.doesNotMatch(serializedHeaders, /dealflow-isolated-staging-access-only/);
+  if (scenario === "ghl_connect_bootstrap_valid") {
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    assert.match(setCookie, /__Host-dealflow-staging-access=/i);
+    assert.match(setCookie, /HttpOnly/i);
+    assert.match(setCookie, /Secure/i);
+    assert.match(setCookie, /SameSite=Strict/i);
+    assert.match(setCookie, /Max-Age=600/i);
+  } else {
+    assert.doesNotMatch(serializedHeaders, /dealflow-isolated-staging-access-only/);
+    assert.doesNotMatch(serializedHeaders, /__host-dealflow-staging-access/);
+  }
   assert.doesNotMatch(serializedHeaders, /x-dealflow-staging-access/);
-  assert.doesNotMatch(serializedHeaders, /__host-dealflow-staging-access/);
   assert.doesNotMatch(serializedHeaders, /x-vercel-protection-bypass/);
   assert.doesNotMatch(serializedHeaders, /x-vercel-set-bypass-cookie/);
   assert.doesNotMatch(serializedHeaders, /_vercel_jwt/);
@@ -291,6 +346,8 @@ async function main() {
     scenario === "lead_capture_blocked"
     || scenario === "ghl_bootstrap_wrong_parent"
     || scenario === "ghl_bootstrap_top_level"
+    || scenario === "ghl_connect_bootstrap_invalid"
+    || scenario === "ghl_connect_bootstrap_wrong_host_claim"
     || scenario === "ghl_authenticated_static_mismatched_session"
     || scenario === "ghl_authenticated_admin_denied"
   ) {
@@ -304,6 +361,19 @@ async function main() {
     || scenario === "ghl_bootstrap_missing_config"
   ) {
     assert.equal(response.status, 503);
+  } else if (
+    scenario === "ghl_connect_bootstrap_valid"
+  ) {
+    // This fixture intentionally has no Supabase configuration. The valid
+    // signed claim must still mint the short-lived staging cookie before the
+    // ordinary authenticated-route boundary redirects to setup.
+    assert.equal(response.status, 307);
+    const location = new URL(
+      response.headers.get("location") ?? "",
+      "https://dealflow-isolated.example",
+    );
+    assert.equal(location.pathname, "/login");
+    assert.equal(location.searchParams.get("reason"), "setup");
   } else if (
     scenario === "ghl_marketplace_crm_callback" ||
     scenario === "ghl_marketplace_legacy_callback"

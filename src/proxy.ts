@@ -25,6 +25,7 @@ import {
   GHL_EMBED_CAPABILITY_COOKIE,
   GHL_EMBED_SESSION_COOKIE,
   type GhlEmbedCapability,
+  verifyGhlEmbedBootstrapClaim,
   verifyGhlEmbedCapability,
   verifyGhlEmbedSessionMarker,
 } from "@/lib/white-label/ghl-embed-capability";
@@ -284,6 +285,8 @@ const GHL_EMBED_BOOTSTRAP_PATHS = new Set([
 ]);
 const STAGING_GHL_EMBED_CONTEXT_PATH = "/api/integrations/ghl/embed-context";
 const STAGING_GHL_CONNECT_PATH = "/crm/connect";
+const STAGING_GHL_CONNECT_BOOTSTRAP_PATH =
+  "/api/integrations/ghl/marketplace/bootstrap";
 const STAGING_GHL_BOOTSTRAP_PUBLIC_ASSETS = new Set([
   "/favicon.ico",
   "/logo-icon.svg",
@@ -324,14 +327,26 @@ function isExactGhlBootstrapReferer(request: NextRequest) {
   );
 }
 
+function isExactGhlConnectReferer(request: NextRequest) {
+  const referer = parseHttpRequestUrl(request.headers.get("referer"));
+  return Boolean(
+    referer &&
+    referer.origin === request.nextUrl.origin &&
+    parseProductLocalePathname(referer.pathname).pathname ===
+      STAGING_GHL_CONNECT_PATH,
+  );
+}
+
 async function isAuthorizedIsolatedStagingGhlConnectEntryRequest(
   request: NextRequest,
 ) {
+  const fetchSite =
+    request.headers.get("sec-fetch-site")?.trim().toLowerCase() ?? "";
   if (
     process.env.GHL_IFRAME_EMBED_ENABLED !== "true" ||
     getEffectiveProductPathname(request) !== STAGING_GHL_CONNECT_PATH ||
     !["GET", "HEAD"].includes(request.method.toUpperCase()) ||
-    request.headers.get("sec-fetch-site")?.trim().toLowerCase() !== "same-origin" ||
+    !["cross-site", "same-origin", "none"].includes(fetchSite) ||
     request.headers.get("sec-fetch-dest")?.trim().toLowerCase() !== "document"
   ) {
     return false;
@@ -340,14 +355,44 @@ async function isAuthorizedIsolatedStagingGhlConnectEntryRequest(
   if (!hostContext || hostContext.domain !== request.nextUrl.hostname.toLowerCase()) {
     return false;
   }
-  const referer = parseHttpRequestUrl(request.headers.get("referer"));
-  return Boolean(
-    referer &&
-    referer.origin === request.nextUrl.origin &&
-    GHL_EMBED_BOOTSTRAP_PATHS.has(
-      parseProductLocalePathname(referer.pathname).pathname,
-    ),
-  );
+  return true;
+}
+
+async function isAuthorizedIsolatedStagingGhlConnectBootstrapRequest(
+  request: NextRequest,
+) {
+  if (
+    process.env.GHL_IFRAME_EMBED_ENABLED !== "true" ||
+    request.nextUrl.pathname !== STAGING_GHL_CONNECT_BOOTSTRAP_PATH ||
+    request.method.toUpperCase() !== "POST" ||
+    request.headers.get("sec-fetch-site")?.trim().toLowerCase() !== "same-origin" ||
+    request.headers.get("sec-fetch-dest")?.trim().toLowerCase() !== "empty" ||
+    request.headers.get("origin")?.trim() !== request.nextUrl.origin ||
+    !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")
+  ) {
+    return false;
+  }
+  const contentLength = request.headers.get("content-length")?.trim() ?? "";
+  if (contentLength && (!/^\d{1,5}$/.test(contentLength) || Number(contentLength) > 8_192)) {
+    return false;
+  }
+  const hostContext = await resolveGhlEmbedHostContext(request.nextUrl.hostname);
+  if (!hostContext || hostContext.domain !== request.nextUrl.hostname.toLowerCase()) {
+    return false;
+  }
+  try {
+    const body = await request.clone().json() as { claimToken?: unknown };
+    const claimToken = typeof body?.claimToken === "string" ? body.claimToken : "";
+    if (claimToken.length < 128 || claimToken.length > 4_096) return false;
+    const claim = await verifyGhlEmbedBootstrapClaim(claimToken);
+    return Boolean(
+      claim &&
+      claim.domain === hostContext.domain &&
+      claim.partnerId === hostContext.partnerId,
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function isAuthorizedIsolatedStagingGhlEmbedRequest(
@@ -386,7 +431,7 @@ async function isAuthorizedIsolatedStagingGhlEmbedRequest(
   if (
     ["GET", "HEAD"].includes(method) &&
     fetchSite === "same-origin" &&
-    isExactGhlBootstrapReferer(request) &&
+    (isExactGhlBootstrapReferer(request) || isExactGhlConnectReferer(request)) &&
     (
       request.nextUrl.pathname.startsWith("/_next/static/") ||
       STAGING_GHL_BOOTSTRAP_PUBLIC_ASSETS.has(request.nextUrl.pathname)
@@ -740,6 +785,10 @@ export async function proxy(request: NextRequest) {
     stagingAccess.required && stagingAccess.configured
       ? await isAuthorizedIsolatedStagingGhlConnectEntryRequest(request)
       : false;
+  const stagingGhlConnectBootstrapAuthorized =
+    stagingAccess.required && stagingAccess.configured
+      ? await isAuthorizedIsolatedStagingGhlConnectBootstrapRequest(request)
+      : false;
   // Vercel Cron cannot attach DealFlow's private staging-access header. It
   // does attach the exact configured cron bearer token, which is already one
   // of the internal-system-job secrets. Allow only an exact internal route
@@ -757,6 +806,7 @@ export async function proxy(request: NextRequest) {
     !stagingAccess.authorized &&
     !stagingGhlEmbedAuthorized &&
     !stagingGhlConnectEntryAuthorized &&
+    !stagingGhlConnectBootstrapAuthorized &&
     !stagingInternalRequestAuthorized
   ) {
     return applySecurityHeaders(
@@ -844,6 +894,19 @@ export async function proxy(request: NextRequest) {
     nextResponse: NextResponse,
     effectiveEmbedCapability = embedCapability,
   ) => {
+    if (stagingGhlConnectBootstrapAuthorized) {
+      nextResponse.cookies.set(
+        STAGING_ACCESS_COOKIE,
+        process.env.STAGING_ACCESS_GATE_SECRET!.trim(),
+        {
+          httpOnly: true,
+          secure: true,
+          sameSite: "strict",
+          path: "/",
+          maxAge: 10 * 60,
+        },
+      );
+    }
     if (verifiedPartnerContext && partnerAttributionToken) {
       nextResponse.cookies.set(
         PARTNER_ATTRIBUTION_COOKIE,
@@ -897,15 +960,6 @@ export async function proxy(request: NextRequest) {
     buildContentSecurityPolicy(request, nonce, ghlEmbedHost, embedCapability),
   );
   let response = NextResponse.next({ request: { headers: requestHeaders } });
-  if (stagingGhlConnectEntryAuthorized) {
-    response.cookies.set(STAGING_ACCESS_COOKIE, process.env.STAGING_ACCESS_GATE_SECRET!.trim(), {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-      path: "/",
-      maxAge: 10 * 60,
-    });
-  }
 
   if (shouldRedirectRootToApp(request, verifiedPartnerDomain)) {
     return finalize(NextResponse.redirect(buildRootAppRedirect(request)));

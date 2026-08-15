@@ -65,12 +65,15 @@ assert.match(
 assert.match(proxy, /removeCookieFromRequestHeader\(/);
 assert.match(proxy, /STAGING_ACCESS_COOKIE/);
 assert.match(proxy, /isAuthorizedIsolatedStagingGhlConnectEntryRequest/);
+assert.match(proxy, /isAuthorizedIsolatedStagingGhlConnectBootstrapRequest/);
 assert.match(proxy, /getEffectiveProductPathname\(request\) !== STAGING_GHL_CONNECT_PATH/);
 assert.match(proxy, /request\.headers\.get\("sec-fetch-dest"\).*"document"/s);
 assert.match(proxy, /!stagingGhlConnectEntryAuthorized/);
+assert.match(proxy, /!stagingGhlConnectBootstrapAuthorized/);
+assert.match(proxy, /verifyGhlEmbedBootstrapClaim\(claimToken\)/);
 assert.match(
   proxy,
-  /response\.cookies\.set\(STAGING_ACCESS_COOKIE,[\s\S]*httpOnly: true,[\s\S]*secure: true,[\s\S]*sameSite: "strict",[\s\S]*maxAge: 10 \* 60/,
+  /if \(stagingGhlConnectBootstrapAuthorized\)[\s\S]*nextResponse\.cookies\.set\([\s\S]*STAGING_ACCESS_COOKIE,[\s\S]*httpOnly: true,[\s\S]*secure: true,[\s\S]*sameSite: "strict",[\s\S]*maxAge: 10 \* 60/,
 );
 assert.match(proxy, /rawPathname === "\/_next"/);
 assert.match(proxy, /rawPathname\.startsWith\("\/_next\/"\)/);
@@ -336,6 +339,11 @@ for (const scenario of [
   "ghl_bootstrap_static",
   "ghl_bootstrap_context_get",
   "ghl_bootstrap_context_post",
+  "ghl_connect_entry_cross_site",
+  "ghl_connect_static",
+  "ghl_connect_bootstrap_valid",
+  "ghl_connect_bootstrap_invalid",
+  "ghl_connect_bootstrap_wrong_host_claim",
   "ghl_bootstrap_missing_config",
   "ghl_authenticated_static",
   "ghl_authenticated_static_mismatched_session",
