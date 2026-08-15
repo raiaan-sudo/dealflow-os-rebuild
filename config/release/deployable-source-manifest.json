@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1174,
-  "deployableSourceSha256": "c6a1514ea81fe6e01baab2f1f76a8b58b6a8a49fbd7b3ce5342302b15d55116e",
+  "deployableSourceSha256": "f19b5213f34565a7b611b558d211da3ac9118255e8a2dbe06cb2a9bd6e2e2372",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "523f9f57d21a2fe6cfd2614d479d68fe303a806856aee25c0430409751d73ccd"
+      "sha256": "9d5f9801d7c7905c6828eaf33179a7b6f351d43606f3fdb3ffef516d0b031593"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85251,
       "mode": 33188,
-      "sha256": "52e8b0d22a2f91acef1746da42e972dae5b1ced6d589cd326f29333948cfb646"
+      "sha256": "609406b18962cac8f33309628219545e65412372aaf894be5b0b8f6922be9f6a"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "f052a8ad456479302916ffd6e7a28f6b7141f36c351e0aea50756a0dccdf198f"
+      "sha256": "455b666d9420bfc2dde1eb250040092d57938c239d14156ac1e51f93103f7d46"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1818,9 +1818,9 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 25771,
+      "size": 25805,
       "mode": 33188,
-      "sha256": "6c155a282901f431ffd766176bd43ada56958f4c01d901c18ed236aee858660d"
+      "sha256": "577712fa3e43a8792d5f7b41865520deaf5f653acbb51a935a7fc8fed8f6c6db"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
@@ -3126,9 +3126,9 @@
     },
     {
       "path": "src/app/api/integrations/ghl/embed-context/route.ts",
-      "size": 23751,
+      "size": 25101,
       "mode": 33188,
-      "sha256": "3bd9c19da8328e0ee1e5d2665acf8c8a2f472cca6ef1f10ebd6bd425dbca5f50"
+      "sha256": "98a69dba2331717475a11fab81902d36661285ede85508c3be0ceb3605676bce"
     },
     {
       "path": "src/app/api/integrations/ghl/marketplace/bootstrap/route.ts",
