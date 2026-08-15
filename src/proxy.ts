@@ -283,6 +283,7 @@ const GHL_EMBED_BOOTSTRAP_PATHS = new Set([
   GHL_EMBED_LEGACY_BOOTSTRAP_PATH,
 ]);
 const STAGING_GHL_EMBED_CONTEXT_PATH = "/api/integrations/ghl/embed-context";
+const STAGING_GHL_CONNECT_PATH = "/crm/connect";
 const STAGING_GHL_BOOTSTRAP_PUBLIC_ASSETS = new Set([
   "/favicon.ico",
   "/logo-icon.svg",
@@ -313,6 +314,32 @@ function isStagingGhlEmbedDeniedPath(pathname: string) {
 }
 
 function isExactGhlBootstrapReferer(request: NextRequest) {
+  const referer = parseHttpRequestUrl(request.headers.get("referer"));
+  return Boolean(
+    referer &&
+    referer.origin === request.nextUrl.origin &&
+    GHL_EMBED_BOOTSTRAP_PATHS.has(
+      parseProductLocalePathname(referer.pathname).pathname,
+    ),
+  );
+}
+
+async function isAuthorizedIsolatedStagingGhlConnectEntryRequest(
+  request: NextRequest,
+) {
+  if (
+    process.env.GHL_IFRAME_EMBED_ENABLED !== "true" ||
+    getEffectiveProductPathname(request) !== STAGING_GHL_CONNECT_PATH ||
+    !["GET", "HEAD"].includes(request.method.toUpperCase()) ||
+    request.headers.get("sec-fetch-site")?.trim().toLowerCase() !== "same-origin" ||
+    request.headers.get("sec-fetch-dest")?.trim().toLowerCase() !== "document"
+  ) {
+    return false;
+  }
+  const hostContext = await resolveGhlEmbedHostContext(request.nextUrl.hostname);
+  if (!hostContext || hostContext.domain !== request.nextUrl.hostname.toLowerCase()) {
+    return false;
+  }
   const referer = parseHttpRequestUrl(request.headers.get("referer"));
   return Boolean(
     referer &&
@@ -709,6 +736,10 @@ export async function proxy(request: NextRequest) {
     stagingAccess.required && stagingAccess.configured
       ? await isAuthorizedIsolatedStagingGhlEmbedRequest(request)
       : false;
+  const stagingGhlConnectEntryAuthorized =
+    stagingAccess.required && stagingAccess.configured
+      ? await isAuthorizedIsolatedStagingGhlConnectEntryRequest(request)
+      : false;
   // Vercel Cron cannot attach DealFlow's private staging-access header. It
   // does attach the exact configured cron bearer token, which is already one
   // of the internal-system-job secrets. Allow only an exact internal route
@@ -725,6 +756,7 @@ export async function proxy(request: NextRequest) {
     stagingAccess.required &&
     !stagingAccess.authorized &&
     !stagingGhlEmbedAuthorized &&
+    !stagingGhlConnectEntryAuthorized &&
     !stagingInternalRequestAuthorized
   ) {
     return applySecurityHeaders(
@@ -865,6 +897,15 @@ export async function proxy(request: NextRequest) {
     buildContentSecurityPolicy(request, nonce, ghlEmbedHost, embedCapability),
   );
   let response = NextResponse.next({ request: { headers: requestHeaders } });
+  if (stagingGhlConnectEntryAuthorized) {
+    response.cookies.set(STAGING_ACCESS_COOKIE, process.env.STAGING_ACCESS_GATE_SECRET!.trim(), {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 10 * 60,
+    });
+  }
 
   if (shouldRedirectRootToApp(request, verifiedPartnerDomain)) {
     return finalize(NextResponse.redirect(buildRootAppRedirect(request)));

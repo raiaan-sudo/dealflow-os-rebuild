@@ -64,6 +64,14 @@ assert.match(
 );
 assert.match(proxy, /removeCookieFromRequestHeader\(/);
 assert.match(proxy, /STAGING_ACCESS_COOKIE/);
+assert.match(proxy, /isAuthorizedIsolatedStagingGhlConnectEntryRequest/);
+assert.match(proxy, /getEffectiveProductPathname\(request\) !== STAGING_GHL_CONNECT_PATH/);
+assert.match(proxy, /request\.headers\.get\("sec-fetch-dest"\).*"document"/s);
+assert.match(proxy, /!stagingGhlConnectEntryAuthorized/);
+assert.match(
+  proxy,
+  /response\.cookies\.set\(STAGING_ACCESS_COOKIE,[\s\S]*httpOnly: true,[\s\S]*secure: true,[\s\S]*sameSite: "strict",[\s\S]*maxAge: 10 \* 60/,
+);
 assert.match(proxy, /rawPathname === "\/_next"/);
 assert.match(proxy, /rawPathname\.startsWith\("\/_next\/"\)/);
 assert.match(proxy, /matcher: \["\/:path\*"\]/);
