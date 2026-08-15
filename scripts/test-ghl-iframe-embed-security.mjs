@@ -287,7 +287,8 @@ for (const marker of [
   "error instanceof Error",
   "/^ghl_[a-z0-9_]{1,80}$/.test(safeCode)",
   "return deny(safeCode, error instanceof ApiError ? error.status : 400)",
-  'return deny("ghl_embed_exchange_failed", 400)',
+  'let failureCode = "ghl_embed_request_failed"',
+  "return deny(failureCode, 400)",
 ]) {
   if (!exchangeSource.includes(marker)) {
     failures.push(`Embed exchange sanitized error handling is missing: ${marker}`);

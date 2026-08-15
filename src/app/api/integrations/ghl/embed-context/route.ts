@@ -165,7 +165,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: Request) {
+  let failureCode = "ghl_embed_request_failed";
   try {
+    failureCode = "ghl_embed_rate_limit_failed";
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "ghl-embed-context"),
       limit: 20,
@@ -175,6 +177,7 @@ export async function POST(request: Request) {
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
+    failureCode = "ghl_embed_host_context_failed";
     const requestUrl = new URL(request.url);
     const hostContext = await resolveGhlEmbedHostContext(requestUrl.hostname);
     if (
@@ -191,12 +194,14 @@ export async function POST(request: Request) {
       return deny("ghl_embed_same_origin_invalid");
     }
 
+    failureCode = "ghl_embed_request_body_failed";
     const body = await parseJsonBody(request, bodySchema);
     const sharedSecret = getGhlAppSharedSecret();
     if (!sharedSecret || process.env.GHL_IFRAME_EMBED_ENABLED !== "true") {
       return deny("ghl_embed_disabled", 503);
     }
 
+    failureCode = "ghl_embed_signed_context_failed";
     const parentOrigin = resolveAllowedGhlParentOrigin({
       candidate: body.parentOrigin,
       partnerHost: hostContext.domain,
@@ -212,6 +217,7 @@ export async function POST(request: Request) {
       return deny("ghl_embed_passwordless_authority_denied");
     }
 
+    failureCode = "ghl_embed_authority_client_failed";
     const admin = createAdminClient();
     if (!admin) return deny("ghl_embed_authority_unavailable", 503);
     const allowedEnvironments = nonProductionDeployment
@@ -220,6 +226,7 @@ export async function POST(request: Request) {
     const payloadDigest = await createGhlEmbedSignedContextDigest(body.encryptedData);
     if (!payloadDigest) return deny("ghl_embed_context_digest_unavailable", 503);
 
+    failureCode = "ghl_embed_mapping_query_failed";
     const mappingResult = await bindPartnerId(
       (admin as any)
         .from("ghl_location_mappings")
@@ -234,6 +241,7 @@ export async function POST(request: Request) {
       return deny("ghl_embed_location_unbound");
     }
     if (mappings.length === 0) {
+      failureCode = "ghl_embed_provisioning_query_failed";
       const provisioningResult = await bindPartnerId(
         (admin as any)
           .from("ghl_location_mappings")
@@ -248,6 +256,7 @@ export async function POST(request: Request) {
         return deny("ghl_embed_location_unbound");
       }
       if (provisioningMappings.length === 1) {
+        failureCode = "ghl_embed_bootstrap_claim_failed";
         const claim = await createGhlMarketplaceEmbedBootstrapClaim({
           providerEnvironment: resolveGhlLifecycleEnvironment(),
           partnerId: hostContext.partnerId,
@@ -268,6 +277,7 @@ export async function POST(request: Request) {
           { headers: { "Cache-Control": "no-store, max-age=0" } },
         );
       }
+      failureCode = "ghl_embed_bootstrap_claim_failed";
       const claim = await createGhlMarketplaceEmbedBootstrapClaim({
         providerEnvironment: resolveGhlLifecycleEnvironment(),
         partnerId: hostContext.partnerId,
@@ -290,6 +300,7 @@ export async function POST(request: Request) {
     }
     const mapping = mappings[0] as Record<string, unknown>;
 
+    failureCode = "ghl_embed_tenant_query_failed";
     const [installationResult, tenantResult, ghlUserResult] = await Promise.all([
       (admin as any)
         .from("ghl_installations")
@@ -335,6 +346,7 @@ export async function POST(request: Request) {
       installation?.provider_agency_id === signedContext.companyId &&
       installation?.partner_id === null
     ) {
+      failureCode = "ghl_embed_direct_binding_failed";
       const directBindingResult = await (admin as any).rpc(
         "bind_direct_workspace_ghl_user_v1",
         {
@@ -369,6 +381,7 @@ export async function POST(request: Request) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       boundDealflowUserId,
     )) {
+      failureCode = "ghl_embed_user_binding_failed";
       const bindingResult = await (admin as any).rpc("bind_workspace_ghl_dealflow_user_v1", {
         p_workspace_id: String(mapping.organization_id),
         p_partner_id: hostContext.partnerId,
@@ -387,6 +400,7 @@ export async function POST(request: Request) {
       }
     }
 
+    failureCode = "ghl_embed_session_query_failed";
     const routeClient = await createRouteHandlerClient();
     const authResult = routeClient ? await routeClient.auth.getUser() : null;
     const dealflowUser = authResult?.data.user ?? null;
@@ -396,6 +410,7 @@ export async function POST(request: Request) {
 
     const organizationId = String(mapping.organization_id);
     const partnerId = hostContext.partnerId;
+    failureCode = "ghl_embed_passwordless_authority_check_failed";
     const authorityValid = await verifyPasswordlessEmbedAuthority({
       admin,
       userId: boundDealflowUserId,
@@ -406,6 +421,7 @@ export async function POST(request: Request) {
     if (!authorityValid) return deny("ghl_embed_passwordless_authority_denied");
 
     if (dealflowUser) {
+      failureCode = "ghl_embed_membership_query_failed";
       const membershipResult = await (admin as any)
         .from("organization_memberships")
         .select("organization_id,user_id")
@@ -421,6 +437,7 @@ export async function POST(request: Request) {
       ) {
         return deny("ghl_embed_dealflow_membership_mismatch");
       }
+      failureCode = "ghl_embed_authenticated_capability_failed";
       const [capability, sessionMarker] = await Promise.all([
         createGhlEmbedCapability({
           stage: "authenticated",
@@ -458,6 +475,7 @@ export async function POST(request: Request) {
     }
 
     if (!body.handoffToken) {
+      failureCode = "ghl_embed_exchange_begin_failed";
       const beginResult = await (admin as any).rpc("begin_ghl_embed_auth_exchange_v1", {
         p_payload_digest: payloadDigest,
         p_partner_id: partnerId,
@@ -468,6 +486,7 @@ export async function POST(request: Request) {
       });
       const receiptId = typeof beginResult.data === "string" ? beginResult.data : "";
       if (beginResult.error || !receiptId) return deny("ghl_embed_exchange_receipt_denied");
+      failureCode = "ghl_embed_handoff_issue_failed";
       const [handoffToken, capability, sessionMarker] = await Promise.all([
         createGhlEmbedAuthHandoff({
           receiptId,
@@ -521,6 +540,7 @@ export async function POST(request: Request) {
       return response;
     }
 
+    failureCode = "ghl_embed_handoff_verify_failed";
     const handoff = await verifyGhlEmbedAuthHandoff(body.handoffToken, {
       expectedHost: hostContext.domain,
     });
@@ -538,6 +558,7 @@ export async function POST(request: Request) {
       return deny("ghl_embed_handoff_invalid");
     }
 
+    failureCode = "ghl_embed_handoff_consume_failed";
     const consumeResult = await (admin as any).rpc("consume_ghl_embed_auth_exchange_v1", {
       p_exchange_id: handoff.receiptId,
       p_payload_digest: payloadDigest,
@@ -547,6 +568,7 @@ export async function POST(request: Request) {
       return deny("ghl_embed_handoff_consumed_or_expired");
     }
 
+    failureCode = "ghl_embed_session_link_failed";
     const linkResult = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: signedContext.email,
@@ -556,6 +578,7 @@ export async function POST(request: Request) {
     if (linkResult.error || !tokenHash || !supabaseEnv) {
       return deny("ghl_embed_session_link_failed", 503);
     }
+    failureCode = "ghl_embed_final_capability_failed";
     const [capability, sessionMarker] = await Promise.all([
       createGhlEmbedCapability({
         stage: "authenticated",
@@ -579,6 +602,7 @@ export async function POST(request: Request) {
     if (!capability || !sessionMarker) return deny("ghl_embed_capability_unavailable", 503);
 
     const response = NextResponse.json({ status: "ready", nextPath: "/dashboard" });
+    failureCode = "ghl_embed_session_verification_failed";
     const responseClient = await createServerSupabase(response);
     if (!responseClient) return deny("ghl_embed_session_authority_unavailable", 503);
     const verifiedSession = await responseClient.auth.verifyOtp({
@@ -594,6 +618,7 @@ export async function POST(request: Request) {
     ) {
       return deny("ghl_embed_session_verification_failed", 503);
     }
+    failureCode = "ghl_embed_session_cookie_failed";
     const setSessionResult = await responseClient.auth.setSession({
       access_token: verifiedSession.data.session.access_token,
       refresh_token: verifiedSession.data.session.refresh_token,
@@ -622,6 +647,6 @@ export async function POST(request: Request) {
     if (safeCode && /^ghl_[a-z0-9_]{1,80}$/.test(safeCode)) {
       return deny(safeCode, error instanceof ApiError ? error.status : 400);
     }
-    return deny("ghl_embed_exchange_failed", 400);
+    return deny(failureCode, 400);
   }
 }
