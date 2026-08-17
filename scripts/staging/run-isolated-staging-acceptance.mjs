@@ -126,9 +126,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 129;
+const EXPECTED_MIGRATION_COUNT = 130;
 const EXPECTED_FINAL_MIGRATION =
-  "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql";
+  "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql";
 const EXPECTED_HOSTED_ENVIRONMENT_NAME_SET_SHA256 =
   "df23c70342d004cae4dddfe4e70c7fee6db85cf26005643f7763e734f7b9afcf";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
@@ -536,8 +536,8 @@ Required execution environment:
   Exact isolated qibh Supabase credentials, staging QA secrets, and fail-closed provider flags.
 
 Exactly one migration mode is required. Resume mode is read-only. Historical
-104-to-120 and 122-to-123 transitions remain immutable proof and cannot be run
-from the current 129-migration checkout; use fresh apply or exact-existing
+104-to-120, 122-to-123, and 123-to-129 transitions remain immutable proof and cannot be run
+from the current 130-migration checkout; use fresh apply or exact-existing
 read-only verification.`;
 }
 
@@ -1658,9 +1658,9 @@ async function runSeed(
     !/^\d{4}-\d{2}-\d{2}$/.test(parsed.rlsCreditFixtures?.providerUsageDate ?? "") ||
     parsed.rlsCreditFixtures?.providerMutationPerformed !== false ||
     parsed.rlsCreditFixtures?.replayIdempotent !== true ||
-    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 129 ||
+    parsed.successorProviderIndependent?.exactMigrationChainRequired !== 130 ||
     parsed.successorProviderIndependent?.finalMigration !==
-      "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql" ||
+      "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql" ||
     parsed.successorProviderIndependent?.financialFixture?.creditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.financialFixture?.semanticReplayIdempotent !== true ||
@@ -5888,12 +5888,12 @@ async function main() {
   }
   if (options.applyForwardMigration) {
     throw new Error(
-      "The current 129 candidate cannot execute historical forward modes; use fresh apply or read-only exact-existing verification",
+      "The current 130 candidate cannot execute historical forward modes; use fresh apply or read-only exact-existing verification",
     );
   }
   if (options.applySuccessorMigration) {
     throw new Error(
-      "The current 129 candidate cannot execute the historical 122-to-123 successor mode; use fresh apply or read-only exact-existing verification",
+      "The current 130 candidate cannot execute the historical 122-to-123 successor mode; use fresh apply or read-only exact-existing verification",
     );
   }
   approvedStagingEvidenceParent =

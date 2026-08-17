@@ -43,7 +43,7 @@ function requireMarker(pattern, label) {
   assert.match(source, pattern, `Tracked staging broker is missing ${label}`);
 }
 
-requireMarker(/const exactMigrationCount = 129/, "the exact 129-migration gate");
+requireMarker(/const exactMigrationCount = 130/, "the exact 130-migration gate");
 requireMarker(/codex\/dealflow-part1-closure-20260811/, "the exact isolated release branch gate");
 requireMarker(
   /expectedPriorApplicationBranch = "codex\/dealflow-release-closure-plan"/,
@@ -244,7 +244,7 @@ requireMarker(/retentionConfigurationRowSecurityForced: true/, "retention forced
 requireMarker(/serviceRoleColumnWritePrivilegesPresent: false/, "sealed service_role column-write result");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
 requireMarker(/expectedPriorFinalMigration[\s\S]+20260713028000_harden_account_deletion_retention_authority\.sql/, "the prior final migration pin");
-requireMarker(/requiredFinalMigration[\s\S]+20260727020000_fix_ghl_provisioning_lease_revision_fencing\.sql/, "the final migration 129 pin");
+requireMarker(/requiredFinalMigration[\s\S]+20260817190000_rotate_ghl_embed_bootstrap_claim_payload\.sql/, "the final migration 130 pin");
 requireMarker(/currentManagedStructuralCatalogSha256[\s\S]+6c1c7a5ccd96ab29bb383e040b530dfb9c0d070baa8134538c82444dc5934183/, "the exact managed catalog digest for migration 129");
 requireMarker(/currentManagedStructuralCatalogRecordCount = 8480/, "the exact managed catalog record count for migration 129");
 requireMarker(/--apply-successor-exact/, "the exact 122-to-123 successor mode");
@@ -1385,5 +1385,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer fresh 129-migration transaction, fail-closed read-only exact-existing resume, immutable historical 104-to-120, 120-to-121, and 121-to-122 proofs, exact historical 122-to-123 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 129 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer fresh 130-migration transaction, fail-closed read-only exact-existing resume, immutable historical 104-to-120, 120-to-121, and 121-to-122 proofs, exact historical 122-to-123 successor transition, prior proof integrity/ancestry/schema binding, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pinned project, clean two-round seal, exact 130 migrations, Node 24, PostgreSQL 17.6, and external evidence fencing)`,
 );

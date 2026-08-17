@@ -4,7 +4,7 @@ Part 2 may begin only from the exact final Part 1 documentation seal and verifie
 
 Required evidence, in fail-closed order:
 
-1. Reconfirm exact commit, tree, lockfile, deployable manifest, and 129-migration digest.
+1. Reconfirm exact commit, tree, lockfile, deployable manifest, and 130-migration digest.
 2. Use owner-authorized, isolated, nonproduction infrastructure only.
 3. Prove current Supabase schema/history authority, exact migration replay/upgrade, drift rejection, RLS/grants, preservation, repeat digest, and forward recovery.
 4. Prove authenticated multi-role, multi-tenant, EN/FR/ES, white-label, signup, billing, reporting freshness, worker retry/dead-letter, and deletion/offboarding journeys with synthetic data only.

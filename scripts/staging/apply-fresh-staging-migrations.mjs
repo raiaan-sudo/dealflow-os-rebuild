@@ -115,11 +115,11 @@ const expectedPriorMigrationPortfolioSha256 =
 const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
-const exactMigrationCount = 129;
+const exactMigrationCount = 130;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql";
+  "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql";
 const currentManagedStructuralCatalogSha256 =
   "6c1c7a5ccd96ab29bb383e040b530dfb9c0d070baa8134538c82444dc5934183";
 const currentManagedStructuralCatalogRecordCount = 8480;
@@ -2413,7 +2413,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       existingManagedCatalog.managedStructuralCatalogRecordCount !==
         currentManagedStructuralCatalogRecordCount
     ) {
-      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 129 authority");
+      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 130 authority");
     }
     verificationStage = "MANAGED_STRUCTURAL_CATALOG_STABILITY";
     const existingManagedCatalogRepeat = captureManagedCatalogIdentity(

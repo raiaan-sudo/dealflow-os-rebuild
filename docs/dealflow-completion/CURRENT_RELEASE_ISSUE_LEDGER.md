@@ -21,7 +21,7 @@ This is the current concise source-status authority. The 864-row requirement led
 | Operational readiness | 13-system whole-product inventory; limited six-adapter registry remains explicitly non-aggregate | Every external dimension remains `NOT_OBSERVED`, `NOT_PROVEN`, or `BLOCKED_EXTERNAL_AUTHORITY` |
 | KPI/reporting | 13 definitions retained; five partial and eight missing; dashboard authority false | Owner policy and current runtime lineage remain Part 3/Part 2 work |
 | Owner authority | 43/43 unresolved, zero approved, unsigned, fail-closed | Only owner-controlled signed decisions can close these gates |
-| Migrations | 129 tracked SQL migrations, unchanged by Part 1 implementation | Current production shape and authorized upgrade remain Part 2/3 gates |
+| Migrations | 130 tracked SQL migrations; migration 130 rotates stale GHL embed bootstrap payloads without weakening production billing gates | Current production shape and authorized upgrade remain Part 2/3 gates |
 | Release | Local candidate closure only | No deploy, provider action, production mutation, communication, charge, or spend authorized |
 
 Part 1 is complete only when the documentation-seal commit, two complete qualification rounds, local browser proof, fresh-clone proof, final bundles, and sanitized evidence validation all pass. Until then, do not promote this source-status record to a completion claim.

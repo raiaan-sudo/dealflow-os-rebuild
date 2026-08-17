@@ -9,7 +9,7 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const FINAL_MIGRATION = "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql";
+const FINAL_MIGRATION = "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql";
 const PRIVILEGED_TENANCY_MIGRATION = "20260717040000_bind_generated_static_storage_tenancy.sql";
 const TRANSACTION_OWNER = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = readdirSync(MIGRATIONS)
@@ -167,7 +167,7 @@ function projectionReceipt({
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 129, "proof expects the exact 129-migration candidate");
+  assert.equal(migrations.length, 130, "proof expects the exact 130-migration candidate");
   assert.equal(migrations.at(-1), FINAL_MIGRATION, "proof expects the exact final migration");
   adapter.preflight();
   if (adapter.psql("select exists(select 1 from pg_roles where rolname='postgres');") !== "t") {

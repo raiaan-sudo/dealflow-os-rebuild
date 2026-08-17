@@ -1,11 +1,13 @@
-# Production 59-to-129 migration and durable-worker runbook
+# Production 59-to-130 migration and durable-worker runbook
+
+> The filename is retained for historical link compatibility. The authoritative current portfolio is 59-to-130.
 
 This is the current authority for the exact successor candidate. Older migration
 and worker documents are historical evidence only.
 
 ## Immutable release facts
 
-- The tracked candidate contains exactly 129 ordered migration files.
+- The tracked candidate contains exactly 130 ordered migration files.
 - Production must begin at the exact first 59 versions; the only accepted delta
   is the final 70.
 - `20260426000000_forward_foundation_bootstrap.sql` is first and supplies the
@@ -24,7 +26,7 @@ and worker documents are historical evidence only.
    evidence, rollback boundary, and forward-recovery operator.
 3. Run the broker in `rehearsal` mode against an isolated, synthetic,
    production-shaped database whose history is the exact first 59 versions.
-4. Require exact 129-version replay, permissions/RLS/index/job checks, tenant
+4. Require exact 130-version replay, permissions/RLS/index/job checks, tenant
    isolation, timings, lock observations, WAL observations, and clean teardown.
 5. Re-read production history. Stop on the first name, order, count, or project
    fingerprint mismatch.
@@ -35,7 +37,7 @@ and worker documents are historical evidence only.
    lock timeout, a five-minute statement timeout, per-migration transactions,
    and stops at the first error. Never reverse schema by deploying old app code;
    use forward recovery from the exact observed version.
-8. Verify all 129 exact versions, catalog/security invariants, and recovery
+8. Verify all 130 exact versions, catalog/security invariants, and recovery
    position before deploying the app or enabling any worker.
 
 ## Durable worker
