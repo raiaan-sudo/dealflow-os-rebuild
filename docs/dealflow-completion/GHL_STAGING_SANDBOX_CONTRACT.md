@@ -87,6 +87,22 @@ names, form IDs, and HTTPS destinations. Arbitrary funnel publication remains
 or successful snapshot copy/status read as publication. Copied funnels may
 remain provider drafts until separately proven published.
 
+## Operator-repaired required-object replay
+
+When a preinstalled snapshot or its final inventory check proves required
+objects missing, the run remains terminal and no blind worker retry occurs.
+After an operator creates the exact missing objects, the service-role-only
+`replay_ghl_operator_repaired_provisioning_v1` function may reopen only the
+matching `snapshot_install` or `required_objects_verify` operation. The
+function requires the exact organization/run pair, an unleased terminal run,
+the matching unleased operator-required outbox, an append-only receipt with the
+same blocker code, and the matching unresolved operator request. It preserves
+the failed receipt, resolves the operator request, reopens the immutable outbox
+identity, and returns the run to its exact verification state. It performs no
+provider call; the normal database kill switch and sandbox/production gate
+still control the later worker claim. Anonymous and authenticated roles have
+no execute authority.
+
 ## Required staging values
 
 ```dotenv

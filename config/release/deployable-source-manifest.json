@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1175,
-  "deployableSourceSha256": "bfee2fa08d2eaa601e414b54a0f402abec9f11cf5746e1aa12442b09e95419ea",
+  "entryCount": 1176,
+  "deployableSourceSha256": "fd9ef6b856c9776ad0da3d38dada40b35a7661faf14a88ebb77e6e48fdb5faed",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -168,15 +168,15 @@
     },
     {
       "path": "docs/dealflow-completion/CURRENT_RELEASE_ISSUE_LEDGER.md",
-      "size": 2527,
+      "size": 2598,
       "mode": 33188,
-      "sha256": "108095209d4034fe763fda2cdf5e0ffce1c13826efd535e9bbf305a11363fdf1"
+      "sha256": "502d4366c4a9f6ab44208d925d7c714878aba97822679de7cfc10cda81fc75c8"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "5a7fc9fd9382ece2475601ef052662c4c5e55cce25cdcca41b964b9ac797b638"
+      "sha256": "d79b92c0bcbb66b8ff881171e8e07d017ee9dbde4c6fda5e55ba4f7d158bf232"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -222,9 +222,9 @@
     },
     {
       "path": "docs/dealflow-completion/GHL_STAGING_SANDBOX_CONTRACT.md",
-      "size": 8188,
+      "size": 9174,
       "mode": 33188,
-      "sha256": "edbef0b1dceca944597e22de40495dba155bd78e8d43b460671d07710b0eb12b"
+      "sha256": "7fe4f2d26bf7915ff028606f561a7b276d24cb88beeafaff1e2b8cb09e26dbff"
     },
     {
       "path": "docs/dealflow-completion/HTTP_ONLY_AUTH_SESSION_BOUNDARY.md",
@@ -236,7 +236,7 @@
       "path": "docs/dealflow-completion/ISOLATED_STAGING_ACCEPTANCE.md",
       "size": 18660,
       "mode": 33188,
-      "sha256": "7c0e1fc23e75dbe6f4b2789979626650ede0034bb4e3d95a3e299d9e2ea15cdc"
+      "sha256": "dd37c2cfa2a732acfbc088564eb8884c88253adf78b73806f4be537e246abef1"
     },
     {
       "path": "docs/dealflow-completion/ISSUE_LEDGER.md",
@@ -288,27 +288,27 @@
     },
     {
       "path": "docs/dealflow-completion/PART1_CANDIDATE_CLOSURE.md",
-      "size": 1579,
+      "size": 1613,
       "mode": 33188,
-      "sha256": "5b87ca769533b05eb9997f0fa7de7d029427eda8146093c8eaf7e3a14fd678e7"
+      "sha256": "9bc24fe0218180dd89d9f9c960c0ff80646ce7ae1b2d5d16a5d88f3673646d28"
     },
     {
       "path": "docs/dealflow-completion/PART2_HANDOFF.md",
       "size": 1606,
       "mode": 33188,
-      "sha256": "06efb2faee8fa7bffac5ed6bfa3c07c1094ca0553b4999492c319471c81097dd"
+      "sha256": "16badb4ee2b371b112e45c52429efb3157dedd3efb7930547878dc89a1000f78"
     },
     {
       "path": "docs/dealflow-completion/PART2_STAGING_AUTHORITY_RESEAL.md",
-      "size": 2391,
+      "size": 2400,
       "mode": 33188,
-      "sha256": "24190c575e8298f62eb6fb473ec73cb95b653bc3048e74ea037f11e24a498c5d"
+      "sha256": "109eb9f2a415b2141b1f4bf2e98c83efff8d7d31a704b814239783b25f9a4064"
     },
     {
       "path": "docs/dealflow-completion/PRODUCTION_59_TO_129_AND_DURABLE_WORKER_RUNBOOK.md",
       "size": 4492,
       "mode": 33188,
-      "sha256": "ffb81d994a5ed5db458d1959e5b73aa57e6350af69e08cb947481d53535efb91"
+      "sha256": "47e7b6aab54ad66f452b92aff4e5448bb716f9f42f62173cabbdbf24ded91eca"
     },
     {
       "path": "docs/dealflow-completion/PROVIDER_ACCEPTANCE_BOUNDARIES.md",
@@ -372,21 +372,21 @@
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.csv",
-      "size": 52724,
+      "size": 52937,
       "mode": 33188,
-      "sha256": "66fbef0629824b08ae1871a7f252c7a5841e340066146c4d93902743e72700a2"
+      "sha256": "ea721d43faeb2a20f139aa5676055779ffa75fdf2dfea57c1d98e24b588da50e"
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85549,
+      "size": 85845,
       "mode": 33188,
-      "sha256": "9c609eb6c639619774e9a4a0f8187c1448abeacf41e74799c53824f5f591f64d"
+      "sha256": "bf35d553714c2886a62c0b3ed22d63b51ae0bae106b48c0c26f39f0429e400bc"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
-      "size": 3694,
+      "size": 3698,
       "mode": 33188,
-      "sha256": "8dc27e41164e540e4478f591f27c0aec282342758111cd9554fecf525c8d06ec"
+      "sha256": "50edd4d6d9c45b5764d53c399f4fd986a56e07f077102b230d00fd0b260c4472"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -906,9 +906,9 @@
     },
     {
       "path": "scripts/generate-forward-migration-portfolio.mjs",
-      "size": 110820,
+      "size": 110882,
       "mode": 33188,
-      "sha256": "ba7b1781c93096e3c83465b70899ab3c18029b81e55a1568d3fff7f63fdebab9"
+      "sha256": "abb08b87aee00db0efe3ba8f4ca248a19e9b34890b84edfe72e9853687e1d26d"
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
@@ -1016,7 +1016,7 @@
       "path": "scripts/production/run-exact-production-migrations.mjs",
       "size": 21164,
       "mode": 33188,
-      "sha256": "b7c8457869d78e8f84df21f067a4683e25ae5a1012d0afb36b2abd4bd46f0e2b"
+      "sha256": "960477a5471a6461284d1403d9abefa644bbca7f0f6385af79b3d473e6fe9c35"
     },
     {
       "path": "scripts/production/sign-release-guard-v5-envelope.mjs",
@@ -1062,9 +1062,9 @@
     },
     {
       "path": "scripts/run-dealflow-final-verification.mjs",
-      "size": 26560,
+      "size": 26557,
       "mode": 33188,
-      "sha256": "af5323646a69691391b9c78b08998e33f1356fb28721cf5b1af8b2a371bc464c"
+      "sha256": "1c1ece508f5734f6cd558ccb983219d2d25519f96a40d8f18b8cb4783710ba1a"
     },
     {
       "path": "scripts/run-durable-system-worker.ts",
@@ -1110,15 +1110,15 @@
     },
     {
       "path": "scripts/schema/check-forward-reconstruction.mjs",
-      "size": 21905,
+      "size": 21967,
       "mode": 33188,
-      "sha256": "c8d3eec5a40c96f14a4c1efe7cc67ea474854f6043991649215ea76db68d7146"
+      "sha256": "93d5301792566d1fad31f2f207f745e612d3373d14768014eaba90f4f08abae0"
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 113637,
+      "size": 113634,
       "mode": 33188,
-      "sha256": "44c589a74d54b30f4c0a52b63025eaf6b11f63fb8db83e48070074682ff9111a"
+      "sha256": "0fbbf5cebc95b82998d52c3a84163806068849e92660064be57e7220d6d57e24"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -1140,9 +1140,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 189395,
+      "size": 189392,
       "mode": 33188,
-      "sha256": "4cadf9dafdf579069c390b5e8ca3365e0bce8f30aa5f985e29377b466e0473c2"
+      "sha256": "dbec73b293796196ce33998bb3b4b9da2fbf194fe05221e52e85d101d7c6d815"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1206,9 +1206,9 @@
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
-      "size": 85250,
+      "size": 85247,
       "mode": 33188,
-      "sha256": "da9d128b91a01073dfbb1dd6841e983e20fb42fa6440241b20a26c16d5974c7a"
+      "sha256": "a387eb4ba45278237f35fa4f0ea63573d00526d5252a3dae4b055526f0401614"
     },
     {
       "path": "scripts/staging/interruptible-command.mjs",
@@ -1248,9 +1248,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 302204,
+      "size": 302198,
       "mode": 33188,
-      "sha256": "3b4623f3c5d7aa3181883c229269a6ea100c28a46488991f447d61fb248c1b75"
+      "sha256": "fa63224462e1306708a466772c54afa4d5520ce4a24b41b83d3660317d53b7d4"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1302,9 +1302,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 65472,
+      "size": 65469,
       "mode": 33188,
-      "sha256": "9972d2b2d6bfa4efafe0306a532cb1f44a3eafccb002684c556792b52fbee8a1"
+      "sha256": "6826f28e69817c8033d38a33c45b59b43f429ea14575553517e743cf99811ca7"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
@@ -1368,9 +1368,9 @@
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
-      "size": 11420,
+      "size": 11417,
       "mode": 33188,
-      "sha256": "a05d5304a9dd7334c1adf15f5c9d87ae965ac500236e0fc52fe76deaa5f9fb31"
+      "sha256": "0f20342b593bb1f4eb37ecc10b32fb3fcb57f52f50ba624639cbca05fd13d028"
     },
     {
       "path": "scripts/staging/test-interruptible-command.mjs",
@@ -1380,9 +1380,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 137633,
+      "size": 137630,
       "mode": 33188,
-      "sha256": "185f04e0fa237f1545c5c4eba664d6e630aa3e802a28cf897ef36402e0a7ef28"
+      "sha256": "f403d071d2b98ab5ebbe34f7ae78e47c3f3c92e86cb95cb1e7f7c50b5a42d309"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1566,9 +1566,9 @@
     },
     {
       "path": "scripts/test-account-deletion-offboarding-disposable-db.mjs",
-      "size": 50652,
+      "size": 50649,
       "mode": 33188,
-      "sha256": "8695a0cbe9bbeac0c408290ad755091e73fa9a0f486ff57a78ea9da223e981ba"
+      "sha256": "0e603195b8eeb60beeef728ef57d7e8ef59db487d9dd1ff7d414f1b3cf6621c8"
     },
     {
       "path": "scripts/test-admin-page-authorization-contract.mjs",
@@ -1746,9 +1746,9 @@
     },
     {
       "path": "scripts/test-final-verification-runner-contract.mjs",
-      "size": 32567,
+      "size": 32564,
       "mode": 33188,
-      "sha256": "738d18ad4408af93af0fd2294bab32182ecc00be8509e395b3b255ad87ccc8af"
+      "sha256": "81bd31f2943af814a54aa4e0640f0a537aa9a7af8e933aea5dcfbbc4974620c8"
     },
     {
       "path": "scripts/test-financial-integrity-disposable-db.mjs",
@@ -1770,15 +1770,15 @@
     },
     {
       "path": "scripts/test-generated-static-deletion-disposable-db.mjs",
-      "size": 15476,
+      "size": 15473,
       "mode": 33188,
-      "sha256": "964726f7968afe43632d05279e975b0616d51cdd3d6d5cff8ebc24faa54461c5"
+      "sha256": "a755a0b2e73c6c98a2ab18bd4c41db5a495f554e2200913e475b2cad730baff6"
     },
     {
       "path": "scripts/test-generated-video-storage-disposable-db.mjs",
-      "size": 14251,
+      "size": 14248,
       "mode": 33188,
-      "sha256": "39b16ebda5be04ca1205c172cc1c9f37960527962e002bccdf8ddbd8113a7724"
+      "sha256": "09bb9659742eec0a8a8655f9e2d3f98d3b7df97b565822ffcc8b8f785caa80f2"
     },
     {
       "path": "scripts/test-generated-video-storage.ts",
@@ -1800,9 +1800,9 @@
     },
     {
       "path": "scripts/test-ghl-disposable-db.mjs",
-      "size": 104187,
+      "size": 108812,
       "mode": 33188,
-      "sha256": "8918aeb131bd4ea8999aed79c656d7b57d7e03666234a04e45919ee8ab6bddb0"
+      "sha256": "0a20c5e6d98452957cd02a039b21ee2b617dc6a52b230bae613dfadf5b0e0a16"
     },
     {
       "path": "scripts/test-ghl-embed-auth-handoff-disposable-db.mjs",
@@ -1824,9 +1824,9 @@
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
-      "size": 84641,
+      "size": 84638,
       "mode": 33188,
-      "sha256": "83c13500c439835a6b82c9448183a70229652b069a9988768b2c966dbc63ba05"
+      "sha256": "70053e7aba91ac6bd87a69be68f294d66efcef119fae40f091665ce0d556d4c2"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation.ts",
@@ -1878,9 +1878,9 @@
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-disposable-db.mjs",
-      "size": 53649,
+      "size": 53646,
       "mode": 33188,
-      "sha256": "e4740a1c63373ecb7eb54125ad9f5d5258c518cdb0ab5c2a4f4379d16e858702"
+      "sha256": "cdb21b00efcbadd2c7e06ee8f3d232be60e71f49e2679912d3db33641a231760"
     },
     {
       "path": "scripts/test-ghl-periodic-form-sweep-route.mjs",
@@ -1974,9 +1974,9 @@
     },
     {
       "path": "scripts/test-integrated-migration-chain-disposable-db.mjs",
-      "size": 50769,
+      "size": 50831,
       "mode": 33188,
-      "sha256": "e05e493ee0e45c19f2949d692c80088e50c700786fa41e3341b9c9b056058d3b"
+      "sha256": "bf0cafdb51ffaf3a8fe0e425948eea88be15fc18494d6e437e8431c130d80e12"
     },
     {
       "path": "scripts/test-internal-sms-notifications.mjs",
@@ -1986,9 +1986,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 33854,
+      "size": 33851,
       "mode": 33188,
-      "sha256": "c48b9b5a867747b3bebfddc7e668cc193f88fa997d07ec98c7ce493f796497fb"
+      "sha256": "51244f28d224bd24b67bee2ad30fd32e0fb1fef998514f7b84747d9c8bad3dc7"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
@@ -2138,7 +2138,7 @@
       "path": "scripts/test-migration-read-only-contract.mjs",
       "size": 7161,
       "mode": 33188,
-      "sha256": "53e4d190d8ad51d9265229f70a47c7a2a9baf56b563300989e4943421560e19a"
+      "sha256": "573cb649e761d803578b9eb4d66524ce3335adaf6069f3656174efa69c5dc5fd"
     },
     {
       "path": "scripts/test-native-postgres-test-adapter.mjs",
@@ -2208,9 +2208,9 @@
     },
     {
       "path": "scripts/test-post-audit-successor-contract.ts",
-      "size": 8674,
+      "size": 8736,
       "mode": 33188,
-      "sha256": "f79683bcde7cff7b288dfb337a5ff4471a44f82b9affcfa4ea5ddc644d8ff6ab"
+      "sha256": "6086f579ea8e74893d5af8d7f343467c68d1c93b50235ac038d038b910da955f"
     },
     {
       "path": "scripts/test-privacy-consent-dsar-contract.mjs",
@@ -2226,9 +2226,9 @@
     },
     {
       "path": "scripts/test-privileged-tenancy-disposable-db.mjs",
-      "size": 21044,
+      "size": 21041,
       "mode": 33188,
-      "sha256": "ba1a060f8cc0bd984d63d11268ad34b9d90be00ac39d8142f4665dc1fb2fbe61"
+      "sha256": "b2e72791c3db969d3606d7c9a95e8550cb7fce4f6bd919f906c6fe282a0007d7"
     },
     {
       "path": "scripts/test-privileged-tenancy-matrix.mjs",
@@ -2246,7 +2246,7 @@
       "path": "scripts/test-production-migration-broker-contract.mjs",
       "size": 3632,
       "mode": 33188,
-      "sha256": "1b55916f84e2a65f63e8e5971d6c94b8874c5af122067d723f0a58e03015df71"
+      "sha256": "41a1c9f3a3d14ebee70a178e9239ae7695584aa0c3f0168cc5f6eab12787bea4"
     },
     {
       "path": "scripts/test-production-route-contract.mjs",
@@ -6837,6 +6837,12 @@
       "size": 5514,
       "mode": 33188,
       "sha256": "91126f0a35edf7de16482685177e196811c40456885b772101edee1b9278eb39"
+    },
+    {
+      "path": "supabase/migrations/20260817223000_add_fenced_ghl_operator_repair_replay.sql",
+      "size": 15907,
+      "mode": 33188,
+      "sha256": "3eef1c285bf9ea71e9108253cbb4c76e354f18a0805870984b347b6c0d0a2709"
     },
     {
       "path": "supabase/reconciliation/README.md",

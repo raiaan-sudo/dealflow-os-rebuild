@@ -23,7 +23,7 @@ new successor branch name. Commit
 `0c8534b119feb61b8fca8adb20ea8df2502cc7b4` preserves the current-branch
 execution gate while validating prior evidence against its exact historical
 branch, commit, tree, broker source hash, ancestry, schema digest, structural
-catalog digest, and all historical 129 migration hashes. The current successor adds migration 130 and requires fresh qualification and staging proof. This permits legitimate successor
+catalog digest, and all historical 129 migration hashes. The current successor adds migrations 130 and 131 and requires fresh qualification and staging proof. This permits legitimate successor
 reseals without weakening prior-proof identity.
 
 The first hosted deployment of the successor seal exposed a third stale

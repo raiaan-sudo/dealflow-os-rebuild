@@ -18,7 +18,7 @@ Preserved without unauthorized promotion:
 - 43 owner decisions remain unresolved, unsigned, and fail-closed;
 - KPI dashboard authority remains false;
 - provider and hosted readiness remain external and unobserved in Part 1;
-- the historical Part 1 seal had 129 migrations; the current successor has 130 after the GHL embed bootstrap-claim rotation;
+- the historical Part 1 seal had 129 migrations; the current successor has 131 after the GHL embed bootstrap-claim rotation and fenced operator-repair replay;
 - production, staging, remote database, providers, billing, communications, customer data, deployment, DNS, and spend remain untouched.
 
 The documentation-seal commit is a successor to this implementation commit. Execution evidence belongs outside the source repository and must bind to that final seal and tree.

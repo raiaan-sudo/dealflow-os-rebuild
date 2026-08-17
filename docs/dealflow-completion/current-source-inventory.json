@@ -1,17 +1,17 @@
 {
   "schemaVersion": "dealflow.current-source-inventory.v1",
-  "generatedAt": "2026-08-17T21:01:03Z",
-  "implementationCommit": "aa7461029e213c619e744f815ad08befbabef771",
-  "implementationTree": "fc598210121c72a5c361b41b865e4832798cab63",
+  "generatedAt": "2026-08-17T23:15:00.000Z",
+  "implementationCommit": "6e276a17a307c2b263c7a4d9132e40589a8f9ce5",
+  "implementationTree": "12bf5024542823e9a3d585f98e89e3b8d73aecd3",
   "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
-  "trackedFileCount": 1188,
-  "migrationCount": 130,
+  "trackedFileCount": 1189,
+  "migrationCount": 131,
   "classCounts": {
     "aggregate": 6,
     "api_route": 79,
     "cron": 1,
     "http_handler": 104,
-    "migration": 130,
+    "migration": 131,
     "operational_system": 13,
     "page": 60,
     "release_guard": 3,
@@ -1946,6 +1946,12 @@
       "identity": "20260817190000_rotate_ghl_embed_bootstrap_claim_payload",
       "path": "supabase/migrations/20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql",
       "detail": "91126f0a35edf7de16482685177e196811c40456885b772101edee1b9278eb39"
+    },
+    {
+      "class": "migration",
+      "identity": "20260817223000_add_fenced_ghl_operator_repair_replay",
+      "path": "supabase/migrations/20260817223000_add_fenced_ghl_operator_repair_replay.sql",
+      "detail": "3eef1c285bf9ea71e9108253cbb4c76e354f18a0805870984b347b6c0d0a2709"
     },
     {
       "class": "operational_system",
