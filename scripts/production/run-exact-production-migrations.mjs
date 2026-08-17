@@ -13,8 +13,8 @@ import { verifyPinnedPsql } from "./verify-pinned-psql.mjs";
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const MIGRATIONS = path.join(ROOT, "supabase/migrations");
 const EXPECTED_APPLIED = 59;
-const EXPECTED_TOTAL = 130;
-const EXPECTED_PENDING = 71;
+const EXPECTED_TOTAL = 131;
+const EXPECTED_PENDING = 72;
 const EXPECTED_SAFE_SUFFIX = "phxm";
 const EXPECTED_PROJECT_FINGERPRINT =
   "ad5e80fbea50d6e2ccc5112a81de18e14f5b44722b07a216a715e78ee6dce321";
@@ -62,7 +62,7 @@ export function migrationPortfolio() {
 
 export function assertPortfolio(portfolio) {
   if (portfolio.entries.length !== EXPECTED_TOTAL) {
-    fail("migration_portfolio_count_mismatch", "Expected exactly 130 migrations.");
+    fail("migration_portfolio_count_mismatch", "Expected exactly 131 migrations.");
   }
   if (portfolio.entries[0]?.name !== FOUNDATION) {
     fail(
@@ -77,7 +77,7 @@ export function assertPortfolio(portfolio) {
     partition.applied.at(-1)?.version !== LAST_PRODUCTION_VERSION ||
     partition.pending[0]?.name !== FOUNDATION ||
     new Set(portfolio.entries.map((entry) => entry.version)).size !== EXPECTED_TOTAL) {
-    fail("migration_portfolio_delta_mismatch", "The exact 59-to-130 delta is invalid.");
+    fail("migration_portfolio_delta_mismatch", "The exact 59-to-131 delta is invalid.");
   }
 }
 
@@ -373,7 +373,7 @@ function main() {
     process.stdout.write(
       `${JSON.stringify({
         status: "PASS",
-        total: 130,
+        total: 131,
         applied: partition.applied.length,
         pending: partition.pending.length,
         firstAppliedVersion: partition.applied[0]?.version,
@@ -501,7 +501,7 @@ function main() {
     finishedAt: new Date().toISOString(),
     expectedBefore: actualBefore.length,
     applied: recovery.remaining,
-    verifiedAfter: 130,
+    verifiedAfter: 131,
     portfolioSha256: portfolio.digest,
     entries: portfolio.entries,
     observations,

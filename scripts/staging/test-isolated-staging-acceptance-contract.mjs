@@ -895,8 +895,8 @@ assert.match(globalSafetyPreflight, /redirect: "manual"/);
 assert.match(globalSafetyPreflight, /response\.url !== endpoint\.toString\(\)/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 130/);
-assert.match(runner, /20260817190000_rotate_ghl_embed_bootstrap_claim_payload\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 131/);
+assert.match(runner, /20260817223000_add_fenced_ghl_operator_repair_replay\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 assert.match(runner, /EXPECTED_QA_EMAIL = "dealflow-staging-qa-harness-20260712@example\.com"/);
 assert.match(runner, /parsed\.exactSyntheticAuthUserCount !== 11/);
@@ -2642,5 +2642,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; immutable historical 104-to-120, 120-to-121, 121-to-122, 122-to-123, and 123-to-129 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 130-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (execution/deploy plus exclusive fresh or read-only-resume authorization gate; immutable historical 104-to-120, 120-to-121, 121-to-122, 122-to-123, and 123-to-129 proofs; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; bounded idempotent exact hosted environment sync; 131-migration atomic broker and owner-authority retention installation; separate staging and production-readiness verdicts; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten business roles plus one non-admin QA harness member, fresh/stale/failed reporting, and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

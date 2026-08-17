@@ -24,7 +24,7 @@ const ACTIVE_APP_CONTRACT_TABLES = [
 const FROZEN_FOUNDATION_LAST_FILE =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
 const FROZEN_FOUNDATION_MIGRATION_COUNT = 80;
-const EXACT_INTEGRATED_MIGRATION_COUNT = 130;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 131;
 const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260712213000_create_ghl_sandbox_provider_path.sql",
   "20260712214000_create_continuous_reporting_and_safe_optimizer.sql",
@@ -76,6 +76,7 @@ const REQUIRED_PRODUCT_EXTENSION_MIGRATIONS = [
   "20260727010000_reuse_preinstalled_ghl_marketplace_location.sql",
   "20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql",
   "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql",
+  "20260817223000_add_fenced_ghl_operator_repair_replay.sql",
 ];
 
 function fail(message, details = {}) {

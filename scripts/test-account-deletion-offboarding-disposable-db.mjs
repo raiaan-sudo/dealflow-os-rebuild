@@ -15,7 +15,7 @@ const proposalPath = process.env.ACCOUNT_DELETION_MIGRATION_PROPOSAL
 const accountDeletionReceiptCleanupMigration =
   "20260722050000_allow_account_deletion_ghl_receipt_cleanup.sql";
 const requiredFinalMigration =
-  "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql";
+  "20260817223000_add_fenced_ghl_operator_repair_replay.sql";
 const retentionAuthorityMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
 const transactionOwningMigration = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
@@ -99,7 +99,7 @@ function quoteLiteral(value) {
 
 let createdPostgresRole = false;
 try {
-  assert.equal(migrations.length, 130, "test expects the exact 130-migration candidate");
+  assert.equal(migrations.length, 131, "test expects the exact 131-migration candidate");
   assert.equal(migrations.at(-1), requiredFinalMigration, "test expects the exact final migration");
   assert.ok(fs.existsSync(proposalPath), `proposal missing: ${proposalPath}`);
   adapter.preflight();
@@ -831,7 +831,7 @@ try {
     `), /account_deletion_receipt_append_only/i, "deletion receipts must be immutable");
   });
 
-  console.log("account deletion full-chain disposable DB: PASS (exact 130 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, account-deletion-only GHL append-only receipt cleanup, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
+  console.log("account deletion full-chain disposable DB: PASS (exact 131 + two account-deletion migration replays, owner/legal-only retention authority with injected stale column-grant revocation, 16/16 lifecycle, account-deletion-only GHL append-only receipt cleanup, catalog-bound dynamic manifest, independent tombstone attestation, 17 receipts, service-role-only creation, schema inventory, GHL operator allowlist, signed Stripe post-suspension reconciliation, OLD+NEW fencing, two-tenant creative storage, retention expiry, RLS, legal hold, zero-disallowed-PII postcondition)");
 } finally {
   if (createdPostgresRole) adapter.psql("drop role if exists postgres;");
 }

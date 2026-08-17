@@ -115,14 +115,14 @@ const expectedPriorMigrationPortfolioSha256 =
 const expectedPriorMigrationCount = 103;
 const expectedPriorFinalMigration =
   "20260713028000_harden_account_deletion_retention_authority.sql";
-const exactMigrationCount = 130;
+const exactMigrationCount = 131;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql";
+  "20260817223000_add_fenced_ghl_operator_repair_replay.sql";
 const currentManagedStructuralCatalogSha256 =
-  "6c1c7a5ccd96ab29bb383e040b530dfb9c0d070baa8134538c82444dc5934183";
-const currentManagedStructuralCatalogRecordCount = 8480;
+  "462032cc733424365f9b595dffe06eb097b1b8f1fd48205e22d3e4dee27e58f0";
+const currentManagedStructuralCatalogRecordCount = 8481;
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -2413,7 +2413,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       existingManagedCatalog.managedStructuralCatalogRecordCount !==
         currentManagedStructuralCatalogRecordCount
     ) {
-      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 130 authority");
+      throw new Error("Existing staging DealFlow-managed structural catalog drifted from the exact 131 authority");
     }
     verificationStage = "MANAGED_STRUCTURAL_CATALOG_STABILITY";
     const existingManagedCatalogRepeat = captureManagedCatalogIdentity(

@@ -13,8 +13,8 @@ const broker = fs.readFileSync("scripts/production/run-exact-production-migratio
 const guardVerifier = fs.readFileSync("scripts/production/verify-release-guard-v5.mjs", "utf8");
 for (const marker of [
   "EXPECTED_APPLIED = 59",
-  "EXPECTED_TOTAL = 130",
-  "EXPECTED_PENDING = 71",
+  "EXPECTED_TOTAL = 131",
+  "EXPECTED_PENDING = 72",
   "20260426000000_forward_foundation_bootstrap.sql",
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
   'FIRST_PRODUCTION_VERSION = "20260426110000"',
@@ -52,9 +52,9 @@ assert.deepEqual(
   },
   {
     status: "PASS",
-    total: 130,
+    total: 131,
     applied: 59,
-    pending: 71,
+    pending: 72,
     firstAppliedVersion: "20260426110000",
     lastAppliedVersion: "20260706170000",
     foundationPending: true,
@@ -62,7 +62,7 @@ assert.deepEqual(
 );
 assert.equal(
   output.portfolioSha256,
-  "e37960c881d289a499d590ba4ef3242b46650ee061d8e0c2f90a6ba6218558d8",
+  "783cd333a4f2fdc8652120a4bcaabec1d13ca56d1c2a427adcada251a4fb07a8",
   "production broker must bind the same canonical portfolio digest as qualification, staging, and release evidence",
 );
 assert.equal(output.foundationPending, true);
@@ -72,7 +72,7 @@ const baseline = partition.applied.map((entry) => entry.version);
 const firstRecoverable = partition.pending.slice(0, 5).map((entry) => entry.version);
 const recovery = assertRecoverableHistory([...baseline, ...firstRecoverable], portfolio);
 assert.deepEqual(recovery.completedPendingVersions, firstRecoverable);
-assert.equal(recovery.remaining, 66);
+assert.equal(recovery.remaining, 67);
 assert.throws(
   () => assertRecoverableHistory([...baseline, partition.pending[0].version], portfolio),
   /Foundation and production-shape adoption|recoverable portfolio prefix|Remote migration history/i,
@@ -80,7 +80,7 @@ assert.throws(
 const recoverySql = buildSql(portfolio, { completedPendingVersions: firstRecoverable });
 assert.ok(!recoverySql.includes("20260426000000_forward_foundation_bootstrap.sql"));
 assert.ok(!recoverySql.includes("dealflow_foundation_guard"));
-assert.equal((recoverySql.match(/^BEGIN;$/gm) ?? []).length, 66);
+assert.equal((recoverySql.match(/^BEGIN;$/gm) ?? []).length, 67);
 assert.doesNotMatch(
   broker.slice(broker.indexOf("export function buildSql"), broker.indexOf("function readRemoteHistory")),
   /for \(const entry of pending\) \{/,

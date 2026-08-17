@@ -25,6 +25,10 @@ const provisioningLeaseRevisionMigrationPath = path.join(
   repoRoot,
   "supabase/migrations/20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql",
 );
+const operatorRepairReplayMigrationPath = path.join(
+  repoRoot,
+  "supabase/migrations/20260817223000_add_fenced_ghl_operator_repair_replay.sql",
+);
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-ghl-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
 const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
@@ -245,6 +249,10 @@ try {
   assert.ok(
     fs.existsSync(provisioningLeaseRevisionMigrationPath),
     "GHL provisioning lease-revision migration is missing",
+  );
+  assert.ok(
+    fs.existsSync(operatorRepairReplayMigrationPath),
+    "GHL operator-repair replay migration is missing",
   );
   assertCommandSucceeded(
     dockerSync(["image", "inspect", image], { timeout: 15_000 }),
@@ -1071,6 +1079,10 @@ try {
   psql(
     fs.readFileSync(provisioningLeaseRevisionMigrationPath, "utf8"),
     "GHL provisioning lease-revision migration failed",
+  );
+  psql(
+    fs.readFileSync(operatorRepairReplayMigrationPath, "utf8"),
+    "GHL operator-repair replay migration failed",
   );
 
   const ambiguousProvisioningRunId = "60000000-0000-4000-8000-000000000001";
@@ -2063,6 +2075,104 @@ try {
     `, "Duplicate-location outbox absence proof failed"),
     "0",
     "Paid activation created a provider-location mutation outbox",
+  );
+
+  const operatorRepairOutboxId = "50000000-0000-4000-8000-000000000091";
+  psql(`
+    insert into public.ghl_provider_outbox (
+      id, organization_id, provisioning_run_id, operation, idempotency_key,
+      status, request_payload, attempt_count, available_at, completed_at,
+      last_error_code
+    ) values (
+      '${operatorRepairOutboxId}', '${paidOrganizationId}', '${provisioningRunId}',
+      'snapshot_install',
+      'ghl-operator-repair-fixture:snapshot-install',
+      'operator_action_required',
+      jsonb_build_object('contractVersion', 1, 'manifestObjectCount', 2),
+      1, timezone('utc', now()), timezone('utc', now()),
+      'ghl_preinstalled_required_objects_missing'
+    );
+    insert into public.ghl_provider_receipts (
+      outbox_id, attempt_number, outcome, provider_request_id,
+      http_status, receipt_metadata
+    ) values (
+      '${operatorRepairOutboxId}', 1, 'operator_action_required',
+      'synthetic-repair-receipt', 200,
+      jsonb_build_object('errorCode', 'ghl_preinstalled_required_objects_missing')
+    );
+    insert into public.ghl_operator_requests (
+      organization_id, provisioning_run_id, request_kind, blocker_code,
+      idempotency_key, status, details
+    ) values (
+      '${paidOrganizationId}', '${provisioningRunId}', 'snapshot_verification',
+      'ghl_preinstalled_required_objects_missing',
+      'ghl-operator-repair-fixture:request', 'open',
+      jsonb_build_object('safeMessage', 'Synthetic required objects are missing.')
+    );
+    update public.ghl_provisioning_runs
+    set state = 'operator_action_required',
+        last_error_code = 'ghl_preinstalled_required_objects_missing',
+        last_error_message = 'Synthetic required objects are missing.',
+        revision = revision + 1
+    where id = '${provisioningRunId}';
+  `, "GHL operator-repair fixture failed");
+
+  psqlMustFail(`
+    update public.ghl_provisioning_runs
+    set state = 'snapshot_install_requested',
+        last_error_code = 'ghl_operator_repair_replay_requested',
+        last_error_message = 'The exact operator-repaired GHL object inventory is queued for fenced re-verification.',
+        revision = revision + 1
+    where id = '${provisioningRunId}';
+  `, /invalid GHL provisioning transition/i, "Direct operator-required replay bypassed the recovery RPC");
+
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|', state, last_error_code, coalesce(resume_state, '')
+      )
+      from public.replay_ghl_operator_repaired_provisioning_v1(
+        '${provisioningRunId}', '${paidOrganizationId}', timezone('utc', now())
+      );
+    `, "Fenced GHL operator-repair replay failed"),
+    "snapshot_install_requested|ghl_operator_repair_replay_requested|",
+    "GHL operator repair did not reopen the exact provisioning state",
+  );
+  assert.equal(
+    psql(`
+      select concat_ws(
+        '|',
+        (select status from public.ghl_provider_outbox where id = '${operatorRepairOutboxId}'),
+        (select status from public.ghl_operator_requests where idempotency_key = 'ghl-operator-repair-fixture:request'),
+        (select count(*)::text from public.ghl_provider_receipts where outbox_id = '${operatorRepairOutboxId}')
+      );
+    `, "Fenced GHL operator-repair side-effect proof failed"),
+    "pending|resolved|1",
+    "GHL operator repair did not preserve the receipt and reopen only the exact immutable operation",
+  );
+  psqlMustFail(`
+    select count(*) from public.replay_ghl_operator_repaired_provisioning_v1(
+      '${provisioningRunId}', '${paidOrganizationId}', timezone('utc', now())
+    );
+  `, /not awaiting an operator repair/i, "Resolved GHL operator repair replayed twice");
+  assert.equal(
+    psql(`
+      select concat(
+        has_function_privilege(
+          'authenticated',
+          'public.replay_ghl_operator_repaired_provisioning_v1(uuid,uuid,timestamptz)',
+          'EXECUTE'
+        ),
+        '|',
+        has_function_privilege(
+          'service_role',
+          'public.replay_ghl_operator_repaired_provisioning_v1(uuid,uuid,timestamptz)',
+          'EXECUTE'
+        )
+      );
+    `, "GHL operator-repair RPC privilege lookup failed"),
+    "f|t",
+    "GHL operator-repair RPC permissions are not service-only",
   );
 
   psqlMustFail(`

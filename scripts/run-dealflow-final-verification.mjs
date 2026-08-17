@@ -24,9 +24,9 @@ import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs"
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 130;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 131;
 const REQUIRED_FINAL_MIGRATION =
-  "20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql";
+  "20260817223000_add_fenced_ghl_operator_repair_replay.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",
