@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1176,
-  "deployableSourceSha256": "fd9ef6b856c9776ad0da3d38dada40b35a7661faf14a88ebb77e6e48fdb5faed",
+  "deployableSourceSha256": "d954cb1a23556992b17e6d56594008d137dc64ed4d24e8e66b0fe8a18e44a1f5",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -114,9 +114,9 @@
     },
     {
       "path": "config/security/privileged-tenancy-matrix.v1.json",
-      "size": 10047,
+      "size": 10044,
       "mode": 33188,
-      "sha256": "2cec4e2f76256c7d7da292c64f4746af60fc6c81f2011e0e3648a5cebd1f6e16"
+      "sha256": "e531c466020d7d4082f79bc94002967395077471f975a7faacf5f9634f4044dc"
     },
     {
       "path": "config/security/supabase-prod-ca-2021.crt",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "d79b92c0bcbb66b8ff881171e8e07d017ee9dbde4c6fda5e55ba4f7d158bf232"
+      "sha256": "8c8c6ea2aed7990c795646733a72e8f01fe701d9f1e0e28d961f57d4f05b0f51"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85845,
       "mode": 33188,
-      "sha256": "bf35d553714c2886a62c0b3ed22d63b51ae0bae106b48c0c26f39f0429e400bc"
+      "sha256": "8609ee2949a4116ba615b10bb93ca900e515d87ac4df9f28da9fb781c2f68dae"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3698,
       "mode": 33188,
-      "sha256": "50edd4d6d9c45b5764d53c399f4fd986a56e07f077102b230d00fd0b260c4472"
+      "sha256": "f932f7f4460e8a91baf98f9a63f20c6f176ab751e06e2f7c4d114fe42ea7843b"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -6884,7 +6884,7 @@
       "path": "supabase/reconciliation/forward-equivalent-lineage-map.v1.json",
       "size": 7739,
       "mode": 33188,
-      "sha256": "7affe53551fdec372ce378b54605ae9d7f650b1e5ddf929d58f64b1a3dae5be7"
+      "sha256": "598c5201927de7b9bb82aea22cea726e0fbeadfd697a009c8719072db3a591ae"
     },
     {
       "path": "supabase/reconciliation/may2-baseline-catalog.v1.json",
