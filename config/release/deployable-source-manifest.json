@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
-  "entryCount": 1174,
-  "deployableSourceSha256": "fdd699a8f9c72823d88d51dfea8818fdc88d4e9ef5ffff999f2f1e58bf74be82",
+  "entryCount": 1175,
+  "deployableSourceSha256": "3f2fbe4382800ed90bb099558e9bca3c0dba0c5c34f9685b93af3cb21e080761",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "f31a34f9f5e0fb6aa254be1890b27d44568ae2038ccc7df5d8fd2c68ed9389d6"
+      "sha256": "48057886722804dd192b860d282c5192f5f5816e530075b6595710c968720e72"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -372,21 +372,21 @@
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.csv",
-      "size": 52505,
+      "size": 52724,
       "mode": 33188,
-      "sha256": "dee8db41e8bec87091839e9b6380b03db8b90b26a1838e21ce170f5e623dd5d7"
+      "sha256": "66fbef0629824b08ae1871a7f252c7a5841e340066146c4d93902743e72700a2"
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85251,
+      "size": 85549,
       "mode": 33188,
-      "sha256": "b6999fbf76739f928d6947645d602213e07efdceeca51f8b90c6b42e3decfb3b"
+      "sha256": "998f3657e8ac60fd253e447397abf390222ad355852835e31e1224db821f4dd6"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "e02699541ddb60dd02debf364c7b8a1c3489226633d58b362ce14cd06a0d162c"
+      "sha256": "d562ffb000854a77940f0a7f9b4c0cb57d63446442e9ffebb75028deb65975b1"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1818,9 +1818,9 @@
     },
     {
       "path": "scripts/test-ghl-iframe-embed-security.mjs",
-      "size": 26628,
+      "size": 27179,
       "mode": 33188,
-      "sha256": "f9f871177cd5a55bfb8f786ac676173ab1c576f5a692c9bb23c7601d6ccadba6"
+      "sha256": "8012a1e94833b092647c9e1f8e48a3c76e86d6ecca4b1e7d53db620340f9c461"
     },
     {
       "path": "scripts/test-ghl-inbound-form-reconciliation-disposable-db.mjs",
@@ -1860,9 +1860,9 @@
     },
     {
       "path": "scripts/test-ghl-marketplace-oauth-disposable-db.mjs",
-      "size": 42719,
+      "size": 44269,
       "mode": 33188,
-      "sha256": "066796ac212f276801e762f97033973506e4c3b05b4557e2abb469e4a54f1eca"
+      "sha256": "32e94860abde096da703c5997d8dbe6921a7867f2880406e88eb5ac18794e1df"
     },
     {
       "path": "scripts/test-ghl-marketplace-refresh-fencing.ts",
@@ -6831,6 +6831,12 @@
       "size": 3623,
       "mode": 33188,
       "sha256": "f3cb3d3898108a37b9b5ce66c09de55fff5c8c65be4404d6940870d38006d350"
+    },
+    {
+      "path": "supabase/migrations/20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql",
+      "size": 5514,
+      "mode": 33188,
+      "sha256": "91126f0a35edf7de16482685177e196811c40456885b772101edee1b9278eb39"
     },
     {
       "path": "supabase/reconciliation/README.md",

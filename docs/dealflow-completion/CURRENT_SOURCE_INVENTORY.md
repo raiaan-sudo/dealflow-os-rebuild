@@ -1,6 +1,6 @@
 # Current source inventory
 
-Generated from Git-tracked source for implementation commit `b8203fae9f7dd1ca1088a3cf5d47f9d70909967f` (tree `a806079d50a0058e0bf3d562552f18261f2de5a5`). Counts are generated, not hand-entered.
+Generated from Git-tracked source for implementation commit `300d3502570b97e57c840cf4c8dd8cd19808b39d` (tree `5308192feaf51260bcdc6093c4860a011a56106c`). Counts are generated, not hand-entered.
 
 | Class | Count |
 |---|---:|
@@ -8,7 +8,7 @@ Generated from Git-tracked source for implementation commit `b8203fae9f7dd1ca108
 | api_route | 79 |
 | cron | 1 |
 | http_handler | 104 |
-| migration | 129 |
+| migration | 130 |
 | operational_system | 13 |
 | page | 60 |
 | release_guard | 3 |

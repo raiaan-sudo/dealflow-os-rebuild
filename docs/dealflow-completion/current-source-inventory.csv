@@ -318,6 +318,7 @@ class,identity,path,detail
 "migration","20260725010000_enable_ghl_marketplace_first_install_bootstrap","supabase/migrations/20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql","2d3d265fd70e86a7eb67268d60388fed534e95f5218aa22108de2b5aba7c48e6"
 "migration","20260727010000_reuse_preinstalled_ghl_marketplace_location","supabase/migrations/20260727010000_reuse_preinstalled_ghl_marketplace_location.sql","36c440a2e8109705e1e893e94aa1a95357ad180439743145793cd6c5696a66f0"
 "migration","20260727020000_fix_ghl_provisioning_lease_revision_fencing","supabase/migrations/20260727020000_fix_ghl_provisioning_lease_revision_fencing.sql","f3cb3d3898108a37b9b5ce66c09de55fff5c8c65be4404d6940870d38006d350"
+"migration","20260817190000_rotate_ghl_embed_bootstrap_claim_payload","supabase/migrations/20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql","91126f0a35edf7de16482685177e196811c40456885b772101edee1b9278eb39"
 "operational_system","elevenlabs","config/operational-system-inventory.v1.json","ElevenLabs voice generation"
 "operational_system","gohighlevel","config/operational-system-inventory.v1.json","GoHighLevel tenant provisioning and CRM"
 "operational_system","heygen_fallback","config/operational-system-inventory.v1.json","HeyGen legacy video fallback"
