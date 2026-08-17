@@ -39,6 +39,10 @@ const marketplaceBootstrapMigrationSource = fs.readFileSync(
   "supabase/migrations/20260725010000_enable_ghl_marketplace_first_install_bootstrap.sql",
   "utf8",
 );
+const marketplaceBootstrapClaimRotationSource = fs.readFileSync(
+  "supabase/migrations/20260817190000_rotate_ghl_embed_bootstrap_claim_payload.sql",
+  "utf8",
+);
 const neutralBootstrapSource = fs.readFileSync(
   "src/app/crm/embed/page.tsx",
   "utf8",
@@ -298,6 +302,16 @@ for (const marker of [
 ]) {
   if (!exchangeSource.includes(marker)) {
     failures.push(`Embed exchange sanitized error handling is missing: ${marker}`);
+  }
+}
+for (const marker of [
+  "existing_claim.payload_fingerprint = p_payload_fingerprint",
+  "set status='rejected', updated_at=p_now",
+  "ghl_marketplace_bootstrap_claim_binding_collision",
+  "ghl_marketplace_bootstrap_claim_conflict",
+]) {
+  if (!marketplaceBootstrapClaimRotationSource.includes(marker)) {
+    failures.push(`Marketplace embed claim rotation is missing: ${marker}`);
   }
 }
 if (/return deny\(error\.message/.test(exchangeSource) ||

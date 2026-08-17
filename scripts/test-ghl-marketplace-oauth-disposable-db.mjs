@@ -228,7 +228,19 @@ try {
       reset role;
     `, { label: "Create synthetic GHL Marketplace fixtures" });
 
-    const bootstrapPayload = sha("synthetic-bootstrap-payload");
+    const staleBootstrapPayload = sha("synthetic-bootstrap-payload-stale");
+    const staleBootstrapClaimId = lastLine(session.psql(asRole("service_role", `
+      select public.register_ghl_marketplace_embed_bootstrap_claim_v1(
+        'test',null,'${APP_3}','${sha(BOOTSTRAP_AGENCY_ID)}',
+        '${sha(BOOTSTRAP_LOCATION_ID)}','${sha(BOOTSTRAP_USER_ID)}',
+        '${sha("ghl-owner-c@example.invalid")}','${sha("https://app.gohighlevel.com")}',
+        '${staleBootstrapPayload}','${BOOTSTRAP_AGENCY_ID}','${BOOTSTRAP_LOCATION_ID}',
+        '${BOOTSTRAP_USER_ID}',timezone('utc',now()) + interval '5 minutes',
+        timezone('utc',now())
+      );
+    `), { label: "Register stale first-install bootstrap claim" }));
+    assert.match(staleBootstrapClaimId, /^[0-9a-f-]{36}$/i);
+    const bootstrapPayload = sha("synthetic-bootstrap-payload-current");
     const bootstrapClaimId = lastLine(session.psql(asRole("service_role", `
       select public.register_ghl_marketplace_embed_bootstrap_claim_v1(
         'test',null,'${APP_3}','${sha(BOOTSTRAP_AGENCY_ID)}',
@@ -238,8 +250,23 @@ try {
         '${BOOTSTRAP_USER_ID}',timezone('utc',now()) + interval '5 minutes',
         timezone('utc',now())
       );
-    `), { label: "Register first-install bootstrap claim" }));
+    `), { label: "Rotate first-install bootstrap claim to current payload" }));
     assert.match(bootstrapClaimId, /^[0-9a-f-]{36}$/i);
+    assert.notEqual(bootstrapClaimId, staleBootstrapClaimId);
+    assert.equal(lastLine(session.psql(`
+      select status from public.ghl_marketplace_embed_bootstrap_claims
+      where id='${staleBootstrapClaimId}';
+    `)), "rejected");
+    assert.equal(lastLine(session.psql(`
+      select status from public.ghl_marketplace_embed_bootstrap_claims
+      where id='${bootstrapClaimId}';
+    `)), "pending");
+    mustFail(session, asRole("service_role", `
+      select public.consume_ghl_marketplace_embed_bootstrap_claim_v1(
+        '${staleBootstrapClaimId}','${staleBootstrapPayload}','${ORG_C}','${USER_C}',
+        timezone('utc',now())
+      );
+    `), /bootstrap_claim_unavailable/i, "superseded bootstrap claim remained consumable");
     mustFail(session, asRole("authenticated", `
       select public.consume_ghl_marketplace_embed_bootstrap_claim_v1(
         '${bootstrapClaimId}','${bootstrapPayload}','${ORG_C}','${USER_C}',
