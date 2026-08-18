@@ -154,6 +154,7 @@ function makeFailure(label, result) {
       result.error?.message,
       result.stderr,
       result.stdout,
+      result.signal ? `process terminated by signal ${result.signal}` : null,
       `process exited with status ${result.status}`,
     ].filter(Boolean).join(" | "),
   );
