@@ -233,9 +233,9 @@ function applyBroker(session, completedPendingVersions = []) {
     label: "Apply canonical exact-production migration broker SQL",
     timeoutMs: 300_000,
   });
-  const remaining = 71 - completedPendingVersions.length;
+  const remaining = 72 - completedPendingVersions.length;
   const observations = parseObservations(output, remaining);
-  assert.equal(history(session).length, 130);
+  assert.equal(history(session).length, 131);
   return observations;
 }
 
@@ -325,8 +325,8 @@ try {
     schema: "dealflow.production-shaped-migration-rehearsal.v1",
     status: "PASS",
     productionHistoryBefore: 59,
-    candidateHistoryAfter: 130,
-    forwardDelta: 71,
+    candidateHistoryAfter: 131,
+    forwardDelta: 72,
     portfolioSha256: portfolio.digest,
     syntheticSurfaces: FIXTURE_TABLES.length,
     deterministicRuns: 2,
