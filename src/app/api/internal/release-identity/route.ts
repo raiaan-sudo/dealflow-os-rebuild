@@ -242,7 +242,7 @@ function readExactBuildSourceIdentity(expected: ExactBuildReleaseIdentity) {
     ) {
       throw invalidBuildSourceArtifact();
     }
-    bytes = readFileSync(descriptor);
+    bytes = readFileSync(/* turbopackIgnore: true */ descriptor);
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw invalidBuildSourceArtifact();

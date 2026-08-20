@@ -88,7 +88,7 @@ assert.match(route, /vercel_semantic_config_normalization_v2/);
 assert.match(route, /exact_source_bytes/);
 assert.match(route, /constants\.O_RDONLY \| constants\.O_NOFOLLOW/);
 assert.match(route, /fstatSync\(descriptor\)/);
-assert.match(route, /readFileSync\(descriptor\)/);
+assert.match(route, /readFileSync\(\/\* turbopackIgnore: true \*\/ descriptor\)/);
 assert.match(route, /closeSync\(descriptor\)/);
 assert.match(route, /BUILD_SOURCE_ARTIFACT_MAX_BYTES/);
 assert.match(route, /`\$\{JSON\.stringify\(parsed\)\}\\n` !== bytes\.toString/);
