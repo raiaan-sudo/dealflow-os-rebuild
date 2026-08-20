@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1176,
-  "deployableSourceSha256": "fb0d1fd06a37c218155f30c7553418982daddd04ebc71b194e6bfc90e6d31bca",
+  "deployableSourceSha256": "fbb4f7c6e7395f80955c5f8c1b425e0f7d28740063e4811cb9df29e19bcb4374",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "b6de627636a60fa96f21f873f1f67f296686b43ac43a0a4e06854973731a6dce"
+      "sha256": "0cd413e0ff14e1d8ca3165f12d37e4dd1cf3f564b1af22187860541ce0a43cd6"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "4447e2a68ee4fb7f6090707903b6daa938370adc048134c580dfec7e6e74fbb1"
+      "sha256": "41445de1afcc5efb01e12652206c7c71337e7529f6fa2aad43d3745bffb174ba"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "832c8137a9bf40a3334a9137179456061af15dbab04414aad34bf658fea86338"
+      "sha256": "efaf745273d641dee3aed5da570882c6e984494c29a5d92bb4759a278b935326"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1140,9 +1140,9 @@
     },
     {
       "path": "scripts/staging/apply-fresh-staging-migrations.mjs",
-      "size": 195111,
+      "size": 195457,
       "mode": 33188,
-      "sha256": "d88da8756efae9c30b89e5aa96cf1bfc6ff43609ee1836641fe18193d99985a9"
+      "sha256": "8857376a2d38ce7f8265d240428e2ae89be1d914e5014d6874d4d06a381952b3"
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
@@ -1302,9 +1302,9 @@
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
-      "size": 66485,
+      "size": 66963,
       "mode": 33188,
-      "sha256": "e7da44614aec8d3e7bae75e69e1542a05b374f6dd78fac86c0ebe15bac1439ab"
+      "sha256": "17035e8f4747a04aa6b30d9d00b9770752b58499d7bc1b78ae02654a3241b216"
     },
     {
       "path": "scripts/staging/test-approved-direct-public-image-checkpoint-contract.mjs",
