@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1176,
-  "deployableSourceSha256": "ad5b170fb20539ff1ed66b751ab92480293efbcc1698d1cfb37236de014ae2cb",
+  "deployableSourceSha256": "837af11d7d1d268e060cca59b87d9c4ffe432a812453f59de699a960072fb261",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "167f44ad64fd66fd613a1b0898637d8c96d277c6fe7c9a700e1cc836d9cc4be3"
+      "sha256": "2affac1e0e191a13432b604595532e58fda598ad819e1a878022232f2e858e17"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "d7e34eb3c36dc404c3d06528efaadcceaf387773f72dd44f32ff727cafba6f6d"
+      "sha256": "20c1f3e5aab445052c6efb4624b9a4f3d0cc6239e36d53c7a434076bb9546fa1"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "388aa738a933920f126639b1bcceb178f3028d0cde999803e06e5214efbbaedc"
+      "sha256": "c2b7f604b09dee08147b47ac9417da418e4ee7e4261ef2158ce3c70594ab9e48"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1248,9 +1248,9 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 305299,
+      "size": 307436,
       "mode": 33188,
-      "sha256": "b9da5285d9d13bd2f466402bf683e9762139bc8d52c5949dd067a1555efb1b31"
+      "sha256": "186aa25d39c3fe5aa99412322c61dbfd7fa6db2da5b2e5688ea2d9f8e2d24efc"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
@@ -1380,9 +1380,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 138102,
+      "size": 138379,
       "mode": 33188,
-      "sha256": "11f0183d6a6b518edb9c539f69bf233aae22d358f7d49a0abb65e073305f5024"
+      "sha256": "0687516b226018084c126c459d1687211d410b17aadd51f36c50d53637d70f46"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
