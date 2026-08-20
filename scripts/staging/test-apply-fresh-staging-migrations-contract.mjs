@@ -114,7 +114,10 @@ requireMarker(
   "read-only exact prior-103 state authority for the one-migration forward transition",
 );
 requireMarker(/merge-base", "--is-ancestor"/, "prior application ancestry binding");
-requireMarker(/migrationMode: "VERIFY_EXISTING_EXACT"/, "truthful existing-portfolio mode evidence");
+requireMarker(/migrationMode,\n\s+verificationReadOnly: true/, "truthful existing-portfolio mode evidence");
+requireMarker(/ADOPT_CURRENT_EXACT/, "explicit read-only current-state adoption mode");
+requireMarker(/atomicApplicationCapabilityProvenByAuthority/, "adoption rehearsal capability binding");
+requireMarker(/historicalApplicationAtomicityProven/, "honest historical atomicity classification");
 requireMarker(/portfolioApplicationRemoteMutationCompleted: true/, "separate historical application truth");
 requireMarker(/remoteMutationStarted: false/, "read-only resume mutation-start truth");
 requireMarker(/remoteMutationCompleted: false/, "read-only resume mutation-completion truth");
@@ -592,7 +595,7 @@ assert.doesNotMatch(source, /PGPASSFILE=<\(/, "Broker must not use libpq-incompa
 assert.doesNotMatch(source, /migrations\.length < 108/, "Broker must not accept a partial migration portfolio");
 assert.doesNotMatch(source, /dealflow-staging-tools-20260713/, "Tracked broker must not depend on the scratch source directory");
 
-const resumeStart = source.indexOf('if (migrationMode === "VERIFY_EXISTING_EXACT") {');
+const resumeStart = source.indexOf('if (["VERIFY_EXISTING_EXACT", "ADOPT_CURRENT_EXACT"].includes(migrationMode)) {');
 const forwardStart = source.indexOf('if (migrationMode === "APPLY_FORWARD_EXACT") {');
 const freshStart = source.indexOf("const preMutationEvidence = {");
 assert.ok(

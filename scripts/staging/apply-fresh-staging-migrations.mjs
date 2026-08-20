@@ -53,25 +53,32 @@ import {
 const [repoArg, evidenceArg, roundOneArg, roundTwoArg, ...modeArgs] = process.argv.slice(2);
 if (!repoArg || !evidenceArg || !roundOneArg || !roundTwoArg) {
   throw new Error(
-    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir> | --apply-forward-exact <prior-104-migration-proof-dir> | --apply-successor-exact <prior-122-migration-proof-dir>]",
+    "Usage: apply-fresh-staging-migrations.mjs <repo> <external-evidence-dir> <round-1-summary.json> <round-2-summary.json> [--verify-existing-exact <prior-migration-proof-dir> | --adopt-current-exact <external-adoption-authority.json> | --apply-forward-exact <prior-104-migration-proof-dir> | --apply-successor-exact <prior-122-migration-proof-dir>]",
   );
 }
 let priorMigrationProofDir = null;
+let currentExactAdoptionAuthorityPath = null;
 let migrationMode = "FRESH_ATOMIC_APPLICATION";
 if (modeArgs.length > 0) {
   if (
     modeArgs.length !== 2 ||
-    !["--verify-existing-exact", "--apply-forward-exact", "--apply-successor-exact"].includes(modeArgs[0]) ||
+    !["--verify-existing-exact", "--adopt-current-exact", "--apply-forward-exact", "--apply-successor-exact"].includes(modeArgs[0]) ||
     !modeArgs[1] ||
     modeArgs[1].startsWith("--")
   ) {
     throw new Error(
-      "The only supported non-fresh modes are --verify-existing-exact, --apply-forward-exact, or --apply-successor-exact with one prior proof directory",
+      "The only supported non-fresh modes are --verify-existing-exact, --adopt-current-exact, --apply-forward-exact, or --apply-successor-exact with one external authority path",
     );
   }
-  priorMigrationProofDir = resolve(modeArgs[1]);
+  if (modeArgs[0] === "--adopt-current-exact") {
+    currentExactAdoptionAuthorityPath = resolve(modeArgs[1]);
+  } else {
+    priorMigrationProofDir = resolve(modeArgs[1]);
+  }
   migrationMode = modeArgs[0] === "--verify-existing-exact"
     ? "VERIFY_EXISTING_EXACT"
+    : modeArgs[0] === "--adopt-current-exact"
+      ? "ADOPT_CURRENT_EXACT"
     : modeArgs[0] === "--apply-forward-exact"
       ? "APPLY_FORWARD_EXACT"
       : "APPLY_SUCCESSOR_EXACT";
@@ -750,7 +757,7 @@ const databaseEnv = {
   PGSSLMODE: "verify-full",
   PGSSLROOTCERT: expectedTrustBundlePath,
   PGPASSFILE: intentionallyAbsentPgpassPath,
-  ...(migrationMode === "VERIFY_EXISTING_EXACT"
+  ...(["VERIFY_EXISTING_EXACT", "ADOPT_CURRENT_EXACT"].includes(migrationMode)
     ? { PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=300000" }
     : {}),
 };
@@ -2280,6 +2287,85 @@ function loadAndValidatePriorMigrationProof({
   });
 }
 
+function loadCurrentExactAdoptionAuthority() {
+  if (!currentExactAdoptionAuthorityPath) return null;
+  const authorityStat = lstatSync(currentExactAdoptionAuthorityPath);
+  if (
+    authorityStat.isSymbolicLink() ||
+    !authorityStat.isFile() ||
+    authorityStat.nlink !== 1 ||
+    authorityStat.uid !== process.getuid() ||
+    (authorityStat.mode & 0o077) !== 0 ||
+    realpathSync(currentExactAdoptionAuthorityPath) !== currentExactAdoptionAuthorityPath
+  ) {
+    throw new Error("Current exact adoption authority must be an owner-only real file");
+  }
+  assertOutsideRelease(currentExactAdoptionAuthorityPath, "Current exact adoption authority");
+  const authorityBytes = readFileSync(currentExactAdoptionAuthorityPath);
+  const authority = JSON.parse(authorityBytes.toString("utf8"));
+  const rehearsalPath = resolve(String(authority.productionShapedRehearsalPath ?? ""));
+  const rehearsalStat = lstatSync(rehearsalPath);
+  if (
+    !isAbsolute(rehearsalPath) ||
+    rehearsalStat.isSymbolicLink() ||
+    !rehearsalStat.isFile() ||
+    rehearsalStat.nlink !== 1 ||
+    rehearsalStat.uid !== process.getuid() ||
+    (rehearsalStat.mode & 0o077) !== 0 ||
+    realpathSync(rehearsalPath) !== rehearsalPath
+  ) {
+    throw new Error("Production-shaped rehearsal authority must be an owner-only real file");
+  }
+  assertOutsideRelease(rehearsalPath, "Production-shaped rehearsal authority");
+  const rehearsalBytes = readFileSync(rehearsalPath);
+  const rehearsal = JSON.parse(rehearsalBytes.toString("utf8"));
+  if (
+    authority.schemaVersion !== "dealflow.staging-current-exact-adoption-authority.v1" ||
+    authority.status !== "AUTHORIZED_READ_ONLY_CURRENT_EXACT_ADOPTION" ||
+    authority.projectFingerprint !== expectedProjectFingerprint ||
+    authority.safeSuffix !== expectedProjectSafeSuffix ||
+    authority.headCommit !== releaseIdentity.headCommit ||
+    authority.headTree !== releaseIdentity.headTree ||
+    authority.migrationCount !== exactMigrationCount ||
+    authority.migrationPortfolioSha256 !== migrationIdentity.migrationPortfolioSha256 ||
+    authority.productionShapedRehearsalSha256 !== sha256(rehearsalBytes) ||
+    JSON.stringify(authority.verificationRoundSummarySha256) !==
+      JSON.stringify(verificationRoundSummarySha256) ||
+    authority.remoteMutationAuthorized !== false ||
+    authority.providerEffectsAuthorized !== false ||
+    authority.realCustomerDataAuthorized !== false ||
+    rehearsal.schema !== "dealflow.production-shaped-migration-rehearsal.v1" ||
+    rehearsal.status !== "PASS" ||
+    rehearsal.productionHistoryBefore !== 59 ||
+    rehearsal.candidateHistoryAfter !== exactMigrationCount ||
+    rehearsal.forwardDelta !== exactMigrationCount - 59 ||
+    rehearsal.portfolioSha256 !== migrationIdentity.migrationPortfolioSha256 ||
+    rehearsal.deterministicRuns !== 2 ||
+    rehearsal.first?.history !== exactMigrationCount ||
+    rehearsal.second?.history !== exactMigrationCount ||
+    rehearsal.first?.schema?.sha256 !== rehearsal.second?.schema?.sha256 ||
+    rehearsal.first?.fixtureSha256 !== rehearsal.second?.fixtureSha256 ||
+    rehearsal.recovery?.finalHistory !== exactMigrationCount ||
+    rehearsal.drift?.status !== "PASS" ||
+    rehearsal.drift?.historyAfterRejection !== 59
+  ) {
+    throw new Error("Current exact adoption authority is not bound to the exact candidate and rehearsal");
+  }
+  return Object.freeze({
+    status: "PASS",
+    authoritySha256: sha256(authorityBytes),
+    authorityPathSha256: sha256(currentExactAdoptionAuthorityPath),
+    productionShapedRehearsalSha256: sha256(rehearsalBytes),
+    productionShapedRehearsalPathSha256: sha256(rehearsalPath),
+    deterministicRuns: rehearsal.deterministicRuns,
+    rehearsalSchemaSha256: rehearsal.first.schema.sha256,
+    rehearsalFixtureSha256: rehearsal.first.fixtureSha256,
+    interruptionRecoveryProven: rehearsal.recovery.finalHistory === exactMigrationCount,
+    driftRejectionProven: rehearsal.drift.status === "PASS",
+    rawDatabaseValuesPersisted: false,
+  });
+}
+
 // This portfolio is written and sealed before even the first remote read. The
 // immutable pre-mutation artifacts prove exactly which tracked broker could
 // later cross the database mutation boundary.
@@ -2290,16 +2376,22 @@ const brokerEvidenceIdentity = {
   bytes: brokerSourceIdentity.bytes,
 };
 
-if (migrationMode === "VERIFY_EXISTING_EXACT") {
-  const priorApplication = loadAndValidatePriorMigrationProof({
-    requirePinnedPrior103: false,
-  });
+if (["VERIFY_EXISTING_EXACT", "ADOPT_CURRENT_EXACT"].includes(migrationMode)) {
+  const adoptingCurrentExact = migrationMode === "ADOPT_CURRENT_EXACT";
+  const adoptionAuthority = adoptingCurrentExact
+    ? loadCurrentExactAdoptionAuthority()
+    : null;
+  const priorApplication = adoptingCurrentExact
+    ? null
+    : loadAndValidatePriorMigrationProof({ requirePinnedPrior103: false });
   const common = {
-    migrationMode: "VERIFY_EXISTING_EXACT",
+    migrationMode,
     verificationReadOnly: true,
     remoteMutationStarted: false,
     remoteMutationCompleted: false,
     portfolioApplicationRemoteMutationCompleted: true,
+    historicalApplicationAtomicityProven: !adoptingCurrentExact,
+    atomicApplicationCapabilityProvenByAuthority: adoptingCurrentExact,
     broker: brokerEvidenceIdentity,
     brokerSourceSha256: brokerSourceIdentity.sha256,
     runtime: process.version,
@@ -2318,10 +2410,13 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     migrationPortfolioSha256: migrationIdentity.migrationPortfolioSha256,
     verificationRoundSummarySha256,
     priorApplication,
+    adoptionAuthority,
   };
   const preflightRecord = writeJsonEvidence("staging-broker-preflight.json", {
     schemaVersion: "dealflow.staging-broker-preflight.v1",
-    status: "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
+    status: adoptingCurrentExact
+      ? "PREPARED_READ_ONLY_CURRENT_EXACT_ADOPTION"
+      : "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
     remoteReadStarted: false,
     ...common,
   });
@@ -2329,7 +2424,9 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     "staging-migration-summary.pre-mutation.json",
     {
       schemaVersion: "dealflow.staging-migration-summary.v1",
-      status: "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
+      status: adoptingCurrentExact
+        ? "PREPARED_READ_ONLY_CURRENT_EXACT_ADOPTION"
+        : "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
       remoteReadStarted: false,
       ...common,
     },
@@ -2338,7 +2435,9 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     "evidence-manifest.pre-mutation.json",
     {
       schemaVersion: "dealflow.staging-evidence-manifest.v1",
-      status: "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
+      status: adoptingCurrentExact
+        ? "PREPARED_READ_ONLY_CURRENT_EXACT_ADOPTION"
+        : "PREPARED_READ_ONLY_EXISTING_EXACT_VERIFICATION",
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
       broker: brokerEvidenceIdentity,
@@ -2349,7 +2448,9 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
   assertBrokerSourceIdentityUnchanged(brokerSourceIdentity);
   const readStartedRecord = writeJsonEvidence("staging-remote-read-started.json", {
     schemaVersion: "dealflow.staging-remote-read-status.v1",
-    status: "REMOTE_READ_STARTED_EXISTING_EXACT_VERIFICATION",
+    status: adoptingCurrentExact
+      ? "REMOTE_READ_STARTED_CURRENT_EXACT_ADOPTION"
+      : "REMOTE_READ_STARTED_EXISTING_EXACT_VERIFICATION",
     remoteReadStarted: true,
     ...common,
   });
@@ -2435,7 +2536,8 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     verificationStage = "NORMALIZED_SCHEMA_BINDING";
     if (
       existingSchemaSha256 !== sha256(existingDumpRepeat) ||
-      existingSchemaSha256 !== priorApplication.normalizedSchemaSha256
+      (!adoptingCurrentExact &&
+        existingSchemaSha256 !== priorApplication.normalizedSchemaSha256)
     ) {
       throw new Error("Existing staging normalized schema drifted from the sealed application proof");
     }
@@ -2495,14 +2597,19 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
         existingState.ghlEmbedAuthExchangeCount,
       normalizedSchemaSha256: existingSchemaSha256,
       normalizedSchemaBytes: Buffer.byteLength(existingDump),
-      singleOuterTransaction: priorApplication.singleOuterTransaction,
-      migrationHistoryReceiptsInsideOuterTransaction:
-        priorApplication.migrationHistoryReceiptsInsideOuterTransaction,
+      singleOuterTransaction: adoptingCurrentExact
+        ? false
+        : priorApplication.singleOuterTransaction,
+      migrationHistoryReceiptsInsideOuterTransaction: adoptingCurrentExact
+        ? false
+        : priorApplication.migrationHistoryReceiptsInsideOuterTransaction,
       lastAttemptedVersion: requiredFinalMigration.slice(0, 14),
       lastAppliedVersion: requiredFinalMigration.slice(0, 14),
       lastCommittedVersion: requiredFinalMigration.slice(0, 14),
       remoteStateVerification: {
-        status: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+        status: adoptingCurrentExact
+          ? "EXACT_CURRENT_STATE_ADOPTED_READ_ONLY"
+          : "EXACT_EXISTING_COMMITTED_PORTFOLIO",
         readOnly: true,
         exactMigrationHistory: true,
         exactStructuralCatalog: !platformCatalogDriftObserved,
@@ -2527,13 +2634,18 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       serverVersion: existingServerVersion,
       migrationHistoryCount: existingState.migrationHistoryCount,
       normalizedSchemaSha256: existingSchemaSha256,
-      singleOuterTransaction: priorApplication.singleOuterTransaction,
-      migrationHistoryReceiptsInsideOuterTransaction:
-        priorApplication.migrationHistoryReceiptsInsideOuterTransaction,
+      singleOuterTransaction: adoptingCurrentExact
+        ? false
+        : priorApplication.singleOuterTransaction,
+      migrationHistoryReceiptsInsideOuterTransaction: adoptingCurrentExact
+        ? false
+        : priorApplication.migrationHistoryReceiptsInsideOuterTransaction,
       lastAttemptedVersion: requiredFinalMigration.slice(0, 14),
       lastAppliedVersion: requiredFinalMigration.slice(0, 14),
       lastCommittedVersion: requiredFinalMigration.slice(0, 14),
-      remoteStateVerificationStatus: "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+      remoteStateVerificationStatus: adoptingCurrentExact
+        ? "EXACT_CURRENT_STATE_ADOPTED_READ_ONLY"
+        : "EXACT_EXISTING_COMMITTED_PORTFOLIO",
       exactManagedStructuralCatalog: true,
       platformStructuralCatalogStable: true,
       platformCatalogDriftObserved,
@@ -2546,7 +2658,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     const manifestRecord = writeJsonEvidence("evidence-manifest.json", {
       schemaVersion: "dealflow.staging-evidence-manifest.v1",
       status: "PASS",
-      migrationMode: "VERIFY_EXISTING_EXACT",
+      migrationMode,
       verificationReadOnly: true,
       remoteMutationStarted: false,
       remoteMutationCompleted: false,
@@ -2564,7 +2676,7 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
       ],
     });
     process.stdout.write(
-      `Existing isolated staging migration portfolio PASS: ${migrations.length} migrations, PostgreSQL ${existingServerVersion}, schema ${existingSchemaSha256}, read-only verification, manifest ${manifestRecord.sha256}\n`,
+      `Existing isolated staging migration portfolio PASS: ${migrations.length} migrations, PostgreSQL ${existingServerVersion}, schema ${existingSchemaSha256}, ${adoptingCurrentExact ? "read-only current-state adoption" : "read-only verification"}, manifest ${manifestRecord.sha256}\n`,
     );
     process.exit(0);
   } catch (error) {
@@ -2575,20 +2687,26 @@ if (migrationMode === "VERIFY_EXISTING_EXACT") {
     );
     const failureRecord = writeJsonEvidence("staging-migration-failure.json", {
       schemaVersion: "dealflow.isolated-staging-migration-failure.v1",
-      status: "FAILED_EXISTING_EXACT_VERIFICATION",
+      status: adoptingCurrentExact
+        ? "FAILED_CURRENT_EXACT_ADOPTION"
+        : "FAILED_EXISTING_EXACT_VERIFICATION",
       ...failureEvidence,
       ...common,
     });
     const failureSummaryRecord = writeJsonEvidence("staging-migration-summary.json", {
       schemaVersion: "dealflow.staging-migration-summary.v1",
-      status: "FAILED_EXISTING_EXACT_VERIFICATION",
+      status: adoptingCurrentExact
+        ? "FAILED_CURRENT_EXACT_ADOPTION"
+        : "FAILED_EXISTING_EXACT_VERIFICATION",
       ...failureEvidence,
       ...common,
     });
     const failureManifestRecord = writeJsonEvidence("evidence-manifest.json", {
       schemaVersion: "dealflow.staging-evidence-manifest.v1",
-      status: "FAILED_EXISTING_EXACT_VERIFICATION",
-      migrationMode: "VERIFY_EXISTING_EXACT",
+      status: adoptingCurrentExact
+        ? "FAILED_CURRENT_EXACT_ADOPTION"
+        : "FAILED_EXISTING_EXACT_VERIFICATION",
+      migrationMode,
       verificationReadOnly: true,
       remoteMutationStarted: false,
       remoteMutationCompleted: false,

@@ -951,11 +951,15 @@ const releaseCapture = runner.indexOf("const identity = captureExactReleaseIdent
 assert.ok(flagGate >= 0 && releaseCapture > flagGate, "all execution flags must gate any release or remote work");
 assert.match(
   runner,
-  /Number\(options\.applyMigrations\) \+[\s\S]+Number\(options\.applyForwardMigration\) \+[\s\S]+Number\(options\.applySuccessorMigration\) \+[\s\S]+Number\(options\.verifyExistingMigrations\)/,
+  /Number\(options\.applyMigrations\) \+[\s\S]+Number\(options\.applyForwardMigration\) \+[\s\S]+Number\(options\.applySuccessorMigration\) \+[\s\S]+Number\(options\.verifyExistingMigrations\) \+[\s\S]+Number\(options\.adoptExistingMigrations\)/,
 );
 assert.match(runner, /migrationModeCount !== 1/);
 assert.match(runner, /Read-only resume and exact forward mode require --prior-migration-proof-dir/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--verify-existing-exact"/);
+assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--adopt-current-exact"/);
+assert.match(runner, /migrationSummary\.migrationMode === "ADOPT_CURRENT_EXACT"/);
+assert.match(runner, /migrationSummary\.historicalApplicationAtomicityProven === false/);
+assert.match(runner, /migrationSummary\.atomicApplicationCapabilityProvenByAuthority === true/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--apply-forward-exact"/);
 assert.match(runner, /migrationBrokerArgs\.push\([\s\S]*"--apply-successor-exact"/);
 assert.match(runner, /migrationSummary\.migrationMode === "VERIFY_EXISTING_EXACT"/);
@@ -2619,6 +2623,7 @@ const help = spawnSync(process.execPath, [runnerPath, "--help"], {
 assert.equal(help.status, 0, help.stderr);
 assert.match(help.stdout, /Exactly one migration mode is required/);
 assert.match(help.stdout, /--verify-existing-migrations --deploy/);
+assert.match(help.stdout, /--adopt-existing-migrations --deploy/);
 assert.match(help.stdout, /--apply-forward-migration --deploy/);
 assert.match(help.stdout, /--apply-successor-migration --deploy/);
 assert.match(

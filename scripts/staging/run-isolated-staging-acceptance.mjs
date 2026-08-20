@@ -508,6 +508,15 @@ Safe resume after a previously sealed atomic application:
     --round-one /absolute/path/final-verification-round-1.json \\
     --round-two /absolute/path/final-verification-round-2.json
 
+Read-only adoption of an already-current isolated database after exact local
+rehearsal and full managed-catalog verification:
+  node scripts/staging/run-isolated-staging-acceptance.mjs \
+    --execute --adopt-existing-migrations --deploy \
+    --current-exact-adoption-authority /absolute/external/adoption-authority.json \
+    --evidence-dir /absolute/external/dealflow-staging-acceptance-evidence-<new-seal> \
+    --round-one /absolute/path/final-verification-round-1.json \
+    --round-two /absolute/path/final-verification-round-2.json
+
 Historical bounded forward transition from the pinned read-only-proven
 104-migration staging seal to the sealed 120-migration predecessor:
   node scripts/staging/run-isolated-staging-acceptance.mjs \\
@@ -548,11 +557,13 @@ function parseArguments(argv) {
     applyForwardMigration: false,
     applySuccessorMigration: false,
     verifyExistingMigrations: false,
+    adoptExistingMigrations: false,
     deploy: false,
     evidenceDir: null,
     roundOne: null,
     roundTwo: null,
     priorMigrationProofDir: null,
+    currentExactAdoptionAuthority: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -562,6 +573,7 @@ function parseArguments(argv) {
     else if (arg === "--apply-forward-migration") options.applyForwardMigration = true;
     else if (arg === "--apply-successor-migration") options.applySuccessorMigration = true;
     else if (arg === "--verify-existing-migrations") options.verifyExistingMigrations = true;
+    else if (arg === "--adopt-existing-migrations") options.adoptExistingMigrations = true;
     else if (arg === "--deploy") options.deploy = true;
     else if (
       [
@@ -569,6 +581,7 @@ function parseArguments(argv) {
         "--round-one",
         "--round-two",
         "--prior-migration-proof-dir",
+        "--current-exact-adoption-authority",
       ].includes(arg)
     ) {
       const value = argv[index + 1];
@@ -579,6 +592,9 @@ function parseArguments(argv) {
       if (arg === "--round-two") options.roundTwo = resolve(value);
       if (arg === "--prior-migration-proof-dir") {
         options.priorMigrationProofDir = resolve(value);
+      }
+      if (arg === "--current-exact-adoption-authority") {
+        options.currentExactAdoptionAuthority = resolve(value);
       }
     } else {
       throw new Error(`Unknown staging acceptance option: ${arg}`);
@@ -5868,7 +5884,8 @@ async function main() {
     Number(options.applyMigrations) +
     Number(options.applyForwardMigration) +
     Number(options.applySuccessorMigration) +
-    Number(options.verifyExistingMigrations);
+    Number(options.verifyExistingMigrations) +
+    Number(options.adoptExistingMigrations);
   if (!options.execute || !options.deploy || migrationModeCount !== 1) {
     throw new Error(
       "No remote work was authorized: --execute, --deploy, and exactly one migration mode are required",
@@ -5885,6 +5902,17 @@ async function main() {
     throw new Error(
       "Read-only resume and exact forward mode require --prior-migration-proof-dir; fresh apply forbids it",
     );
+  }
+  if (options.adoptExistingMigrations !== Boolean(options.currentExactAdoptionAuthority)) {
+    throw new Error(
+      "Read-only current-state adoption requires exactly one external adoption authority",
+    );
+  }
+  if (
+    options.currentExactAdoptionAuthority &&
+    (options.priorMigrationProofDir || !options.adoptExistingMigrations)
+  ) {
+    throw new Error("Current-state adoption authority cannot be combined with a prior proof mode");
   }
   if (options.applyForwardMigration) {
     throw new Error(
@@ -5983,6 +6011,7 @@ async function main() {
       applyForwardMigration: options.applyForwardMigration,
       applySuccessorMigration: options.applySuccessorMigration,
       verifyExistingMigrations: options.verifyExistingMigrations,
+      adoptExistingMigrations: options.adoptExistingMigrations,
       deploy: options.deploy,
     },
     safety: {
@@ -6037,6 +6066,11 @@ async function main() {
       "--verify-existing-exact",
       options.priorMigrationProofDir,
     );
+  } else if (options.adoptExistingMigrations) {
+    migrationBrokerArgs.push(
+      "--adopt-current-exact",
+      options.currentExactAdoptionAuthority,
+    );
   } else if (options.applyForwardMigration) {
     migrationBrokerArgs.push(
       "--apply-forward-exact",
@@ -6054,6 +6088,8 @@ async function main() {
     {
       label: options.verifyExistingMigrations
         ? "read-only exact existing isolated-staging migration verifier"
+        : options.adoptExistingMigrations
+          ? "read-only current exact isolated-staging adoption verifier"
         : options.applyForwardMigration
           ? "exact forward-only isolated-staging migration broker"
           : options.applySuccessorMigration
@@ -6131,6 +6167,26 @@ async function main() {
       migrationSummary.authUserSurfaceAtVerification.userCount &&
     priorApplicationRetainedHistory &&
     exactCurrentResumePriorIdentity;
+  const adoptedCurrentExact =
+    options.adoptExistingMigrations &&
+    migrationSummary.migrationMode === "ADOPT_CURRENT_EXACT" &&
+    migrationSummary.verificationReadOnly === true &&
+    migrationSummary.remoteMutationStarted === false &&
+    migrationSummary.remoteMutationCompleted === false &&
+    migrationSummary.portfolioApplicationRemoteMutationCompleted === true &&
+    migrationSummary.historicalApplicationAtomicityProven === false &&
+    migrationSummary.atomicApplicationCapabilityProvenByAuthority === true &&
+    migrationSummary.adoptionAuthority?.status === "PASS" &&
+    migrationSummary.adoptionAuthority?.deterministicRuns === 2 &&
+    migrationSummary.adoptionAuthority?.interruptionRecoveryProven === true &&
+    migrationSummary.adoptionAuthority?.driftRejectionProven === true &&
+    migrationSummary.remoteStateVerificationStatus ===
+      "EXACT_CURRENT_STATE_ADOPTED_READ_ONLY" &&
+    isExactSafeStagingAuthSurfaceProof(
+      migrationSummary.authUserSurfaceAtVerification,
+    ) &&
+    migrationSummary.authUserCountAtVerification ===
+      migrationSummary.authUserSurfaceAtVerification.userCount;
   const exactForwardApplication =
     options.applyForwardMigration &&
     migrationSummary.migrationMode === "APPLY_FORWARD_EXACT" &&
@@ -6210,13 +6266,17 @@ async function main() {
       ));
   if (
     migrationSummary.status !== "PASS" ||
-    (!freshAtomicApplication && !verifiedExistingExact && !exactForwardApplication &&
+    (!freshAtomicApplication && !verifiedExistingExact && !adoptedCurrentExact && !exactForwardApplication &&
       !exactSuccessorApplication) ||
-    migrationSummary.singleOuterTransaction !== true ||
-    migrationSummary.migrationHistoryReceiptsInsideOuterTransaction !== true ||
+    (adoptedCurrentExact
+      ? migrationSummary.singleOuterTransaction !== false ||
+        migrationSummary.migrationHistoryReceiptsInsideOuterTransaction !== false
+      : migrationSummary.singleOuterTransaction !== true ||
+        migrationSummary.migrationHistoryReceiptsInsideOuterTransaction !== true) ||
     ![
       "EXACT_COMMITTED_PORTFOLIO",
       "EXACT_EXISTING_COMMITTED_PORTFOLIO",
+      "EXACT_CURRENT_STATE_ADOPTED_READ_ONLY",
       "EXACT_FORWARD_104_TO_120_COMMITTED_PORTFOLIO",
       "EXACT_FORWARD_122_TO_123_COMMITTED_PORTFOLIO",
     ].includes(migrationSummary.remoteStateVerificationStatus) ||
