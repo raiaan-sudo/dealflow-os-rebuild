@@ -21,6 +21,8 @@ const EXPECTED_PROJECT_SUFFIX = "qibh";
 const RETENTION_AUTHORITY_MARKER =
   "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const STAGING_TURNSTILE_TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
+const PRESERVED_GHL_OWNER_EMAIL_SHA256 =
+  "1c244c695868765ede7da5b3c9bcae5908edbf2a2bdb73c13cce2829452a8b31";
 const IDS = Object.freeze({
   organization: "d1000000-0000-4000-8000-000000000001",
   campaign: "d2000000-0000-4000-8000-000000000001",
@@ -278,6 +280,7 @@ async function main() {
     serviceClient: admin,
     authenticatedClient: paid,
     preflightGhlEmbedAuthExchangeCount,
+    preservedGhlOwnerEmailSha256: PRESERVED_GHL_OWNER_EMAIL_SHA256,
   });
   const successorPendingPayment = await noError(
     await admin
@@ -555,6 +558,7 @@ async function main() {
     serviceClient: admin,
     authenticatedClient: paid,
     preflightGhlEmbedAuthExchangeCount,
+    preservedGhlOwnerEmailSha256: PRESERVED_GHL_OWNER_EMAIL_SHA256,
   });
   if (JSON.stringify(successorServiceOnlyBefore) !== JSON.stringify(successorServiceOnlyAfter)) {
     throw new Error("Provider-independent journey changed the successor service-only schema state");
@@ -784,6 +788,7 @@ async function main() {
     serviceClient: admin,
     authenticatedClient: paid,
     preflightGhlEmbedAuthExchangeCount,
+    preservedGhlOwnerEmailSha256: PRESERVED_GHL_OWNER_EMAIL_SHA256,
   });
   if (JSON.stringify(successorServiceOnlyBefore) !== JSON.stringify(successorServiceOnlyFinal)) {
     throw new Error("Provider-independent portfolio changed the successor service-only schema state");
@@ -877,6 +882,7 @@ async function main() {
         successorServiceOnlyFinal.ghlEmbedAuthExchangeCountSource,
       exactSyntheticCountsVerified: true,
       serviceOnlyStateUnchanged: true,
+      preservedGhlAuthority: successorServiceOnlyFinal.preservedGhlAuthority,
       pendingCreditTopUpIntentId: IDS.successorCreditIntent,
       pendingCheckoutSessionId: SUCCESSOR_CREDIT_CHECKOUT_SESSION,
       pendingPaymentState: successorPendingPayment.payment_state,

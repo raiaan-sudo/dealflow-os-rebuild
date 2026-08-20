@@ -1904,6 +1904,14 @@ async function runProviderIndependentStagingProof(
       "direct_postgres_preseed_read_only" ||
     parsed.successorProviderIndependent?.exactSyntheticCountsVerified !== true ||
     parsed.successorProviderIndependent?.serviceOnlyStateUnchanged !== true ||
+    parsed.successorProviderIndependent?.preservedGhlAuthority?.profile !==
+      "PRESERVED_ZERO_SPEND_SYNTHETIC_GHL_AUTHORITY" ||
+    parsed.successorProviderIndependent?.preservedGhlAuthority
+      ?.exactSyntheticAuthorityVerified !== true ||
+    parsed.successorProviderIndependent?.preservedGhlAuthority
+      ?.rawProviderIdentifiersPersisted !== false ||
+    parsed.successorProviderIndependent?.preservedGhlAuthority
+      ?.rawCredentialsPersisted !== false ||
     parsed.successorProviderIndependent?.pendingCreditTopUpIntentId !==
       "e3000000-0000-4000-8000-000000000001" ||
     parsed.successorProviderIndependent?.pendingPaymentState !== "pending" ||

@@ -2263,11 +2263,21 @@ assert.match(providerIndependentProof, /account_deletion_execution_disabled/);
 assert.match(providerIndependentProof, /providerReceiptCount: 0/);
 assert.match(providerIndependentProof, /fullProviderOffboardingPerformed: false/);
 assert.match(providerIndependentProof, /assertSuccessorServiceOnlySchemaReadback/);
+assert.match(providerIndependentProof, /PRESERVED_GHL_OWNER_EMAIL_SHA256/);
+assert.equal(
+  (providerIndependentProof.match(/preservedGhlOwnerEmailSha256: PRESERVED_GHL_OWNER_EMAIL_SHA256/g) ?? []).length,
+  3,
+);
+assert.match(
+  providerIndependentProof,
+  /preservedGhlAuthority: successorServiceOnlyFinal\.preservedGhlAuthority/,
+);
 assert.match(successorProviderIndependentContract, /\.select\("\*"\)\.limit\(1\)/);
 assert.match(successorProviderIndependentContract, /PostgREST intentionally returns an empty body for denied HEAD requests/);
 assert.match(providerIndependentProof, /SUCCESSOR_CREDIT_CHECKOUT_SESSION/);
 assert.match(providerIndependentProof, /pendingPaymentCreditLedgerRows: 0/);
 assert.match(providerIndependentProof, /serviceOnlyStateUnchanged: true/);
+assert.match(runner, /parsed\.successorProviderIndependent\?\.preservedGhlAuthority\?\.profile/);
 assert.match(providerIndependentProof, /postAuditServiceOnlyTableCount:\s*successorServiceOnlyFinal\.postAuditServiceOnlyTableCount/);
 assert.match(providerIndependentProof, /successorServiceOnlyBefore/);
 assert.match(providerIndependentProof, /successorServiceOnlyFinal/);
