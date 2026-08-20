@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "a7ad9fbbbf60042bda1f5a98d0839113e575a33cfcb6571f6c078a5a33f405a9",
+  "deployableSourceSha256": "aeecf5254bbb666ebe1158c61b6ee1558bbb112dadc656e2bdd44919ce37a5aa",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "9df3b1a989df70cd8e15a2f040c183a276a8d6c5e06d07ff0962245e5b84275a"
+      "sha256": "2cd10f99bd43c092fdf810d9425c667f8b8b0be6496b658037fb025571bfe5ce"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "da99a4853cb14642614f18efd70a5b3adece368af381f3ee7f81fca39a1bbfc2"
+      "sha256": "0fb6799e98e5abb4744f520403482c50b3322a2022a65fb2ff6cd68595ba76a2"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "bae1fa1fee87fd04c5a6b401be8b6b880db537f004c4ba4840081ade07a1539d"
+      "sha256": "f0ab703628312987676e4395b05f4afe67a16ebd8705426bf07d44edfb2b1891"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1416,9 +1416,9 @@
     },
     {
       "path": "scripts/staging/test-release-identity-route-contract.mjs",
-      "size": 11106,
+      "size": 11138,
       "mode": 33188,
-      "sha256": "bd6391e05a77343387fc2b538c9cf11b2c9f745c1952a27d097e0022b168539b"
+      "sha256": "874d78e1dc02e87dff9608b3df661609f5a960d23a73edd82fbeb0e4be6e90c8"
     },
     {
       "path": "scripts/staging/test-safe-browser-host-contract.mjs",
@@ -3222,9 +3222,9 @@
     },
     {
       "path": "src/app/api/internal/release-identity/route.ts",
-      "size": 10726,
+      "size": 10754,
       "mode": 33188,
-      "sha256": "1fd479bbc53dd62e21c80be6ccaee21aa2ef7473710c13af19ed7caecd7f1e62"
+      "sha256": "573136a8d6bf71a6c1374efa8857ca3f420ecbcdc4ad7d7d2e76cb8f47c098f2"
     },
     {
       "path": "src/app/api/internal/stripe-test-proof/route.ts",
