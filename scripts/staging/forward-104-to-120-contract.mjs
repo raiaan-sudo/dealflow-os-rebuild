@@ -24,7 +24,7 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
     // Preserve the immutable historical qibh proof above while separately
     // binding the current replay source after a pre-production gate fix.
     sourceReplayMigrationPortfolioSha256:
-      "1eab251ff0996e96d6b6c1008b1bebd036b6aa00f6d31abe888162dc246ea6b5",
+      "fc093085dd1ea2aae8df65d5f40cdb2b387af5eb310b93341852ec9fc52e7db0",
     normalizedSchemaSha256:
       "67f201df805559a97908e353e6c4e4a2c35df0812eb96cb6b92b50e711f84fe3",
     structuralCatalogSha256:
@@ -49,7 +49,7 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
     migrationPortfolioSha256:
       "e6ff6049ff5a5c5691c54285850748f0e4190af23f389acde1cab7ead0245e2c",
     sourceReplayMigrationPortfolioSha256:
-      "ca23de948090fa29d03057e79cf839b77385ee95786c34439818bf532ddcccb2",
+      "4905fed73b71fa7d72356e561fba74e8b97cf6f73cdb7e7bd3bbba26dc98a2ea",
     // Independently reproduced twice on PostgreSQL 17.6: once from a fresh
     // 120-migration database and once from the exact 104 prefix followed by
     // migrations 105-120. The managed catalog uses a pg_catalog-only search

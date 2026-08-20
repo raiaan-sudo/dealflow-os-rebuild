@@ -72,11 +72,11 @@ assert.equal(
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.prior.sourceReplayMigrationPortfolioSha256,
-  "1eab251ff0996e96d6b6c1008b1bebd036b6aa00f6d31abe888162dc246ea6b5",
+  "fc093085dd1ea2aae8df65d5f40cdb2b387af5eb310b93341852ec9fc52e7db0",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.sourceReplayMigrationPortfolioSha256,
-  "ca23de948090fa29d03057e79cf839b77385ee95786c34439818bf532ddcccb2",
+  "4905fed73b71fa7d72356e561fba74e8b97cf6f73cdb7e7bd3bbba26dc98a2ea",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,
