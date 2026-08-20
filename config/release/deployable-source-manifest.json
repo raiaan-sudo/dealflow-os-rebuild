@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1176,
-  "deployableSourceSha256": "837af11d7d1d268e060cca59b87d9c4ffe432a812453f59de699a960072fb261",
+  "deployableSourceSha256": "6c619ec4bb9c16476326cb5d8ad9789c790c46b4733e034c7831e2bb6a2f83ec",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "2affac1e0e191a13432b604595532e58fda598ad819e1a878022232f2e858e17"
+      "sha256": "cba3299eba5899f47f8d7c781faa8ae3a597ee7edb96d2f150a66bc50971af94"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "20c1f3e5aab445052c6efb4624b9a4f3d0cc6239e36d53c7a434076bb9546fa1"
+      "sha256": "6302c82178575de007e1ed5f1a2eb71c0829f9559058fe3fc9a1aea07af017c1"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "c2b7f604b09dee08147b47ac9417da418e4ee7e4261ef2158ce3c70594ab9e48"
+      "sha256": "7ae955c9d447f67bea10ae0e7a9cb4eea45c789807d1339958cd626f361f0ed8"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1248,15 +1248,15 @@
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
-      "size": 307436,
+      "size": 307907,
       "mode": 33188,
-      "sha256": "186aa25d39c3fe5aa99412322c61dbfd7fa6db2da5b2e5688ea2d9f8e2d24efc"
+      "sha256": "439837293d7081a7afecb6f06c8392d4c85f4651b01587111061338598e3104c"
     },
     {
       "path": "scripts/staging/run-provider-independent-staging-proof.mjs",
-      "size": 36092,
+      "size": 36485,
       "mode": 33188,
-      "sha256": "7f9cdd6a12df54633d34b4818822ffb701f7194224d207ab19f14c43f93515ef"
+      "sha256": "89cad20d394b9a0a780bf5d16fc62e0e3f15386dd24491936d19ad5daf9b90d4"
     },
     {
       "path": "scripts/staging/safe-browser-host-contract.mjs",
@@ -1380,9 +1380,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 138379,
+      "size": 138813,
       "mode": 33188,
-      "sha256": "0687516b226018084c126c459d1687211d410b17aadd51f36c50d53637d70f46"
+      "sha256": "7c3367f6db39fbd418d417d0155a54aae9a2ece46be335046a57828f53f34c36"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
