@@ -2492,8 +2492,9 @@ if (["VERIFY_EXISTING_EXACT", "ADOPT_CURRENT_EXACT"].includes(migrationMode)) {
       throw new Error("Existing staging auth-surface count did not match structural-state capture");
     }
     verificationStage = "STRUCTURAL_CATALOG_BINDING";
-    const platformCatalogDriftObserved =
-      existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256;
+    const platformCatalogDriftObserved = adoptingCurrentExact
+      ? null
+      : existingState.structuralCatalogSha256 !== priorApplication.structuralCatalogSha256;
     verificationStage = "STRUCTURAL_CATALOG_STABILITY";
     const existingCatalogRepeat = captureRemoteCatalogIdentity(
       "Repeat existing staging structural-catalog identity",
@@ -2612,7 +2613,14 @@ if (["VERIFY_EXISTING_EXACT", "ADOPT_CURRENT_EXACT"].includes(migrationMode)) {
           : "EXACT_EXISTING_COMMITTED_PORTFOLIO",
         readOnly: true,
         exactMigrationHistory: true,
-        exactStructuralCatalog: !platformCatalogDriftObserved,
+        exactStructuralCatalog: adoptingCurrentExact
+          ? null
+          : !platformCatalogDriftObserved,
+        fullStructuralCatalogBindingStatus: adoptingCurrentExact
+          ? "NOT_PROVEN_NO_HISTORICAL_PLATFORM_CATALOG_BASELINE"
+          : platformCatalogDriftObserved
+            ? "PLATFORM_DRIFT_OBSERVED"
+            : "EXACT_PRIOR_APPLICATION_CATALOG",
         exactManagedStructuralCatalog: true,
         platformStructuralCatalogStable: true,
         platformCatalogDriftObserved,

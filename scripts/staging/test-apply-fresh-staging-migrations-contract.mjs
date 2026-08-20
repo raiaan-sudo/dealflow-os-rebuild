@@ -666,6 +666,16 @@ assert.match(
   "Resume evidence must distinguish platform drift from exact managed schema truth",
 );
 assert.match(
+  resumeBranch,
+  /platformCatalogDriftObserved = adoptingCurrentExact[\s\S]*\? null[\s\S]*priorApplication\.structuralCatalogSha256/,
+  "Current-state adoption must not dereference an unavailable prior application catalog",
+);
+assert.match(
+  resumeBranch,
+  /exactStructuralCatalog: adoptingCurrentExact[\s\S]*NOT_PROVEN_NO_HISTORICAL_PLATFORM_CATALOG_BASELINE/,
+  "Current-state adoption must classify the historical full-platform catalog binding honestly",
+);
+assert.match(
   priorProofContractSource,
   /exactFullCatalog[\s\S]*exactManagedCatalog[\s\S]*platformStructuralCatalogStable[\s\S]*managedStructuralCatalogSha256[\s\S]*managedStructuralCatalogRecordCount/,
   "Prior-proof classification must accept only exact full-catalog or exact managed-catalog read-only evidence",
