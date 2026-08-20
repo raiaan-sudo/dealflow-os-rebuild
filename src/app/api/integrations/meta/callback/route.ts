@@ -126,10 +126,9 @@ export async function GET(req: NextRequest) {
     // itself: it must match the protected HttpOnly state cookie and is then
     // atomically consumed against the authenticated user/organization binding
     // before any provider token exchange can occur.
-    if (!returnedState || !storedState) {
-      return redirectWithMetaError("invalid_state");
-    }
-    if (!metaOAuthStateMatches(returnedState, storedState)) {
+    const returnedStateForComparison = returnedState ?? "\u0000missing-returned-state";
+    const storedStateForComparison = storedState ?? "\u0000missing-stored-state";
+    if (!metaOAuthStateMatches(returnedStateForComparison, storedStateForComparison)) {
       return redirectWithMetaError("invalid_state");
     }
 
@@ -137,7 +136,7 @@ export async function GET(req: NextRequest) {
     try {
       const auth = await getAuthenticatedContext();
       const binding = await consumeMetaOAuthStateBinding({
-        state: returnedState,
+        state: returnedStateForComparison,
         userId: auth.userId,
         organizationId: auth.organizationId,
       });
