@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1176,
-  "deployableSourceSha256": "fbb4f7c6e7395f80955c5f8c1b425e0f7d28740063e4811cb9df29e19bcb4374",
+  "deployableSourceSha256": "1cd74ebe5253556e7b204b742ccd1fede1c2c48fcece90464c85744ad2850316",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "0cd413e0ff14e1d8ca3165f12d37e4dd1cf3f564b1af22187860541ce0a43cd6"
+      "sha256": "44fa760191a1125f19a32351b2ac3e5bc5376d408c2b618acff063d91b86b89a"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "41445de1afcc5efb01e12652206c7c71337e7529f6fa2aad43d3745bffb174ba"
+      "sha256": "ccf008f145488a33ad65aae1f9d1127f56735e1aa3b70a48192c34068e97c3c9"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "efaf745273d641dee3aed5da570882c6e984494c29a5d92bb4759a278b935326"
+      "sha256": "2e6399ae49ed17054b8ce5a40eba4e63b8169723b508152a7b99cf77ca4ad64a"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1116,9 +1116,9 @@
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 114748,
+      "size": 114825,
       "mode": 33188,
-      "sha256": "7faf333158ceb94b3e88df0a30d3142771df829ca9f05522633af7152e09aee5"
+      "sha256": "90edc5ebd4a2640983e9149debafbb524232467e1d4d350ad405e0cfd8047b86"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -1296,9 +1296,9 @@
     },
     {
       "path": "scripts/staging/successor-provider-independent-contract.mjs",
-      "size": 11240,
+      "size": 17543,
       "mode": 33188,
-      "sha256": "42777c089dff81e88349206c23fa7c25b307e945888802a8d3b99960df5b1c72"
+      "sha256": "1197992538484badd0e175b8bd5d561dfe244e0580076b9d350e2dfe164a1396"
     },
     {
       "path": "scripts/staging/test-apply-fresh-staging-migrations-contract.mjs",
@@ -1986,9 +1986,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 33851,
+      "size": 34215,
       "mode": 33188,
-      "sha256": "51244f28d224bd24b67bee2ad30fd32e0fb1fef998514f7b84747d9c8bad3dc7"
+      "sha256": "0822ffa621677cde2c11786140e55fecf5edd8976bb4cdfa2b8d41e8dc64a75c"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",
