@@ -5,6 +5,7 @@ import {
 } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 const REQUIRED_GUARD_KEYS = [
   "build",
@@ -57,17 +58,17 @@ function readProtectedFile(file, root) {
   ) {
     throw new Error("release_guard_protected_path_invalid");
   }
-  const stat = fs.lstatSync(file);
-  const resolvedStat = fs.statSync(normalizedFile);
+  const requestedStat = fs.lstatSync(file);
+  const { contents, stat: resolvedStat } = readSecureFileSnapshot(normalizedFile);
   if (
-    !stat.isFile() ||
-    stat.isSymbolicLink() ||
+    !requestedStat.isFile() ||
+    requestedStat.isSymbolicLink() ||
     !resolvedStat.isFile() ||
     (resolvedStat.mode & 0o077) !== 0
   ) {
     throw new Error("release_guard_protected_file_invalid");
   }
-  return fs.readFileSync(normalizedFile);
+  return contents;
 }
 
 export function verifyReleaseGuardV5({

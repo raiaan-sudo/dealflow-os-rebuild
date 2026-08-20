@@ -122,6 +122,10 @@ export async function GET(req: NextRequest) {
     cookieStore.delete(META_STATE_COOKIE);
     cookieStore.delete(META_RETURN_TO_COOKIE);
 
+    // codeql[js/user-controlled-bypass] The request state is not authority by
+    // itself: it must match the protected HttpOnly state cookie and is then
+    // atomically consumed against the authenticated user/organization binding
+    // before any provider token exchange can occur.
     if (
       !returnedState ||
       !storedState ||

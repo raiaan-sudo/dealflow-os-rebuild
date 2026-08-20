@@ -364,7 +364,7 @@ for (const sourcePath of ownedSourcePaths) {
 
   assert.doesNotMatch(
     source,
-    /https:\/\/(?:graph|www)\.facebook\.com\/v\d+\.\d+/,
+    /^.*https:\/\/(?:graph|www)\.facebook\.com\/v\d+\.\d+.*$/m,
     `${relativePath} bypasses the centralized Meta version contract`,
   );
   assert.doesNotMatch(

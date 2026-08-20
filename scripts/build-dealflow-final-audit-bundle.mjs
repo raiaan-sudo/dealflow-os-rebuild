@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import zlib from "node:zlib";
 import { execFileSync, spawnSync } from "node:child_process";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 const DESIGNATED_OUTPUT =
   "/Users/raiaanreza/Documents/Codex/2026-07-10/okay-so-essentially-what-i-need/outputs/dealflow-completion-execution-20260710";
@@ -833,8 +834,8 @@ if (statusBefore.trim()) fail("The candidate worktree must be clean before bundl
 
 for (const promptPath of [READ_ONLY_AUDIT_PROMPT, EXECUTION_PROMPT]) requireRegularLocalFile(promptPath, "controlling prompt");
 const promptProvenance = [
-  { id: "read_only_master_audit_prompt", byteSize: fs.statSync(READ_ONLY_AUDIT_PROMPT).size, sha256: sha256(fs.readFileSync(READ_ONLY_AUDIT_PROMPT)), controllingLines: "required artifact bundle 771-890" },
-  { id: "isolated_execution_prompt", byteSize: fs.statSync(EXECUTION_PROMPT).size, sha256: sha256(fs.readFileSync(EXECUTION_PROMPT)), controllingLines: "final evidence and handoff 647-704" },
+  { id: "read_only_master_audit_prompt", byteSize: readSecureFileSnapshot(READ_ONLY_AUDIT_PROMPT).stat.size, sha256: sha256(readSecureFileSnapshot(READ_ONLY_AUDIT_PROMPT).contents), controllingLines: "required artifact bundle 771-890" },
+  { id: "isolated_execution_prompt", byteSize: readSecureFileSnapshot(EXECUTION_PROMPT).stat.size, sha256: sha256(readSecureFileSnapshot(EXECUTION_PROMPT).contents), controllingLines: "final evidence and handoff 647-704" },
 ];
 
 const preservedReport = new Map();
@@ -885,7 +886,7 @@ for (const relative of REQUIRED_ROOT_ARTIFACTS.filter((item) => item !== "audit-
     originalMissing.push({ path: relative, status: "BLOCKED_CONTENT_NOT_LOCAL", expectedByteSize: expected.byte_size, expectedSha256: expected.sha256 });
     continue;
   }
-  const buffer = fs.readFileSync(source);
+  const buffer = readSecureFileSnapshot(source).contents;
   if (buffer.length !== expected.byte_size || sha256(buffer) !== expected.sha256) fail(`Materialized original audit input does not match its manifest: ${relative}`);
   originalMaterialized.push({ path: relative, buffer, byteSize: buffer.length, sha256: sha256(buffer), status: "MATERIALIZED_HASH_MATCH" });
 }
@@ -1570,7 +1571,7 @@ function validateStagedBundle() {
     const relative = path.relative(stagingRoot, full).replaceAll(path.sep, "/");
     const stat = fs.statSync(full);
     if (stat.size === 0 || (typeof stat.blocks === "number" && stat.blocks === 0)) fail(`Empty/dataless staged artifact: ${relative}`);
-    const buffer = fs.readFileSync(full);
+    const buffer = readSecureFileSnapshot(full).contents;
     assertNoObviousSecret(buffer, relative);
     if (relative.endsWith(".json")) parseJson(buffer.toString("utf8"), relative);
     if (relative.endsWith(".jsonl")) {

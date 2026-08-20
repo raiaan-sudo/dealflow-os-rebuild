@@ -6,6 +6,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -362,7 +363,7 @@ export function loadExactPrior104StagingSeal(directory) {
     ) {
       throw new Error("Prior 104 staging artifacts must be canonical owner-only regular files");
     }
-    const contents = readFileSync(path);
+    const contents = readSecureFileSnapshot(path).contents;
     if (sha256(contents) !== expectedDigests[name]) {
       throw new Error("Prior 104 staging artifact does not match its pinned SHA-256");
     }
@@ -410,7 +411,7 @@ function readCanonicalOwnerOnlyFile(path, label) {
   ) {
     throw new Error(`${label} must be a canonical owner-only regular file`);
   }
-  return readFileSync(path);
+  return readSecureFileSnapshot(path).contents;
 }
 
 export function loadExactPrior104SyntheticSurfaceSeal(priorProofDirectory) {

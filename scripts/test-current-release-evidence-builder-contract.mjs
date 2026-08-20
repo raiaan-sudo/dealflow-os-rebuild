@@ -18,6 +18,7 @@ import {
 import { dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 import {
   FINAL_VERIFICATION_COMMAND_PORTFOLIO_SHA256,
@@ -281,7 +282,15 @@ function inventory(directory) {
       const absolute = join(path, name);
       const stat = lstatSync(absolute);
       if (stat.isDirectory()) visit(absolute);
-      else records.push({ path: relative(directory, absolute), absolute, bytes: stat.size, sha256: sha256(readFileSync(absolute)) });
+      else {
+        const snapshot = readSecureFileSnapshot(absolute);
+        records.push({
+          path: relative(directory, absolute),
+          absolute,
+          bytes: snapshot.stat.size,
+          sha256: sha256(snapshot.contents),
+        });
+      }
     }
   };
   visit(directory);

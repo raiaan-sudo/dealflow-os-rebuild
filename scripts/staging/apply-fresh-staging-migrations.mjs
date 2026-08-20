@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 import {
   assertExactFinalVerificationSummaryPortfolio,
@@ -206,7 +207,7 @@ function assertBrokerSourceIdentityUnchanged(identity) {
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw new Error("The tracked staging broker changed type after self-binding");
   }
-  const source = readFileSync(identity.sourcePath);
+  const source = readSecureFileSnapshot(identity.sourcePath).contents;
   if (source.byteLength !== identity.bytes || sha256(source) !== identity.sha256) {
     throw new Error("The tracked staging broker changed after its SHA-256 was bound");
   }
@@ -300,7 +301,7 @@ function trackedWorktreeIdentity() {
       contents = Buffer.from(readlinkSync(absolutePath));
     } else {
       if (!stat.isFile()) throw new Error("A tracked release file changed type");
-      contents = readFileSync(absolutePath);
+      contents = readSecureFileSnapshot(absolutePath).contents;
     }
     digest.update(entry.mode);
     digest.update("\0");
@@ -406,7 +407,7 @@ function readPassingVerificationSummary(path, expectedRound) {
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw new Error(`Verification round ${expectedRound} summary must be a real file`);
   }
-  const summary = JSON.parse(readFileSync(path, "utf8"));
+  const summary = JSON.parse(readSecureFileSnapshot(path, { encoding: "utf8" }).contents);
   const evidence = assertFinalVerificationEvidenceIsSealable(dirname(path));
   assertExactFinalVerificationSummaryPortfolio(
     summary,
@@ -692,7 +693,9 @@ if (
 ) {
   throw new Error("The staging project attestation must be a real owner-only file");
 }
-const projectRecord = JSON.parse(readFileSync(projectRecordPath, "utf8"));
+const projectRecord = JSON.parse(
+  readSecureFileSnapshot(projectRecordPath, { encoding: "utf8" }).contents,
+);
 const projectRef = String(projectRecord.ref ?? "").trim().toLowerCase();
 if (
   !/^[a-z0-9]{20}$/.test(projectRef) ||
@@ -724,7 +727,7 @@ const postgresBinarySha256 = {
   pgDump: sha256(readFileSync(pgDump)),
 };
 const trustBundleStat = lstatSync(expectedTrustBundlePath);
-const trustBundleBytes = readFileSync(expectedTrustBundlePath);
+const trustBundleBytes = readSecureFileSnapshot(expectedTrustBundlePath).contents;
 const committedTrustBundleBytes = git(
   ["show", `${releaseIdentity.headCommit}:${expectedTrustBundleRelativePath}`],
   "Unable to recover the committed Supabase trust bundle",
@@ -1855,7 +1858,7 @@ function loadAndValidatePriorMigrationProof({
     if (stat.isSymbolicLink() || !stat.isFile() || (stat.mode & 0o077) !== 0) {
       throw new Error("Prior migration proof artifacts must be real owner-only files");
     }
-    const contents = readFileSync(path);
+    const contents = readSecureFileSnapshot(path).contents;
     return { contents, parsed: JSON.parse(contents.toString("utf8")) };
   };
   const manifestArtifact = readPriorArtifact("evidence-manifest.json");
@@ -2301,7 +2304,7 @@ function loadCurrentExactAdoptionAuthority() {
     throw new Error("Current exact adoption authority must be an owner-only real file");
   }
   assertOutsideRelease(currentExactAdoptionAuthorityPath, "Current exact adoption authority");
-  const authorityBytes = readFileSync(currentExactAdoptionAuthorityPath);
+  const authorityBytes = readSecureFileSnapshot(currentExactAdoptionAuthorityPath).contents;
   const authority = JSON.parse(authorityBytes.toString("utf8"));
   const rehearsalPath = resolve(String(authority.productionShapedRehearsalPath ?? ""));
   const rehearsalStat = lstatSync(rehearsalPath);
@@ -2317,7 +2320,7 @@ function loadCurrentExactAdoptionAuthority() {
     throw new Error("Production-shaped rehearsal authority must be an owner-only real file");
   }
   assertOutsideRelease(rehearsalPath, "Production-shaped rehearsal authority");
-  const rehearsalBytes = readFileSync(rehearsalPath);
+  const rehearsalBytes = readSecureFileSnapshot(rehearsalPath).contents;
   const rehearsal = JSON.parse(rehearsalBytes.toString("utf8"));
   if (
     authority.schemaVersion !== "dealflow.staging-current-exact-adoption-authority.v1" ||

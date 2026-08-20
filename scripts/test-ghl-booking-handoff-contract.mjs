@@ -114,7 +114,10 @@ for (const unsafe of [
 }
 
 const bookingMessage = formatGhlBookingHandoffMessage("https://book.example.com/team-calendar");
-assert.match(bookingMessage, /https:\/\/book\.example\.com\/team-calendar/);
+assert.equal(
+  bookingMessage,
+  "You can choose a time on the team's booking page here: https://book.example.com/team-calendar If none of those times work, reply here and the team will follow up manually.",
+);
 assert.match(bookingMessage, /team will follow up manually/i);
 const manualMessage = formatGhlBookingHandoffMessage(null);
 assert.doesNotMatch(manualMessage, /https?:\/\//);

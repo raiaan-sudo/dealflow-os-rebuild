@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 import {
   APPROVED_DIRECT_PUBLIC_IMAGE_GATE_PREDICATES,
@@ -286,7 +287,7 @@ try {
     checkpointPath,
     failedCheckpoint,
   );
-  const retainedFailureBytes = readFileSync(checkpointPath);
+  const retainedFailureBytes = readSecureFileSnapshot(checkpointPath).contents;
   assert.deepEqual(JSON.parse(retainedFailureBytes), failedCheckpoint);
   assert.equal(existsSync(`${checkpointPath}.tmp`), false);
 
@@ -298,7 +299,7 @@ try {
     failedCheckpoint,
   );
   const secondDigest = createHash("sha256")
-    .update(readFileSync(checkpointPath))
+    .update(readSecureFileSnapshot(checkpointPath).contents)
     .digest("hex");
   assert.equal(secondDigest, firstDigest);
   assert.equal(existsSync(`${checkpointPath}.tmp`), false);

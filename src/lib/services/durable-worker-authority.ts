@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const RELEASE_ID_PATTERN = /^[a-f0-9]{40,64}$/;
@@ -167,32 +168,41 @@ export function readDurableWorkerAuthority(
 export async function verifyImmutableWorkerGeneration(
   authority: DurableWorkerAuthority,
 ) {
-  const [fileStat, resolvedPath, contents] = await Promise.all([
-    lstat(authority.generationFile),
-    realpath(authority.generationFile),
-    readFile(authority.generationFile, "utf8"),
-  ]).catch(() => {
+  let handle;
+  try {
+    handle = await open(
+      authority.generationFile,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    const [fileStat, resolvedPath, contents] = await Promise.all([
+      handle.stat(),
+      realpath(authority.generationFile),
+      handle.readFile("utf8"),
+    ]);
+    if (
+      !fileStat.isFile() ||
+      (fileStat.mode & 0o222) !== 0 ||
+      resolvedPath !== authority.generationFile ||
+      contents.trim().toLowerCase() !== authority.generation
+    ) {
+      throw new DurableWorkerAuthorityError(
+        "durable_worker_generation_file_mismatch",
+        "The immutable image generation does not match the runtime generation.",
+      );
+    }
+    return {
+      generation: authority.generation,
+      generationFileSha256: sha256(contents),
+    };
+  } catch (error) {
+    if (error instanceof DurableWorkerAuthorityError) throw error;
     throw new DurableWorkerAuthorityError(
       "durable_worker_generation_file_unavailable",
       "The immutable image generation file is unavailable.",
     );
-  });
-  if (
-    !fileStat.isFile() ||
-    fileStat.isSymbolicLink() ||
-    (fileStat.mode & 0o222) !== 0 ||
-    resolvedPath !== authority.generationFile ||
-    contents.trim().toLowerCase() !== authority.generation
-  ) {
-    throw new DurableWorkerAuthorityError(
-      "durable_worker_generation_file_mismatch",
-      "The immutable image generation does not match the runtime generation.",
-    );
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
-  return {
-    generation: authority.generation,
-    generationFileSha256: sha256(contents),
-  };
 }
 
 export async function verifyEncryptedOauthVolume(
@@ -208,25 +218,50 @@ export async function verifyEncryptedOauthVolume(
       "The externally pinned encrypted-volume attestation digest is missing.",
     );
   }
-  const [mountStat, attestationStat, mountRealPath, attestationRealPath, bytes] =
-    await Promise.all([
-      lstat(authority.oauthMountRoot),
-      lstat(authority.volumeAttestationPath),
-      realpath(authority.oauthMountRoot),
-      realpath(authority.volumeAttestationPath),
-      readFile(authority.volumeAttestationPath),
-    ]).catch(() => {
+  let attestationHandle;
+  let mountStat;
+  let attestationStat;
+  let mountRealPath;
+  let attestationRealPath;
+  let bytes;
+  try {
+    attestationHandle = await open(
+      authority.volumeAttestationPath,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    [mountStat, attestationStat, mountRealPath, attestationRealPath, bytes] =
+      await Promise.all([
+        lstat(authority.oauthMountRoot),
+        attestationHandle.stat(),
+        realpath(authority.oauthMountRoot),
+        realpath(authority.volumeAttestationPath),
+        attestationHandle.readFile(),
+      ]);
+  } catch {
+    throw new DurableWorkerAuthorityError(
+      "durable_worker_volume_attestation_unavailable",
+      "The encrypted OAuth volume attestation is unavailable.",
+    );
+  } finally {
+    await attestationHandle?.close().catch(() => undefined);
+  }
+  if (
+    !mountStat ||
+    !attestationStat ||
+    !mountRealPath ||
+    !attestationRealPath ||
+    !bytes
+  ) {
       throw new DurableWorkerAuthorityError(
         "durable_worker_volume_attestation_unavailable",
         "The encrypted OAuth volume attestation is unavailable.",
       );
-    });
+  }
   if (
     !mountStat.isDirectory() ||
     mountStat.isSymbolicLink() ||
     (mountStat.mode & 0o077) !== 0 ||
     !attestationStat.isFile() ||
-    attestationStat.isSymbolicLink() ||
     (attestationStat.mode & 0o077) !== 0 ||
     mountRealPath !== authority.oauthMountRoot ||
     attestationRealPath !== authority.volumeAttestationPath ||

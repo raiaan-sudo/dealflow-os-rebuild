@@ -499,6 +499,8 @@ for (const [label, source] of [
 assert.match(browserSpec, /stagingAppHeaders\(/);
 assert.match(safeBrowserSpec, /appRequestHeaders\(/);
 assert.match(browserContextBoundary, /context\.route\("\*\*\/\*"/);
+// codeql[js/regex/missing-regexp-anchor] This is a source-contract assertion
+// over a trusted local file, not URL authorization or input sanitization.
 assert.match(browserContextBoundary, /context\.routeWebSocket\(\/\.\*\//);
 assert.match(browserContextBoundary, /webSocketRoute\.close\(/);
 assert.match(browserContextBoundaryTest, /forbidden\.example\/popup/);
@@ -2147,6 +2149,8 @@ assert.match(browserSessionContract, /3_180/);
 assert.match(browserSessionContract, /cookie chunks are not contiguous from zero/);
 assert.match(browserSessionContract, /official base64url SSR data/);
 assert.match(browserSessionContract, /challenges\.cloudflare\.com/);
+// codeql[js/regex/missing-regexp-anchor] Trusted local source-contract search;
+// runtime code compares the parsed URL origin exactly.
 assert.match(browserSessionContract, /url\.origin !== "https:\/\/challenges\.cloudflare\.com"/);
 assert.match(browserSessionContract, /url\.username !== ""/);
 assert.match(browserSessionContract, /\/turnstile\/v0\/api\.js/);
@@ -2203,6 +2207,8 @@ assert.match(globalSafetyPreflight, /assertExactHostedSafeBrowserOrigin\(baseUrl
 assert.match(safeBrowserConfig, /assertExactHostedSafeBrowserOrigin\(configuredBaseUrl\)/);
 assert.match(
   safeBrowserHostContract,
+  // codeql[js/regex/missing-regexp-anchor] Trusted local source-contract
+  // search; the runtime host validator uses parsed exact URL origins.
   /https:\/\/dealflow-os-rebuild-selfserve-clean\.vercel\.app/,
 );
 assert.match(safeBrowserHostContract, /url\.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN/);

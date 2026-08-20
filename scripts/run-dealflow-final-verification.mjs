@@ -20,6 +20,7 @@ import {
 } from "./lib/final-verification-evidence-contract.mjs";
 import { requireFinalVerificationNativeEnvironment } from "./lib/final-verification-environment.mjs";
 import { acquireFinalVerificationLock } from "./lib/final-verification-lock.mjs";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 const root = process.cwd();
 const outputArg = process.argv[2];
@@ -323,7 +324,7 @@ function trackedWorktreeDigest() {
       if (!stat.isFile()) {
         throw new Error(`Tracked file changed type: ${entry.path}`);
       }
-      contents = fs.readFileSync(absolutePath);
+      contents = readSecureFileSnapshot(absolutePath).contents;
     }
     digest.update(entry.mode);
     digest.update("\0");

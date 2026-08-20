@@ -38,6 +38,8 @@ assert.doesNotMatch(security, /https:\/\/app\.agentdealflow\.io/);
 assert.match(security, /environment:\s*isolated-staging-security/);
 assert.match(security, /allow_issue_writing:\s*false/);
 assert.match(security, /docker_name:\s*"\$\{\{ vars\.DEALFLOW_ZAP_IMAGE_BY_DIGEST \}\}"/);
+// codeql[js/regex/missing-regexp-anchor] Trusted workflow-source assertion;
+// runtime input is independently checked by the fully anchored shell regexp.
 assert.match(security, /zaproxy\/zaproxy@sha256:\[a-f0-9\]\{64\}/);
 assert.match(security, /persist-credentials:\s*false/g);
 

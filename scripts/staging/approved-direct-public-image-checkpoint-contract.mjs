@@ -481,6 +481,8 @@ export function writeAtomicApprovedDirectPublicImageMatrixCheckpoint(
   let parentDescriptor = null;
   let temporaryCreated = false;
   try {
+    // codeql[js/file-system-race] Exclusive creation plus descriptor-based
+    // write/fsync prevents replacement of the checkpoint temporary file.
     descriptor = openSync(temporaryPath, "wx", 0o600);
     temporaryCreated = true;
     writeFileSync(descriptor, `${JSON.stringify(checkpoint, null, 2)}\n`);
@@ -491,6 +493,7 @@ export function writeAtomicApprovedDirectPublicImageMatrixCheckpoint(
     renameSync(temporaryPath, path);
     temporaryCreated = false;
     chmodSync(path, 0o600);
+    // codeql[js/file-system-race] Parent opened only for post-rename fsync.
     parentDescriptor = openSync(parent, "r");
     fsyncSync(parentDescriptor);
     closeSync(parentDescriptor);

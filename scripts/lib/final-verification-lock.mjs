@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readSecureFileSnapshot } from "./secure-file-snapshot.mjs";
 
 const LOCK_SCHEMA = "dealflow.final-verification-lock.v1";
 
@@ -45,7 +46,9 @@ function readOwner(lockPath, repositoryRootSha256) {
   }
   let owner;
   try {
-    owner = JSON.parse(readFileSync(ownerPath, "utf8"));
+    owner = JSON.parse(
+      readSecureFileSnapshot(ownerPath, { encoding: "utf8" }).contents,
+    );
   } catch {
     throw new Error("Final verification lock owner is malformed");
   }

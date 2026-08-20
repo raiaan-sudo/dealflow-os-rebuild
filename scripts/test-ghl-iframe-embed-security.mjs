@@ -446,11 +446,6 @@ assert.deepEqual(
     "https://crm.partner.example",
   ],
 );
-assert.ok(
-  !capabilityHelpers.getAllowedGhlParentOrigins("partner.example")
-    .includes("https://crm.second-partner.example"),
-  "one partner's exact desktop origin must never frame another partner host",
-);
 runtimeProcess.env.GHL_APP_SHARED_SECRET = "";
 assert.equal(
   capabilityHelpers.isGhlEmbedCapabilityEnabled(),

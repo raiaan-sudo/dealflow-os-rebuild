@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { verifyReleaseGuardV5 } from "./verify-release-guard-v5.mjs";
 import { verifyMigrationDatabaseTarget } from "./migration-target-authority.mjs";
 import { verifyPinnedPsql } from "./verify-pinned-psql.mjs";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const MIGRATIONS = path.join(ROOT, "supabase/migrations");
@@ -120,17 +121,19 @@ function readOwnerRecord(file, schema) {
   ) {
     fail("owner_record_path_invalid", "Owner record must be outside the repository.");
   }
-  const stat = fs.lstatSync(file);
-  const resolvedStat = fs.statSync(normalizedFile);
+  const requestedStat = fs.lstatSync(file);
+  const { contents, stat: resolvedStat } = readSecureFileSnapshot(normalizedFile, {
+    encoding: "utf8",
+  });
   if (
-    !stat.isFile() ||
-    stat.isSymbolicLink() ||
+    !requestedStat.isFile() ||
+    requestedStat.isSymbolicLink() ||
     !resolvedStat.isFile() ||
     (resolvedStat.mode & 0o077) !== 0
   ) {
     fail("owner_record_permissions_invalid", "Owner record must be a 0600 regular file.");
   }
-  const record = JSON.parse(fs.readFileSync(normalizedFile, "utf8"));
+  const record = JSON.parse(contents);
   if (record.schema !== schema) fail("owner_record_schema_invalid", "Owner record schema mismatch.");
   return record;
 }

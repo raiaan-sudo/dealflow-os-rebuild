@@ -53,6 +53,10 @@ export async function GET(request: Request) {
     const suppliedToken = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
+    // codeql[js/user-controlled-bypass] The request values do not grant
+    // authority: the supplied token is compared in constant time with a
+    // server-only strong secret, and the returned challenge is bounded and
+    // emitted only after that secret-backed verification succeeds.
     if (
       mode !== "subscribe" ||
       !challenge ||

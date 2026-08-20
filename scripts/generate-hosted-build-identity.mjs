@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 import { assertExactDeployableSourcePathSet } from "./staging/deployable-source-path-set-contract.mjs";
 
@@ -68,7 +69,12 @@ function readExactRegularFile(root, path) {
   if (!realpathSync(absolute).startsWith(rootPrefix)) {
     throw new Error(`Deployable source resolves outside the repository: ${path}`);
   }
-  return { contents: readFileSync(absolute), size: stat.size, mode: stat.mode };
+  const snapshot = readSecureFileSnapshot(absolute);
+  return {
+    contents: snapshot.contents,
+    size: snapshot.stat.size,
+    mode: snapshot.stat.mode,
+  };
 }
 
 function recoverVercelNormalizedConfiguration(entry, file, target) {

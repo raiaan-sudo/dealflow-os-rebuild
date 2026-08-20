@@ -77,6 +77,9 @@ function requireNonEmpty(value: string, field: string): string {
 
 export function fingerprintGhlAuthorityValue(value: string): string {
   const normalized = requireNonEmpty(value, "fingerprint_source");
+  // codeql[js/insufficient-password-hash] Provider IDs, OAuth state, request
+  // bodies and scopes are fingerprinted for equality/idempotency; this helper
+  // does not accept or store account passwords.
   return `sha256:${createHash("sha256").update(normalized, "utf8").digest("hex")}`;
 }
 

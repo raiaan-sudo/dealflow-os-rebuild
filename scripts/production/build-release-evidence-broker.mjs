@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 const INPUT_SCHEMA = "dealflow.release-evidence-broker-input.v1";
 const OUTPUT_SCHEMA = "dealflow.release-evidence-broker-output.v1";
@@ -417,11 +418,14 @@ function loadTargetIdentity(root, targetCommit) {
 }
 
 function loadInput(inputPath) {
-  if (!existsSync(inputPath)) fail("broker_input_missing");
-  const stat = lstatSync(inputPath);
+  let snapshot;
+  try {
+    snapshot = readSecureFileSnapshot(inputPath, { encoding: "utf8" });
+  } catch {
+    fail("broker_input_missing");
+  }
+  const { contents, stat } = snapshot;
   if (
-    !stat.isFile() ||
-    stat.isSymbolicLink() ||
     stat.size < 2 ||
     stat.size > MAX_INPUT_BYTES
   ) {
@@ -429,7 +433,7 @@ function loadInput(inputPath) {
   }
   let input;
   try {
-    input = JSON.parse(readFileSync(inputPath, "utf8"));
+    input = JSON.parse(contents);
   } catch {
     fail("broker_input_json_invalid");
   }
@@ -633,19 +637,27 @@ function readArtifactSnapshot(rawArtifact, ordinal, { visual = false } = {}) {
   ) {
     fail("broker_artifact_path_unsafe");
   }
-  if (!existsSync(rawArtifact.path)) fail("broker_artifact_missing");
-  const stat = lstatSync(rawArtifact.path);
+  let snapshot;
+  try {
+    snapshot = readSecureFileSnapshot(rawArtifact.path);
+  } catch {
+    try {
+      if (lstatSync(rawArtifact.path).isSymbolicLink()) {
+        fail("broker_artifact_unsafe");
+      }
+    } catch (error) {
+      if (error instanceof BrokerError) throw error;
+    }
+    fail("broker_artifact_missing");
+  }
+  const { contents, stat } = snapshot;
   if (
-    !stat.isFile() ||
-    stat.isSymbolicLink() ||
     stat.size < 1 ||
     stat.size > MAX_ARTIFACT_BYTES ||
     (stat.size > 0 && stat.blocks === 0)
   ) {
     fail("broker_artifact_unsafe");
   }
-  const contents = readFileSync(rawArtifact.path);
-  if (contents.length !== stat.size) fail("broker_artifact_changed");
   if (visual) {
     const dimensions = inspectSanitizedPng(contents);
     if (

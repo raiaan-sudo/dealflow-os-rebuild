@@ -7,6 +7,7 @@ import {
   statfsSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { readSecureFileSnapshot } from "./secure-file-snapshot.mjs";
 
 export const FINAL_VERIFICATION_MINIMUM_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 export const FINAL_VERIFICATION_LOCAL_BROWSER_PROJECTS = Object.freeze([
@@ -40,7 +41,7 @@ function readRequiredRegularFile(path, label) {
     fail(`${label} must be a real regular file`);
   }
   if (stat.size === 0) fail(`${label} must be nonempty`);
-  return readFileSync(path);
+  return readSecureFileSnapshot(path).contents;
 }
 
 function parseRequiredJson(path, label) {

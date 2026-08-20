@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 const SCHEMA_VERSION = "dealflow.release-guard.v5";
 const RELEASE_MODE = "release";
@@ -753,13 +754,16 @@ function parseExternalTrustPolicy(root, mode, candidatePolicy) {
       "External trust policy must be a protected file outside the repository.",
     );
   }
-  if (!fs.existsSync(absolutePath)) {
+  let snapshot;
+  try {
+    snapshot = readSecureFileSnapshot(absolutePath);
+  } catch {
     fail(
       "release_guard_external_trust_root_invalid",
-      "External trust policy file does not exist.",
+      "External trust policy file does not exist or is unsafe.",
     );
   }
-  const stats = fs.lstatSync(absolutePath);
+  const { contents, stat: stats } = snapshot;
   const parentStats = fs.lstatSync(path.dirname(absolutePath));
   if (
     stats.isSymbolicLink() ||
@@ -774,7 +778,6 @@ function parseExternalTrustPolicy(root, mode, candidatePolicy) {
       "External trust policy and its immediate directory must be non-symlink, private, and not group/world writable.",
     );
   }
-  const contents = fs.readFileSync(absolutePath);
   const actualDigest = hashBuffer(contents);
   if (actualDigest !== expectedDigest) {
     fail(
@@ -1098,22 +1101,18 @@ function assertPlainObject(value, label) {
 
 function readRegularEvidenceFile(root, requestedPath) {
   const absolutePath = path.resolve(root, requestedPath);
-  if (!fs.existsSync(absolutePath)) {
+  let snapshot;
+  try {
+    snapshot = readSecureFileSnapshot(absolutePath);
+  } catch {
     fail(
       "release_guard_missing_evidence",
-      `Supplied evidence path does not exist: ${requestedPath}.`,
+      `Supplied evidence path does not exist or is unsafe: ${requestedPath}.`,
     );
   }
-  const stats = fs.lstatSync(absolutePath);
-  if (stats.isSymbolicLink() || !stats.isFile()) {
-    fail(
-      "release_guard_unsupported_evidence",
-      `Evidence must be a regular, non-symbolic-link file: ${requestedPath}.`,
-    );
-  }
+  const { contents } = snapshot;
   const displayPath = evidenceDisplayPath(root, absolutePath);
   assertSafeEvidencePath(displayPath);
-  const contents = fs.readFileSync(absolutePath);
   return {
     absolutePath,
     contents,
@@ -2414,11 +2413,19 @@ function writeManifest(root, parsed, manifest) {
       );
     }
   }
-  if (fs.existsSync(outputPath) && fs.lstatSync(outputPath).isSymbolicLink()) {
-    fail("release_guard_unsafe_output", `Refusing to overwrite symbolic link: ${parsed.output}.`);
-  }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, serialized, { encoding: "utf8", mode: 0o600 });
+  try {
+    fs.writeFileSync(outputPath, serialized, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+      fail("release_guard_unsafe_output", `Refusing to overwrite existing output: ${parsed.output}.`);
+    }
+    throw error;
+  }
   fs.chmodSync(outputPath, 0o600);
 }
 

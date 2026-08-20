@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 import { assertExactDeployableSourcePathSet } from "./deployable-source-path-set-contract.mjs";
 
@@ -36,11 +37,13 @@ function exactLocalFile(root, path) {
   if (!absolute.startsWith(`${rootReal}${sep}`)) {
     throw new Error("Vercel dry-run source escapes the release root");
   }
-  const stat = lstatSync(absolute);
-  if (!stat.isFile() || stat.isSymbolicLink()) {
+  let snapshot;
+  try {
+    snapshot = readSecureFileSnapshot(absolute);
+  } catch {
     throw new Error(`Vercel dry-run source is not a regular file: ${path}`);
   }
-  return Object.freeze({ stat, contents: readFileSync(absolute) });
+  return Object.freeze(snapshot);
 }
 
 export function assertExactVercelDryRunSourcePortfolio({

@@ -22,6 +22,7 @@ import process from "node:process";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "./lib/final-verification-command-contract.mjs";
 import { assertFinalVerificationEvidenceIsSealable } from "./lib/final-verification-evidence-contract.mjs";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 const ALLOWED_STATUSES = new Set([
   "PASS",
@@ -220,7 +221,7 @@ function snapshotFile(path, label) {
   if (!stat.isFile() || stat.isSymbolicLink()) fail(`${label} must be a regular non-symlink file`);
   if (stat.size === 0) fail(`${label} is empty`);
   if (stat.size > 0 && stat.blocks === 0) fail(`${label} is a probable dataless file`);
-  const contents = readFileSync(path);
+  const contents = readSecureFileSnapshot(path).contents;
   assertSafeArtifact(path, contents);
   return Object.freeze({
     path,
@@ -235,7 +236,7 @@ function assertFileSnapshotUnchanged(snapshot, label) {
   if (!existsSync(snapshot.path)) fail(`${label} disappeared during bundle assembly`);
   const stat = lstatSync(snapshot.path);
   if (!stat.isFile() || stat.isSymbolicLink()) fail(`${label} changed file type during bundle assembly`);
-  const contents = readFileSync(snapshot.path);
+  const contents = readSecureFileSnapshot(snapshot.path).contents;
   if (contents.length !== snapshot.bytes || sha256(contents) !== snapshot.sha256) {
     fail(`${label} changed during bundle assembly`);
   }
@@ -341,7 +342,7 @@ function trackedWorktreeIdentity(root) {
       contents = Buffer.from(readlinkSync(absolute));
     } else {
       if (!stat.isFile() || stat.isSymbolicLink()) fail(`Tracked file changed type: ${entry.path}`);
-      contents = readFileSync(absolute);
+      contents = readSecureFileSnapshot(absolute).contents;
     }
     digest.update(entry.mode);
     digest.update("\0");
@@ -890,7 +891,10 @@ function writeText(path, value) {
 }
 
 function markdownTable(rows, fields) {
-  const escape = (value) => String(value ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  const escape = (value) => String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ");
   return [
     `| ${fields.map(([heading]) => heading).join(" | ")} |`,
     `| ${fields.map(() => "---").join(" | ")} |`,

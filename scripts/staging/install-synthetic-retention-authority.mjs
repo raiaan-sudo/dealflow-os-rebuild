@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 import {
   FINAL_VERIFICATION_HOSTED_DEFERRALS,
@@ -173,7 +174,7 @@ function trackedWorktreeIdentity() {
     if (!stat.isFile() || stat.isSymbolicLink()) {
       throw new Error(`Tracked staging source must be a regular file: ${entry.path}`);
     }
-    const contents = readFileSync(path);
+    const contents = readSecureFileSnapshot(path).contents;
     digest.update(entry.mode);
     digest.update("\0");
     digest.update(String(Buffer.byteLength(entry.path)));
@@ -416,7 +417,9 @@ function readProjectAuthority() {
   ) {
     throw new Error("The staging project attestation must be an owner-only regular file");
   }
-  const record = JSON.parse(readFileSync(projectRecordPath, "utf8"));
+  const record = JSON.parse(
+    readSecureFileSnapshot(projectRecordPath, { encoding: "utf8" }).contents,
+  );
   const ref = String(record.ref ?? "").trim().toLowerCase();
   if (
     !/^[a-z0-9]{20}$/.test(ref) ||
@@ -560,7 +563,7 @@ if (!psqlStat.isFile() || psqlStat.isSymbolicLink()) {
   throw new Error("The pinned psql binary identity is invalid");
 }
 const trustBundleStat = lstatSync(expectedTrustBundlePath);
-const trustBundleBytes = readFileSync(expectedTrustBundlePath);
+const trustBundleBytes = readSecureFileSnapshot(expectedTrustBundlePath).contents;
 const committedTrustBundleBytes = git(
   ["show", `${identity.headCommit}:${expectedTrustBundleRelativePath}`],
   "Unable to recover the committed Supabase trust bundle",

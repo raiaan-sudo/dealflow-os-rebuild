@@ -18,6 +18,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { readSecureFileSnapshot } from "../lib/secure-file-snapshot.mjs";
 
 import { assertExactFinalVerificationSummaryPortfolio } from "../lib/final-verification-command-contract.mjs";
 import { assertFinalVerificationEvidenceIsSealable } from "../lib/final-verification-evidence-contract.mjs";
@@ -668,7 +669,7 @@ function captureExactStagingProjectRecord(expectedProjectRef) {
   ) {
     throw new Error("The isolated staging project record must remain outside the release repository");
   }
-  const record = JSON.parse(readFileSync(path, "utf8"));
+  const record = JSON.parse(readSecureFileSnapshot(path, { encoding: "utf8" }).contents);
   const projectRef = String(record.ref ?? "").trim().toLowerCase();
   if (
     projectRef !== expectedProjectRef ||
@@ -949,7 +950,7 @@ function captureTrackedWorktreeIdentity() {
     if (!stat.isFile() || stat.isSymbolicLink()) {
       throw new Error(`Tracked staging source must be a regular file: ${entry.path}`);
     }
-    const contents = readFileSync(path);
+    const contents = readSecureFileSnapshot(path).contents;
     digest.update(`${entry.mode}\0${entry.path.length}\0${entry.path}\0${contents.length}\0`);
     digest.update(contents);
     digest.update("\0");
@@ -1012,7 +1013,7 @@ function captureDeployableSourceIdentity() {
     if (!stat.isFile() || stat.isSymbolicLink()) {
       throw new Error(`Deployable source must be a regular file: ${path}`);
     }
-    const contents = readFileSync(absolute);
+    const contents = readSecureFileSnapshot(absolute).contents;
     if (
       stat.size !== entry.size ||
       stat.mode !== entry.mode ||
@@ -1115,7 +1116,7 @@ function captureVercelProjectIdentity() {
   const linkPath = join(EXPECTED_REPO, ".vercel", "project.json");
   const stat = lstatSync(linkPath);
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Vercel project link is not a regular file");
-  const project = JSON.parse(readFileSync(linkPath, "utf8"));
+  const project = JSON.parse(readSecureFileSnapshot(linkPath, { encoding: "utf8" }).contents);
   if (
     project.projectName !== EXPECTED_VERCEL_PROJECT_NAME ||
     sha256(String(project.projectId)) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
@@ -1437,7 +1438,7 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
   if (!path || !existsSync(path) || !lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) {
     throw new Error(`${label} must be an existing regular file`);
   }
-  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  const parsed = JSON.parse(readSecureFileSnapshot(path, { encoding: "utf8" }).contents);
   const evidence = assertFinalVerificationEvidenceIsSealable(dirname(path));
   assertExactFinalVerificationSummaryPortfolio(parsed, `${label} portfolio`);
   if (
@@ -1488,7 +1489,7 @@ function readValidatedRound(path, identity, migrationIdentity, expectedRound, la
   }
   return {
     pathFingerprint: sha256(realpathSync(path)),
-    sha256: sha256(readFileSync(path)),
+    sha256: sha256(readSecureFileSnapshot(path).contents),
     status: "LOCAL_PASS_WITH_HOSTED_DEFERRALS",
     localGateStatus: parsed.localGateStatus,
     round: String(parsed.round),
@@ -5545,7 +5546,9 @@ async function runPlaywrightSuite({ name, config, environment, evidenceDir, secr
     if (!existsSync(safetyPath) || !lstatSync(safetyPath).isFile()) {
       throw new Error(`${name} did not produce its authenticated safety reporter summary`);
     }
-    safeAcceptance = JSON.parse(readFileSync(safetyPath, "utf8"));
+    safeAcceptance = JSON.parse(
+      readSecureFileSnapshot(safetyPath, { encoding: "utf8" }).contents,
+    );
     if (
       safeAcceptance.executionMode !== "hosted_authenticated" ||
       safeAcceptance.playwrightStatus !== "passed" ||
@@ -6422,10 +6425,15 @@ async function main() {
   ) {
     throw new Error("Synthetic retention authority artifacts must be real owner-only files");
   }
-  const retentionAuthoritySummaryBytes = readFileSync(retentionAuthoritySummaryPath);
+  const retentionAuthoritySummaryBytes = readSecureFileSnapshot(
+    retentionAuthoritySummaryPath,
+  ).contents;
   const expectedRetentionChecksum =
     `${sha256(retentionAuthoritySummaryBytes)}  retention-authority-summary.json\n`;
-  if (readFileSync(retentionAuthorityChecksumsPath, "utf8") !== expectedRetentionChecksum) {
+  if (
+    readSecureFileSnapshot(retentionAuthorityChecksumsPath, { encoding: "utf8" })
+      .contents !== expectedRetentionChecksum
+  ) {
     throw new Error("Synthetic retention authority evidence checksum did not verify");
   }
   const retentionAuthoritySummary = JSON.parse(

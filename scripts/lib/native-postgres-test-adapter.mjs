@@ -274,8 +274,8 @@ class NativePostgresTestAdapter {
       database: MAINTENANCE_DATABASE,
       label: "Read PostgreSQL binary version",
     }).stdout.trim();
-    const escapedVersion = this.#expectedVersion.replaceAll(".", "\\.");
-    if (!new RegExp(`\\b${escapedVersion}(?:\\s|\\(|$)`).test(binaryVersion)) {
+    const reportedVersion = binaryVersion.split(/\s+/).at(-1);
+    if (reportedVersion !== this.#expectedVersion) {
       throw new NativePostgresTestError(
         `PostgreSQL binary is not the required ${this.#expectedVersion} release`,
       );

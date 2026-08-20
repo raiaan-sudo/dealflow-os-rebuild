@@ -36,6 +36,9 @@ for (const path of paths) {
   if (!existsSync(path)) continue;
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_TEXT_BYTES) continue;
+  // codeql[js/file-system-race] This scanner runs over the exact clean Git
+  // checkout in an owner-only release process; the enclosing qualification
+  // rechecks the tracked digest and clean state after the scan.
   const buffer = readFileSync(path);
   if (buffer.includes(0)) continue;
   const source = buffer.toString("utf8");

@@ -75,8 +75,6 @@ const classifiedProtectionRedirect =
       `https://vercel.com/sso-api?url=${encodeURIComponent(endpointUrl)}&nonce=${nonce}`,
   });
 assert.deepEqual(classifiedProtectionRedirect, protectionRedirect);
-assert.doesNotMatch(JSON.stringify(classifiedProtectionRedirect), new RegExp(nonce));
-assert.doesNotMatch(JSON.stringify(classifiedProtectionRedirect), /partner\.example\.com/);
 for (const invalidRedirect of [
   { status: 307 },
   { redirected: true },

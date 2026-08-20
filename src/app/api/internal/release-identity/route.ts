@@ -1,4 +1,10 @@
-import { lstatSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   ApiError,
@@ -221,21 +227,27 @@ function readExactBuildSourceIdentity(expected: ExactBuildReleaseIdentity) {
     BUILD_SOURCE_ARTIFACT_RELATIVE_PATH,
   );
   let bytes: Buffer;
+  let descriptor: number | null = null;
 
   try {
-    const stat = lstatSync(artifactPath);
+    descriptor = openSync(
+      artifactPath,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    const stat = fstatSync(descriptor);
     if (
       !stat.isFile() ||
-      stat.isSymbolicLink() ||
       stat.size <= 0 ||
       stat.size > BUILD_SOURCE_ARTIFACT_MAX_BYTES
     ) {
       throw invalidBuildSourceArtifact();
     }
-    bytes = readFileSync(artifactPath);
+    bytes = readFileSync(descriptor);
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw invalidBuildSourceArtifact();
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
   }
 
   let parsed: unknown;
