@@ -70,6 +70,7 @@ import { parseExactHostedSupabaseProjectUrl } from "./exact-supabase-project-url
 import { assertExactDeployableSourcePathSet } from "./deployable-source-path-set-contract.mjs";
 import { assertExactVercelDryRunSourcePortfolio } from "./vercel-dry-run-source-contract.mjs";
 import { assertExactHostedBuildSourceIdentity } from "./hosted-build-source-identity-contract.mjs";
+import { SUCCESSOR_GHL_SERVICE_ONLY_TABLES } from "./successor-provider-independent-contract.mjs";
 import { findExactNextStaticChunkPath } from "./next-static-chunk-path.mjs";
 import {
   APPROVED_DIRECT_PUBLIC_IMAGE_ASSETS,
@@ -1620,13 +1621,46 @@ async function runSeed(
     },
   );
   const parsed = parseSingleJsonOutput(result.stdout, "staging seed");
+  const preservedGhlAuthority =
+    parsed.successorProviderIndependent?.serviceOnlySchema?.preservedGhlAuthority;
+  const preservedGhlCounts = preservedGhlAuthority?.counts;
+  const exactPreservedGhlAuthority =
+    preservedGhlAuthority?.profile ===
+      "PRESERVED_ZERO_SPEND_SYNTHETIC_GHL_AUTHORITY" &&
+    preservedGhlAuthority.exactSyntheticAuthorityVerified === true &&
+    preservedGhlAuthority.oauthReceiptDisposition?.consumed === 1 &&
+    preservedGhlAuthority.oauthReceiptDisposition?.expiredPending === 6 &&
+    preservedGhlAuthority.providerMutationPerformed === false &&
+    preservedGhlAuthority.customerDataAccessed === false &&
+    preservedGhlAuthority.rawProviderIdentifiersPersisted === false &&
+    preservedGhlAuthority.rawCredentialsPersisted === false &&
+    preservedGhlCounts?.ghl_marketplace_oauth_states === 7 &&
+    preservedGhlCounts?.ghl_marketplace_authorities === 1 &&
+    preservedGhlCounts?.ghl_marketplace_lifecycle_events === 0 &&
+    preservedGhlCounts?.ghl_marketplace_token_sets === 2 &&
+    preservedGhlCounts?.ghl_marketplace_token_events === 2 &&
+    preservedGhlCounts?.ghl_marketplace_location_token_exchanges === 1 &&
+    preservedGhlCounts?.ghl_marketplace_realtor_user_operations === 0 &&
+    preservedGhlCounts?.ghl_marketplace_encrypted_credentials === 4;
+  const emptyGhlAuthority =
+    preservedGhlAuthority?.profile === "EMPTY_PROVIDER_INDEPENDENT" &&
+    preservedGhlAuthority.exactSyntheticAuthorityVerified === false &&
+    preservedGhlAuthority.rawProviderIdentifiersPersisted === false &&
+    preservedGhlAuthority.rawCredentialsPersisted === false &&
+    SUCCESSOR_GHL_SERVICE_ONLY_TABLES.every((table) =>
+      preservedGhlCounts?.[table] === 0
+    ) &&
+    preservedGhlCounts?.ghl_marketplace_encrypted_credentials === 0;
+  const expectedPreservedGhlOwnerCount = exactPreservedGhlAuthority ? 1 : 0;
   if (
     parsed.status !== "SEEDED" ||
     parsed.projectFingerprint !== EXPECTED_SUPABASE_FINGERPRINT ||
     parsed.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
     parsed.providerCredentialPresent !== false ||
     parsed.providerMutationPerformed !== false ||
-    parsed.exactSyntheticAuthUserCount !== 11 ||
+    (!exactPreservedGhlAuthority && !emptyGhlAuthority) ||
+    parsed.exactSyntheticAuthUserCount !== 11 + expectedPreservedGhlOwnerCount ||
+    parsed.exactPreservedGhlOwnerAuthUserCount !== expectedPreservedGhlOwnerCount ||
     parsed.exactFixtureCountsVerified !== true ||
     !/^[a-f0-9-]{36}$/i.test(parsed.qaHarness?.userId ?? "") ||
     parsed.qaHarness?.organizationId !== PAID_ORGANIZATION_ID ||
