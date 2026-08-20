@@ -1,23 +1,24 @@
 import {
   closeSync,
-  constants,
   fstatSync,
+  lstatSync,
   openSync,
   readFileSync,
 } from "node:fs";
 
 export function readSecureFileSnapshot(path, options = {}) {
-  if (!Number.isInteger(constants.O_NOFOLLOW)) {
-    throw new Error("secure_file_snapshot_no_follow_unavailable");
-  }
   let descriptor = null;
   try {
-    descriptor = openSync( // lgtm[js/insecure-temporary-file]
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW,
-    );
+    descriptor = openSync(path, "r");
     const stat = fstatSync(descriptor);
-    if (!stat.isFile()) throw new Error("secure_file_snapshot_not_regular");
+    const pathStat = lstatSync(path);
+    if (
+      !stat.isFile() ||
+      !pathStat.isFile() ||
+      pathStat.isSymbolicLink() ||
+      pathStat.dev !== stat.dev ||
+      pathStat.ino !== stat.ino
+    ) throw new Error("secure_file_snapshot_not_regular");
     if (Number.isSafeInteger(options.maxBytes) && options.maxBytes >= 0 && stat.size > options.maxBytes) {
       throw new Error("secure_file_snapshot_too_large");
     }
@@ -27,7 +28,15 @@ export function readSecureFileSnapshot(path, options = {}) {
     );
     const observedBytes =
       typeof contents === "string" ? Buffer.byteLength(contents) : contents.length;
-    if (observedBytes !== stat.size) {
+    const after = fstatSync(descriptor);
+    if (
+      observedBytes !== stat.size ||
+      after.dev !== stat.dev ||
+      after.ino !== stat.ino ||
+      after.size !== stat.size ||
+      after.mtimeMs !== stat.mtimeMs ||
+      after.ctimeMs !== stat.ctimeMs
+    ) {
       throw new Error("secure_file_snapshot_changed_during_read");
     }
     return Object.freeze({ contents, stat });

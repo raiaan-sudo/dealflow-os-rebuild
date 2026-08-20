@@ -1,15 +1,13 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { hash } from "node:crypto";
 import { ApiError } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 function digest(value: unknown) {
   // This is a non-secret evidence fingerprint used for integrity/idempotency.
-  return createHash("sha256") // lgtm[js/insufficient-password-hash]
-    .update(JSON.stringify(value), "utf8")
-    .digest("hex");
+  return hash("sha256", JSON.stringify(value), "hex");
 }
 
 function row(value: unknown): Record<string, unknown> | null {

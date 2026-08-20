@@ -57,12 +57,15 @@ export async function GET(request: Request) {
     // authority: the supplied token is compared in constant time with a
     // server-only strong secret, and the returned challenge is bounded and
     // emitted only after that secret-backed verification succeeds.
-    if (
-      mode !== "subscribe" || // lgtm[js/user-controlled-bypass]
-      !challenge || // lgtm[js/user-controlled-bypass]
-      challenge.length > 256 || // lgtm[js/user-controlled-bypass]
-      !timingSafeMetaVerifyTokenEquals(suppliedToken, verifyToken) // lgtm[js/user-controlled-bypass]
-    ) {
+    const tokenAuthorized = timingSafeMetaVerifyTokenEquals(suppliedToken, verifyToken);
+    if (!tokenAuthorized) {
+      throw new ApiError(
+        403,
+        "Meta leadgen webhook verification was rejected.",
+        "meta_leadgen_verification_rejected",
+      );
+    }
+    if (mode !== "subscribe" || !challenge || challenge.length > 256) {
       throw new ApiError(
         403,
         "Meta leadgen webhook verification was rejected.",

@@ -126,11 +126,10 @@ export async function GET(req: NextRequest) {
     // itself: it must match the protected HttpOnly state cookie and is then
     // atomically consumed against the authenticated user/organization binding
     // before any provider token exchange can occur.
-    if (
-      !returnedState || // lgtm[js/user-controlled-bypass]
-      !storedState || // lgtm[js/user-controlled-bypass]
-      !metaOAuthStateMatches(returnedState, storedState) // lgtm[js/user-controlled-bypass]
-    ) {
+    if (!returnedState || !storedState) {
+      return redirectWithMetaError("invalid_state");
+    }
+    if (!metaOAuthStateMatches(returnedState, storedState)) {
       return redirectWithMetaError("invalid_state");
     }
 

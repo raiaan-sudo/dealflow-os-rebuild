@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { hash } from "node:crypto";
 
 const SHA256_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const ENCRYPTED_REFERENCE_PATTERN = /^enc-ref:v[1-9][0-9]*:[A-Za-z0-9][A-Za-z0-9._:/-]{15,255}$/;
@@ -78,9 +78,7 @@ function requireNonEmpty(value: string, field: string): string {
 export function fingerprintGhlAuthorityValue(value: string): string {
   const normalized = requireNonEmpty(value, "fingerprint_source");
   // Provider authority values are fingerprinted for equality/idempotency.
-  return `sha256:${createHash("sha256") // lgtm[js/insufficient-password-hash]
-    .update(normalized, "utf8")
-    .digest("hex")}`;
+  return `sha256:${hash("sha256", normalized, "hex")}`;
 }
 
 export function normalizeGhlScopes(scopes: readonly string[]): readonly string[] {
@@ -113,7 +111,7 @@ export function deriveGhlPkceS256Challenge(codeVerifier: string): string {
   if (!PKCE_VERIFIER_PATTERN.test(codeVerifier)) {
     throw new Error("ghl_pkce_verifier_invalid");
   }
-  return createHash("sha256").update(codeVerifier, "ascii").digest("base64url");
+  return hash("sha256", Buffer.from(codeVerifier, "ascii"), "base64url");
 }
 
 export function createGhlMarketplaceOAuthBinding(input: {
