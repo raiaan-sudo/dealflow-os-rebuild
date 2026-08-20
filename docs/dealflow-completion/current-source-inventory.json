@@ -1,10 +1,10 @@
 {
   "schemaVersion": "dealflow.current-source-inventory.v1",
-  "generatedAt": "2026-08-20T20:46:00Z",
-  "implementationCommit": "c735c5003d545246bde8135447aad05a81c240fd",
-  "implementationTree": "4243dfd0f03c4a257ad70df7fd964d2c0cb86d34",
+  "generatedAt": "2026-08-20T21:37:31Z",
+  "implementationCommit": "d87d19bf4c41f63db187e01dc777086f30556fbf",
+  "implementationTree": "d0f156b0b9114f3b95bbfc1295fa43ed7490c539",
   "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
-  "trackedFileCount": 1189,
+  "trackedFileCount": 1190,
   "migrationCount": 131,
   "classCounts": {
     "aggregate": 6,
@@ -23,7 +23,7 @@
     "component": 68,
     "documentation": 96,
     "library_module": 293,
-    "script": 271,
+    "script": 272,
     "test": 213
   },
   "records": [
@@ -55,7 +55,7 @@
       "class": "aggregate",
       "identity": "script",
       "path": "<tracked-source>",
-      "detail": "271"
+      "detail": "272"
     },
     {
       "class": "aggregate",

@@ -3,7 +3,7 @@ class,identity,path,detail
 "aggregate","component","<tracked-source>","68"
 "aggregate","documentation","<tracked-source>","96"
 "aggregate","library_module","<tracked-source>","293"
-"aggregate","script","<tracked-source>","271"
+"aggregate","script","<tracked-source>","272"
 "aggregate","test","<tracked-source>","213"
 "api_route","/api/access-keys/checkout","src/app/api/access-keys/checkout/route.ts","POST"
 "api_route","/api/access-keys/preclaim","src/app/api/access-keys/preclaim/route.ts","POST"
