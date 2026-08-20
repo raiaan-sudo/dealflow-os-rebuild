@@ -12,8 +12,10 @@ export function readSecureFileSnapshot(path, options = {}) {
   }
   let descriptor = null;
   try {
-    // lgtm[js/insecure-temporary-file]
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    descriptor = openSync( // lgtm[js/insecure-temporary-file]
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
     const stat = fstatSync(descriptor);
     if (!stat.isFile()) throw new Error("secure_file_snapshot_not_regular");
     if (Number.isSafeInteger(options.maxBytes) && options.maxBytes >= 0 && stat.size > options.maxBytes) {

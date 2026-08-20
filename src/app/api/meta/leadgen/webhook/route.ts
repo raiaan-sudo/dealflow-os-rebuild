@@ -58,14 +58,10 @@ export async function GET(request: Request) {
     // server-only strong secret, and the returned challenge is bounded and
     // emitted only after that secret-backed verification succeeds.
     if (
-      // lgtm[js/user-controlled-bypass]
-      mode !== "subscribe" ||
-      // lgtm[js/user-controlled-bypass]
-      !challenge ||
-      // lgtm[js/user-controlled-bypass]
-      challenge.length > 256 ||
-      // lgtm[js/user-controlled-bypass]
-      !timingSafeMetaVerifyTokenEquals(suppliedToken, verifyToken)
+      mode !== "subscribe" || // lgtm[js/user-controlled-bypass]
+      !challenge || // lgtm[js/user-controlled-bypass]
+      challenge.length > 256 || // lgtm[js/user-controlled-bypass]
+      !timingSafeMetaVerifyTokenEquals(suppliedToken, verifyToken) // lgtm[js/user-controlled-bypass]
     ) {
       throw new ApiError(
         403,

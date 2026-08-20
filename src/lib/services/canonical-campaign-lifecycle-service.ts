@@ -7,8 +7,9 @@ import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 function digest(value: unknown) {
   // This is a non-secret evidence fingerprint used for integrity/idempotency.
-  // lgtm[js/insufficient-password-hash]
-  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+  return createHash("sha256") // lgtm[js/insufficient-password-hash]
+    .update(JSON.stringify(value), "utf8")
+    .digest("hex");
 }
 
 function row(value: unknown): Record<string, unknown> | null {
