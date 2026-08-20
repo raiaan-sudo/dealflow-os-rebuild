@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.current-source-inventory.v1",
-  "generatedAt": "2026-08-20T23:41:29.078Z",
-  "implementationCommit": "136a1e4b31276b1588f0b8e94016b85b932d03f5",
-  "implementationTree": "b305a03ec096aced3ab50b9ebcd9c0ea3dc2f7ad",
+  "generatedAt": "2026-08-20T23:55:00Z",
+  "implementationCommit": "dca6cf9485f867bbdef88e33984bb0270e55e1f7",
+  "implementationTree": "a24b5ba312cd44384e169e7e800b3270bb9c4912",
   "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
   "trackedFileCount": 1190,
   "migrationCount": 131,
@@ -1789,7 +1789,7 @@
       "class": "migration",
       "identity": "20260715010000_move_legacy_org_member_policies_private",
       "path": "supabase/migrations/20260715010000_move_legacy_org_member_policies_private.sql",
-      "detail": "aedec9171f02ff73a0d85d429535d515b5d49b622a181269e5ecd2d920abfe21"
+      "detail": "85f8b7b9dd8871b3ab95a25d98f5974aed841fa11baeff40e24de9d92be5c158"
     },
     {
       "class": "migration",
