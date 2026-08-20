@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "993786ea2d7ff9d948a978f8a389622999aa9e3e84ba3602c4f7ddee0493014e",
+  "deployableSourceSha256": "61d7210469e57abab768bb062af634bb8d4d8027cfa22ce45780b58330e40330",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "4d0fa6a1e9d62bccfd2cc85dc3281de1c3094f80dfa771746f5f4c154e94cce2"
+      "sha256": "caca6756cb502757bdc62d8eda5e91a2c91e4e47dd6e6515074bbdc09b3ee17a"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "97a701f74aada45f39fa83747c23b38ca7e3b774ed964328ad73639f91b0973c"
+      "sha256": "25b33fd8823247bd90d56cbf49e29cda45a23dc0bef1a9344c21119d1ba34ece"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "ce5a9b6128effd3b7e9dcdaa3ef29388a42d34ce89b6948dcc2c7d2bf5703774"
+      "sha256": "944cb8eed0054dcbc4d5f64581daf96735ac56f2ac0dc9aa6b49a365533d70ea"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -978,9 +978,9 @@
     },
     {
       "path": "scripts/lib/secure-file-snapshot.mjs",
-      "size": 971,
+      "size": 1183,
       "mode": 33188,
-      "sha256": "c6591f2f86967747998dadf1571fd0308cbdce3c355ec708e955f7d47e8aef17"
+      "sha256": "a128c092a748a26721e15056e944d45c2220abfbdb16f932533b4d452c90a13e"
     },
     {
       "path": "scripts/lib/staging-meta-provider-contract.mjs",
@@ -1092,9 +1092,9 @@
     },
     {
       "path": "scripts/scan-release-secrets.mjs",
-      "size": 2750,
+      "size": 2710,
       "mode": 33188,
-      "sha256": "71dd8e56cf030984549e5dcbe96a2941367f1d0a4707ff2533a43bb855a7fdfc"
+      "sha256": "bb5442213edd8da75132cb173f731e022623d74ab0e22a7866db5f8ff6b31402"
     },
     {
       "path": "scripts/schema-deployment-checklist.md",
@@ -1152,9 +1152,9 @@
     },
     {
       "path": "scripts/staging/approved-direct-public-image-checkpoint-contract.mjs",
-      "size": 16322,
+      "size": 16296,
       "mode": 33188,
-      "sha256": "c24fee8f75dd6a1a1eba98d3f68c4a060903054feaaea0fa4a5da9eaab0b0e78"
+      "sha256": "3590678e1a8cb06e14f1c7c6928a7c2b4b4c26711ed2b0ff74cb6e40db6c2017"
     },
     {
       "path": "scripts/staging/browser-context-network-boundary.mjs",
@@ -1230,9 +1230,9 @@
     },
     {
       "path": "scripts/staging/playwright-failure-diagnostic-contract.mjs",
-      "size": 30842,
+      "size": 30796,
       "mode": 33188,
-      "sha256": "473c5546ea20a7803eeef39d214f947a148294d13b91b1c2b72c6d4feed6305a"
+      "sha256": "ab3825548a671da0f0c3d682dbd9dad7ceeba4eb3ed54e23cd21b2e76c962a9d"
     },
     {
       "path": "scripts/staging/prior-migration-proof-contract.mjs",
@@ -1386,9 +1386,9 @@
     },
     {
       "path": "scripts/staging/test-isolated-staging-acceptance-contract.mjs",
-      "size": 139247,
+      "size": 139259,
       "mode": 33188,
-      "sha256": "84aa140bf51baa57cfff1c35dc5bc2de3c411775e57adc594c2c3a89a57822b4"
+      "sha256": "b2ccb7d0649d7d0df7d74c6b87b7474935589bc517278b1f425a5441216d3c0a"
     },
     {
       "path": "scripts/staging/test-isolated-staging-access-gate.mjs",
@@ -1920,9 +1920,9 @@
     },
     {
       "path": "scripts/test-ghl-signed-user-context.mjs",
-      "size": 3649,
+      "size": 3409,
       "mode": 33188,
-      "sha256": "a86b35588dd370c3a98c779975201df59684754df6ff52cceaf20d694e8b3d45"
+      "sha256": "d85bfb2fd0403550798d69e19304f3dd6c9bf297b1f602f3da0a2f8931d4b07d"
     },
     {
       "path": "scripts/test-ghl-tenant-provisioning.mjs",
@@ -2298,9 +2298,9 @@
     },
     {
       "path": "scripts/test-release-secret-scan-contract.mjs",
-      "size": 1080,
+      "size": 1295,
       "mode": 33188,
-      "sha256": "236c1d1f8a76db241b7783f2b0d48b6864cfaa822e4eb0203763eaa380482c81"
+      "sha256": "d8d7b28097e16819568a9e75566d4b8f65bc06fbe58aa8cbd26694b37f7f01f3"
     },
     {
       "path": "scripts/test-reliability-wave.mjs",
@@ -2406,9 +2406,9 @@
     },
     {
       "path": "scripts/test-supply-chain-contract.mjs",
-      "size": 2613,
+      "size": 2609,
       "mode": 33188,
-      "sha256": "f46ab835cdce7ccde8e027ae30ddd8ea676bc4bfca2f155a30bbd2481cc29434"
+      "sha256": "e57f5876352a7720c64bfe0a4c46beedc6c59b623e8d266a2c1f3d131b8cf371"
     },
     {
       "path": "scripts/test-support-external-delivery.mjs",
@@ -3162,9 +3162,9 @@
     },
     {
       "path": "src/app/api/integrations/meta/callback/route.ts",
-      "size": 23172,
+      "size": 23215,
       "mode": 33188,
-      "sha256": "ffbaa86c1624f09f837f1618413e7156240d0ce6b37e6dc5453d1ca575f4d0e9"
+      "sha256": "e9bcaf441497df187f67a7f1b35793a523864580b67efc23e781a89fb34adb59"
     },
     {
       "path": "src/app/api/integrations/meta/connect/route.ts",
@@ -3264,9 +3264,9 @@
     },
     {
       "path": "src/app/api/meta/leadgen/webhook/route.ts",
-      "size": 4730,
+      "size": 4859,
       "mode": 33188,
-      "sha256": "d35076e0952a5aefa48190f0e4652b10df02af1d2dbf75d96be0eb0408d0d2dc"
+      "sha256": "09ef79796fc6014604d4f9c3d9e3a98f8de110a8fa5f3e7948db89b8d1c6284e"
     },
     {
       "path": "src/app/api/onboarding/plan/route.ts",
@@ -4578,9 +4578,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/marketplace-oauth-contract.ts",
-      "size": 11299,
+      "size": 11211,
       "mode": 33188,
-      "sha256": "505e1ec4ef6284783949149965c5355a5ef9a82a00a29d8baaf93911ee636f4f"
+      "sha256": "70dbe574f0ea050c915249a3a20b2a8d56427d349348a879e53c2542a5b7b084"
     },
     {
       "path": "src/lib/integrations/gohighlevel/marketplace-runtime-contract.ts",
@@ -4626,9 +4626,9 @@
     },
     {
       "path": "src/lib/integrations/gohighlevel/signed-user-context.ts",
-      "size": 3366,
+      "size": 3136,
       "mode": 33188,
-      "sha256": "fd8108db68a5c4b6eed0683911947f0c5a8459ee60e342cf5f66b819b2531b3b"
+      "sha256": "61846646524531f5067db88001f6404dbb8ab0f075627a0018e809f50aab7f54"
     },
     {
       "path": "src/lib/integrations/gohighlevel/snapshot-create-contract.ts",
@@ -5226,9 +5226,9 @@
     },
     {
       "path": "src/lib/services/canonical-campaign-lifecycle-service.ts",
-      "size": 8246,
+      "size": 8222,
       "mode": 33188,
-      "sha256": "dc299864cd1a4c20cf394f33fa370ab2db491ca748b789fe770e923b8a4c7112"
+      "sha256": "e23276edb58c71318822f9b4d5148dd1f431a03aab3c5e82e150e8209fa1dda8"
     },
     {
       "path": "src/lib/services/canonical-campaign.ts",
