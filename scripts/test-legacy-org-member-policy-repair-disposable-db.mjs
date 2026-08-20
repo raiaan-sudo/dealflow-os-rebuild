@@ -31,13 +31,28 @@ const expectedPolicies = Object.freeze([
   ["service_areas", "service_areas_member_access"],
   ["service_types", "service_types_member_access"],
 ]);
+const expectedStoragePolicies = Object.freeze([
+  ["import_bucket_member_insert", "with check"],
+  ["import_bucket_member_select", "using"],
+  ["import_bucket_member_update", "using"],
+]);
 
 assert.equal(expectedPolicies.length, 18);
+assert.equal(expectedStoragePolicies.length, 3);
 for (const [tableName, policyName] of expectedPolicies) {
   assert.match(
     migration,
     new RegExp(
       `alter policy ${policyName} on public\\.${tableName}\\s+to authenticated\\s+using \\(private\\.is_current_user_org_member\\(organization_id\\)\\)\\s+with check \\(private\\.is_current_user_org_member\\(organization_id\\)\\);`,
+      "i",
+    ),
+  );
+}
+for (const [policyName, clause] of expectedStoragePolicies) {
+  assert.match(
+    migration,
+    new RegExp(
+      `alter policy ${policyName} on storage\\.objects\\s+to authenticated\\s+${clause} \\(\\s*bucket_id = 'imports'::text\\s+and private\\.is_current_user_org_member`,
       "i",
     ),
   );
@@ -139,6 +154,24 @@ await adapter.withDisposableDatabase(async (database) => {
     grant execute on function private.is_current_user_org_member(uuid)
       to authenticated, service_role;
 
+    create schema storage;
+    create function storage.foldername(object_name text)
+    returns text[] language sql immutable as $function$
+      select string_to_array(object_name, '/')
+    $function$;
+    create table storage.objects(id uuid primary key, bucket_id text not null, name text not null);
+    alter table storage.objects enable row level security;
+    alter table storage.objects force row level security;
+    create policy import_bucket_member_insert on storage.objects
+      as permissive for insert to public
+      with check (bucket_id = 'imports'::text and is_org_member(((storage.foldername(name))[1])::uuid));
+    create policy import_bucket_member_select on storage.objects
+      as permissive for select to public
+      using (bucket_id = 'imports'::text and is_org_member(((storage.foldername(name))[1])::uuid));
+    create policy import_bucket_member_update on storage.objects
+      as permissive for update to public
+      using (bucket_id = 'imports'::text and is_org_member(((storage.foldername(name))[1])::uuid));
+
     do $fixture$
     declare
       target record;
@@ -183,7 +216,7 @@ await adapter.withDisposableDatabase(async (database) => {
         )
       ) > 0;
     `, "Count broken public-helper policies"),
-    "18",
+    "20",
   );
 
   mustFail(`
@@ -212,6 +245,26 @@ await adapter.withDisposableDatabase(async (database) => {
           = 'private.is_current_user_org_member(organization_id)';
     `, "Verify exact repaired policy portfolio"),
     "18",
+  );
+  assert.equal(
+    psql(`
+      select count(*)
+      from pg_catalog.pg_policy policy
+      join pg_catalog.pg_class relation on relation.oid=policy.polrelid
+      join pg_catalog.pg_namespace namespace on namespace.oid=relation.relnamespace
+      join pg_catalog.pg_roles role_record on policy.polroles=array[role_record.oid]
+      where namespace.nspname='storage'
+        and relation.relname='objects'
+        and role_record.rolname='authenticated'
+        and position(
+          'private.is_current_user_org_member(' in coalesce(
+            pg_catalog.pg_get_expr(policy.polqual, policy.polrelid),
+            pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid),
+            ''
+          )
+        ) > 0;
+    `, "Verify exact repaired storage policy portfolio"),
+    "3",
   );
 
   assert.equal(
@@ -273,5 +326,5 @@ await adapter.withDisposableDatabase(async (database) => {
 });
 
 console.log(
-  "legacy organization member policy repair disposable DB: PASS (hosted 42501 reproduced, 18/18 policies moved private, replay safe, member access restored, cross-tenant and anonymous access denied, public RPC not re-exposed)",
+  "legacy organization member policy repair disposable DB: PASS (hosted 42501 reproduced, 18/18 public and 3/3 storage policies moved private, replay safe, member access restored, cross-tenant and anonymous access denied, public RPC not re-exposed)",
 );
