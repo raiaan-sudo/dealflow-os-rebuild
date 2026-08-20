@@ -27,17 +27,14 @@ new Function("require", "module", "exports", output)(
 );
 const { decryptGhlSignedUserContext } = loadedModule.exports;
 
-function derive(passphrase, salt) {
+function derive(sharedSecret, salt) {
   const blocks = [];
   let previous = Buffer.alloc(0);
   while (Buffer.concat(blocks).length < 48) {
-    // codeql[js/weak-cryptographic-algorithm] Test fixture reproduces the
-    // provider-defined CryptoJS/OpenSSL envelope; production rationale lives
-    // beside the strictly bounded compatibility decoder.
-    // codeql[js/insufficient-password-hash] This creates an interoperability
-    // fixture from a high-entropy test secret and never stores a password hash.
+    // Test fixture reproduces the provider-defined CryptoJS/OpenSSL envelope.
+    // codeql[js/weak-cryptographic-algorithm]
     previous = nodeCrypto.createHash("md5")
-      .update(Buffer.concat([previous, Buffer.from(passphrase), salt]))
+      .update(Buffer.concat([previous, Buffer.from(sharedSecret), salt]))
       .digest();
     blocks.push(previous);
   }

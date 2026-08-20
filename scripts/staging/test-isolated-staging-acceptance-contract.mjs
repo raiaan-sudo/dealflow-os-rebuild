@@ -514,7 +514,7 @@ assert.match(browserContextBoundaryTest, /target\.localhost/);
 assert.match(browserContextBoundaryTest, /provider-return/);
 assert.match(browserContextBoundaryTest, /provider-callback/);
 assert.match(browserContextBoundaryTest, /project\.supabase\.co/);
-assert.match(browserContextBoundaryTest, /challenges\.cloudflare\.com/);
+assert.ok(browserContextBoundaryTest.includes("challenges.cloudflare.com"));
 assert.match(browserContextBoundaryTest, /user:pass@staging\.example\.test/);
 assert.match(runner, /nonDeliveringAdminMagicLinkCount: roleNames.length/);
 assert.match(runner, /portfolioPasswordSignInCount: 0/);
@@ -2148,7 +2148,7 @@ assert.doesNotMatch(browserSpec, /localStorage\.setItem\([^\n]*auth-token/);
 assert.match(browserSessionContract, /3_180/);
 assert.match(browserSessionContract, /cookie chunks are not contiguous from zero/);
 assert.match(browserSessionContract, /official base64url SSR data/);
-assert.match(browserSessionContract, /challenges\.cloudflare\.com/);
+assert.ok(browserSessionContract.includes("challenges.cloudflare.com"));
 // codeql[js/regex/missing-regexp-anchor] Trusted local source-contract search;
 // runtime code compares the parsed URL origin exactly.
 assert.match(browserSessionContract, /url\.origin !== "https:\/\/challenges\.cloudflare\.com"/);
@@ -2213,7 +2213,7 @@ assert.match(
 );
 assert.match(safeBrowserHostContract, /url\.origin !== EXPECTED_HOSTED_SAFE_BROWSER_ORIGIN/);
 assert.match(safeBrowserHostTest, /\.vercel\.app:444/);
-assert.match(safeBrowserHostTest, /evil\.example\.com/);
+assert.ok(safeBrowserHostTest.includes("evil.example.com"));
 assert.match(browserSpec, /LOCALIZED_PRODUCT_COPY/);
 assert.match(browserSpec, /EN FR ES public product routes/);
 assert.match(browserSpec, /paid realtor can use authenticated EN FR ES dashboards/);

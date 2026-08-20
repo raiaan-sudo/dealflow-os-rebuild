@@ -58,8 +58,11 @@ export async function GET(request: Request) {
     // server-only strong secret, and the returned challenge is bounded and
     // emitted only after that secret-backed verification succeeds.
     if (
+      // codeql[js/user-controlled-bypass]
       mode !== "subscribe" ||
+      // codeql[js/user-controlled-bypass]
       !challenge ||
+      // codeql[js/user-controlled-bypass]
       challenge.length > 256 ||
       !timingSafeMetaVerifyTokenEquals(suppliedToken, verifyToken)
     ) {

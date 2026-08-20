@@ -125,8 +125,8 @@ function readBoundedReporter(reporterRoot, path) {
   }
   let descriptor = null;
   try {
-    // codeql[js/file-system-race] O_NOFOLLOW, fstat, read and close all operate
-    // on this one descriptor; earlier path checks are defense in depth.
+    // O_NOFOLLOW, fstat, read and close all operate on this descriptor.
+    // codeql[js/file-system-race]
     descriptor = openSync(
       exactPath,
       fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,

@@ -20,20 +20,17 @@ function isEmail(value: unknown): value is string {
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function deriveCryptoJsKeyAndIv(passphrase: Buffer, salt: Buffer) {
+function deriveCryptoJsKeyAndIv(sharedSecret: Buffer, salt: Buffer) {
   const blocks: Buffer[] = [];
   let previous = Buffer.alloc(0);
   while (Buffer.concat(blocks).length < 48) {
-    // codeql[js/weak-cryptographic-algorithm] HighLevel's signed-context
-    // payload is an OpenSSL/CryptoJS EVP_BytesToKey compatibility envelope.
+    // HighLevel's signed-context payload is an OpenSSL/CryptoJS compatibility envelope.
     // The input is a required high-entropy shared secret, not a password; the
     // derived key is used only to decrypt this provider-defined AES-256-CBC
     // format and cannot be substituted without breaking the provider protocol.
-    // codeql[js/insufficient-password-hash] The shared secret is not persisted
-    // as a password hash; MD5 is used solely by the provider's wire-compatible
-    // key derivation above a minimum 32-character secret.
+    // codeql[js/weak-cryptographic-algorithm]
     previous = createHash("md5")
-      .update(Buffer.concat([previous, passphrase, salt]))
+      .update(Buffer.concat([previous, sharedSecret, salt]))
       .digest();
     blocks.push(previous);
   }

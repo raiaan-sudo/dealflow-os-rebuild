@@ -12,9 +12,13 @@ export function readSecureFileSnapshot(path, options = {}) {
   }
   let descriptor = null;
   try {
+    // codeql[js/insecure-temporary-file]
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const stat = fstatSync(descriptor);
     if (!stat.isFile()) throw new Error("secure_file_snapshot_not_regular");
+    if (Number.isSafeInteger(options.maxBytes) && options.maxBytes >= 0 && stat.size > options.maxBytes) {
+      throw new Error("secure_file_snapshot_too_large");
+    }
     const contents = readFileSync(
       descriptor,
       options.encoding ? { encoding: options.encoding } : undefined,

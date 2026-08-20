@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { readSecureFileSnapshot } from "./lib/secure-file-snapshot.mjs";
 
 const MAX_TEXT_BYTES = 8 * 1024 * 1024;
 const rules = [
@@ -33,13 +33,18 @@ for (const path of paths) {
 }
 
 for (const path of paths) {
-  if (!existsSync(path)) continue;
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_TEXT_BYTES) continue;
-  // codeql[js/file-system-race] This scanner runs over the exact clean Git
-  // checkout in an owner-only release process; the enclosing qualification
-  // rechecks the tracked digest and clean state after the scan.
-  const buffer = readFileSync(path);
+  let buffer;
+  try {
+    buffer = readSecureFileSnapshot(path, { maxBytes: MAX_TEXT_BYTES }).contents;
+  } catch (error) {
+    if (
+      error?.code === "ENOENT" ||
+      error?.code === "ELOOP" ||
+      error?.message === "secure_file_snapshot_not_regular" ||
+      error?.message === "secure_file_snapshot_too_large"
+    ) continue;
+    throw error;
+  }
   if (buffer.includes(0)) continue;
   const source = buffer.toString("utf8");
   scannedFileCount += 1;

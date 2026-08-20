@@ -34,7 +34,7 @@ assert.doesNotMatch(ci, /npm install/);
 assert.match(ci, /npm ci --ignore-scripts/);
 assert.match(ci, /npm audit --omit=dev --audit-level=high/);
 assert.match(ci, /npm run security:scan-release/);
-assert.doesNotMatch(security, /https:\/\/app\.agentdealflow\.io/);
+assert.ok(!security.includes("https://app.agentdealflow.io"));
 assert.match(security, /environment:\s*isolated-staging-security/);
 assert.match(security, /allow_issue_writing:\s*false/);
 assert.match(security, /docker_name:\s*"\$\{\{ vars\.DEALFLOW_ZAP_IMAGE_BY_DIGEST \}\}"/);

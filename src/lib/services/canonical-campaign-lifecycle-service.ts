@@ -6,8 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 function digest(value: unknown) {
-  // codeql[js/insufficient-password-hash] This is a non-secret evidence
-  // fingerprint used for integrity/idempotency, never password storage.
+  // This is a non-secret evidence fingerprint used for integrity/idempotency.
+  // codeql[js/insufficient-password-hash]
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
