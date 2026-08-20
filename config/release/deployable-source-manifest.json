@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "804be880e0bdcfaa0b53e8543c177e7cfaba857852110e87901aa98122fbd01c",
+  "deployableSourceSha256": "a7ad9fbbbf60042bda1f5a98d0839113e575a33cfcb6571f6c078a5a33f405a9",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "937ae9ad7a8dc40f1c7f8dfefe3cb469d405b8c3f6147f683e560d1449576b84"
+      "sha256": "9df3b1a989df70cd8e15a2f040c183a276a8d6c5e06d07ff0962245e5b84275a"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "901fe2f27d83f7c0cd52f0c376c1b6d43bb0d3d90502664fa753822c1eb7afa3"
+      "sha256": "da99a4853cb14642614f18efd70a5b3adece368af381f3ee7f81fca39a1bbfc2"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "a76674d453c2657577803fac471cbf2e378689398ed0a06389624905f210c9ec"
+      "sha256": "bae1fa1fee87fd04c5a6b401be8b6b880db537f004c4ba4840081ade07a1539d"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -978,9 +978,9 @@
     },
     {
       "path": "scripts/lib/secure-file-snapshot.mjs",
-      "size": 1397,
+      "size": 1159,
       "mode": 33188,
-      "sha256": "c9f89914fc025aba62cb6cfc850e8b75c217f6cae9acfd9fb6c2b3dd5a270d06"
+      "sha256": "cee86addcbd5e277ec1a162a9069b079351100047ce051f877b4cfa68522f791"
     },
     {
       "path": "scripts/lib/staging-meta-provider-contract.mjs",
@@ -3162,9 +3162,9 @@
     },
     {
       "path": "src/app/api/integrations/meta/callback/route.ts",
-      "size": 23215,
+      "size": 23323,
       "mode": 33188,
-      "sha256": "777f1a142e76db5d0e3351d5b8b04e9effc2b4bfceda782c413dab6ec9153f02"
+      "sha256": "63ed662d97dabe124282d9ba00c6df9bedcdd5a90f6c86032d9f8414d85cac23"
     },
     {
       "path": "src/app/api/integrations/meta/connect/route.ts",
