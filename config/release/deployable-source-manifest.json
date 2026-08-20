@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1176,
-  "deployableSourceSha256": "1cd74ebe5253556e7b204b742ccd1fede1c2c48fcece90464c85744ad2850316",
+  "deployableSourceSha256": "ad5b170fb20539ff1ed66b751ab92480293efbcc1698d1cfb37236de014ae2cb",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "44fa760191a1125f19a32351b2ac3e5bc5376d408c2b618acff063d91b86b89a"
+      "sha256": "167f44ad64fd66fd613a1b0898637d8c96d277c6fe7c9a700e1cc836d9cc4be3"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85841,
       "mode": 33188,
-      "sha256": "ccf008f145488a33ad65aae1f9d1127f56735e1aa3b70a48192c34068e97c3c9"
+      "sha256": "d7e34eb3c36dc404c3d06528efaadcceaf387773f72dd44f32ff727cafba6f6d"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3694,
       "mode": 33188,
-      "sha256": "2e6399ae49ed17054b8ce5a40eba4e63b8169723b508152a7b99cf77ca4ad64a"
+      "sha256": "388aa738a933920f126639b1bcceb178f3028d0cde999803e06e5214efbbaedc"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1116,9 +1116,9 @@
     },
     {
       "path": "scripts/seed-isolated-staging.mjs",
-      "size": 114825,
+      "size": 115597,
       "mode": 33188,
-      "sha256": "90edc5ebd4a2640983e9149debafbb524232467e1d4d350ad405e0cfd8047b86"
+      "sha256": "60b35c9de307a92e9e748260f7237652c3d76fe61afae8df780fdf87988cf591"
     },
     {
       "path": "scripts/smoke-test-checklist.md",
@@ -1986,9 +1986,9 @@
     },
     {
       "path": "scripts/test-isolated-staging-seed-contract.mjs",
-      "size": 34215,
+      "size": 34413,
       "mode": 33188,
-      "sha256": "0822ffa621677cde2c11786140e55fecf5edd8976bb4cdfa2b8d41e8dc64a75c"
+      "sha256": "405c9ba4190fad4b2c37be5add1ea1a1e45db76f2b1358c1210ab9f68721eea4"
     },
     {
       "path": "scripts/test-kpi-semantic-contract.ts",

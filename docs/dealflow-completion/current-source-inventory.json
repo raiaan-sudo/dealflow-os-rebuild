@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dealflow.current-source-inventory.v1",
-  "generatedAt": "2026-08-20T19:36:00Z",
-  "implementationCommit": "0277f289d8188dc869a83cbd531931e9e08f4d08",
-  "implementationTree": "721c1a3dfb760b7566edd6fbfce1c476d82d3e14",
+  "generatedAt": "2026-08-20T20:05:00Z",
+  "implementationCommit": "5a885feabc508bbb85eb5d177f51a64f2b912c26",
+  "implementationTree": "5d65b5b02ebd9b3ab561f75a44afd1e1995565c5",
   "baselineCommit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
   "trackedFileCount": 1189,
   "migrationCount": 131,
