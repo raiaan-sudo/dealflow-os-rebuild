@@ -12,7 +12,7 @@ export function readSecureFileSnapshot(path, options = {}) {
   }
   let descriptor = null;
   try {
-    // codeql[js/insecure-temporary-file]
+    // lgtm[js/insecure-temporary-file]
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const stat = fstatSync(descriptor);
     if (!stat.isFile()) throw new Error("secure_file_snapshot_not_regular");

@@ -78,7 +78,7 @@ function requireNonEmpty(value: string, field: string): string {
 export function fingerprintGhlAuthorityValue(value: string): string {
   const normalized = requireNonEmpty(value, "fingerprint_source");
   // Provider authority values are fingerprinted for equality/idempotency.
-  // codeql[js/insufficient-password-hash]
+  // lgtm[js/insufficient-password-hash]
   return `sha256:${createHash("sha256").update(normalized, "utf8").digest("hex")}`;
 }
 

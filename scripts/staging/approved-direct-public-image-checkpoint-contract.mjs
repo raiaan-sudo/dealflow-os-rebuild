@@ -1,9 +1,9 @@
 import {
   chmodSync,
   closeSync,
-  existsSync,
+  constants,
+  fstatSync,
   fsyncSync,
-  lstatSync,
   openSync,
   renameSync,
   rmSync,
@@ -463,26 +463,21 @@ export function writeAtomicApprovedDirectPublicImageMatrixCheckpoint(
     throw new Error("Approved direct public image checkpoint path was invalid");
   }
   const parent = dirname(path);
-  const parentStat = lstatSync(parent);
-  if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) {
-    throw new Error("Approved direct public image checkpoint parent was unsafe");
-  }
-  if (existsSync(path)) {
-    const targetStat = lstatSync(path);
-    if (!targetStat.isFile() || targetStat.isSymbolicLink()) {
-      throw new Error("Approved direct public image checkpoint target was unsafe");
-    }
-  }
   const temporaryPath = `${path}.tmp`;
-  if (existsSync(temporaryPath)) {
-    throw new Error("Approved direct public image checkpoint temporary path was occupied");
-  }
   let descriptor = null;
   let parentDescriptor = null;
   let temporaryCreated = false;
   try {
-    // Exclusive creation plus descriptor-based write/fsync prevents replacement.
-    // codeql[js/file-system-race]
+    if (!Number.isInteger(constants.O_DIRECTORY) || !Number.isInteger(constants.O_NOFOLLOW)) {
+      throw new Error("Approved direct public image checkpoint no-follow authority unavailable");
+    }
+    parentDescriptor = openSync(
+      parent,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    if (!fstatSync(parentDescriptor).isDirectory()) {
+      throw new Error("Approved direct public image checkpoint parent was unsafe");
+    }
     descriptor = openSync(temporaryPath, "wx", 0o600);
     temporaryCreated = true;
     writeFileSync(descriptor, `${JSON.stringify(checkpoint, null, 2)}\n`);
@@ -493,16 +488,13 @@ export function writeAtomicApprovedDirectPublicImageMatrixCheckpoint(
     renameSync(temporaryPath, path);
     temporaryCreated = false;
     chmodSync(path, 0o600);
-    // Parent opened only for post-rename fsync.
-    // codeql[js/file-system-race]
-    parentDescriptor = openSync(parent, "r");
     fsyncSync(parentDescriptor);
     closeSync(parentDescriptor);
     parentDescriptor = null;
   } finally {
     if (descriptor !== null) closeSync(descriptor);
     if (parentDescriptor !== null) closeSync(parentDescriptor);
-    if (temporaryCreated && existsSync(temporaryPath)) {
+    if (temporaryCreated) {
       rmSync(temporaryPath, { force: true });
     }
   }

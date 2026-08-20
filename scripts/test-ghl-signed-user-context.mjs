@@ -27,33 +27,9 @@ new Function("require", "module", "exports", output)(
 );
 const { decryptGhlSignedUserContext } = loadedModule.exports;
 
-function derive(sharedSecret, salt) {
-  const blocks = [];
-  let previous = Buffer.alloc(0);
-  while (Buffer.concat(blocks).length < 48) {
-    // Test fixture reproduces the provider-defined CryptoJS/OpenSSL envelope.
-    // codeql[js/weak-cryptographic-algorithm]
-    previous = nodeCrypto.createHash("md5")
-      .update(Buffer.concat([previous, Buffer.from(sharedSecret), salt]))
-      .digest();
-    blocks.push(previous);
-  }
-  const material = Buffer.concat(blocks);
-  return { key: material.subarray(0, 32), iv: material.subarray(32, 48) };
-}
-
-function encryptCryptoJsEnvelope(value, secret) {
-  const salt = Buffer.from("0102030405060708", "hex");
-  const { key, iv } = derive(secret, salt);
-  const cipher = nodeCrypto.createCipheriv("aes-256-cbc", key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(value), "utf8"),
-    cipher.final(),
-  ]);
-  return Buffer.concat([Buffer.from("Salted__"), salt, ciphertext]).toString("base64");
-}
-
 const secret = "sentinel-secure-ghl-app-shared-secret-2026-alpha";
+const encrypted = "U2FsdGVkX18BAgMEBQYHCLd87gnU1Y77L4zdV/BE8khn16X8DY+UUE7TQaaOtSW0KjgXlbeQdhufEb8ZhlITbGMSVWitw/UN0G21u0l6ouvrez+65FJfuisfzn84GEKY+tY2DA9CB+cfBF7U6z1s9NDhk5+7x+Vsym5F46O3mK4QCasOtf8+F28JJmuY6reeHTjUnj+Nt59PqqjcLZnlIRA7GxZhq08SoAmcAxSoVK4=";
+const draftEncrypted = "U2FsdGVkX18BAgMEBQYHCLd87gnU1Y77L4zdV/BE8khn16X8DY+UUE7TQaaOtSW0KjgXlbeQdhufEb8ZhlITbGMSVWitw/UN0G21u0l6ouvrez+65FJfuisfzn84GEKY+tY2DA9CB+cfBF7U6z1s9NDhk5+7x+Vsym5F46O3mK4QCasOtf8+F28JJmuY6reeHTjUnj+Nt59PqqjcLZnlIUtd+IDjrjXaZIqH8fpS2N0=";
 const context = {
   userId: "ghl_user_123",
   companyId: "ghl_company_123",
@@ -62,7 +38,6 @@ const context = {
   appStatus: "live",
   role: "user",
 };
-const encrypted = encryptCryptoJsEnvelope(context, secret);
 assert.deepEqual(decryptGhlSignedUserContext(encrypted, secret), {
   userId: context.userId,
   companyId: context.companyId,
@@ -77,7 +52,7 @@ assert.equal(
 );
 assert.equal(
   decryptGhlSignedUserContext(
-    encryptCryptoJsEnvelope({ ...context, appStatus: "draft" }, secret),
+    draftEncrypted,
     secret,
   ),
   null,
@@ -85,7 +60,7 @@ assert.equal(
 );
 assert.deepEqual(
   decryptGhlSignedUserContext(
-    encryptCryptoJsEnvelope({ ...context, appStatus: "draft" }, secret),
+    draftEncrypted,
     secret,
     { allowDraft: true },
   ),

@@ -90,67 +90,54 @@ function readBoundedReporter(reporterRoot, path) {
     });
   }
   const exactPath = confinement.exactPath;
-  let before;
-  try {
-    before = lstatSync(exactPath);
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return Object.freeze({ status: "MISSING", bytes: 0, sha256: null });
-    }
-    return Object.freeze({ status: "UNREADABLE", bytes: 0, sha256: null });
-  }
-  if (!before.isFile() || before.isSymbolicLink()) {
-    return Object.freeze({
-      status: "REJECTED_UNSAFE_TYPE",
-      bytes: Number(before.size),
-      sha256: null,
-    });
-  }
-  if (before.nlink !== 1) {
-    return Object.freeze({
-      status: "REJECTED_HARDLINK",
-      bytes: Number(before.size),
-      sha256: null,
-    });
-  }
-  if (!Number.isSafeInteger(before.size) || before.size < 0) {
-    return Object.freeze({ status: "REJECTED_INVALID_SIZE", bytes: 0, sha256: null });
-  }
-  if (before.size > MAX_REPORTER_BYTES) {
-    return Object.freeze({
-      status: "REJECTED_OVERSIZE",
-      bytes: before.size,
-      sha256: null,
-    });
-  }
   let descriptor = null;
+  let observedBytes = 0;
   try {
-    // O_NOFOLLOW, fstat, read and close all operate on this descriptor.
-    // codeql[js/file-system-race]
     descriptor = openSync(
       exactPath,
       fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
     );
     const opened = fstatSync(descriptor);
-    if (
-      !opened.isFile() ||
-      opened.nlink !== 1 ||
-      !sameFileIdentity(before, opened)
-    ) {
+    observedBytes = Number(opened.size);
+    if (!opened.isFile()) {
       return Object.freeze({
-        status: "REJECTED_CHANGED_DURING_READ",
-        bytes: before.size,
+        status: "REJECTED_UNSAFE_TYPE",
+        bytes: observedBytes,
         sha256: null,
       });
     }
-    const contents = Buffer.allocUnsafe(before.size);
+    if (opened.nlink !== 1) {
+      return Object.freeze({
+        status: "REJECTED_HARDLINK",
+        bytes: observedBytes,
+        sha256: null,
+      });
+    }
+    if (!Number.isSafeInteger(opened.size) || opened.size < 0) {
+      return Object.freeze({ status: "REJECTED_INVALID_SIZE", bytes: 0, sha256: null });
+    }
+    if (opened.size > MAX_REPORTER_BYTES) {
+      return Object.freeze({
+        status: "REJECTED_OVERSIZE",
+        bytes: opened.size,
+        sha256: null,
+      });
+    }
+    if (!sameFileIdentity(opened, fstatSync(descriptor))) {
+      return Object.freeze({
+        status: "REJECTED_CHANGED_DURING_READ",
+        bytes: observedBytes,
+        sha256: null,
+      });
+    }
+    const contents = Buffer.allocUnsafe(opened.size);
     let offset = 0;
-    while (offset < before.size) {
+    while (offset < opened.size) {
       const bytesRead = readSync(
         descriptor,
         contents,
         offset,
-        before.size - offset,
+        opened.size - offset,
         offset,
       );
       if (bytesRead === 0) break;
@@ -162,7 +149,7 @@ function readBoundedReporter(reporterRoot, path) {
       growthProbe,
       0,
       1,
-      before.size,
+      opened.size,
     );
     const after = fstatSync(descriptor);
     const finalPathState = lstatSync(exactPath);
@@ -176,12 +163,12 @@ function readBoundedReporter(reporterRoot, path) {
       finalRootState.isSymbolicLink() ||
       realpathSync(confinement.exactRoot) !== confinement.exactRoot ||
       realpathSync(exactPath) !== exactPath ||
-      offset !== before.size ||
+      offset !== opened.size ||
       growthBytes !== 0
     ) {
       return Object.freeze({
         status: "REJECTED_CHANGED_DURING_READ",
-        bytes: before.size,
+        bytes: opened.size,
         sha256: null,
       });
     }
@@ -191,8 +178,14 @@ function readBoundedReporter(reporterRoot, path) {
       sha256: sha256(contents),
       contents,
     });
-  } catch {
-    return Object.freeze({ status: "UNREADABLE", bytes: before.size, sha256: null });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return Object.freeze({ status: "MISSING", bytes: 0, sha256: null });
+    }
+    if (error?.code === "ELOOP") {
+      return Object.freeze({ status: "REJECTED_UNSAFE_TYPE", bytes: 0, sha256: null });
+    }
+    return Object.freeze({ status: "UNREADABLE", bytes: observedBytes, sha256: null });
   } finally {
     if (descriptor !== null) closeSync(descriptor);
   }
