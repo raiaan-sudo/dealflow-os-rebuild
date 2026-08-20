@@ -516,16 +516,16 @@ const emptyAuthSurfaceProof = classifyExactStagingAuthSurface([]);
 assert.equal(emptyAuthSurfaceProof.status, "EMPTY");
 assert.equal(isExactSafeStagingAuthSurfaceProof(emptyAuthSurfaceProof), true);
 assert.equal(Object.isFrozen(STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS), true);
-assert.deepEqual(STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS, [0, 10, 11]);
-assert.equal(STAGING_AUTH_SURFACE_MAX_USER_COUNT, 11);
-for (const acceptedCount of [0, 10, 11]) {
+assert.deepEqual(STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS, [0, 10, 11, 12]);
+assert.equal(STAGING_AUTH_SURFACE_MAX_USER_COUNT, 12);
+for (const acceptedCount of [0, 10, 11, 12]) {
   assert.equal(
     isAllowedStagingAuthSurfaceUserCount(acceptedCount),
     true,
     `Canonical staging auth-user count ${acceptedCount} must be accepted`,
   );
 }
-for (const rejectedCount of [1, 9, 12, -1, 10.5, "10", Number.NaN]) {
+for (const rejectedCount of [1, 9, 13, -1, 10.5, "10", Number.NaN]) {
   assert.equal(
     isAllowedStagingAuthSurfaceUserCount(rejectedCount),
     false,
@@ -539,6 +539,21 @@ assert.equal(syntheticAuthSurfaceProof.status, "EXACT_SYNTHETIC_FIXTURE_SET");
 assert.equal(syntheticAuthSurfaceProof.userCount, 11);
 assert.equal(syntheticAuthSurfaceProof.rawIdentityValuesPersisted, false);
 assert.equal(isExactSafeStagingAuthSurfaceProof(syntheticAuthSurfaceProof), true);
+const preservedGhlOwnerAuthorityRow = {
+  email: Buffer.from("cmFpYWFuQHNjYWxlaG9sZGluZ3MuY28=", "base64").toString("utf8"),
+  fixture: "dealflow-ghl-owner-direct-20260814",
+  synthetic: true,
+  scenario: null,
+};
+const preservedGhlOwnerAuthSurfaceProof = classifyExactStagingAuthSurface(
+  [...structuredClone(expectedSyntheticAuthRows), preservedGhlOwnerAuthorityRow].reverse(),
+);
+assert.equal(
+  preservedGhlOwnerAuthSurfaceProof.status,
+  "EXACT_SYNTHETIC_FIXTURE_SET_WITH_PRESERVED_GHL_OWNER_AUTHORITY",
+);
+assert.equal(preservedGhlOwnerAuthSurfaceProof.userCount, 12);
+assert.equal(isExactSafeStagingAuthSurfaceProof(preservedGhlOwnerAuthSurfaceProof), true);
 const legacySyntheticAuthSurfaceProof = classifyExactStagingAuthSurface(
   structuredClone(expectedSyntheticAuthRows.slice(0, -1)).reverse(),
 );
@@ -548,7 +563,7 @@ assert.equal(isExactSafeStagingAuthSurfaceProof(legacySyntheticAuthSurfaceProof)
 for (const [label, rows] of [
   ["one identity", expectedSyntheticAuthRows.slice(0, 1)],
   ["nine identities", expectedSyntheticAuthRows.slice(0, 9)],
-  ["twelve identities", [...expectedSyntheticAuthRows, {
+  ["unexpected twelfth identity", [...expectedSyntheticAuthRows, {
     email: "dealflow-staging-extra-20260712@example.com",
     fixture: "DF-STAGING-20260712",
     synthetic: true,

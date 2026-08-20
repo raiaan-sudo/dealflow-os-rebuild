@@ -27,11 +27,18 @@ const EXPECTED_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
     scenario: "non_admin_qa_harness",
   }),
 ]);
+const PRESERVED_GHL_OWNER_AUTHORITY = Object.freeze({
+  emailSha256: "1c244c695868765ede7da5b3c9bcae5908edbf2a2bdb73c13cce2829452a8b31",
+  fixture: "dealflow-ghl-owner-direct-20260814",
+  synthetic: true,
+  scenario: "",
+});
 
 export const STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS = Object.freeze([
   0,
   LEGACY_SYNTHETIC_AUTH_IDENTITIES.length,
   EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length,
+  EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length + 1,
 ]);
 export const STAGING_AUTH_SURFACE_MAX_USER_COUNT =
   Math.max(...STAGING_AUTH_SURFACE_ALLOWED_USER_COUNTS);
@@ -58,6 +65,10 @@ const LEGACY_SYNTHETIC_AUTH_EMAIL_SET_SHA256 = sha256(
 const LEGACY_SYNTHETIC_AUTH_IDENTITY_SET_SHA256 = sha256(
   JSON.stringify(LEGACY_SYNTHETIC_AUTH_IDENTITIES),
 );
+const EXPECTED_PRESERVED_GHL_OWNER_AUTH_EMAIL_SET_SHA256 =
+  "02b20dfa3826acc8ddb9cccfea64c5293267ce21777b66aac65677e5bf98c901";
+const EXPECTED_PRESERVED_GHL_OWNER_AUTH_IDENTITY_SET_SHA256 =
+  "38e7ad39d5b6c14aa1c71bbed8f4edc7868b6edf39adb8b33d9edd07b23f6f34";
 
 export function classifyExactStagingAuthSurface(rows) {
   if (!Array.isArray(rows)) {
@@ -78,13 +89,19 @@ export function classifyExactStagingAuthSurface(rows) {
     throw new Error("Staging auth surface is not the exact synthetic fixture set");
   }
   const identities = rows.map((row) => {
+    const preservedGhlOwnerCandidate =
+      typeof row?.email === "string" &&
+      sha256(row.email) === PRESERVED_GHL_OWNER_AUTHORITY.emailSha256 &&
+      row?.fixture === PRESERVED_GHL_OWNER_AUTHORITY.fixture &&
+      row?.synthetic === PRESERVED_GHL_OWNER_AUTHORITY.synthetic &&
+      row?.scenario == null;
     if (
       !row ||
       typeof row.email !== "string" ||
       row.email !== row.email.trim().toLowerCase() ||
       typeof row.fixture !== "string" ||
       typeof row.synthetic !== "boolean" ||
-      typeof row.scenario !== "string"
+      (typeof row.scenario !== "string" && !preservedGhlOwnerCandidate)
     ) {
       throw new Error("Staging auth surface contains a malformed identity");
     }
@@ -92,22 +109,37 @@ export function classifyExactStagingAuthSurface(rows) {
       email: row.email,
       fixture: row.fixture,
       synthetic: row.synthetic,
-      scenario: row.scenario,
+      scenario: row.scenario ?? "",
     };
   }).sort((left, right) => left.email.localeCompare(right.email));
-  const identityJson = JSON.stringify(identities);
+  const preservedGhlOwnerAuthorities = identities.filter((identity) =>
+    sha256(identity.email) === PRESERVED_GHL_OWNER_AUTHORITY.emailSha256 &&
+    identity.fixture === PRESERVED_GHL_OWNER_AUTHORITY.fixture &&
+    identity.synthetic === PRESERVED_GHL_OWNER_AUTHORITY.synthetic &&
+    identity.scenario === PRESERVED_GHL_OWNER_AUTHORITY.scenario
+  );
+  const fixtureIdentities = identities.filter((identity) =>
+    sha256(identity.email) !== PRESERVED_GHL_OWNER_AUTHORITY.emailSha256
+  );
+  const identityJson = JSON.stringify(fixtureIdentities);
   const currentFixture = identityJson === JSON.stringify(EXPECTED_SYNTHETIC_AUTH_IDENTITIES);
   const exactLegacyFixture = identityJson === JSON.stringify(LEGACY_SYNTHETIC_AUTH_IDENTITIES);
+  const currentFixtureWithPreservedGhlOwnerAuthority =
+    currentFixture && preservedGhlOwnerAuthorities.length === 1;
   if (
     new Set(identities.map(({ email }) => email)).size !== identities.length ||
+    (!currentFixtureWithPreservedGhlOwnerAuthority &&
+      preservedGhlOwnerAuthorities.length !== 0) ||
     (!currentFixture && !exactLegacyFixture)
   ) {
     throw new Error("Staging auth surface contains an unexpected or incorrectly labeled identity");
   }
   return Object.freeze({
     schemaVersion: "dealflow.staging-auth-surface-proof.v1",
-    status: currentFixture
-      ? "EXACT_SYNTHETIC_FIXTURE_SET"
+    status: currentFixtureWithPreservedGhlOwnerAuthority
+      ? "EXACT_SYNTHETIC_FIXTURE_SET_WITH_PRESERVED_GHL_OWNER_AUTHORITY"
+      : currentFixture
+        ? "EXACT_SYNTHETIC_FIXTURE_SET"
       : "EXACT_LEGACY_SYNTHETIC_FIXTURE_SET",
     userCount: identities.length,
     emailSetSha256: sha256(JSON.stringify(identities.map(({ email }) => email))),
@@ -153,7 +185,14 @@ export function isExactSafeStagingAuthSurfaceProof(proof) {
     proof.userCount === LEGACY_SYNTHETIC_AUTH_IDENTITIES.length &&
     proof.emailSetSha256 === LEGACY_SYNTHETIC_AUTH_EMAIL_SET_SHA256 &&
     proof.identitySetSha256 === LEGACY_SYNTHETIC_AUTH_IDENTITY_SET_SHA256;
-  return exactCurrentFixture || exactLegacyFixture;
+  const exactCurrentFixtureWithPreservedGhlOwnerAuthority =
+    proof.status === "EXACT_SYNTHETIC_FIXTURE_SET_WITH_PRESERVED_GHL_OWNER_AUTHORITY" &&
+    proof.userCount === EXPECTED_SYNTHETIC_AUTH_IDENTITIES.length + 1 &&
+    proof.emailSetSha256 === EXPECTED_PRESERVED_GHL_OWNER_AUTH_EMAIL_SET_SHA256 &&
+    proof.identitySetSha256 ===
+      EXPECTED_PRESERVED_GHL_OWNER_AUTH_IDENTITY_SET_SHA256;
+  return exactCurrentFixture || exactLegacyFixture ||
+    exactCurrentFixtureWithPreservedGhlOwnerAuthority;
 }
 
 const APPLICATION_ARTIFACTS = Object.freeze([

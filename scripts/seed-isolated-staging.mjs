@@ -100,6 +100,11 @@ const ALL_SYNTHETIC_AUTH_IDENTITIES = Object.freeze([
 const EXPECTED_SYNTHETIC_AUTH_EMAILS = Object.freeze(
   ALL_SYNTHETIC_AUTH_IDENTITIES.map((scenario) => scenario.email).sort(),
 );
+const PRESERVED_GHL_OWNER_AUTHORITY = Object.freeze({
+  emailSha256: "1c244c695868765ede7da5b3c9bcae5908edbf2a2bdb73c13cce2829452a8b31",
+  fixture: "dealflow-ghl-owner-direct-20260814",
+  synthetic: true,
+});
 const META_FIXTURE = Object.freeze({
   providerAdAccountId: "900000000000001",
   externalAdAccountId: "act_900000000000001",
@@ -361,7 +366,20 @@ function assertExpectedSyntheticAuthSurface(users) {
     .filter(Boolean)
     .sort();
   const allowedEmails = new Set(EXPECTED_SYNTHETIC_AUTH_EMAILS);
-  if (actualEmails.some((email) => !allowedEmails.has(email))) {
+  const preservedGhlOwnerUsers = users.filter((user) =>
+    sha256(user?.email?.toLowerCase() ?? "") ===
+      PRESERVED_GHL_OWNER_AUTHORITY.emailSha256 &&
+    user?.user_metadata?.fixture === PRESERVED_GHL_OWNER_AUTHORITY.fixture &&
+    user?.user_metadata?.synthetic === PRESERVED_GHL_OWNER_AUTHORITY.synthetic &&
+    user?.user_metadata?.scenario == null
+  );
+  if (
+    preservedGhlOwnerUsers.length > 1 ||
+    actualEmails.some((email) =>
+      !allowedEmails.has(email) &&
+      sha256(email) !== PRESERVED_GHL_OWNER_AUTHORITY.emailSha256
+    )
+  ) {
     throw new Error("The isolated staging auth surface contains a non-attested identity");
   }
   for (const user of users) {
@@ -372,7 +390,16 @@ function assertExpectedSyntheticAuthSurface(users) {
       user?.user_metadata?.fixture === FIXTURE_LABEL &&
       user?.user_metadata?.synthetic === true &&
       user?.user_metadata?.scenario == null;
-    if (!scenario || (!assertSyntheticAuthUser(user, scenario) && !exactPriorSingleUserFixture)) {
+    const exactPreservedGhlOwnerAuthority =
+      sha256(user?.email?.toLowerCase() ?? "") ===
+        PRESERVED_GHL_OWNER_AUTHORITY.emailSha256 &&
+      user?.user_metadata?.fixture === PRESERVED_GHL_OWNER_AUTHORITY.fixture &&
+      user?.user_metadata?.synthetic === PRESERVED_GHL_OWNER_AUTHORITY.synthetic &&
+      user?.user_metadata?.scenario == null;
+    if (
+      !exactPreservedGhlOwnerAuthority &&
+      (!scenario || (!assertSyntheticAuthUser(user, scenario) && !exactPriorSingleUserFixture))
+    ) {
       throw new Error("The isolated staging auth surface contains an incorrectly labeled identity");
     }
   }
