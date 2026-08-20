@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const SUCCESSOR_SCHEMA_VERSION = "20260720010000";
 
 export const SUCCESSOR_GHL_SERVICE_ONLY_TABLES = Object.freeze([
@@ -53,12 +55,167 @@ const EXPECTED_SYNTHETIC_COUNTS = Object.freeze({
   ghl_funnel_publication_receipts: 0,
   ghl_embed_auth_exchanges: 0,
 });
+const PRESERVED_SYNTHETIC_GHL_COUNTS = Object.freeze({
+  ghl_marketplace_oauth_states: 7,
+  ghl_marketplace_authorities: 1,
+  ghl_marketplace_lifecycle_events: 0,
+  ghl_marketplace_token_sets: 2,
+  ghl_marketplace_token_events: 2,
+  ghl_marketplace_location_token_exchanges: 1,
+  ghl_marketplace_realtor_user_operations: 0,
+  ghl_marketplace_encrypted_credentials: 4,
+});
 const SERVICE_ROLE_DIRECT_READ_DENIED_TABLES = new Set([
   "ghl_embed_auth_exchanges",
 ]);
 
 function firstRow(value) {
   return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function sha256(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+async function exactHeadCount(client, table) {
+  const result = await client.from(table).select("*", { count: "exact", head: true });
+  if (result.error || !Number.isInteger(result.count)) {
+    throw new Error(`Successor service-only ${table} count was unavailable`);
+  }
+  return result.count;
+}
+
+async function inspectPreservedSyntheticGhlAuthority(
+  serviceClient,
+  preservedGhlOwnerEmailSha256,
+) {
+  const counts = Object.fromEntries(await Promise.all(
+    [...SUCCESSOR_GHL_SERVICE_ONLY_TABLES, "ghl_marketplace_encrypted_credentials"]
+      .map(async (table) => [table, await exactHeadCount(serviceClient, table)]),
+  ));
+  const empty = SUCCESSOR_GHL_SERVICE_ONLY_TABLES.every(
+    (table) => counts[table] === EXPECTED_SYNTHETIC_COUNTS[table],
+  ) && counts.ghl_marketplace_encrypted_credentials === 0;
+  if (empty) {
+    return {
+      profile: "EMPTY_PROVIDER_INDEPENDENT",
+      counts,
+      exactSyntheticAuthorityVerified: false,
+      rawProviderIdentifiersPersisted: false,
+      rawCredentialsPersisted: false,
+    };
+  }
+  for (const [table, expected] of Object.entries(PRESERVED_SYNTHETIC_GHL_COUNTS)) {
+    if (counts[table] !== expected) {
+      throw new Error(`Preserved synthetic GHL ${table} count was not exact`);
+    }
+  }
+
+  const oauthStates = assertNoError(
+    await serviceClient
+      .from("ghl_marketplace_oauth_states")
+      .select("organization_id,initiated_by_user_id,partner_id,environment,status,expires_at,consumed_at,installation_id,location_mapping_id")
+      .order("created_at", { ascending: true }),
+    "read bounded preserved synthetic GHL OAuth receipts",
+  );
+  const authorities = assertNoError(
+    await serviceClient
+      .from("ghl_marketplace_authorities")
+      .select("id,installation_id,organization_id,location_mapping_id,partner_id,environment,status"),
+    "read preserved synthetic GHL authority",
+  );
+  const tokenSets = assertNoError(
+    await serviceClient
+      .from("ghl_marketplace_token_sets")
+      .select("id,authority_id,organization_id,status"),
+    "read preserved synthetic GHL token-set bindings",
+  );
+  const tokenEvents = assertNoError(
+    await serviceClient
+      .from("ghl_marketplace_token_events")
+      .select("token_set_id,organization_id"),
+    "read preserved synthetic GHL token-event bindings",
+  );
+  const exchanges = assertNoError(
+    await serviceClient
+      .from("ghl_marketplace_location_token_exchanges")
+      .select("authority_id,organization_id,status,result_token_set_id"),
+    "read preserved synthetic GHL location-token exchange",
+  );
+  const credentials = assertNoError(
+    await serviceClient
+      .from("ghl_marketplace_encrypted_credentials")
+      .select("authority_id,organization_id,status"),
+    "read preserved synthetic GHL credential bindings",
+  );
+  const userIds = [...new Set(oauthStates.map(({ initiated_by_user_id: id }) => id))];
+  const users = assertNoError(
+    await serviceClient.from("users").select("id,email").in("id", userIds),
+    "read preserved synthetic GHL owner identity",
+  );
+  const authority = authorities[0];
+  const tokenSetIds = new Set(tokenSets.map(({ id }) => id));
+  const now = Date.now();
+  const consumedStates = oauthStates.filter(({ status }) => status === "consumed");
+  const pendingStates = oauthStates.filter(({ status }) => status === "pending");
+  if (
+    !/^[0-9a-f]{64}$/.test(preservedGhlOwnerEmailSha256 ?? "") ||
+    userIds.length !== 1 ||
+    users.length !== 1 ||
+    sha256(users[0]?.email?.toLowerCase() ?? "") !== preservedGhlOwnerEmailSha256 ||
+    authority?.status !== "active" ||
+    authority?.environment !== "sandbox" ||
+    authority?.partner_id !== null ||
+    !authority?.organization_id ||
+    consumedStates.length !== 1 ||
+    pendingStates.length !== 6 ||
+    oauthStates.some(({ environment, partner_id: partnerId }) =>
+      environment !== "sandbox" || partnerId !== null
+    ) ||
+    pendingStates.some(({ expires_at: expiresAt, consumed_at: consumedAt }) =>
+      Date.parse(expiresAt) > now || consumedAt !== null
+    ) ||
+    consumedStates.some((state) =>
+      state.consumed_at == null ||
+      state.organization_id !== authority.organization_id ||
+      state.installation_id !== authority.installation_id ||
+      state.location_mapping_id !== authority.location_mapping_id
+    ) ||
+    tokenSets.some((row) =>
+      row.status !== "active" ||
+      row.authority_id !== authority.id ||
+      row.organization_id !== authority.organization_id
+    ) ||
+    tokenEvents.some((row) =>
+      !tokenSetIds.has(row.token_set_id) || row.organization_id !== authority.organization_id
+    ) ||
+    exchanges.some((row) =>
+      row.status !== "succeeded" ||
+      row.authority_id !== authority.id ||
+      row.organization_id !== authority.organization_id ||
+      !tokenSetIds.has(row.result_token_set_id)
+    ) ||
+    credentials.some((row) =>
+      row.status !== "active" ||
+      row.authority_id !== authority.id ||
+      row.organization_id !== authority.organization_id
+    )
+  ) {
+    throw new Error("Preserved synthetic GHL sandbox authority did not match its exact bounded profile");
+  }
+  return {
+    profile: "PRESERVED_ZERO_SPEND_SYNTHETIC_GHL_AUTHORITY",
+    counts,
+    exactSyntheticAuthorityVerified: true,
+    oauthReceiptDisposition: {
+      consumed: consumedStates.length,
+      expiredPending: pendingStates.length,
+    },
+    providerMutationPerformed: false,
+    customerDataAccessed: false,
+    rawProviderIdentifiersPersisted: false,
+    rawCredentialsPersisted: false,
+  };
 }
 
 function assertNoError(result, label) {
@@ -259,6 +416,7 @@ export async function assertSuccessorServiceOnlySchemaReadback({
   serviceClient,
   authenticatedClient,
   preflightGhlEmbedAuthExchangeCount,
+  preservedGhlOwnerEmailSha256,
 }) {
   const metadata = assertNoError(
     await serviceClient
@@ -272,6 +430,10 @@ export async function assertSuccessorServiceOnlySchemaReadback({
     throw new Error("Successor schema version readback is not exact");
   }
 
+  const preservedGhlAuthority = await inspectPreservedSyntheticGhlAuthority(
+    serviceClient,
+    preservedGhlOwnerEmailSha256,
+  );
   const serviceCounts = {};
   const serviceRoleDirectDenials = [];
   for (const table of SUCCESSOR_SERVICE_ONLY_TABLES) {
@@ -287,11 +449,9 @@ export async function assertSuccessorServiceOnlySchemaReadback({
       );
       continue;
     }
-    serviceCounts[table] = await exactCount(
-      serviceClient,
-      table,
-      EXPECTED_SYNTHETIC_COUNTS[table],
-    );
+    serviceCounts[table] = SUCCESSOR_GHL_SERVICE_ONLY_TABLES.includes(table)
+      ? preservedGhlAuthority.counts[table]
+      : await exactCount(serviceClient, table, EXPECTED_SYNTHETIC_COUNTS[table]);
   }
   const authenticatedDenials = [];
   for (const table of SUCCESSOR_SERVICE_ONLY_TABLES) {
@@ -305,6 +465,7 @@ export async function assertSuccessorServiceOnlySchemaReadback({
     stripeLifecycleTableCount: SUCCESSOR_STRIPE_SERVICE_ONLY_TABLES.length,
     postAuditServiceOnlyTableCount: SUCCESSOR_POST_AUDIT_SERVICE_ONLY_TABLES.length,
     serviceCounts,
+    preservedGhlAuthority,
     authenticatedDenials,
     authenticatedDenialCount: authenticatedDenials.length,
     serviceRoleDirectDenials,

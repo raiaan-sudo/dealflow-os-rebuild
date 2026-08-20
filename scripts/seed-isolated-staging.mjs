@@ -1827,6 +1827,7 @@ async function main() {
     serviceClient: admin,
     authenticatedClient: qaClient,
     preflightGhlEmbedAuthExchangeCount,
+    preservedGhlOwnerEmailSha256: PRESERVED_GHL_OWNER_AUTHORITY.emailSha256,
   });
 
   const campaignPlan = {
