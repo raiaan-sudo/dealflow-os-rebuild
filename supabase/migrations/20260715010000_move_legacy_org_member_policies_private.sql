@@ -9,6 +9,7 @@ declare
   target record;
   policy_record record;
   authenticated_oid oid;
+  storage_policy_count integer;
 begin
   if to_regprocedure('private.is_current_user_org_member(uuid)') is null then
     raise exception using
@@ -127,6 +128,28 @@ begin
         );
     end if;
   end loop;
+
+  select count(*)::integer
+  into storage_policy_count
+  from pg_catalog.pg_policy policy
+  join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+  join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+  where namespace.nspname = 'storage'
+    and relation.relname = 'objects'
+    and policy.polname in (
+      'import_bucket_member_insert',
+      'import_bucket_member_select',
+      'import_bucket_member_update'
+    );
+
+  if storage_policy_count not in (0, 3) then
+    raise exception using
+      errcode = '55000',
+      message = format(
+        'legacy_org_membership_storage_policy_partial:%s/3',
+        storage_policy_count
+      );
+  end if;
 end;
 $dealflow_legacy_policy_precondition$;
 
@@ -207,30 +230,56 @@ alter policy service_types_member_access on public.service_types
 -- are not public-schema policies, so the original eighteen-policy inventory
 -- did not include them. Keep the bucket and folder scope unchanged while
 -- moving the membership decision behind the same private helper.
-alter policy import_bucket_member_insert on storage.objects
-  to authenticated
-  with check (
-    bucket_id = 'imports'::text
-    and private.is_current_user_org_member(((storage.foldername(name))[1])::uuid)
-  );
-alter policy import_bucket_member_select on storage.objects
-  to authenticated
-  using (
-    bucket_id = 'imports'::text
-    and private.is_current_user_org_member(((storage.foldername(name))[1])::uuid)
-  );
-alter policy import_bucket_member_update on storage.objects
-  to authenticated
-  using (
-    bucket_id = 'imports'::text
-    and private.is_current_user_org_member(((storage.foldername(name))[1])::uuid)
-  );
+do $dealflow_storage_policy_repair$
+declare
+  organization_expression text;
+begin
+  -- Hosted Supabase provides storage.foldername(text). The isolated PostgreSQL
+  -- replay harness intentionally models storage.objects without installing
+  -- Supabase-owned helper functions. Preserve the hosted expression whenever
+  -- the helper exists, and use its first-folder equivalent only in that
+  -- portable replay shape.
+  organization_expression := case
+    when to_regprocedure('storage.foldername(text)') is not null then
+      '((storage.foldername(name))[1])::uuid'
+    else
+      '(case when position(''/'' in name) > 0 then split_part(name, ''/'', 1) else null end)::uuid'
+  end;
+
+  if exists (
+    select 1
+    from pg_catalog.pg_policy policy
+    join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+    join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'storage'
+      and relation.relname = 'objects'
+      and policy.polname = 'import_bucket_member_insert'
+  ) then
+    execute format(
+      'alter policy import_bucket_member_insert on storage.objects to authenticated with check (bucket_id = %L::text and private.is_current_user_org_member(%s))',
+      'imports',
+      organization_expression
+    );
+    execute format(
+      'alter policy import_bucket_member_select on storage.objects to authenticated using (bucket_id = %L::text and private.is_current_user_org_member(%s))',
+      'imports',
+      organization_expression
+    );
+    execute format(
+      'alter policy import_bucket_member_update on storage.objects to authenticated using (bucket_id = %L::text and private.is_current_user_org_member(%s))',
+      'imports',
+      organization_expression
+    );
+  end if;
+end;
+$dealflow_storage_policy_repair$;
 
 do $dealflow_legacy_policy_postcondition$
 declare
   authenticated_oid oid;
   repaired_policy_count integer;
   repaired_storage_policy_count integer;
+  total_storage_policy_count integer;
 begin
   select oid into authenticated_oid
   from pg_catalog.pg_roles
@@ -295,24 +344,43 @@ begin
         policy.polname = 'import_bucket_member_insert'
         and policy.polcmd = 'a'
         and policy.polqual is null
-        and pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)
-          = '((bucket_id = ''imports''::text) AND private.is_current_user_org_member(((storage.foldername(name))[1])::uuid))'
+        and pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid) in (
+          '((bucket_id = ''imports''::text) AND private.is_current_user_org_member(((storage.foldername(name))[1])::uuid))',
+          '((bucket_id = ''imports''::text) AND private.is_current_user_org_member((CASE WHEN (POSITION((''/'':text) IN (name)) > 0) THEN split_part(name, ''/''::text, 1) ELSE NULL::text END)::uuid))'
+        )
       )
       or (
         policy.polname in ('import_bucket_member_select', 'import_bucket_member_update')
         and policy.polcmd in ('r', 'w')
-        and pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)
-          = '((bucket_id = ''imports''::text) AND private.is_current_user_org_member(((storage.foldername(name))[1])::uuid))'
+        and pg_catalog.pg_get_expr(policy.polqual, policy.polrelid) in (
+          '((bucket_id = ''imports''::text) AND private.is_current_user_org_member(((storage.foldername(name))[1])::uuid))',
+          '((bucket_id = ''imports''::text) AND private.is_current_user_org_member((CASE WHEN (POSITION((''/'':text) IN (name)) > 0) THEN split_part(name, ''/''::text, 1) ELSE NULL::text END)::uuid))'
+        )
         and policy.polwithcheck is null
       )
     );
 
-  if repaired_storage_policy_count <> 3 then
+  select count(*)::integer
+  into total_storage_policy_count
+  from pg_catalog.pg_policy policy
+  join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+  join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+  where namespace.nspname = 'storage'
+    and relation.relname = 'objects'
+    and policy.polname in (
+      'import_bucket_member_insert',
+      'import_bucket_member_select',
+      'import_bucket_member_update'
+    );
+
+  if total_storage_policy_count not in (0, 3)
+    or repaired_storage_policy_count <> total_storage_policy_count then
     raise exception using
       errcode = '55000',
       message = format(
-        'private_org_membership_storage_policy_portfolio_incomplete:%s/3',
-        repaired_storage_policy_count
+        'private_org_membership_storage_policy_portfolio_incomplete:%s/%s',
+        repaired_storage_policy_count,
+        total_storage_policy_count
       );
   end if;
 

@@ -195,6 +195,7 @@
     "supabase/migrations/20260710235700_protect_creative_asset_storage_identity.sql",
     "supabase/migrations/20260713025000_add_generated_video_canonical_storage.sql",
     "supabase/migrations/20260713026000_add_account_deletion_and_provider_offboarding.sql",
+    "supabase/migrations/20260715010000_move_legacy_org_member_policies_private.sql",
     "supabase/migrations/20260717040000_bind_generated_static_storage_tenancy.sql"
   ],
   "cacheInventory": {

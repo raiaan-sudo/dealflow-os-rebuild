@@ -52,7 +52,7 @@ for (const [policyName, clause] of expectedStoragePolicies) {
   assert.match(
     migration,
     new RegExp(
-      `alter policy ${policyName} on storage\\.objects\\s+to authenticated\\s+${clause} \\(\\s*bucket_id = 'imports'::text\\s+and private\\.is_current_user_org_member`,
+      `alter policy ${policyName} on storage\\.objects to authenticated ${clause} \\(bucket_id = %L::text and private\\.is_current_user_org_member\\(%s\\)\\)`,
       "i",
     ),
   );
