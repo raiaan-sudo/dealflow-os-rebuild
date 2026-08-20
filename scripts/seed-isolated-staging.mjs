@@ -2821,7 +2821,23 @@ async function main() {
     );
   }
   const finalAuthUsers = await listAuthUsers(admin);
-  if (finalAuthUsers.length !== EXPECTED_SYNTHETIC_AUTH_EMAILS.length) {
+  assertExpectedSyntheticAuthSurface(finalAuthUsers);
+  const expectedPreservedGhlOwnerCount =
+    successorServiceOnlySchema.preservedGhlAuthority.exactSyntheticAuthorityVerified
+      ? 1
+      : 0;
+  const finalPreservedGhlOwnerCount = finalAuthUsers.filter((user) =>
+    sha256(user?.email?.toLowerCase() ?? "") ===
+      PRESERVED_GHL_OWNER_AUTHORITY.emailSha256 &&
+    user?.user_metadata?.fixture === PRESERVED_GHL_OWNER_AUTHORITY.fixture &&
+    user?.user_metadata?.synthetic === PRESERVED_GHL_OWNER_AUTHORITY.synthetic &&
+    user?.user_metadata?.scenario == null
+  ).length;
+  if (
+    finalAuthUsers.length !==
+      EXPECTED_SYNTHETIC_AUTH_EMAILS.length + expectedPreservedGhlOwnerCount ||
+    finalPreservedGhlOwnerCount !== expectedPreservedGhlOwnerCount
+  ) {
     throw new Error("The isolated staging project does not contain the exact synthetic auth-user set");
   }
   const finalByEmail = new Map(
@@ -2893,6 +2909,7 @@ async function main() {
     },
     exactFixtureCountsVerified: true,
     exactSyntheticAuthUserCount: finalAuthUsers.length,
+    exactPreservedGhlOwnerAuthUserCount: finalPreservedGhlOwnerCount,
     qaHarness: {
       authorityResetPolicyApplied: qaHarnessAuthorityResetPolicyApplied,
       userId: qaHarnessAuthUser.id,

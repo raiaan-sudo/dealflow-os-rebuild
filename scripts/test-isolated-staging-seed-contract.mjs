@@ -412,6 +412,8 @@ assert.match(source, /request_ghl_provisioning_from_billing_activation_v1/);
 assert.match(source, /proveSyntheticCreditAndPendingStripeLifecycle/);
 assert.match(source, /assertSuccessorServiceOnlySchemaReadback/);
 assert.match(source, /preservedGhlOwnerEmailSha256: PRESERVED_GHL_OWNER_AUTHORITY\.emailSha256/);
+assert.match(source, /successorServiceOnlySchema\.preservedGhlAuthority\.exactSyntheticAuthorityVerified/);
+assert.match(source, /exactPreservedGhlOwnerAuthUserCount: finalPreservedGhlOwnerCount/);
 assert.match(source, /DEALFLOW_GHL_EMBED_AUTH_EXCHANGE_PREFLIGHT_COUNT/);
 assert.match(source, /preflightGhlEmbedAuthExchangeCount/);
 assert.match(source, /direct PostgreSQL GHL embed auth-exchange preflight count must be zero/);
