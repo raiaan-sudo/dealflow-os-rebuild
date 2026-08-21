@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "e838220d23bf7f7ef7f977f4d08053394a28205d1cca83ff00661402c7a314b8",
+  "deployableSourceSha256": "2811d76acb1c14f7a0febc7bcd1a877aacd9bd6319cece2b904bdd440b9044d4",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "18321a2e995949297f55fb1325baa7eb8ed5a5ef71c5d283bc51e89bbc0e5777"
+      "sha256": "ff19b792cbfe1df06f9407b892c1e0be4d66b889c2bfc9a8721f8e37bdcb281b"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85845,
       "mode": 33188,
-      "sha256": "599e29a8d782e645b30501c25049e286701f478648472058ad8ca18a7ac588b5"
+      "sha256": "e2400b33b26168ae18f7b2a55023c8041f933c01c643c53f171541dd3522013a"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3698,
       "mode": 33188,
-      "sha256": "270fc1777e1d8a7b6ba3e7d971b9fc239171af01f089cd1505309801d5ccef35"
+      "sha256": "250daf5dedafcc1c48214420b7d35f538d2bae49c76073da432eeecb2db3b255"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1184,25 +1184,25 @@
       "path": "scripts/staging/forward-104-to-120-contract.mjs",
       "size": 25383,
       "mode": 33188,
-      "sha256": "c3b16fe5690041031b9cb57042782f76bb23df53aafb8ed9eb19920b793e55ad"
+      "sha256": "0bf093e5503be62613ee59f7ade70d9e284ec9b702a3a69cfdb7c3f4d67d92b8"
     },
     {
       "path": "scripts/staging/forward-120-to-121-contract.mjs",
       "size": 4130,
       "mode": 33188,
-      "sha256": "6f470edbb73e8b37d74df385b11c060ff94b938c8dccd0d7c884554ca5c08a0f"
+      "sha256": "3d3fb87b771bf28c6b68e2d90bd065d9b5f43523cea04d2f3e17fdb9261c2cf9"
     },
     {
       "path": "scripts/staging/forward-121-to-122-contract.mjs",
       "size": 4093,
       "mode": 33188,
-      "sha256": "84238c896f56a72ae1a3a87873babacadfa70e3e98c1d2dc75cef2809aae4f98"
+      "sha256": "1f1be211b36585d7bb33bd77f08f16faaccb0375395bde44195a8307f172f54e"
     },
     {
       "path": "scripts/staging/forward-122-to-123-contract.mjs",
       "size": 4082,
       "mode": 33188,
-      "sha256": "088d0f74a0e143ee28e71600b9c9bf218de9954ad94978295d677979f8d025bf"
+      "sha256": "f4dfa6c78222846d5e3173cf1e31875ab88a4e9c59acf3bfbf9d69fc8c9d13f8"
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
@@ -1346,25 +1346,25 @@
       "path": "scripts/staging/test-forward-104-to-120-contract.mjs",
       "size": 26245,
       "mode": 33188,
-      "sha256": "b1fb7e75faf6d95f1e1bf0e71cabb5ff8a9720ff7456fe96d566a16685f75ed2"
+      "sha256": "d95a8ab67d93f87f5a46b893861c540d1c330203c08cb96221220af81f1b35b6"
     },
     {
       "path": "scripts/staging/test-forward-120-to-121-contract.mjs",
       "size": 2215,
       "mode": 33188,
-      "sha256": "f06569615e8a446143381b3b5afd1fc8e4614e45794d015c77b91e90a2bf57fe"
+      "sha256": "c24dd76c948f22acf3cb21354342670bd07340632ec455816a65f2ef209e1eff"
     },
     {
       "path": "scripts/staging/test-forward-121-to-122-contract.mjs",
       "size": 2208,
       "mode": 33188,
-      "sha256": "318dd2d7f718d17ed1620f5919c0d50b6f1826c3f33f18578cd4a511854c6261"
+      "sha256": "e47dd11d0fe5eb9515f3208bb6acea28328a58053f933457902dee3b29d4529d"
     },
     {
       "path": "scripts/staging/test-forward-122-to-123-contract.mjs",
       "size": 1996,
       "mode": 33188,
-      "sha256": "0e684c2fff1424ae2f5c015fb5e496c32162249935ebf6e1c44b9cc34125b2a3"
+      "sha256": "f113cda000419f37980a54ba090f401ec18bddc0888de588034a49d6d62e9afb"
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
@@ -2252,7 +2252,7 @@
       "path": "scripts/test-production-migration-broker-contract.mjs",
       "size": 3632,
       "mode": 33188,
-      "sha256": "d0111d662e824e9b2dec2417f84a13a03418705c1e73821bfd1a6e7575d69f13"
+      "sha256": "b40cb2aac09a4199d30139197c89459de125c9eb4d715599a8e8bea149255175"
     },
     {
       "path": "scripts/test-production-route-contract.mjs",
