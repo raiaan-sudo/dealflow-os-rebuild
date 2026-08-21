@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "6bcd77102de1e9e913586fc693ed77d4c07152d941f16b53170bdf3ad3b37ad9",
+  "deployableSourceSha256": "e838220d23bf7f7ef7f977f4d08053394a28205d1cca83ff00661402c7a314b8",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "77974b67f498f1fe8d919a082b74f3991d83fb540c79d824b0b64f393eb0e786"
+      "sha256": "18321a2e995949297f55fb1325baa7eb8ed5a5ef71c5d283bc51e89bbc0e5777"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -374,19 +374,19 @@
       "path": "docs/dealflow-completion/current-source-inventory.csv",
       "size": 52937,
       "mode": 33188,
-      "sha256": "4c6d1ebdb9ac4da1f81c2232e36ae54eed6971e2702e2452436d9d39967a2e01"
+      "sha256": "7c001530b26eec9ccefb8046f7d85c4e2a57e8d0c09d8e737ea45cabded9ed31"
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85841,
+      "size": 85845,
       "mode": 33188,
-      "sha256": "85ef74e1417353ab7836e4c673d462c174fe76bc7fadc1abfa797771f8ec9d9e"
+      "sha256": "599e29a8d782e645b30501c25049e286701f478648472058ad8ca18a7ac588b5"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
-      "size": 3694,
+      "size": 3698,
       "mode": 33188,
-      "sha256": "b90373b567cd92f24aca425952b9b4e1f87abf3573850bf4a8517083da49e704"
+      "sha256": "270fc1777e1d8a7b6ba3e7d971b9fc239171af01f089cd1505309801d5ccef35"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1980,9 +1980,9 @@
     },
     {
       "path": "scripts/test-integrated-migration-chain-disposable-db.mjs",
-      "size": 50831,
+      "size": 51841,
       "mode": 33188,
-      "sha256": "bf0cafdb51ffaf3a8fe0e425948eea88be15fc18494d6e437e8431c130d80e12"
+      "sha256": "8e3b9f3436a356a181263e51b536a09ced6040cf9b2c62afe4540fa60e84865d"
     },
     {
       "path": "scripts/test-internal-sms-notifications.mjs",
@@ -2214,9 +2214,9 @@
     },
     {
       "path": "scripts/test-post-audit-successor-contract.ts",
-      "size": 8736,
+      "size": 8955,
       "mode": 33188,
-      "sha256": "6086f579ea8e74893d5af8d7f343467c68d1c93b50235ac038d038b910da955f"
+      "sha256": "203cb1a52c3a2d5cbee1cac4b22f1c404dd60fa70a000dece9518db7534cd411"
     },
     {
       "path": "scripts/test-privacy-consent-dsar-contract.mjs",
@@ -6768,9 +6768,9 @@
     },
     {
       "path": "supabase/migrations/20260717081000_expand_campaign_lifecycle_authority.sql",
-      "size": 21278,
+      "size": 22249,
       "mode": 33188,
-      "sha256": "5b9861d310456e1a9d90b3ba1b2d85faef4bbd361651282bc9a30a1d478b8b4b"
+      "sha256": "5b9937ace21b4c11b7a91080f875764cdb7be584bc9416be726042dedf408210"
     },
     {
       "path": "supabase/migrations/20260717082000_provider_aware_funnel_publication.sql",
