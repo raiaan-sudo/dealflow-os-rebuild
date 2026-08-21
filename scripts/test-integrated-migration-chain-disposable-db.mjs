@@ -1003,9 +1003,31 @@ async function proveExact104ThenForward120Then121Then122Then123Then131() {
       ),
       "104|20260715010000",
     );
-    const forward = applyMigrations(session, migrations.slice(104, 120));
-    assert.equal(forward.applied.length, 16);
-    assert.equal(forward.skipped.length, 0);
+    const forwardBeforeLifecycle = applyMigrations(session, migrations.slice(104, 117));
+    assert.equal(forwardBeforeLifecycle.applied.length, 13);
+    assert.equal(forwardBeforeLifecycle.skipped.length, 0);
+    session.psql(`
+      insert into public.campaign_plans(id, owner_id, plan, publish_state)
+      values (
+        '7b000000-0000-4000-8000-000000000001',
+        '7b000000-0000-4000-8000-000000000002',
+        '{"test":true}'::jsonb,
+        'draft'
+      );
+    `, { label: "Seed preserved tenantless legacy campaign" });
+    const lifecycleAndRemaining = applyMigrations(session, migrations.slice(117, 120));
+    assert.equal(lifecycleAndRemaining.applied.length, 3);
+    assert.equal(lifecycleAndRemaining.skipped.length, 0);
+    assert.equal(
+      session.psql(`
+        select
+          (select count(*) from public.campaign_plans
+            where id='7b000000-0000-4000-8000-000000000001') || '|' ||
+          (select count(*) from public.campaign_lifecycle_authority
+            where campaign_id='7b000000-0000-4000-8000-000000000001');
+      `, { label: "Verify tenantless legacy campaign preservation and lifecycle exclusion" }),
+      "1|0",
+    );
     assert.equal(
       session.psql(
         "select count(*) || '|' || max(version) from supabase_migrations.schema_migrations;",

@@ -153,10 +153,13 @@ $$;
 revoke all on function private.campaign_current_plan_digest_v1(uuid)
   from public, anon, authenticated, service_role;
 
--- Preserve every pre-existing campaign without fabricating a historical
--- customer approval. Untouched drafts remain drafts; anything with launch
--- evidence is imported as explicit operator-required truth until its legacy
--- receipts are reconciled under an owner-approved procedure.
+-- Preserve every tenant-scoped pre-existing campaign without fabricating a
+-- historical customer approval. Untouched drafts remain drafts; anything with
+-- launch evidence is imported as explicit operator-required truth until its
+-- legacy receipts are reconciled under an owner-approved procedure. Historical
+-- tenantless rows remain unchanged in campaign_plans and are deliberately
+-- excluded here: assigning them to a customer without authoritative evidence
+-- would fabricate tenant ownership.
 insert into public.campaign_lifecycle_authority(
   campaign_id, organization_id, state, state_version, material_plan_digest
 )
@@ -171,7 +174,8 @@ select campaign.id, campaign.organization_id,
   ) then 'operator_required' else 'draft' end,
   1,
   private.campaign_current_plan_digest_v1(campaign.id)
-from public.campaign_plans campaign;
+from public.campaign_plans campaign
+where campaign.organization_id is not null;
 
 insert into public.campaign_lifecycle_events(
   campaign_id, organization_id, event_idempotency_key, from_state, to_state,
@@ -370,6 +374,26 @@ begin
     or to_regclass('public.campaign_provider_action_intents') is null
     or to_regprocedure('public.transition_campaign_lifecycle_v1(uuid,bigint,text,text,text,text,uuid,text)') is null then
     raise exception '20260717081000 postcondition failed';
+  end if;
+
+  if exists (
+    select 1
+    from public.campaign_plans campaign
+    where campaign.organization_id is not null
+      and not exists (
+        select 1
+        from public.campaign_lifecycle_authority authority
+        where authority.campaign_id = campaign.id
+          and authority.organization_id = campaign.organization_id
+      )
+  ) or exists (
+    select 1
+    from public.campaign_lifecycle_authority authority
+    join public.campaign_plans campaign on campaign.id = authority.campaign_id
+    where campaign.organization_id is null
+       or authority.organization_id <> campaign.organization_id
+  ) then
+    raise exception '20260717081000 tenant lifecycle coverage postcondition failed';
   end if;
 end;
 $dealflow_campaign_lifecycle_postcondition$;

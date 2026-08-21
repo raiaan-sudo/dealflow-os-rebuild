@@ -236,6 +236,14 @@ assert.match(
   lifecycleMigration,
   /p_to_state not in \('draft','generated','review_required','approved','scheduled','canceled'\)/,
 );
+assert.match(
+  lifecycleMigration,
+  /from public\.campaign_plans campaign\s+where campaign\.organization_id is not null;/,
+);
+assert.match(
+  lifecycleMigration,
+  /tenant lifecycle coverage postcondition failed/,
+);
 
 console.log("post-audit successor runtime contracts: PASS");
 }
