@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "2811d76acb1c14f7a0febc7bcd1a877aacd9bd6319cece2b904bdd440b9044d4",
+  "deployableSourceSha256": "e82bd7bd0f5db5c83bb85af71ee252263948959812cc586d7ab7d05a7103ac4e",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "ff19b792cbfe1df06f9407b892c1e0be4d66b889c2bfc9a8721f8e37bdcb281b"
+      "sha256": "2837a52c539b0e8ea26b1bcfa696c8955ccda92d084089950b93e9c183e9f982"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -380,13 +380,13 @@
       "path": "docs/dealflow-completion/current-source-inventory.json",
       "size": 85845,
       "mode": 33188,
-      "sha256": "e2400b33b26168ae18f7b2a55023c8041f933c01c643c53f171541dd3522013a"
+      "sha256": "887396c4d3a61e7600c8178b18c4916040971660ca3649e63c1e913a220a3636"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
       "size": 3698,
       "mode": 33188,
-      "sha256": "250daf5dedafcc1c48214420b7d35f538d2bae49c76073da432eeecb2db3b255"
+      "sha256": "a485e8af2fce0ab35b4bc2956096411ccd9899bd3dc2de9d5605775159201a93"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -912,9 +912,9 @@
     },
     {
       "path": "scripts/generate-hosted-build-identity.mjs",
-      "size": 16250,
+      "size": 16464,
       "mode": 33188,
-      "sha256": "6cec7eca21411a576af53c9dd5962fde8edc72d29100f6de8a10d2e5f8a37c91"
+      "sha256": "15e510b9d79a02622e2430ebb26a8311223439140d83b082788f17b74305bd1c"
     },
     {
       "path": "scripts/generate-release-guard.mjs",
@@ -1368,9 +1368,9 @@
     },
     {
       "path": "scripts/staging/test-hosted-build-identity-generator.mjs",
-      "size": 19643,
+      "size": 21457,
       "mode": 33188,
-      "sha256": "e3fe55401401253e03f098d94d46ecd033d4109c0bbbd222a8478e7da758b9dc"
+      "sha256": "418695b41437115f561f86207f49b91e0b0dad23458941db9b62645e20a4eac0"
     },
     {
       "path": "scripts/staging/test-install-synthetic-retention-authority-contract.mjs",
