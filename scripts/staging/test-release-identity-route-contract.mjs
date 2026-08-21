@@ -222,6 +222,18 @@ assert.equal(
   "vercel_semantic_config_normalization_v2",
 );
 
+const compactedGitBuildSource = structuredClone(
+  canonicalNormalizationBuildSource,
+);
+compactedGitBuildSource.vercelConfigurationNormalization.injectedVersion = null;
+assert.equal(
+  assertExactHostedBuildSourceIdentity({
+    buildSource: compactedGitBuildSource,
+    expectedRelease: verifierRelease,
+  }).vercelConfigurationNormalization.injectedVersion,
+  null,
+);
+
 for (const mutate of [
   (value) => Object.assign(value, { unexpected: true }),
   (value) => {

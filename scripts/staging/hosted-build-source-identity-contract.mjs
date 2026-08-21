@@ -74,7 +74,7 @@ function exactNormalization(value) {
     ]) &&
     typeof value.injectedProjectNamePresent === "boolean" &&
     value.injectedProjectNameMatched === true &&
-    value.injectedVersion === 2 &&
+    (value.injectedVersion === null || value.injectedVersion === 2) &&
     isSha256(value.hostedBytesSha256) &&
     isSha256(value.recoveredSourceSha256)
   );

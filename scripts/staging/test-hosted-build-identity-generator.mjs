@@ -39,8 +39,7 @@ const canonicalStagingProjectId = String(
   JSON.parse(readFileSync(join(root, ".vercel", "project.json"), "utf8"))
     .projectId,
 );
-const canonicalProductionProjectId =
-  "prj_3FUgh87aRdp4sNDrYzOEsXDyQERm";
+const canonicalProductionProjectId = "prj_3FUgh87aRdp4sNDrYzOEsXDyQERm";
 const vercelConfiguration = JSON.parse(
   readFileSync(join(root, "vercel.json"), "utf8"),
 );
@@ -106,7 +105,9 @@ function releaseEnvironment(manifest, manifestSha256) {
     NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_MANIFEST_SHA256: manifestSha256,
     NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_FILE_COUNT: String(manifest.entryCount),
     NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256: "f".repeat(64),
-    NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT: String(manifest.entryCount + 1),
+    NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT: String(
+      manifest.entryCount + 1,
+    ),
   };
 }
 
@@ -145,7 +146,7 @@ try {
   mkdirSync(join(fixture, "src"), { recursive: true });
   writeFileSync(join(fixture, ".vercelignore"), "ignored.txt\n");
   writeFileSync(join(fixture, "ignored.txt"), "tracked but not deployed\n");
-  writeFileSync(join(fixture, "package.json"), "{\"name\":\"fixture\"}\n");
+  writeFileSync(join(fixture, "package.json"), '{"name":"fixture"}\n');
   writeFileSync(join(fixture, "src", "app.ts"), "export const exact = true;\n");
   writeFileSync(
     join(fixture, "vercel.json"),
@@ -179,7 +180,9 @@ try {
     manifest.deployableSourceSha256,
   );
 
-  const staging = run({ env: exactStagingEnvironment(manifest, manifestSha256) });
+  const staging = run({
+    env: exactStagingEnvironment(manifest, manifestSha256),
+  });
   assert.equal(staging.status, 0, `${staging.stderr}\n${staging.stdout}`);
   const stagingArtifact = JSON.parse(readFileSync(artifactPath, "utf8"));
   assert.equal(stagingArtifact.status, "HOSTED_SOURCE_VERIFIED");
@@ -190,10 +193,7 @@ try {
   assert.equal(stagingArtifact.vercelDryRunSourceSha256, "f".repeat(64));
   assert.equal(stagingArtifact.vercelDryRunFileCount, manifest.entryCount + 1);
   assert.equal(stagingArtifact.manifestSha256, manifestSha256);
-  assert.equal(
-    stagingArtifact.vercelConfigurationNormalization.status,
-    "PASS",
-  );
+  assert.equal(stagingArtifact.vercelConfigurationNormalization.status, "PASS");
   assert.equal(
     stagingArtifact.vercelConfigurationNormalization.transformation,
     "exact_source_bytes",
@@ -201,7 +201,11 @@ try {
   const production = run({
     env: exactProductionEnvironment(manifest, manifestSha256),
   });
-  assert.equal(production.status, 0, `${production.stderr}\n${production.stdout}`);
+  assert.equal(
+    production.status,
+    0,
+    `${production.stderr}\n${production.stdout}`,
+  );
   const productionArtifact = JSON.parse(readFileSync(artifactPath, "utf8"));
   assert.equal(productionArtifact.status, "HOSTED_SOURCE_VERIFIED");
   assert.equal(productionArtifact.targetClassification, "exact_production");
@@ -229,16 +233,18 @@ try {
     readFileSync(artifactPath, "utf8"),
   );
   assert.equal(
-    normalizedProductionArtifact.vercelConfigurationNormalization.transformation,
+    normalizedProductionArtifact.vercelConfigurationNormalization
+      .transformation,
     "vercel_semantic_config_normalization_v2",
   );
   assert.equal(
-    normalizedProductionArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    normalizedProductionArtifact.vercelConfigurationNormalization
+      .injectedProjectNamePresent,
     true,
   );
   writeFileSync(
     join(fixture, "vercel.json"),
-    `${JSON.stringify({ ...vercelConfiguration, version: 2 })}\n`,
+    JSON.stringify(vercelConfiguration),
   );
   const gitIntegratedProductionNormalization = run({
     env: exactProductionEnvironment(manifest, manifestSha256),
@@ -252,16 +258,24 @@ try {
     readFileSync(artifactPath, "utf8"),
   );
   assert.equal(
-    gitIntegratedProductionArtifact.vercelConfigurationNormalization.transformation,
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization
+      .transformation,
     "vercel_semantic_config_normalization_v2",
   );
   assert.equal(
-    gitIntegratedProductionArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization
+      .injectedProjectNamePresent,
     false,
   );
   assert.equal(
-    gitIntegratedProductionArtifact.vercelConfigurationNormalization.injectedProjectNameMatched,
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization
+      .injectedProjectNameMatched,
     true,
+  );
+  assert.equal(
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization
+      .injectedVersion,
+    null,
   );
   writeFileSync(
     join(fixture, "vercel.json"),
@@ -302,12 +316,13 @@ try {
     "vercel_semantic_config_normalization_v2",
   );
   assert.equal(
-    normalizedStagingArtifact.vercelConfigurationNormalization.recoveredSourceSha256,
+    normalizedStagingArtifact.vercelConfigurationNormalization
+      .recoveredSourceSha256,
     manifest.entries.find((entry) => entry.path === "vercel.json").sha256,
   );
   writeFileSync(
     join(fixture, "vercel.json"),
-    `${JSON.stringify({ ...vercelConfiguration, version: 2 })}\n`,
+    JSON.stringify(vercelConfiguration),
   );
   const gitIntegratedStagingNormalization = run({
     env: exactStagingEnvironment(manifest, manifestSha256),
@@ -321,12 +336,19 @@ try {
     readFileSync(artifactPath, "utf8"),
   );
   assert.equal(
-    gitIntegratedStagingArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    gitIntegratedStagingArtifact.vercelConfigurationNormalization
+      .injectedProjectNamePresent,
     false,
   );
   assert.equal(
-    gitIntegratedStagingArtifact.vercelConfigurationNormalization.injectedProjectNameMatched,
+    gitIntegratedStagingArtifact.vercelConfigurationNormalization
+      .injectedProjectNameMatched,
     true,
+  );
+  assert.equal(
+    gitIntegratedStagingArtifact.vercelConfigurationNormalization
+      .injectedVersion,
+    null,
   );
 
   for (const invalidHostedConfiguration of [
@@ -381,17 +403,22 @@ try {
     readFileSync(artifactPath, "utf8"),
   );
   assert.equal(
-    nonCanonicalHostedBytesArtifact.vercelConfigurationNormalization.transformation,
+    nonCanonicalHostedBytesArtifact.vercelConfigurationNormalization
+      .transformation,
     "vercel_semantic_config_normalization_v2",
   );
 
   writeFileSync(
     join(fixture, "vercel.json"),
-    `${JSON.stringify({
-      ...vercelConfiguration,
-      version: 2,
-      name: "dealflow-os-rebuild-selfserve-clean",
-    }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        ...vercelConfiguration,
+        version: 2,
+        name: "dealflow-os-rebuild-selfserve-clean",
+      },
+      null,
+      2,
+    )}\n`,
   );
   const reorderedInjectedKeys = run({
     env: exactStagingEnvironment(manifest, manifestSha256),
@@ -427,8 +454,7 @@ try {
       VERCEL_ENV: "production",
       DEALFLOW_DEPLOYMENT_TARGET: "production",
       VERCEL_PROJECT_ID: "self-asserted-production-project",
-      DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID:
-        "self-asserted-production-project",
+      DEALFLOW_PRODUCTION_VERCEL_PROJECT_ID: "self-asserted-production-project",
       DEALFLOW_PRODUCTION_HOST_ATTESTATION:
         "DEALFLOW_PRODUCTION_VERCEL_PROJECT_EXACT_V1",
       ...releaseEnvironment(manifest, manifestSha256),
@@ -468,7 +494,8 @@ try {
     readFileSync(artifactPath, "utf8"),
   );
   assert.equal(
-    gitIntegratedPreviewArtifact.vercelConfigurationNormalization.transformation,
+    gitIntegratedPreviewArtifact.vercelConfigurationNormalization
+      .transformation,
     "vercel_semantic_config_normalization_v2",
   );
   writeFileSync(
@@ -487,11 +514,13 @@ try {
     readFileSync(artifactPath, "utf8"),
   );
   assert.equal(
-    gitIntegratedPreviewCompactionOnlyArtifact.vercelConfigurationNormalization.transformation,
+    gitIntegratedPreviewCompactionOnlyArtifact.vercelConfigurationNormalization
+      .transformation,
     "vercel_semantic_config_normalization_v2",
   );
   assert.equal(
-    gitIntegratedPreviewCompactionOnlyArtifact.vercelConfigurationNormalization.injectedVersion,
+    gitIntegratedPreviewCompactionOnlyArtifact.vercelConfigurationNormalization
+      .injectedVersion,
     null,
   );
   writeFileSync(
@@ -544,9 +573,15 @@ try {
     },
   });
   assert.notEqual(incompleteExactStaging.status, 0);
-  assert.match(incompleteExactStaging.stderr, /requires exact NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT/);
+  assert.match(
+    incompleteExactStaging.stderr,
+    /requires exact NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT/,
+  );
 
-  writeFileSync(join(fixture, "src", "app.ts"), "export const exact = false;\n");
+  writeFileSync(
+    join(fixture, "src", "app.ts"),
+    "export const exact = false;\n",
+  );
   const tampered = run();
   assert.notEqual(tampered.status, 0);
   assert.match(tampered.stderr, /does not match its manifest/);
@@ -597,15 +632,20 @@ try {
   assert.notEqual(extra.status, 0);
   assert.match(extra.stderr, /Deployable manifest path set is not exact/);
 
-  writeFileSync(join(outsideFixture, "escaped.ts"), "export const escaped = true;\n");
+  writeFileSync(
+    join(outsideFixture, "escaped.ts"),
+    "export const escaped = true;\n",
+  );
   symlinkSync(outsideFixture, join(fixture, "linked-outside"));
   const escapedContents = readFileSync(join(outsideFixture, "escaped.ts"));
-  const escapedEntries = [{
-    path: "linked-outside/escaped.ts",
-    size: escapedContents.length,
-    mode: lstatSync(join(outsideFixture, "escaped.ts")).mode,
-    sha256: sha256(escapedContents),
-  }];
+  const escapedEntries = [
+    {
+      path: "linked-outside/escaped.ts",
+      size: escapedContents.length,
+      mode: lstatSync(join(outsideFixture, "escaped.ts")).mode,
+      sha256: sha256(escapedContents),
+    },
+  ];
   writeManifest({
     schemaVersion: "dealflow.deployable-source-manifest.v1",
     generatedFrom: "git_tracked_files_minus_vercelignore_and_manifest",

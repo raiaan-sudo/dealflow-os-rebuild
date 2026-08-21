@@ -67,7 +67,9 @@ function readExactRegularFile(root, path) {
     throw new Error(`Deployable source must be a regular file: ${path}`);
   }
   if (!realpathSync(absolute).startsWith(rootPrefix)) {
-    throw new Error(`Deployable source resolves outside the repository: ${path}`);
+    throw new Error(
+      `Deployable source resolves outside the repository: ${path}`,
+    );
   }
   const snapshot = readSecureFileSnapshot(absolute);
   return {
@@ -97,7 +99,6 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
     Array.isArray(configuration) ||
     typeof configuration !== "object" ||
     (configuration.version != null && configuration.version !== 2) ||
-    (target.kind !== "generic_non_release" && configuration.version !== 2) ||
     (configuration.name != null &&
       (typeof configuration.name !== "string" ||
         !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name))) ||
@@ -160,7 +161,9 @@ function portfolioDigest(
   for (const entry of entries) {
     const path = assertSafeRelativePath(entry?.path);
     if (path <= previous) {
-      throw new Error("Deployable source manifest paths must be unique and sorted");
+      throw new Error(
+        "Deployable source manifest paths must be unique and sorted",
+      );
     }
     previous = path;
     const file = readExactRegularFile(root, path);
@@ -172,9 +175,15 @@ function portfolioDigest(
         entry.mode !== file.mode ||
         entry.sha256 !== fileSha256)
     ) {
-      const recovered = recoverVercelNormalizedConfiguration(entry, file, target);
+      const recovered = recoverVercelNormalizedConfiguration(
+        entry,
+        file,
+        target,
+      );
       if (!recovered) {
-        throw new Error(`Deployable source file does not match its manifest: ${path}`);
+        throw new Error(
+          `Deployable source file does not match its manifest: ${path}`,
+        );
       }
       sourceBytes = recovered.recoveredSourceBytes;
       fileSha256 = sha256(sourceBytes);
@@ -206,10 +215,7 @@ function gitNullList(root, args, label) {
   if (result.error || result.status !== 0) {
     throw new Error(`${label} failed`);
   }
-  return result.stdout
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean);
+  return result.stdout.toString("utf8").split("\0").filter(Boolean);
 }
 
 function canonicalTrackedDeployablePaths(root) {
@@ -226,12 +232,8 @@ function canonicalTrackedDeployablePaths(root) {
     ),
   );
   return tracked
-    .filter(
-      (path) => !ignored.has(path) && path !== MANIFEST_RELATIVE_PATH,
-    )
-    .filter(
-      (path) => !VERCEL_DEFAULT_IGNORED_TRACKED_PATHS.has(path),
-    )
+    .filter((path) => !ignored.has(path) && path !== MANIFEST_RELATIVE_PATH)
+    .filter((path) => !VERCEL_DEFAULT_IGNORED_TRACKED_PATHS.has(path))
     .sort();
 }
 
@@ -251,7 +253,9 @@ function writeManifest(root) {
   };
   const path = join(root, MANIFEST_RELATIVE_PATH);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, {
+    mode: 0o644,
+  });
   process.stdout.write(
     `deployable source manifest written: ${manifest.entryCount} files ${manifest.deployableSourceSha256}\n`,
   );
@@ -269,14 +273,18 @@ function normalizedEnvironmentValue(name) {
   return process.env[name]?.trim() ?? "";
 }
 
-function exactProjectBinding(expectedProjectName, attestationName, attestation) {
+function exactProjectBinding(
+  expectedProjectName,
+  attestationName,
+  attestation,
+) {
   const actualProjectId = normalizedEnvironmentValue("VERCEL_PROJECT_ID");
   const expectedProjectId = normalizedEnvironmentValue(expectedProjectName);
   return Boolean(
     actualProjectId &&
-      expectedProjectId &&
-      actualProjectId === expectedProjectId &&
-      normalizedEnvironmentValue(attestationName) === attestation,
+    expectedProjectId &&
+    actualProjectId === expectedProjectId &&
+    normalizedEnvironmentValue(attestationName) === attestation,
   );
 }
 
@@ -286,7 +294,8 @@ function classifyBuildTarget() {
     Boolean(normalizedEnvironmentValue("VERCEL_ENV"));
   if (!hosted) return Object.freeze({ hosted: false, kind: "local" });
 
-  const vercelEnvironment = normalizedEnvironmentValue("VERCEL_ENV").toLowerCase();
+  const vercelEnvironment =
+    normalizedEnvironmentValue("VERCEL_ENV").toLowerCase();
   const deploymentTarget = normalizedEnvironmentValue(
     "DEALFLOW_DEPLOYMENT_TARGET",
   ).toLowerCase();
@@ -413,7 +422,9 @@ function verifyAndGenerateArtifact(root) {
   const target = classifyBuildTarget();
   const portfolio = portfolioDigest(manifest.entries, root, { target });
   if (portfolio.deployableSourceSha256 !== manifest.deployableSourceSha256) {
-    throw new Error("Deployable source portfolio digest does not match its manifest");
+    throw new Error(
+      "Deployable source portfolio digest does not match its manifest",
+    );
   }
   const manifestSha256 = sha256(manifestBytes);
   if (!target.hosted) {
@@ -431,7 +442,9 @@ function verifyAndGenerateArtifact(root) {
       release.deployableManifestSha256 !== manifestSha256 ||
       release.deployableFileCount !== manifest.entryCount)
   ) {
-    throw new Error("Hosted build source portfolio does not match the local release authority");
+    throw new Error(
+      "Hosted build source portfolio does not match the local release authority",
+    );
   }
   const artifact = {
     schemaVersion: ARTIFACT_SCHEMA,
@@ -454,8 +467,7 @@ function verifyAndGenerateArtifact(root) {
         status: "PASS",
         transformation: "exact_source_bytes",
       },
-    vercelDryRunSourceSha256:
-      release?.vercelDryRunSourceSha256 ?? null,
+    vercelDryRunSourceSha256: release?.vercelDryRunSourceSha256 ?? null,
     vercelDryRunFileCount: release?.vercelDryRunFileCount ?? null,
   };
   const artifactPath = join(root, ARTIFACT_RELATIVE_PATH);
@@ -467,15 +479,18 @@ function verifyAndGenerateArtifact(root) {
 }
 
 const rootArgumentIndex = process.argv.indexOf("--root");
-const root = rootArgumentIndex >= 0
-  ? resolve(process.argv[rootArgumentIndex + 1] ?? "")
-  : process.cwd();
+const root =
+  rootArgumentIndex >= 0
+    ? resolve(process.argv[rootArgumentIndex + 1] ?? "")
+    : process.cwd();
 if (!existsSync(root) || !lstatSync(root).isDirectory()) {
   throw new Error("Build identity root must be an existing directory");
 }
 if (process.argv.includes("--write-manifest")) {
   if (realpathSync(root) !== realpathSync(process.cwd())) {
-    throw new Error("Manifest writes are allowed only in the current release worktree");
+    throw new Error(
+      "Manifest writes are allowed only in the current release worktree",
+    );
   }
   writeManifest(root);
 } else {
