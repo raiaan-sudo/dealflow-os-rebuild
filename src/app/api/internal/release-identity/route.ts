@@ -40,8 +40,7 @@ const BUILD_RELEASE_IDENTITY = Object.freeze({
   tree: process.env.NEXT_PUBLIC_DEALFLOW_RELEASE_TREE ?? "",
   trackedWorktreeSha256:
     process.env.NEXT_PUBLIC_DEALFLOW_TRACKED_WORKTREE_SHA256 ?? "",
-  trackedFileCount:
-    process.env.NEXT_PUBLIC_DEALFLOW_TRACKED_FILE_COUNT ?? "",
+  trackedFileCount: process.env.NEXT_PUBLIC_DEALFLOW_TRACKED_FILE_COUNT ?? "",
   dependencyLockSha256:
     process.env.NEXT_PUBLIC_DEALFLOW_DEPENDENCY_LOCK_SHA256 ?? "",
   deployableSourceSha256:
@@ -86,7 +85,9 @@ function assertHostedReleaseIdentityAuthority() {
 
 function readExactBuildReleaseIdentity() {
   const trackedFileCount = Number(BUILD_RELEASE_IDENTITY.trackedFileCount);
-  const deployableFileCount = Number(BUILD_RELEASE_IDENTITY.deployableFileCount);
+  const deployableFileCount = Number(
+    BUILD_RELEASE_IDENTITY.deployableFileCount,
+  );
   const vercelDryRunFileCount = Number(
     BUILD_RELEASE_IDENTITY.vercelDryRunFileCount,
   );
@@ -102,10 +103,9 @@ function readExactBuildReleaseIdentity() {
     !/^[a-f0-9]{64}$/.test(BUILD_RELEASE_IDENTITY.deployableManifestSha256) ||
     !Number.isSafeInteger(deployableFileCount) ||
     deployableFileCount <= 0 ||
-    String(deployableFileCount) !== BUILD_RELEASE_IDENTITY.deployableFileCount ||
-    !/^[a-f0-9]{64}$/.test(
-      BUILD_RELEASE_IDENTITY.vercelDryRunSourceSha256,
-    ) ||
+    String(deployableFileCount) !==
+      BUILD_RELEASE_IDENTITY.deployableFileCount ||
+    !/^[a-f0-9]{64}$/.test(BUILD_RELEASE_IDENTITY.vercelDryRunSourceSha256) ||
     !Number.isSafeInteger(vercelDryRunFileCount) ||
     vercelDryRunFileCount <= 0 ||
     String(vercelDryRunFileCount) !==
@@ -127,8 +127,7 @@ function readExactBuildReleaseIdentity() {
     deployableSourceSha256: BUILD_RELEASE_IDENTITY.deployableSourceSha256,
     deployableManifestSha256: BUILD_RELEASE_IDENTITY.deployableManifestSha256,
     deployableFileCount,
-    vercelDryRunSourceSha256:
-      BUILD_RELEASE_IDENTITY.vercelDryRunSourceSha256,
+    vercelDryRunSourceSha256: BUILD_RELEASE_IDENTITY.vercelDryRunSourceSha256,
     vercelDryRunFileCount,
   });
 }
@@ -183,8 +182,7 @@ function releaseIdentityMatches(
     value.deployableSourceSha256 === expected.deployableSourceSha256 &&
     value.deployableManifestSha256 === expected.deployableManifestSha256 &&
     value.deployableFileCount === expected.deployableFileCount &&
-    value.vercelDryRunSourceSha256 ===
-      expected.vercelDryRunSourceSha256 &&
+    value.vercelDryRunSourceSha256 === expected.vercelDryRunSourceSha256 &&
     value.vercelDryRunFileCount === expected.vercelDryRunFileCount
   );
 }
@@ -201,11 +199,13 @@ function isExactVercelConfigurationNormalization(value: unknown) {
     hasExactKeys(value, [
       "status",
       "transformation",
+      "injectedProjectNamePresent",
       "injectedProjectNameMatched",
       "injectedVersion",
       "hostedBytesSha256",
       "recoveredSourceSha256",
     ]) &&
+    typeof value.injectedProjectNamePresent === "boolean" &&
     value.injectedProjectNameMatched === true &&
     value.injectedVersion === 2 &&
     isSha256(value.hostedBytesSha256) &&
@@ -222,10 +222,7 @@ function invalidBuildSourceArtifact(): ApiError {
 }
 
 function readExactBuildSourceIdentity(expected: ExactBuildReleaseIdentity) {
-  const artifactPath = join(
-    process.cwd(),
-    BUILD_SOURCE_ARTIFACT_RELATIVE_PATH,
-  );
+  const artifactPath = join(process.cwd(), BUILD_SOURCE_ARTIFACT_RELATIVE_PATH);
   let bytes: Buffer;
   let descriptor: number | null = null;
 

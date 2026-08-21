@@ -18,7 +18,9 @@ const runner = readFileSync(
   join(root, "scripts", "staging", "run-isolated-staging-acceptance.mjs"),
   "utf8",
 );
-const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const packageJson = JSON.parse(
+  readFileSync(join(root, "package.json"), "utf8"),
+);
 const buildIdentityGenerator = readFileSync(
   join(root, "scripts", "generate-hosted-build-identity.mjs"),
   "utf8",
@@ -88,7 +90,10 @@ assert.match(route, /vercel_semantic_config_normalization_v2/);
 assert.match(route, /exact_source_bytes/);
 assert.match(route, /constants\.O_RDONLY \| constants\.O_NOFOLLOW/);
 assert.match(route, /fstatSync\(descriptor\)/);
-assert.match(route, /readFileSync\(\/\* turbopackIgnore: true \*\/ descriptor\)/);
+assert.match(
+  route,
+  /readFileSync\(\/\* turbopackIgnore: true \*\/ descriptor\)/,
+);
 assert.match(route, /closeSync\(descriptor\)/);
 assert.match(route, /BUILD_SOURCE_ARTIFACT_MAX_BYTES/);
 assert.match(route, /`\$\{JSON\.stringify\(parsed\)\}\\n` !== bytes\.toString/);
@@ -147,7 +152,10 @@ assert.match(runner, /proveHostedBuildReleaseIdentity/);
 assert.match(runner, /redirect: "manual"/);
 assert.match(runner, /response\.url !== endpoint\.href/);
 assert.match(runner, /runtimeGitMetadataTrustedAsArtifactProof: false/);
-assert.match(runner, /hostedBuildIdentity\.status === "PASS" \? "PASS" : "FAIL"/);
+assert.match(
+  runner,
+  /hostedBuildIdentity\.status === "PASS" \? "PASS" : "FAIL"/,
+);
 assert.match(runner, /buildGeneratedSourcePortfolioMatched: true/);
 assert.match(runner, /payload\.buildSource/);
 assert.match(runner, /assertExactHostedBuildSourceIdentity/);
@@ -200,6 +208,7 @@ const canonicalNormalizationBuildSource = validBuildSource();
 canonicalNormalizationBuildSource.vercelConfigurationNormalization = {
   status: "PASS",
   transformation: "vercel_semantic_config_normalization_v2",
+  injectedProjectNamePresent: true,
   injectedProjectNameMatched: true,
   injectedVersion: 2,
   hostedBytesSha256: "2".repeat(64),
@@ -234,6 +243,7 @@ for (const mutate of [
     value.vercelConfigurationNormalization = {
       status: "PASS",
       transformation: "vercel_semantic_config_normalization_v2",
+      injectedProjectNamePresent: true,
       injectedProjectNameMatched: false,
       injectedVersion: 2,
       hostedBytesSha256: "2".repeat(64),

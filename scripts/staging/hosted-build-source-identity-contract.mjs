@@ -47,7 +47,10 @@ function isSha256(value) {
 }
 
 function exactReleaseMatches(value, expected) {
-  if (!hasExactKeys(value, RELEASE_KEYS) || !hasExactKeys(expected, RELEASE_KEYS)) {
+  if (
+    !hasExactKeys(value, RELEASE_KEYS) ||
+    !hasExactKeys(expected, RELEASE_KEYS)
+  ) {
     return false;
   }
   return RELEASE_KEYS.every((key) => value[key] === expected[key]);
@@ -63,11 +66,13 @@ function exactNormalization(value) {
     hasExactKeys(value, [
       "status",
       "transformation",
+      "injectedProjectNamePresent",
       "injectedProjectNameMatched",
       "injectedVersion",
       "hostedBytesSha256",
       "recoveredSourceSha256",
     ]) &&
+    typeof value.injectedProjectNamePresent === "boolean" &&
     value.injectedProjectNameMatched === true &&
     value.injectedVersion === 2 &&
     isSha256(value.hostedBytesSha256) &&
@@ -92,14 +97,16 @@ export function assertExactHostedBuildSourceIdentity({
     !isSha256(buildSource.manifestSha256) ||
     buildSource.manifestSha256 !== expectedRelease.deployableManifestSha256 ||
     !isSha256(buildSource.deployableSourceSha256) ||
-    buildSource.deployableSourceSha256 !== expectedRelease.deployableSourceSha256 ||
+    buildSource.deployableSourceSha256 !==
+      expectedRelease.deployableSourceSha256 ||
     !Number.isSafeInteger(buildSource.deployableFileCount) ||
     buildSource.deployableFileCount !== expectedRelease.deployableFileCount ||
     !isSha256(buildSource.vercelDryRunSourceSha256) ||
     buildSource.vercelDryRunSourceSha256 !==
       expectedRelease.vercelDryRunSourceSha256 ||
     !Number.isSafeInteger(buildSource.vercelDryRunFileCount) ||
-    buildSource.vercelDryRunFileCount !== expectedRelease.vercelDryRunFileCount ||
+    buildSource.vercelDryRunFileCount !==
+      expectedRelease.vercelDryRunFileCount ||
     !exactReleaseMatches(buildSource.release, expectedRelease) ||
     !exactNormalization(buildSource.vercelConfigurationNormalization)
   ) {

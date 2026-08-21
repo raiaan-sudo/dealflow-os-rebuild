@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -27,13 +33,16 @@ const exactBytesNormalization = Object.freeze({
 const vercelNormalization = Object.freeze({
   status: "PASS",
   transformation: "vercel_semantic_config_normalization_v2",
+  injectedProjectNamePresent: true,
   injectedProjectNameMatched: true,
   injectedVersion: 2,
   hostedBytesSha256: "2".repeat(64),
   recoveredSourceSha256: "3".repeat(64),
 });
 
-function exactBuildSource(normalization: Record<string, unknown> = exactBytesNormalization) {
+function exactBuildSource(
+  normalization: Record<string, unknown> = exactBytesNormalization,
+) {
   return {
     schemaVersion: "dealflow.hosted-build-source-identity.v1",
     status: "HOSTED_SOURCE_VERIFIED",
@@ -61,7 +70,8 @@ Object.assign(process.env, {
   DEALFLOW_STAGING_HOST_ATTESTATION:
     "DEALFLOW_ISOLATED_STAGING_VERCEL_PROJECT_EXACT_V1",
   NEXT_PUBLIC_SUPABASE_URL: `https://${projectRef}.supabase.co`,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: "scenario-anon-key-with-more-than-32-characters",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY:
+    "scenario-anon-key-with-more-than-32-characters",
   QA_ISOLATED_SUPABASE_PROJECT_REF: projectRef,
   INTERNAL_SYSTEM_JOBS_SECRET: secret,
   NEXT_PUBLIC_DEALFLOW_RELEASE_COMMIT: release.commit,
@@ -72,7 +82,9 @@ Object.assign(process.env, {
   NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_SOURCE_SHA256: release.deployableSourceSha256,
   NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_MANIFEST_SHA256:
     release.deployableManifestSha256,
-  NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_FILE_COUNT: String(release.deployableFileCount),
+  NEXT_PUBLIC_DEALFLOW_DEPLOYABLE_FILE_COUNT: String(
+    release.deployableFileCount,
+  ),
   NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_SOURCE_SHA256:
     release.vercelDryRunSourceSha256,
   NEXT_PUBLIC_DEALFLOW_VERCEL_DRY_RUN_FILE_COUNT: String(
@@ -92,7 +104,8 @@ const artifactPath = join(
 mkdirSync(dirname(artifactPath), { recursive: true });
 
 let buildSource = exactBuildSource();
-let artifactMode: "canonical" | "missing" | "malformed" | "noncanonical" | "symlink" =
+let artifactMode:
+  "canonical" | "missing" | "malformed" | "noncanonical" | "symlink" =
   "canonical";
 let authorizedRequest = true;
 
@@ -105,7 +118,8 @@ if (scenario === "production" || scenario === "production_missing_artifact") {
   scenario === "wrong_supabase" ||
   scenario === "wrong_supabase_missing_artifact"
 ) {
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://differentprojectqibh.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_URL =
+    "https://differentprojectqibh.supabase.co";
   if (scenario === "wrong_supabase_missing_artifact") artifactMode = "missing";
 } else if (scenario === "incomplete_build") {
   process.env.NEXT_PUBLIC_DEALFLOW_RELEASE_TREE = "";
@@ -136,7 +150,9 @@ if (scenario === "production" || scenario === "production_missing_artifact") {
 } else if (scenario === "bad_normalization_status") {
   buildSource.vercelConfigurationNormalization.status = "FAIL";
 } else if (scenario === "bad_normalization_shape") {
-  Object.assign(buildSource.vercelConfigurationNormalization, { unexpected: true });
+  Object.assign(buildSource.vercelConfigurationNormalization, {
+    unexpected: true,
+  });
 } else if (scenario === "bad_vercel_normalization") {
   buildSource = exactBuildSource({
     ...vercelNormalization,
@@ -150,7 +166,9 @@ if (scenario === "production" || scenario === "production_missing_artifact") {
 }
 
 if (artifactMode === "canonical") {
-  writeFileSync(artifactPath, `${JSON.stringify(buildSource)}\n`, { mode: 0o644 });
+  writeFileSync(artifactPath, `${JSON.stringify(buildSource)}\n`, {
+    mode: 0o644,
+  });
 } else if (artifactMode === "malformed") {
   writeFileSync(artifactPath, "{not-json\n", { mode: 0o644 });
 } else if (artifactMode === "noncanonical") {
@@ -165,17 +183,24 @@ if (artifactMode === "canonical") {
 
 async function main() {
   process.chdir(scenarioRoot);
-  const { GET } = await import("../../src/app/api/internal/release-identity/route");
+  const { GET } =
+    await import("../../src/app/api/internal/release-identity/route");
   const response = await GET(
-    new Request("https://dealflow-isolated.example/api/internal/release-identity", {
-      headers: {
-        Authorization: `Bearer ${authorizedRequest ? secret : "wrong-secret"}`,
+    new Request(
+      "https://dealflow-isolated.example/api/internal/release-identity",
+      {
+        headers: {
+          Authorization: `Bearer ${authorizedRequest ? secret : "wrong-secret"}`,
+        },
       },
-    }),
+    ),
   );
   const body = await response.json();
 
-  if (scenario === "authorized" || scenario === "authorized_vercel_normalization") {
+  if (
+    scenario === "authorized" ||
+    scenario === "authorized_vercel_normalization"
+  ) {
     assert.equal(response.status, 200);
     assert.deepEqual(body, {
       ok: true,
