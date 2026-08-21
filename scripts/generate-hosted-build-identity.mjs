@@ -102,8 +102,10 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
       (typeof configuration.name !== "string" ||
         !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(configuration.name))) ||
     (target.kind === "exact_staging" &&
+      configuration.name != null &&
       configuration.name !== STAGING_PROJECT_NAME) ||
     (target.kind === "exact_production" &&
+      configuration.name != null &&
       configuration.name !== PRODUCTION_PROJECT_NAME)
   ) {
     return null;
@@ -131,10 +133,13 @@ function recoverVercelNormalizedConfiguration(entry, file, target) {
     evidence: {
       status: "PASS",
       transformation: "vercel_semantic_config_normalization_v2",
+      injectedProjectNamePresent: configuration.name != null,
       injectedProjectNameMatched:
-        (target.kind !== "exact_staging" ||
+        (configuration.name == null ||
+          target.kind !== "exact_staging" ||
           configuration.name === STAGING_PROJECT_NAME) &&
-        (target.kind !== "exact_production" ||
+        (configuration.name == null ||
+          target.kind !== "exact_production" ||
           configuration.name === PRODUCTION_PROJECT_NAME),
       injectedVersion: configuration.version ?? null,
       hostedBytesSha256: sha256(file.contents),

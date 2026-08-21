@@ -232,6 +232,37 @@ try {
     normalizedProductionArtifact.vercelConfigurationNormalization.transformation,
     "vercel_semantic_config_normalization_v2",
   );
+  assert.equal(
+    normalizedProductionArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    true,
+  );
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify({ ...vercelConfiguration, version: 2 })}\n`,
+  );
+  const gitIntegratedProductionNormalization = run({
+    env: exactProductionEnvironment(manifest, manifestSha256),
+  });
+  assert.equal(
+    gitIntegratedProductionNormalization.status,
+    0,
+    `${gitIntegratedProductionNormalization.stderr}\n${gitIntegratedProductionNormalization.stdout}`,
+  );
+  const gitIntegratedProductionArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization.transformation,
+    "vercel_semantic_config_normalization_v2",
+  );
+  assert.equal(
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    false,
+  );
+  assert.equal(
+    gitIntegratedProductionArtifact.vercelConfigurationNormalization.injectedProjectNameMatched,
+    true,
+  );
   writeFileSync(
     join(fixture, "vercel.json"),
     `${JSON.stringify(vercelConfiguration, null, 2)}\n`,
@@ -273,6 +304,29 @@ try {
   assert.equal(
     normalizedStagingArtifact.vercelConfigurationNormalization.recoveredSourceSha256,
     manifest.entries.find((entry) => entry.path === "vercel.json").sha256,
+  );
+  writeFileSync(
+    join(fixture, "vercel.json"),
+    `${JSON.stringify({ ...vercelConfiguration, version: 2 })}\n`,
+  );
+  const gitIntegratedStagingNormalization = run({
+    env: exactStagingEnvironment(manifest, manifestSha256),
+  });
+  assert.equal(
+    gitIntegratedStagingNormalization.status,
+    0,
+    `${gitIntegratedStagingNormalization.stderr}\n${gitIntegratedStagingNormalization.stdout}`,
+  );
+  const gitIntegratedStagingArtifact = JSON.parse(
+    readFileSync(artifactPath, "utf8"),
+  );
+  assert.equal(
+    gitIntegratedStagingArtifact.vercelConfigurationNormalization.injectedProjectNamePresent,
+    false,
+  );
+  assert.equal(
+    gitIntegratedStagingArtifact.vercelConfigurationNormalization.injectedProjectNameMatched,
+    true,
   );
 
   for (const invalidHostedConfiguration of [
