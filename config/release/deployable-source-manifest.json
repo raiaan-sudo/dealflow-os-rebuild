@@ -2,7 +2,7 @@
   "schemaVersion": "dealflow.deployable-source-manifest.v1",
   "generatedFrom": "git_tracked_files_minus_vercelignore_and_manifest",
   "entryCount": 1177,
-  "deployableSourceSha256": "e82bd7bd0f5db5c83bb85af71ee252263948959812cc586d7ab7d05a7103ac4e",
+  "deployableSourceSha256": "911142ce5b378ba44924321e620c87743cdf294d5f1a7a664d0f292b66547f05",
   "entries": [
     {
       "path": ".github/dependabot.yml",
@@ -176,7 +176,7 @@
       "path": "docs/dealflow-completion/CURRENT_SOURCE_INVENTORY.md",
       "size": 776,
       "mode": 33188,
-      "sha256": "2837a52c539b0e8ea26b1bcfa696c8955ccda92d084089950b93e9c183e9f982"
+      "sha256": "2cdd9980e7e5a2c874118e1c48c1aad77a4088fc27e5a31702f54dece5929bf2"
     },
     {
       "path": "docs/dealflow-completion/CURRENT_VS_DESIRED.md",
@@ -378,15 +378,15 @@
     },
     {
       "path": "docs/dealflow-completion/current-source-inventory.json",
-      "size": 85845,
+      "size": 85841,
       "mode": 33188,
-      "sha256": "887396c4d3a61e7600c8178b18c4916040971660ca3649e63c1e913a220a3636"
+      "sha256": "c057ec47868d902b7e4c95888d0b1c198652ae55e323a1bee09abfccf6b99ace"
     },
     {
       "path": "docs/dealflow-completion/current-traceability-summary.json",
-      "size": 3698,
+      "size": 3694,
       "mode": 33188,
-      "sha256": "a485e8af2fce0ab35b4bc2956096411ccd9899bd3dc2de9d5605775159201a93"
+      "sha256": "8580c4060f25f47242bc1f12868727bb00aa682e642921152fb22baf828763c5"
     },
     {
       "path": "docs/dealflow-completion/evidence/META_CONTRACT_HARDENING.md",
@@ -1206,9 +1206,9 @@
     },
     {
       "path": "scripts/staging/hosted-build-source-identity-contract.mjs",
-      "size": 3626,
+      "size": 3747,
       "mode": 33188,
-      "sha256": "a91f04ada10854f68fb199860aa5fa83e09f19ff7cbd0973ea66666899355dd4"
+      "sha256": "7a5e7b57fad6a24d2c6a8489890fee05df8e5408f83f2ef30b2d89c2b85fff08"
     },
     {
       "path": "scripts/staging/install-synthetic-retention-authority.mjs",
@@ -1248,9 +1248,9 @@
     },
     {
       "path": "scripts/staging/release-identity-route-scenario.ts",
-      "size": 8611,
+      "size": 8739,
       "mode": 33188,
-      "sha256": "cba7651846315fc9e682d14577ca108455b2f247589838178ae622e375b03769"
+      "sha256": "b4c6544f3065013c04c3f62e3552137f94483b8c94ce202bd746572002a3ad1e"
     },
     {
       "path": "scripts/staging/run-isolated-staging-acceptance.mjs",
@@ -1416,9 +1416,9 @@
     },
     {
       "path": "scripts/staging/test-release-identity-route-contract.mjs",
-      "size": 11138,
+      "size": 11233,
       "mode": 33188,
-      "sha256": "874d78e1dc02e87dff9608b3df661609f5a960d23a73edd82fbeb0e4be6e90c8"
+      "sha256": "c3041ef73134b0a5df70309e581c4110a93f30fc3a1c0a0d676e9576076e7ba8"
     },
     {
       "path": "scripts/staging/test-safe-browser-host-contract.mjs",
@@ -3222,9 +3222,9 @@
     },
     {
       "path": "src/app/api/internal/release-identity/route.ts",
-      "size": 10754,
+      "size": 10824,
       "mode": 33188,
-      "sha256": "573136a8d6bf71a6c1374efa8857ca3f420ecbcdc4ad7d7d2e76cb8f47c098f2"
+      "sha256": "77f68e6251740f5011ef1cddbfddfcbfc75acda30aa30f65e90b7ec373aec9c1"
     },
     {
       "path": "src/app/api/internal/stripe-test-proof/route.ts",
