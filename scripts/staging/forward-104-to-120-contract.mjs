@@ -49,7 +49,7 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
     migrationPortfolioSha256:
       "e6ff6049ff5a5c5691c54285850748f0e4190af23f389acde1cab7ead0245e2c",
     sourceReplayMigrationPortfolioSha256:
-      "c3628ee750038598fd1e518081e575e82edc5cf97baac0e069dba3e897b8af66",
+      "e6c129007e5203e2e58bfb3f508ba85b414c5de92f5386c25eba5cc6ffdfddaa",
     // Independently reproduced twice on PostgreSQL 17.6: once from a fresh
     // 120-migration database and once from the exact 104 prefix followed by
     // migrations 105-120. The managed catalog uses a pg_catalog-only search
@@ -146,8 +146,8 @@ export const FORWARD_104_TO_120_AUTHORITY = Object.freeze({
     Object.freeze({
       version: "20260717081000",
       file: "20260717081000_expand_campaign_lifecycle_authority.sql",
-      sha256: "5b9861d310456e1a9d90b3ba1b2d85faef4bbd361651282bc9a30a1d478b8b4b",
-      bytes: 21278,
+      sha256: "5b9937ace21b4c11b7a91080f875764cdb7be584bc9416be726042dedf408210",
+      bytes: 22249,
     }),
     Object.freeze({
       version: "20260717082000",

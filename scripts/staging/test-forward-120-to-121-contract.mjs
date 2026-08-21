@@ -32,7 +32,7 @@ assert.equal(FORWARD_120_TO_121_AUTHORITY.prior.migrationCount, 120);
 assert.equal(FORWARD_120_TO_121_AUTHORITY.current.migrationCount, 121);
 assert.equal(
   FORWARD_120_TO_121_AUTHORITY.current.sourceReplayMigrationPortfolioSha256,
-  "b0d6026c51183c35524a73da10616bc8502820ed382d719d7ecf592b76ceb64a",
+  "47238f3a35b254cdc91af3a071705e71bc998077220307bf06d2239931e23947",
 );
 assert.equal(
   FORWARD_120_TO_121_AUTHORITY.current.managedStructuralCatalogSha256,

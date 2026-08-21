@@ -76,7 +76,7 @@ assert.equal(
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.sourceReplayMigrationPortfolioSha256,
-  "c3628ee750038598fd1e518081e575e82edc5cf97baac0e069dba3e897b8af66",
+  "e6c129007e5203e2e58bfb3f508ba85b414c5de92f5386c25eba5cc6ffdfddaa",
 );
 assert.equal(
   FORWARD_104_TO_120_AUTHORITY.current.managedNormalizedSchemaSha256,

@@ -19,7 +19,7 @@ export const FORWARD_120_TO_121_AUTHORITY = Object.freeze({
     migrationPortfolioSha256:
       "2adf321b77c225023f47914edacbe32cf9edbc212ce9b3a76e62d579ef3c2a92",
     sourceReplayMigrationPortfolioSha256:
-      "b0d6026c51183c35524a73da10616bc8502820ed382d719d7ecf592b76ceb64a",
+      "47238f3a35b254cdc91af3a071705e71bc998077220307bf06d2239931e23947",
     managedStructuralCatalogSha256:
       "afd3b0d494dc85a2d4862e676e39170dec6fa270f516e4f8213603c86d01c250",
     managedStructuralCatalogRecordCount: 8405,
